@@ -1,4 +1,8 @@
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
+import LightbulbCard from "@/components/devices/LightbulbCard";
+import { Card, CardContent } from "@/components/ui/card";
+
+import { Camera } from "lucide-react";
 import {
   getAuth,
   getUser,
@@ -9,8 +13,9 @@ import {
   type HassEntities,
   Connection,
 } from "home-assistant-js-websocket";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLifecycles } from "react-use";
+import LightCard from "./components/devices/LightCard";
 
 const parseJson = (str: string, defaultValue: unknown) => {
   try {
@@ -35,7 +40,7 @@ const handleAuthError = async (error: unknown) => {
 function App() {
   const [entities, setEntities] = useState<HassEntities>({});
   const [connection, setConnection] = useState<Connection | null>(null);
-  
+
   useLifecycles(() => {
     async function initConnection() {
       const auth = await getAuth({
@@ -46,7 +51,7 @@ function App() {
           localStorage.hassTokens = JSON.stringify(tokens);
         },
       }).catch(handleAuthError);
-      
+
       if (!auth) return;
       const connection = await createConnection({ auth });
       if (location.search.includes("auth_callback=1")) {
@@ -71,23 +76,30 @@ function App() {
     callService(connection, "homeassistant", "toggle", {
       entity_id: entity,
     });
-  }
+  };
 
   return (
     <div>
-      <ul>
-        {Object.keys(entities).map((entity) => (
-            <li key={entity}>
-              {entity} {entities[entity].state} {entities[entity].attributes.friendly_name}
-              {["switch", "light", "input_boolean"].includes(entity.split(".", 1)[0]) && (
-                <Button onClick={() => toggleLight(entity)}>Click me</Button>
-              )}
-            </li>
-        ))}
-      </ul>
+      <div className="grid grid-cols-12 gap-4 p-4">
+        {Object.keys(entities).map((entityId) =>
+          ["switch", "light", "input_boolean"].includes(
+            entityId.split(".", 1)[0]
+          ) ? (
+            <LightCard key={entityId} entity={entities[entityId]} />
+          ) : (
+            <Card key={entityId}>
+              <CardContent>
+                {entityId}
+                 {/* {entities[entityId].state}{" "} */}
+                {/* {entities[entityId].attributes.friendly_name} */}
+              </CardContent>
+            </Card>
+          )
+        )}
+      </div>
       <pre>{JSON.stringify(entities, null, 2)}</pre>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
