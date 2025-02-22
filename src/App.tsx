@@ -20,9 +20,6 @@ function App() {
   const entityPositions = useRef<Record<string, { x: number; y: number }>>({});
 
   const getPosition = (entityId: string) => {
-    if (entityId === 'light.yeelink_cn_1132894958_mbulb3_s_2') {
-      console.log('nemo light.yeelink_cn_1132894958_mbulb3_s_2 position', entityPositions.current);
-    }
     return entityPositions.current[entityId];
   };
 
@@ -53,7 +50,6 @@ function App() {
 
   const handleDragEnd = (item: { id: string | number; position: { x: number; y: number } }) => {
     entityPositions.current[item.id] = item.position;
-    console.log('nemo entityPositions.current', item.id, entityPositions.current, item.position);
   };
 
   return (

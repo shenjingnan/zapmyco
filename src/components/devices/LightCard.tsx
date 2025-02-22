@@ -4,6 +4,25 @@ import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useHomeAssistant } from '@/use-home-assistant';
+import { useState } from 'react';
+
+const useColorTemp = (entity: HassEntity) => {
+  const [minColorTempKelvin, maxColorTempKelvin, colorTempKelvin] = [
+    entity.attributes.min_color_temp_kelvin,
+    entity.attributes.max_color_temp_kelvin,
+    entity.attributes.color_temp_kelvin,
+  ];
+  const [colorTemp] = useState(minColorTempKelvin);
+  const isSupported = entity.attributes.supported_color_modes.includes('color_temp');
+
+  if (!isSupported) {
+    return {
+      isSupported,
+    };
+  }
+
+  return { colorTemp, isSupported, minColorTempKelvin, maxColorTempKelvin, colorTempKelvin };
+};
 
 interface LightCardProps {
   entity: HassEntity;
@@ -11,10 +30,16 @@ interface LightCardProps {
 
 const LightCard = (props: Readonly<LightCardProps>) => {
   const { entity } = props;
-  const { toggleLight: _toggleLight } = useHomeAssistant();
+  const { toggleLight: _toggleLight, changeLightColorTemp: _changeLightColorTemp } =
+    useHomeAssistant();
+  const { isSupported: isColorTempSupported } = useColorTemp(entity);
 
   const toggleLight = () => {
     _toggleLight(entity.entity_id);
+  };
+
+  const handleColorTempChange = (value: number[]) => {
+    _changeLightColorTemp(entity.entity_id, value[0]);
   };
 
   return (
@@ -47,19 +72,28 @@ const LightCard = (props: Readonly<LightCardProps>) => {
           <Slider defaultValue={[80]} max={100} step={1} className="w-full" />
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm text-gray-600">色温</span>
-            <span className="text-sm font-medium">4500K</span>
-          </div>
-          <div className="relative">
-            <Slider defaultValue={[50]} max={100} step={1} className="w-full" />
-            <div className="mt-1 flex justify-between">
-              <SunDim className="h-4 w-4 text-amber-400" />
-              <SunDim className="h-4 w-4 text-blue-400" />
+        {isColorTempSupported && (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm text-gray-600">色温</span>
+              <span className="text-sm font-medium">{entity.attributes.color_temp_kelvin}K</span>
+            </div>
+            <div className="relative">
+              <Slider
+                defaultValue={[entity.attributes.color_temp]}
+                max={entity.attributes.max_color_temp_kelvin}
+                min={entity.attributes.min_color_temp_kelvin}
+                step={1}
+                className="w-full"
+                onValueChange={handleColorTempChange}
+              />
+              <div className="mt-1 flex justify-between">
+                <SunDim className="h-4 w-4 text-amber-400" />
+                <SunDim className="h-4 w-4 text-blue-400" />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </Card>
   );
