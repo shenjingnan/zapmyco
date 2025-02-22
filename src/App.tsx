@@ -13,6 +13,7 @@ import { useLifecycles } from 'react-use';
 import LightCard from './components/devices/LightCard';
 import { DraggableGrid, DraggableItem } from '@/DraggableGrid';
 import DebugCard from './components/devices/DebugCard';
+import GridLayout from './GridLayout';
 
 const parseJson = (str: string, defaultValue: unknown) => {
   try {
@@ -93,20 +94,36 @@ function App() {
     });
   };
 
+  let x = 0;
+  let y = 0;
   return (
     <div>
-      <DraggableGrid
+      <GridLayout
         items={Object.keys(entities).map((entityId) => {
-          return {
+          if (x >= 16) {
+            x = 0;
+            y++;
+          }
+          let size = { width: 1, height: 1 };
+          if (['switch', 'light', 'input_boolean'].includes(entityId.split('.', 1)[0])) {
+            size = { width: 3, height: 3 };
+          }
+          const res = {
             id: entityId,
-            ...entities[entityId],
+            entity: entities[entityId],
+            position: { x, y },
+            size,
           };
+          x += size.width;
+          return res;
         })}
-        renderItem={({ item }) => {
-          return ['switch', 'light', 'input_boolean'].includes(item.id.split('.', 1)[0]) ? (
-            <LightCard key={item.id} entity={entities[item.id]} id={item.id} />
+        renderItem={(item) => {
+          return ['switch', 'light', 'input_boolean'].includes(
+            item.entity.entity_id.split('.', 1)[0]
+          ) ? (
+            <LightCard key={item.id} entity={item.entity} />
           ) : (
-            <DebugCard entity={entities[item.id]} id={item.id} />
+            <DebugCard entity={item.entity} id={item.id} />
           );
         }}
       />

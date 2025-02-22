@@ -4,23 +4,18 @@ import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useState } from 'react';
-import { withDraggable, type WithDraggableProps } from '@/hocs/withDraggable';
 
-interface LightCardProps extends WithDraggableProps {
+interface LightCardProps {
   entity: HassEntity;
 }
 
 const LightCard = (props: Readonly<LightCardProps>) => {
-  const { entity, dragProps } = props;
+  const { entity } = props;
   const [switchState, setSwitchState] = useState(false);
 
   return (
-    <Card
-      {...dragProps}
-      className={`col-span-2 aspect-square w-full max-w-sm p-4 ${switchState ? 'bg-amber-50' : ''}`}
-    >
+    <Card className={`h-full w-full max-w-sm p-4 ${switchState ? 'bg-amber-50' : ''}`}>
       <div className="h-full overflow-hidden">
-        {/* 顶部信息区 */}
         <div className="mb-4 flex items-start justify-between">
           <div>
             <Badge variant="secondary" className="mb-2">
@@ -69,5 +64,4 @@ const LightCard = (props: Readonly<LightCardProps>) => {
   );
 };
 
-export { LightCard };
-export default withDraggable(LightCard);
+export default LightCard;
