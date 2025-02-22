@@ -174,15 +174,13 @@ const GridLayout = (props: GridLayoutProps) => {
       }
 
       // 将位置转换为网格坐标
-      const gridX = Math.round(newPosition.x / (CARD_BASE_WIDTH + GAP));
-      const gridY = Math.round(newPosition.y / (CARD_BASE_HEIGHT + GAP));
+      const { x: gridX, y: gridY } = snapToGrid(newPosition.x, newPosition.y);
 
       // 检查与其他卡片的碰撞
       return Object.values(items).some((item) => {
         if (item.id === currentId) return false;
 
-        const itemGridX = Math.round(item.position.x / (CARD_BASE_WIDTH + GAP));
-        const itemGridY = Math.round(item.position.y / (CARD_BASE_HEIGHT + GAP));
+        const { x: itemGridX, y: itemGridY } = item.position;
 
         // 检查网格重叠
         const hasXOverlap = !(gridX + width <= itemGridX || gridX >= itemGridX + item.size.width);
