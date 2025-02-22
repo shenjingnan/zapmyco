@@ -30,12 +30,20 @@ interface LightCardProps {
 
 const LightCard = (props: Readonly<LightCardProps>) => {
   const { entity } = props;
-  const { toggleLight: _toggleLight, changeLightColorTemp: _changeLightColorTemp } =
-    useHomeAssistant();
+  const {
+    toggleLight: _toggleLight,
+    changeLightColorTemp: _changeLightColorTemp,
+    changeLightBrightness: _changeLightBrightness,
+  } = useHomeAssistant();
+  console.log('nemo entity', entity);
   const { isSupported: isColorTempSupported } = useColorTemp(entity);
 
   const toggleLight = () => {
     _toggleLight(entity.entity_id);
+  };
+
+  const handleBrightnessChange = (value: number[]) => {
+    _changeLightBrightness(entity.entity_id, value[0]);
   };
 
   const handleColorTempChange = (value: number[]) => {
@@ -69,7 +77,14 @@ const LightCard = (props: Readonly<LightCardProps>) => {
             <span className="text-sm text-gray-600">亮度</span>
             <span className="text-sm font-medium">80%</span>
           </div>
-          <Slider defaultValue={[80]} max={100} step={1} className="w-full" />
+          <Slider
+            defaultValue={[entity.attributes.brightness]}
+            max={255}
+            min={1}
+            step={1}
+            className="w-full"
+            onValueChange={handleBrightnessChange}
+          />
         </div>
 
         {isColorTempSupported && (

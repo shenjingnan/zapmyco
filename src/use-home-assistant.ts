@@ -21,6 +21,7 @@ interface HomeAssistantStore {
   disconnect: () => void;
   toggleLight: (entityId: string) => Promise<void>;
   changeLightColorTemp: (entityId: string, colorTempKelvin: number) => Promise<void>;
+  changeLightBrightness: (entityId: string, brightness: number) => Promise<void>;
   getEntityState: (entityId: string) => HassEntity | null;
 }
 
@@ -146,6 +147,19 @@ const useHomeAssistant = create<HomeAssistantStore>((set, get) => ({
     await callService(connection, 'light', 'turn_on', {
       entity_id: entityId,
       color_temp_kelvin: colorTempKelvin,
+    });
+  },
+
+  // 调节亮度
+  changeLightBrightness: async (entityId: string, brightness: number) => {
+    const { connection } = get();
+    if (!connection) {
+      throw new Error('No connection to Home Assistant');
+    }
+
+    await callService(connection, 'light', 'turn_on', {
+      entity_id: entityId,
+      brightness,
     });
   },
 
