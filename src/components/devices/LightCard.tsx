@@ -4,6 +4,7 @@ import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useState } from 'react';
+import { useHomeAssistant } from '@/use-home-assistant';
 
 interface LightCardProps {
   entity: HassEntity;
@@ -12,6 +13,12 @@ interface LightCardProps {
 const LightCard = (props: Readonly<LightCardProps>) => {
   const { entity } = props;
   const [switchState, setSwitchState] = useState(false);
+  const { toggleLight: _toggleLight } = useHomeAssistant();
+
+  const toggleLight = () => {
+    setSwitchState(!switchState);
+    _toggleLight(entity.entity_id);
+  };
 
   return (
     <Card className={`h-full w-full max-w-sm p-4 ${switchState ? 'bg-amber-50' : ''}`}>
@@ -24,19 +31,17 @@ const LightCard = (props: Readonly<LightCardProps>) => {
             <h3 className="text-lg font-semibold">{entity.attributes.friendly_name}</h3>
           </div>
           <div className="flex items-center space-x-2">
-            {/* <Lamp className="w-5 h-5 text-yellow-500" /> */}
             <button
               className={`flex size-10 cursor-pointer items-center justify-center rounded-full ${
                 switchState ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'
               }`}
-              onClick={() => setSwitchState(!switchState)}
+              onClick={toggleLight}
             >
               <SunIcon />
             </button>
           </div>
         </div>
 
-        {/* 亮度控制 */}
         <div className="mb-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-gray-600">亮度</span>
@@ -45,7 +50,6 @@ const LightCard = (props: Readonly<LightCardProps>) => {
           <Slider defaultValue={[80]} max={100} step={1} className="w-full" />
         </div>
 
-        {/* 色温控制 */}
         <div>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-gray-600">色温</span>
