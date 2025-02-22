@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -16,6 +16,7 @@ import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useUpdateEffect } from 'react-use';
+import { RecordUtils } from './utils';
 
 interface CardProps {
   id: string | number;
@@ -93,7 +94,7 @@ export interface GridItem {
   position: { x: number; y: number };
 }
 interface GridLayoutProps {
-  items: GridItem[];
+  items: Record<string, GridItem>;
   renderItem: (item: GridItem) => React.ReactNode;
   onDragEnd: (item: { id: string | number; position: { x: number; y: number } }) => void;
 }
@@ -124,12 +125,11 @@ const GridLayout = (props: GridLayoutProps) => {
   }, []);
 
   // 状态管理
-  const [items, setItems] = useState<CardProps[]>([]);
+  const [items, setItems] = useState<Record<string, CardProps>>({});
 
   useUpdateEffect(() => {
     setItems(() => {
-      console.log(props.items);
-      return props.items.map((item) => swapCard(item, props.renderItem(item)));
+      return RecordUtils.map(props.items, (item) => swapCard(item, props.renderItem(item)));
     });
   }, [props.items]);
 
@@ -142,9 +142,8 @@ const GridLayout = (props: GridLayoutProps) => {
     id: 'droppable-area',
   });
 
-  const activeItem = activeId ? items.find((item) => item.id === activeId) : null;
+  const activeItem = activeId ? items[activeId] : null;
 
-  // 容器样式
   const containerStyle = useMemo(
     () => ({
       width: '100%',
@@ -155,17 +154,10 @@ const GridLayout = (props: GridLayoutProps) => {
     []
   );
 
-  // 网格对齐函数
-  const _snapToGridPosition = (x: number, y: number) => {
-    const gridX = Math.round(x / (CARD_BASE_WIDTH + GAP)) * (CARD_BASE_WIDTH + GAP);
-    const gridY = Math.round(y / (CARD_BASE_HEIGHT + GAP)) * (CARD_BASE_HEIGHT + GAP);
-    return { x: gridX, y: gridY };
-  };
-
   const snapToGrid = (x: number, y: number) => {
     const gridX = Math.round(x / (CARD_BASE_WIDTH + GAP));
     const gridY = Math.round(y / (CARD_BASE_HEIGHT + GAP));
-    return { x: gridX, y: gridY }; // 直接返回网格坐标
+    return { x: gridX, y: gridY };
   };
 
   // 碰撞检测
@@ -186,7 +178,7 @@ const GridLayout = (props: GridLayoutProps) => {
       const gridY = Math.round(newPosition.y / (CARD_BASE_HEIGHT + GAP));
 
       // 检查与其他卡片的碰撞
-      return items.some((item) => {
+      return Object.values(items).some((item) => {
         if (item.id === currentId) return false;
 
         const itemGridX = Math.round(item.position.x / (CARD_BASE_WIDTH + GAP));
@@ -207,7 +199,7 @@ const GridLayout = (props: GridLayoutProps) => {
     const { active } = event;
     setActiveId(active.id as string);
 
-    const item = items.find((i) => i.id === active.id);
+    const item = items[active.id as string];
     if (item) {
       setOriginalPositions((prev) => ({
         ...prev,
@@ -222,7 +214,7 @@ const GridLayout = (props: GridLayoutProps) => {
 
     if (!active) return;
 
-    const item = items.find((i) => i.id === active.id);
+    const item = items[active.id as string];
     if (!item) return;
 
     const oldPosition = calculateGridPosition(item.position.x, item.position.y);
@@ -231,7 +223,7 @@ const GridLayout = (props: GridLayoutProps) => {
 
     setItems((currentItems) => {
       if (checkCollision(newPosition, item.size.width, item.size.height, active.id as string)) {
-        return currentItems.map((item) => {
+        return RecordUtils.map(currentItems, (item) => {
           if (item.id === active.id) {
             return {
               ...item,
@@ -242,7 +234,7 @@ const GridLayout = (props: GridLayoutProps) => {
         });
       }
 
-      const newItems = currentItems.map((item) => {
+      const newItems = RecordUtils.map(currentItems, (item) => {
         if (item.id === active.id) {
           const newItem = {
             ...item,
@@ -267,10 +259,10 @@ const GridLayout = (props: GridLayoutProps) => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext items={items.map((item) => item.id)} strategy={rectSortingStrategy}>
+        <SortableContext items={Object.keys(items)} strategy={rectSortingStrategy}>
           <div className="mx-auto overflow-hidden" style={{ width: containerStyle.width }}>
             <div ref={setNodeRef} style={containerStyle}>
-              {items.map((item) => (
+              {Object.values(items).map((item) => (
                 <DraggableCard key={item.id} {...item} />
               ))}
             </div>

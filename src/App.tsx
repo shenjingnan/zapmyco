@@ -4,6 +4,7 @@ import DebugCard from './components/devices/DebugCard';
 import LightCard from './components/devices/LightCard';
 import GridLayout, { GridItem } from './GridLayout';
 import { useRef, useState } from 'react';
+import { RecordUtils } from './utils';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -15,7 +16,7 @@ function App() {
   let x = 0;
   let y = 0;
 
-  const [items, setItems] = useState<GridItem[]>([]);
+  const [items, setItems] = useState<Record<string, GridItem>>({});
   const entityPositions = useRef<Record<string, { x: number; y: number }>>({});
 
   const getPosition = (entityId: string) => {
@@ -27,7 +28,7 @@ function App() {
 
   useUpdateEffect(() => {
     setItems(
-      Object.keys(entities).map((entityId) => {
+      RecordUtils.map(entities, (entity, entityId) => {
         if (x >= 16) {
           x = 0;
           y++;
@@ -39,7 +40,7 @@ function App() {
         const position = getPosition(entityId) ?? { x, y };
         const res = {
           id: entityId,
-          entity: entities[entityId],
+          entity,
           position,
           size,
         };
