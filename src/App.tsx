@@ -97,7 +97,7 @@ function App() {
   let x = 0;
   let y = 0;
   return (
-    <div>
+    <div className="box-border min-h-screen bg-gray-300 p-2">
       <GridLayout
         items={Object.keys(entities).map((entityId) => {
           if (x >= 16) {

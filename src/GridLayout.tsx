@@ -15,10 +15,11 @@ import {
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HassEntity } from 'home-assistant-js-websocket';
+import { useMeasure } from 'react-use';
 
 // 类型定义
 interface CardProps {
-  id: string;
+  id: string | number;
   size: { width: number; height: number };
   content: React.ReactNode;
   position: { x: number; y: number };
@@ -90,7 +91,7 @@ const DraggableCard = (item: CardProps) => {
 };
 
 interface GridItem {
-  id: string;
+  id: string | number;
   entity: HassEntity;
   size: { width: number; height: number };
   position: { x: number; y: number };
@@ -102,6 +103,8 @@ interface GridLayoutProps {
 
 // 主网格布局组件
 const GridLayout = (props: GridLayoutProps) => {
+  const [containerRef, { width, height }] = useMeasure();
+
   // 传感器设置
   const mouseSensor = useSensor(MouseSensor, {
     activationConstraint: {
@@ -155,7 +158,6 @@ const GridLayout = (props: GridLayoutProps) => {
       width: '100%',
       height: '100vh',
       position: 'relative' as const,
-      background: 'rgba(0, 0, 0, 0.05)',
       borderRadius: '8px',
     }),
     []
@@ -229,7 +231,7 @@ const GridLayout = (props: GridLayoutProps) => {
     const newPosition = snapToGrid(oldPosition.x + delta.x, oldPosition.y + delta.y);
 
     setItems((currentItems) => {
-      if (checkCollision(newPosition, item.size.width, item.size.height, active.id)) {
+      if (checkCollision(newPosition, item.size.width, item.size.height, active.id as string)) {
         return currentItems.map((item) => {
           if (item.id === active.id) {
             return {
@@ -257,7 +259,7 @@ const GridLayout = (props: GridLayoutProps) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div ref={containerRef}>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
