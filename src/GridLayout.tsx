@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -15,9 +15,8 @@ import {
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HassEntity } from 'home-assistant-js-websocket';
-import { useMeasure } from 'react-use';
+import { useUpdateEffect } from 'react-use';
 
-// 类型定义
 interface CardProps {
   id: string | number;
   size: { width: number; height: number };
@@ -25,7 +24,6 @@ interface CardProps {
   position: { x: number; y: number };
 }
 
-// 常量定义
 const GRID_COLUMNS = 16;
 const GRID_ROWS = 9;
 const GAP = 10;
@@ -34,13 +32,11 @@ const SCREEN_HEIGHT = window.innerHeight;
 const CARD_BASE_WIDTH = (SCREEN_WIDTH - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 const CARD_BASE_HEIGHT = (SCREEN_HEIGHT - GAP * (GRID_ROWS - 1)) / GRID_ROWS;
 
-// 计算网格位置的工具函数
 const calculateGridPosition = (col: number, row: number) => ({
   x: col * (CARD_BASE_WIDTH + GAP),
   y: row * (CARD_BASE_HEIGHT + GAP),
 });
 
-// 卡片内容组件
 const CardContent = ({
   content,
   className = '',
@@ -51,13 +47,13 @@ const CardContent = ({
   <div className={`flex h-full w-full items-center justify-center ${className}`}>{content}</div>
 );
 
-// 可拖拽卡片组件
 const DraggableCard = (item: CardProps) => {
   const { width, height } = item.size;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id,
   });
 
+  const position = calculateGridPosition(item.position.x, item.position.y);
   const style = {
     transform: CSS.Transform.toString(
       transform
@@ -72,8 +68,8 @@ const DraggableCard = (item: CardProps) => {
     width: `${CARD_BASE_WIDTH * width + GAP * (width - 1)}px`,
     height: `${CARD_BASE_HEIGHT * height + GAP * (height - 1)}px`,
     position: 'absolute' as const,
-    left: item.position.x,
-    top: item.position.y,
+    left: position.x,
+    top: position.y,
     touchAction: 'none',
   };
 
@@ -90,7 +86,7 @@ const DraggableCard = (item: CardProps) => {
   );
 };
 
-interface GridItem {
+export interface GridItem {
   id: string | number;
   entity: HassEntity;
   size: { width: number; height: number };
@@ -99,13 +95,10 @@ interface GridItem {
 interface GridLayoutProps {
   items: GridItem[];
   renderItem: (item: GridItem) => React.ReactNode;
+  onDragEnd: (item: { id: string | number; position: { x: number; y: number } }) => void;
 }
 
-// 主网格布局组件
 const GridLayout = (props: GridLayoutProps) => {
-  const [containerRef, { width, height }] = useMeasure();
-
-  // 传感器设置
   const mouseSensor = useSensor(MouseSensor, {
     activationConstraint: {
       distance: 8,
@@ -122,24 +115,23 @@ const GridLayout = (props: GridLayoutProps) => {
   const sensors = useSensors(mouseSensor, touchSensor);
 
   const swapCard = useCallback((item: GridItem, content: React.ReactNode) => {
-    const position = calculateGridPosition(item.position.x, item.position.y);
     return {
       id: item.id,
       size: item.size,
       content,
-      position,
+      position: item.position,
     };
   }, []);
 
   // 状态管理
   const [items, setItems] = useState<CardProps[]>([]);
-  useEffect(() => {
+
+  useUpdateEffect(() => {
     setItems(() => {
-      return props.items.map((item) => {
-        return swapCard(item, props.renderItem(item));
-      });
+      console.log(props.items);
+      return props.items.map((item) => swapCard(item, props.renderItem(item)));
     });
-  }, [props, props.items, props.renderItem, swapCard]);
+  }, [props.items]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [originalPositions, setOriginalPositions] = useState<
@@ -164,10 +156,16 @@ const GridLayout = (props: GridLayoutProps) => {
   );
 
   // 网格对齐函数
-  const snapToGrid = (x: number, y: number) => {
+  const _snapToGridPosition = (x: number, y: number) => {
     const gridX = Math.round(x / (CARD_BASE_WIDTH + GAP)) * (CARD_BASE_WIDTH + GAP);
     const gridY = Math.round(y / (CARD_BASE_HEIGHT + GAP)) * (CARD_BASE_HEIGHT + GAP);
     return { x: gridX, y: gridY };
+  };
+
+  const snapToGrid = (x: number, y: number) => {
+    const gridX = Math.round(x / (CARD_BASE_WIDTH + GAP));
+    const gridY = Math.round(y / (CARD_BASE_HEIGHT + GAP));
+    return { x: gridX, y: gridY }; // 直接返回网格坐标
   };
 
   // 碰撞检测
@@ -227,8 +225,9 @@ const GridLayout = (props: GridLayoutProps) => {
     const item = items.find((i) => i.id === active.id);
     if (!item) return;
 
-    const oldPosition = item.position;
-    const newPosition = snapToGrid(oldPosition.x + delta.x, oldPosition.y + delta.y);
+    const oldPosition = calculateGridPosition(item.position.x, item.position.y);
+    const newGradPosition = snapToGrid(oldPosition.x + delta.x, oldPosition.y + delta.y);
+    const newPosition = calculateGridPosition(newGradPosition.x, newGradPosition.y);
 
     setItems((currentItems) => {
       if (checkCollision(newPosition, item.size.width, item.size.height, active.id as string)) {
@@ -245,10 +244,12 @@ const GridLayout = (props: GridLayoutProps) => {
 
       const newItems = currentItems.map((item) => {
         if (item.id === active.id) {
-          return {
+          const newItem = {
             ...item,
-            position: newPosition,
+            position: newGradPosition,
           };
+          props.onDragEnd({ id: item.id, position: newGradPosition });
+          return newItem;
         }
         return item;
       });
@@ -259,7 +260,7 @@ const GridLayout = (props: GridLayoutProps) => {
   };
 
   return (
-    <div ref={containerRef}>
+    <div>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}

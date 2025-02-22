@@ -3,7 +3,6 @@ import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
-import { useState } from 'react';
 import { useHomeAssistant } from '@/use-home-assistant';
 
 interface LightCardProps {
@@ -12,16 +11,14 @@ interface LightCardProps {
 
 const LightCard = (props: Readonly<LightCardProps>) => {
   const { entity } = props;
-  const [switchState, setSwitchState] = useState(false);
   const { toggleLight: _toggleLight } = useHomeAssistant();
 
   const toggleLight = () => {
-    setSwitchState(!switchState);
     _toggleLight(entity.entity_id);
   };
 
   return (
-    <Card className={`h-full w-full max-w-sm p-4 ${switchState ? 'bg-amber-50' : ''}`}>
+    <Card className={`h-full w-full max-w-sm p-4 ${entity.state === 'on' ? 'bg-amber-50' : ''}`}>
       <div className="h-full overflow-hidden">
         <div className="mb-4 flex items-start justify-between">
           <div>
@@ -32,8 +29,8 @@ const LightCard = (props: Readonly<LightCardProps>) => {
           </div>
           <div className="flex items-center space-x-2">
             <button
-              className={`flex size-10 cursor-pointer items-center justify-center rounded-full ${
-                switchState ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'
+              className={`flex size-10 items-center justify-center rounded-full ${
+                entity.state === 'on' ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'
               }`}
               onClick={toggleLight}
             >
