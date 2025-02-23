@@ -5,4 +5,4 @@
 .DS_Store
 .env
 .env.local
-.pnpm-lock.yaml
+pnpm-lock.yaml
