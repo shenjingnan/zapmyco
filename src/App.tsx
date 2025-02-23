@@ -53,7 +53,7 @@ function App() {
   };
 
   return (
-    <div className="box-border min-h-screen bg-gray-300 p-2">
+    <div className="box-border h-screen bg-gray-300 p-2">
       <GridLayout
         items={items}
         onDragEnd={handleDragEnd}

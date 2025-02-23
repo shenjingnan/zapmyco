@@ -15,7 +15,7 @@ import {
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HassEntity } from 'home-assistant-js-websocket';
-import { useUpdateEffect } from 'react-use';
+import { useMeasure, useUpdateEffect } from 'react-use';
 import { RecordUtils } from './utils';
 
 interface CardProps {
@@ -28,14 +28,14 @@ interface CardProps {
 const GRID_COLUMNS = 16;
 const GRID_ROWS = 9;
 const GAP = 10;
-const SCREEN_WIDTH = window.innerWidth;
-const SCREEN_HEIGHT = window.innerHeight;
-const CARD_BASE_WIDTH = (SCREEN_WIDTH - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
-const CARD_BASE_HEIGHT = (SCREEN_HEIGHT - GAP * (GRID_ROWS - 1)) / GRID_ROWS;
 
-const calculateGridPosition = (col: number, row: number) => ({
-  x: col * (CARD_BASE_WIDTH + GAP),
-  y: row * (CARD_BASE_HEIGHT + GAP),
+const calculateGridPosition = (
+  col: number,
+  row: number,
+  cardBaseSize: { width: number; height: number }
+) => ({
+  x: col * (cardBaseSize.width + GAP),
+  y: row * (cardBaseSize.height + GAP),
 });
 
 const CardContent = ({
@@ -48,13 +48,19 @@ const CardContent = ({
   <div className={`flex h-full w-full items-center justify-center ${className}`}>{content}</div>
 );
 
-const DraggableCard = (item: CardProps) => {
+const DraggableCard = ({
+  item,
+  cardBaseSize,
+}: {
+  item: CardProps;
+  cardBaseSize: { width: number; height: number };
+}) => {
   const { width, height } = item.size;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id,
   });
 
-  const position = calculateGridPosition(item.position.x, item.position.y);
+  const position = calculateGridPosition(item.position.x, item.position.y, cardBaseSize);
   const style = {
     transform: CSS.Transform.toString(
       transform
@@ -66,8 +72,8 @@ const DraggableCard = (item: CardProps) => {
           }
         : null
     ),
-    width: `${CARD_BASE_WIDTH * width + GAP * (width - 1)}px`,
-    height: `${CARD_BASE_HEIGHT * height + GAP * (height - 1)}px`,
+    width: `${cardBaseSize.width * width + GAP * (width - 1)}px`,
+    height: `${cardBaseSize.height * height + GAP * (height - 1)}px`,
     position: 'absolute' as const,
     left: position.x,
     top: position.y,
@@ -100,6 +106,16 @@ interface GridLayoutProps {
 }
 
 const GridLayout = (props: GridLayoutProps) => {
+  const [ref, { width: containerWidth, height: containerHeight }] = useMeasure<HTMLDivElement>();
+
+  const cardBaseSize = useMemo(() => {
+    console.log(containerWidth, containerHeight);
+    return {
+      width: (containerWidth - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS,
+      height: (containerHeight - GAP * (GRID_ROWS - 1)) / GRID_ROWS,
+    };
+  }, [containerWidth, containerHeight]);
+
   const mouseSensor = useSensor(MouseSensor, {
     activationConstraint: {
       distance: 8,
@@ -147,18 +163,21 @@ const GridLayout = (props: GridLayoutProps) => {
   const containerStyle = useMemo(
     () => ({
       width: '100%',
-      height: '100vh',
+      height: '100%',
       position: 'relative' as const,
       borderRadius: '8px',
     }),
     []
   );
 
-  const snapToGrid = (x: number, y: number) => {
-    const gridX = Math.round(x / (CARD_BASE_WIDTH + GAP));
-    const gridY = Math.round(y / (CARD_BASE_HEIGHT + GAP));
-    return { x: gridX, y: gridY };
-  };
+  const snapToGrid = useCallback(
+    (x: number, y: number) => {
+      const gridX = Math.round(x / (cardBaseSize.width + GAP));
+      const gridY = Math.round(y / (cardBaseSize.height + GAP));
+      return { x: gridX, y: gridY };
+    },
+    [cardBaseSize.width, cardBaseSize.height]
+  );
 
   // 碰撞检测
   const checkCollision = useCallback(
@@ -167,8 +186,8 @@ const GridLayout = (props: GridLayoutProps) => {
       if (
         newPosition.x < 0 ||
         newPosition.y < 0 ||
-        newPosition.x + width * CARD_BASE_WIDTH + (width - 1) * GAP > SCREEN_WIDTH ||
-        newPosition.y + height * CARD_BASE_HEIGHT + (height - 1) * GAP > SCREEN_HEIGHT
+        newPosition.x + width * cardBaseSize.width + (width - 1) * GAP > containerWidth ||
+        newPosition.y + height * cardBaseSize.height + (height - 1) * GAP > containerHeight
       ) {
         return true;
       }
@@ -189,7 +208,7 @@ const GridLayout = (props: GridLayoutProps) => {
         return hasXOverlap && hasYOverlap;
       });
     },
-    [items]
+    [cardBaseSize.width, cardBaseSize.height, snapToGrid, items]
   );
 
   // 拖拽开始处理
@@ -215,9 +234,9 @@ const GridLayout = (props: GridLayoutProps) => {
     const item = items[active.id as string];
     if (!item) return;
 
-    const oldPosition = calculateGridPosition(item.position.x, item.position.y);
+    const oldPosition = calculateGridPosition(item.position.x, item.position.y, cardBaseSize);
     const newGradPosition = snapToGrid(oldPosition.x + delta.x, oldPosition.y + delta.y);
-    const newPosition = calculateGridPosition(newGradPosition.x, newGradPosition.y);
+    const newPosition = calculateGridPosition(newGradPosition.x, newGradPosition.y, cardBaseSize);
 
     setItems((currentItems) => {
       if (checkCollision(newPosition, item.size.width, item.size.height, active.id as string)) {
@@ -250,7 +269,7 @@ const GridLayout = (props: GridLayoutProps) => {
   };
 
   return (
-    <div>
+    <div ref={ref} className="h-full w-full">
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
@@ -258,10 +277,10 @@ const GridLayout = (props: GridLayoutProps) => {
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={Object.keys(items)} strategy={rectSortingStrategy}>
-          <div className="mx-auto overflow-hidden" style={{ width: containerStyle.width }}>
+          <div className="mx-auto h-full w-full overflow-hidden">
             <div ref={setNodeRef} style={containerStyle}>
               {Object.values(items).map((item) => (
-                <DraggableCard key={item.id} {...item} />
+                <DraggableCard key={item.id} item={item} cardBaseSize={cardBaseSize} />
               ))}
             </div>
           </div>
@@ -271,8 +290,8 @@ const GridLayout = (props: GridLayoutProps) => {
           {activeItem && (
             <div
               style={{
-                width: `${CARD_BASE_WIDTH * activeItem.size.width + GAP * (activeItem.size.width - 1)}px`,
-                height: `${CARD_BASE_HEIGHT * activeItem.size.height + GAP * (activeItem.size.height - 1)}px`,
+                width: `${cardBaseSize.width * activeItem.size.width + GAP * (activeItem.size.width - 1)}px`,
+                height: `${cardBaseSize.height * activeItem.size.height + GAP * (activeItem.size.height - 1)}px`,
                 pointerEvents: 'none',
               }}
             >
