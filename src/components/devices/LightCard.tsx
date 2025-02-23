@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useHomeAssistant } from '@/use-home-assistant';
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { twMerge } from 'tailwind-merge';
+import clsx from 'clsx';
 
 const useColorTemp = (entity: HassEntity) => {
   const [minColorTempKelvin, maxColorTempKelvin] = [
@@ -61,7 +63,14 @@ const LightCard = (props: Readonly<LightCardProps>) => {
   );
 
   return (
-    <Card className={`h-full w-full max-w-sm p-4 ${entity.state === 'on' ? 'bg-amber-50' : ''}`}>
+    <Card
+      className={twMerge(
+        clsx('group relative h-full w-full max-w-sm p-4', {
+          'bg-amber-50': entity.state === 'on',
+          'cursor-not-allowed opacity-50': entity.state === 'unavailable',
+        })
+      )}
+    >
       <div className="h-full overflow-hidden">
         <div className="mb-4 flex items-start justify-between">
           <div>
@@ -94,7 +103,12 @@ const LightCard = (props: Readonly<LightCardProps>) => {
                 max={255}
                 min={1}
                 step={1}
-                className="w-full"
+                className={twMerge(
+                  clsx('w-full', {
+                    'cursor-pointer': entity.state === 'on',
+                    'cursor-not-allowed': entity.state === 'unavailable',
+                  })
+                )}
                 onValueChange={handleBrightnessChange}
               />
             </div>
@@ -109,8 +123,13 @@ const LightCard = (props: Readonly<LightCardProps>) => {
                   max={entity.attributes.max_color_temp_kelvin}
                   min={entity.attributes.min_color_temp_kelvin}
                   step={1}
-                  className="w-full"
                   onValueChange={handleColorTempChange}
+                  className={twMerge(
+                    clsx('w-full', {
+                      'cursor-pointer': entity.state === 'on',
+                      'cursor-not-allowed': entity.state === 'unavailable',
+                    })
+                  )}
                 />
                 <div className="mt-1 flex justify-between">
                   <SunDim className="h-4 w-4 text-amber-400" />
@@ -121,6 +140,11 @@ const LightCard = (props: Readonly<LightCardProps>) => {
           </>
         )}
       </div>
+      {entity.state === 'unavailable' && (
+        <div className="invisible absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-800 px-3 py-1 text-sm text-white transition-all duration-200 group-hover:visible">
+          此设备当前不可用
+        </div>
+      )}
     </Card>
   );
 };
