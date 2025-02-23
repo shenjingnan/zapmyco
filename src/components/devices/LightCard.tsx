@@ -4,7 +4,7 @@ import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useHomeAssistant } from '@/use-home-assistant';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 
 const useColorTemp = (entity: HassEntity) => {
   const [minColorTempKelvin, maxColorTempKelvin] = [
@@ -34,8 +34,13 @@ const LightCard = (props: Readonly<LightCardProps>) => {
   const { entity } = props;
   const { toggleLight: _toggleLight, changeLightAttributes: _changeLightAttributes } =
     useHomeAssistant();
-  console.log('nemo entity', entity);
   const { isSupported: isColorTempSupported } = useColorTemp(entity);
+  const brightnessPercent = useMemo(() => {
+    return Math.round((entity.attributes.brightness / 255) * 100) || 0;
+  }, [entity.attributes.brightness]);
+  const colorTempKelvin = useMemo(() => {
+    return entity.attributes.color_temp_kelvin || 0;
+  }, [entity.attributes.color_temp_kelvin]);
 
   const toggleLight = useCallback(() => {
     _toggleLight(entity.entity_id);
@@ -82,9 +87,7 @@ const LightCard = (props: Readonly<LightCardProps>) => {
             <div className="mb-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm text-gray-600">亮度</span>
-                <span className="text-sm font-medium">
-                  {Math.round((entity.attributes.brightness / 255) * 100)}%
-                </span>
+                <span className="text-sm font-medium">{brightnessPercent}%</span>
               </div>
               <Slider
                 defaultValue={[entity.attributes.brightness]}
@@ -98,11 +101,11 @@ const LightCard = (props: Readonly<LightCardProps>) => {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm text-gray-600">色温</span>
-                <span className="text-sm font-medium">{entity.attributes.color_temp_kelvin}K</span>
+                <span className="text-sm font-medium">{colorTempKelvin}K</span>
               </div>
               <div className="relative">
                 <Slider
-                  defaultValue={[entity.attributes.color_temp_kelvin]}
+                  defaultValue={[colorTempKelvin]}
                   max={entity.attributes.max_color_temp_kelvin}
                   min={entity.attributes.min_color_temp_kelvin}
                   step={1}
