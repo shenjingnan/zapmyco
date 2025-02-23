@@ -4,24 +4,26 @@ import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useHomeAssistant } from '@/use-home-assistant';
-import { useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 const useColorTemp = (entity: HassEntity) => {
-  const [minColorTempKelvin, maxColorTempKelvin, colorTempKelvin] = [
+  const [minColorTempKelvin, maxColorTempKelvin] = [
     entity.attributes.min_color_temp_kelvin,
     entity.attributes.max_color_temp_kelvin,
-    entity.attributes.color_temp_kelvin,
   ];
-  const [colorTemp] = useState(minColorTempKelvin);
+  const [colorTempKelvin, setColorTempKelvin] = useState(minColorTempKelvin);
+
+  useEffect(() => {
+    setColorTempKelvin(entity.attributes.color_temp_kelvin);
+  }, [entity]);
+
   const isSupported = entity.attributes.supported_color_modes.includes('color_temp');
 
   if (!isSupported) {
-    return {
-      isSupported,
-    };
+    return { isSupported };
   }
 
-  return { colorTemp, isSupported, minColorTempKelvin, maxColorTempKelvin, colorTempKelvin };
+  return { isSupported, minColorTempKelvin, maxColorTempKelvin, colorTempKelvin };
 };
 
 interface LightCardProps {
@@ -30,25 +32,28 @@ interface LightCardProps {
 
 const LightCard = (props: Readonly<LightCardProps>) => {
   const { entity } = props;
-  const {
-    toggleLight: _toggleLight,
-    changeLightColorTemp: _changeLightColorTemp,
-    changeLightBrightness: _changeLightBrightness,
-  } = useHomeAssistant();
+  const { toggleLight: _toggleLight, changeLightAttributes: _changeLightAttributes } =
+    useHomeAssistant();
   console.log('nemo entity', entity);
   const { isSupported: isColorTempSupported } = useColorTemp(entity);
 
-  const toggleLight = () => {
+  const toggleLight = useCallback(() => {
     _toggleLight(entity.entity_id);
-  };
+  }, [_toggleLight, entity.entity_id]);
 
-  const handleBrightnessChange = (value: number[]) => {
-    _changeLightBrightness(entity.entity_id, value[0]);
-  };
+  const handleBrightnessChange = useCallback(
+    (value: number[]) => {
+      _changeLightAttributes(entity.entity_id, { brightness: value[0] });
+    },
+    [_changeLightAttributes, entity.entity_id]
+  );
 
-  const handleColorTempChange = (value: number[]) => {
-    _changeLightColorTemp(entity.entity_id, value[0]);
-  };
+  const handleColorTempChange = useCallback(
+    (value: number[]) => {
+      _changeLightAttributes(entity.entity_id, { color_temp_kelvin: value[0] });
+    },
+    [_changeLightAttributes, entity.entity_id]
+  );
 
   return (
     <Card className={`h-full w-full max-w-sm p-4 ${entity.state === 'on' ? 'bg-amber-50' : ''}`}>
@@ -72,42 +77,45 @@ const LightCard = (props: Readonly<LightCardProps>) => {
           </div>
         </div>
 
-        <div className="mb-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm text-gray-600">亮度</span>
-            <span className="text-sm font-medium">80%</span>
-          </div>
-          <Slider
-            defaultValue={[entity.attributes.brightness]}
-            max={255}
-            min={1}
-            step={1}
-            className="w-full"
-            onValueChange={handleBrightnessChange}
-          />
-        </div>
-
         {isColorTempSupported && (
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm text-gray-600">色温</span>
-              <span className="text-sm font-medium">{entity.attributes.color_temp_kelvin}K</span>
-            </div>
-            <div className="relative">
+          <>
+            <div className="mb-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm text-gray-600">亮度</span>
+                <span className="text-sm font-medium">
+                  {Math.round((entity.attributes.brightness / 255) * 100)}%
+                </span>
+              </div>
               <Slider
-                defaultValue={[entity.attributes.color_temp]}
-                max={entity.attributes.max_color_temp_kelvin}
-                min={entity.attributes.min_color_temp_kelvin}
+                defaultValue={[entity.attributes.brightness]}
+                max={255}
+                min={1}
                 step={1}
                 className="w-full"
-                onValueChange={handleColorTempChange}
+                onValueChange={handleBrightnessChange}
               />
-              <div className="mt-1 flex justify-between">
-                <SunDim className="h-4 w-4 text-amber-400" />
-                <SunDim className="h-4 w-4 text-blue-400" />
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm text-gray-600">色温</span>
+                <span className="text-sm font-medium">{entity.attributes.color_temp_kelvin}K</span>
+              </div>
+              <div className="relative">
+                <Slider
+                  defaultValue={[entity.attributes.color_temp_kelvin]}
+                  max={entity.attributes.max_color_temp_kelvin}
+                  min={entity.attributes.min_color_temp_kelvin}
+                  step={1}
+                  className="w-full"
+                  onValueChange={handleColorTempChange}
+                />
+                <div className="mt-1 flex justify-between">
+                  <SunDim className="h-4 w-4 text-amber-400" />
+                  <SunDim className="h-4 w-4 text-blue-400" />
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </Card>

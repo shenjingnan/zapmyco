@@ -20,8 +20,13 @@ interface HomeAssistantStore {
   init: () => Promise<(() => void) | void>;
   disconnect: () => void;
   toggleLight: (entityId: string) => Promise<void>;
-  changeLightColorTemp: (entityId: string, colorTempKelvin: number) => Promise<void>;
-  changeLightBrightness: (entityId: string, brightness: number) => Promise<void>;
+  changeLightAttributes: (
+    entityId: string,
+    attributes: {
+      brightness?: number;
+      color_temp_kelvin?: number;
+    }
+  ) => Promise<void>;
   getEntityState: (entityId: string) => HassEntity | null;
 }
 
@@ -83,6 +88,7 @@ const useHomeAssistant = create<HomeAssistantStore>((set, get) => ({
       connection.addEventListener('disconnected', () => set({ connected: false }));
 
       const unsubscribe = subscribeEntities(connection, (entities) => {
+        console.log('entities', entities);
         set({
           entities,
           lastUpdated: Date.now(),
@@ -137,8 +143,14 @@ const useHomeAssistant = create<HomeAssistantStore>((set, get) => ({
     }
   },
 
-  // 调节色温
-  changeLightColorTemp: async (entityId: string, colorTempKelvin: number) => {
+  // 调节灯光属性
+  changeLightAttributes: async (
+    entityId: string,
+    attributes: {
+      brightness?: number;
+      color_temp_kelvin?: number;
+    }
+  ) => {
     const { connection } = get();
     if (!connection) {
       throw new Error('No connection to Home Assistant');
@@ -146,20 +158,7 @@ const useHomeAssistant = create<HomeAssistantStore>((set, get) => ({
 
     await callService(connection, 'light', 'turn_on', {
       entity_id: entityId,
-      color_temp_kelvin: colorTempKelvin,
-    });
-  },
-
-  // 调节亮度
-  changeLightBrightness: async (entityId: string, brightness: number) => {
-    const { connection } = get();
-    if (!connection) {
-      throw new Error('No connection to Home Assistant');
-    }
-
-    await callService(connection, 'light', 'turn_on', {
-      entity_id: entityId,
-      brightness,
+      ...attributes,
     });
   },
 
