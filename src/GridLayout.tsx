@@ -208,7 +208,7 @@ const GridLayout = (props: GridLayoutProps) => {
         return hasXOverlap && hasYOverlap;
       });
     },
-    [cardBaseSize.width, cardBaseSize.height, snapToGrid, items]
+    [cardBaseSize.width, cardBaseSize.height, containerWidth, containerHeight, snapToGrid, items]
   );
 
   // 拖拽开始处理
