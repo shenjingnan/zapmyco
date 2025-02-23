@@ -1,8 +1,8 @@
 # Building OS
 
-## 介绍
+## Introduction
 
-## 快速上手
+## Quick Start
 
 ```bash
 npm install
@@ -22,6 +22,6 @@ npm run build
 
 BentoUI style
 
-## 代码贡献
+## Code Contribution
 
 ## Setup
