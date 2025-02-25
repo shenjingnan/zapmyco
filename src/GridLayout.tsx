@@ -103,6 +103,9 @@ interface GridLayoutProps {
   items: Record<string, GridItem>;
   renderItem: (item: GridItem) => React.ReactNode;
   onDragEnd: (item: { id: string | number; position: { x: number; y: number } }) => void;
+  onLayoutChange?: (
+    layout: Record<string, { id: string | number; position: { x: number; y: number } }>
+  ) => void;
 }
 
 const GridLayout = (props: GridLayoutProps) => {
@@ -129,15 +132,6 @@ const GridLayout = (props: GridLayoutProps) => {
   });
 
   const sensors = useSensors(mouseSensor, touchSensor);
-
-  const swapCard = useCallback((item: GridItem, content: React.ReactNode) => {
-    return {
-      id: item.id,
-      size: item.size,
-      content,
-      position: item.position,
-    };
-  }, []);
 
   // 创建网格占用矩阵
   const createOccupancyGrid = useCallback((items: Record<string, CardProps>) => {
@@ -316,6 +310,22 @@ const GridLayout = (props: GridLayoutProps) => {
     },
     [cardBaseSize.width, cardBaseSize.height, containerWidth, containerHeight, snapToGrid, items]
   );
+
+  // 通知外部布局变化
+  const notifyLayoutChange = useCallback(() => {
+    if (props.onLayoutChange) {
+      const layout = RecordUtils.map(items, (item) => ({
+        id: item.id,
+        position: item.position,
+      }));
+      props.onLayoutChange(layout);
+    }
+  }, [items, props.onLayoutChange]);
+
+  // 在items变化后通知外部
+  useUpdateEffect(() => {
+    notifyLayoutChange();
+  }, [items, notifyLayoutChange]);
 
   // 拖拽开始处理
   const handleDragStart = (event: DragStartEvent) => {
