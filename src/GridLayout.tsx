@@ -109,7 +109,6 @@ const GridLayout = (props: GridLayoutProps) => {
   const [ref, { width: containerWidth, height: containerHeight }] = useMeasure<HTMLDivElement>();
 
   const cardBaseSize = useMemo(() => {
-    console.log(containerWidth, containerHeight);
     return {
       width: (containerWidth - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS,
       height: (containerHeight - GAP * (GRID_ROWS - 1)) / GRID_ROWS,
@@ -140,14 +139,126 @@ const GridLayout = (props: GridLayoutProps) => {
     };
   }, []);
 
+  // 创建网格占用矩阵
+  const createOccupancyGrid = useCallback((items: Record<string, CardProps>) => {
+    // 初始化一个全为0的二维数组
+    const grid: number[][] = Array(GRID_ROWS)
+      .fill(0)
+      .map(() => Array(GRID_COLUMNS).fill(0));
+
+    // 标记已占用的单元格
+    Object.values(items).forEach((item) => {
+      const { x, y } = item.position;
+      const { width, height } = item.size;
+
+      // 将该卡片占用的所有单元格标记为1
+      for (let row = y; row < y + height; row++) {
+        for (let col = x; col < x + width; col++) {
+          if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLUMNS) {
+            grid[row][col] = 1;
+          }
+        }
+      }
+    });
+
+    return grid;
+  }, []);
+
+  // 检查位置是否可用
+  const isPositionAvailable = useCallback(
+    (grid: number[][], x: number, y: number, width: number, height: number) => {
+      // 检查边界
+      if (x < 0 || y < 0 || x + width > GRID_COLUMNS || y + height > GRID_ROWS) {
+        return false;
+      }
+
+      // 检查是否有任何单元格已被占用
+      for (let row = y; row < y + height; row++) {
+        for (let col = x; col < x + width; col++) {
+          if (grid[row][col] === 1) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    },
+    []
+  );
+
+  // 查找可用位置
+  const findAvailablePosition = useCallback(
+    (item: GridItem, existingItems: Record<string, CardProps>) => {
+      const { width, height } = item.size;
+
+      // 创建当前的占用网格，但排除当前项目
+      const tempItems = { ...existingItems };
+      if (item.id.toString() in tempItems) {
+        delete tempItems[item.id.toString()];
+      }
+      const grid = createOccupancyGrid(tempItems);
+
+      // 首先尝试使用项目的原始位置
+      if (isPositionAvailable(grid, item.position.x, item.position.y, width, height)) {
+        return item.position;
+      }
+
+      // 遍历所有可能的位置
+      for (let y = 0; y < GRID_ROWS - height + 1; y++) {
+        for (let x = 0; x < GRID_COLUMNS - width + 1; x++) {
+          if (isPositionAvailable(grid, x, y, width, height)) {
+            return { x, y };
+          }
+        }
+      }
+
+      // 如果没有找到合适位置，尝试找到最小冲突的位置
+      // 这里可以实现更复杂的策略，例如找到需要移动最少的现有卡片的位置
+
+      // 简单的回退策略：放在左上角或底部
+      return { x: 0, y: Math.max(0, GRID_ROWS - height) };
+    },
+    [createOccupancyGrid, isPositionAvailable]
+  );
+
   // 状态管理
   const [items, setItems] = useState<Record<string, CardProps>>({});
 
   useUpdateEffect(() => {
     setItems(() => {
-      return RecordUtils.map(props.items, (item) => swapCard(item, props.renderItem(item)));
+      const newItems: Record<string, CardProps> = {};
+      const occupancyGrid: number[][] = Array(GRID_ROWS)
+        .fill(0)
+        .map(() => Array(GRID_COLUMNS).fill(0));
+
+      // 处理所有卡片
+      return RecordUtils.map(props.items, (item) => {
+        // 查找可用位置
+        const position = findAvailablePosition(item, newItems);
+
+        // 更新占用网格
+        for (let row = position.y; row < position.y + item.size.height; row++) {
+          for (let col = position.x; col < position.x + item.size.width; col++) {
+            if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLUMNS) {
+              occupancyGrid[row][col] = 1;
+            }
+          }
+        }
+
+        // 创建卡片
+        const newItem = {
+          id: item.id,
+          size: item.size,
+          content: props.renderItem(item),
+          position,
+        };
+
+        // 添加到新项目列表
+        newItems[item.id] = newItem;
+        return newItem;
+      });
     });
-  }, [props.items]);
+  }, [props.items, findAvailablePosition]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [originalPositions, setOriginalPositions] = useState<

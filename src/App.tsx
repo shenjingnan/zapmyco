@@ -13,8 +13,8 @@ function App() {
     init();
   });
 
-  let x = 0;
-  let y = 0;
+  const x = 0;
+  const y = 0;
 
   const [items, setItems] = useState<Record<string, GridItem>>({});
   const entityPositions = useRef<Record<string, { x: number; y: number }>>({});
@@ -26,23 +26,23 @@ function App() {
   useUpdateEffect(() => {
     setItems(
       RecordUtils.map(entities, (entity, entityId) => {
-        if (x >= 16) {
-          x = 0;
-          y++;
-        }
+        // if (x >= 16) {
+        //   x = 0;
+        //   y++;
+        // }
         let size = { width: 1, height: 1 };
         if (['switch', 'light', 'input_boolean'].includes(entityId.split('.', 1)[0])) {
           size = { width: 3, height: 3 };
         }
-        const position = getPosition(entityId) ?? { x, y };
+        // const position = getPosition(entityId) ?? { x, y };
         const res = {
           id: entityId,
           entity,
-          position,
+          position: { x: 0, y: 0 },
           size,
         };
-        entityPositions.current[entityId] = position;
-        x += size.width;
+        // entityPositions.current[entityId] = position;
+        // x += size.width;
         return res;
       })
     );
