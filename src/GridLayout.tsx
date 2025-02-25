@@ -231,12 +231,9 @@ const GridLayout = (props: GridLayoutProps) => {
         .fill(0)
         .map(() => Array(GRID_COLUMNS).fill(0));
 
-      // 处理所有卡片
       return RecordUtils.map(props.items, (item) => {
-        // 查找可用位置
         const position = findAvailablePosition(item, newItems);
 
-        // 更新占用网格
         for (let row = position.y; row < position.y + item.size.height; row++) {
           for (let col = position.x; col < position.x + item.size.width; col++) {
             if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLUMNS) {
@@ -245,7 +242,6 @@ const GridLayout = (props: GridLayoutProps) => {
           }
         }
 
-        // 创建卡片
         const newItem = {
           id: item.id,
           size: item.size,
@@ -253,7 +249,6 @@ const GridLayout = (props: GridLayoutProps) => {
           position,
         };
 
-        // 添加到新项目列表
         newItems[item.id] = newItem;
         return newItem;
       });
