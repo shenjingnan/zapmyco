@@ -1,13 +1,10 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import '@testing-library/jest-dom/vitest';
+import { render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import GridLayout, { GridItem } from './GridLayout';
 import { type HassEntity } from 'home-assistant-js-websocket';
 
-// 模拟DOM环境
 import { JSDOM } from 'jsdom';
 
-// 创建一个JSDOM实例
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.window = dom.window as unknown as Window & typeof globalThis;
 global.document = dom.window.document;
@@ -18,7 +15,6 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
-// 创建模拟实体
 const createMockEntity = (entityId: string): HassEntity => ({
   entity_id: entityId,
   state: 'on',
@@ -28,9 +24,7 @@ const createMockEntity = (entityId: string): HassEntity => ({
   context: { id: '', parent_id: null, user_id: null },
 });
 
-// 简化的测试
 describe('GridLayout', () => {
-  // 基本测试数据
   const mockItems: Record<string, GridItem> = {
     '1': {
       id: '1',
@@ -47,9 +41,7 @@ describe('GridLayout', () => {
   const mockOnDragEnd = vi.fn();
   const mockOnLayoutChange = vi.fn();
 
-  // 最简单的测试：组件能否渲染
   it('renders without crashing', () => {
-    // 使用mock函数替代getBoundingClientRect
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
       width: 800,
       height: 600,
@@ -62,7 +54,6 @@ describe('GridLayout', () => {
       toJSON: () => {},
     }));
 
-    // 简单渲染测试
     const { container } = render(
       <GridLayout
         items={mockItems}

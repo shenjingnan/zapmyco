@@ -13,9 +13,6 @@ function App() {
     init();
   });
 
-  const x = 0;
-  const y = 0;
-
   const [items, setItems] = useState<Record<string, GridItem>>({});
   const entityPositions = useRef<Record<string, { x: number; y: number }>>({});
 
