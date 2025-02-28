@@ -25,8 +25,8 @@ interface CardProps {
   position: { x: number; y: number };
 }
 
-const GRID_COLUMNS = 16;
-const GRID_ROWS = 9;
+const GRID_COLUMNS = 24;
+const GRID_ROWS = 12;
 const GAP = 10;
 
 const calculateGridPosition = (

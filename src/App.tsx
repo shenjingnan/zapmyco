@@ -2,6 +2,7 @@ import { useMount, useUpdateEffect } from 'react-use';
 import { useHomeAssistant } from './use-home-assistant';
 import DebugCard from './components/devices/DebugCard';
 import LightCard from './components/devices/LightCard';
+import MotionSensorCard from './components/devices/MotionSensorCard';
 import GridLayout, { GridItem } from './GridLayout';
 import { useRef, useState } from 'react';
 import { RecordUtils } from './utils';
@@ -45,7 +46,10 @@ function App() {
         }
         i++;
         if (['switch', 'light', 'input_boolean'].includes(entityId.split('.', 1)[0])) {
-          size = { width: 3, height: 3 };
+          size = { width: 4, height: 4 };
+        }
+        if (entityId === 'sensor.linp_cn_blt_3_1kd89jrngco00_es2_has_someone_duration_p_2_1080') {
+          size = { width: 4, height: 2 };
         }
         const position = getPosition(entityId) ?? { x: 0, y: 0 };
         const res = {
@@ -71,21 +75,28 @@ function App() {
     });
   };
 
+  const renderCard = (item: GridItem) => {
+    if (['switch', 'light', 'input_boolean'].includes(item.entity.entity_id.split('.', 1)[0])) {
+      return <LightCard key={item.id} entity={item.entity} />;
+    }
+
+    if (
+      item.entity.entity_id ===
+      'sensor.linp_cn_blt_3_1kd89jrngco00_es2_has_someone_duration_p_2_1080'
+    ) {
+      return <MotionSensorCard key={item.id} entity={item.entity} />;
+    }
+
+    return <DebugCard key={item.id} entity={item.entity} />;
+  };
+
   return (
     <div className="box-border h-screen bg-gray-300 p-2">
       <GridLayout
         items={items}
         onDragEnd={handleDragEnd}
         onLayoutChange={handleLayoutChange}
-        renderItem={(item) => {
-          return ['switch', 'light', 'input_boolean'].includes(
-            item.entity.entity_id.split('.', 1)[0]
-          ) ? (
-            <LightCard key={item.id} entity={item.entity} />
-          ) : (
-            <DebugCard entity={item.entity} />
-          );
-        }}
+        renderItem={renderCard}
       />
     </div>
   );
