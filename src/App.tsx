@@ -2,7 +2,7 @@ import { useMount, useUpdateEffect } from 'react-use';
 import { useHomeAssistant } from './use-home-assistant';
 import DebugCard from './components/devices/DebugCard';
 import LightCard from './components/devices/LightCard';
-import MotionSensorCard from './components/devices/MotionSensorCard';
+import OccupancySensorCard from './components/devices/OccupancySensorCard';
 import GridLayout, { GridItem } from './GridLayout';
 import { useRef, useState } from 'react';
 import { RecordUtils } from './utils';
@@ -84,7 +84,7 @@ function App() {
       item.entity.entity_id ===
       'sensor.linp_cn_blt_3_1kd89jrngco00_es2_has_someone_duration_p_2_1080'
     ) {
-      return <MotionSensorCard key={item.id} entity={item.entity} />;
+      return <OccupancySensorCard key={item.id} entity={item.entity} />;
     }
 
     return <DebugCard key={item.id} entity={item.entity} />;
