@@ -7,6 +7,7 @@ import GridLayout, { GridItem } from './GridLayout';
 import { useMemo, useRef, useState } from 'react';
 import { RecordUtils } from './utils';
 import OneSwitchCard from './components/devices/OneSwitchCard';
+import TempHumiditySensor from './components/devices/TempHumiditySensor';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -44,6 +45,9 @@ function App() {
         }
         if (i === 5) {
           size = { width: 3, height: 3 };
+        }
+        if (entityId === 'sun.sun') {
+          size = { width: 3, height: 2 };
         }
         i++;
         if (['switch', 'light', 'input_boolean'].includes(entityId.split('.', 1)[0])) {
@@ -86,6 +90,10 @@ function App() {
       'sensor.linp_cn_blt_3_1kd89jrngco00_es2_has_someone_duration_p_2_1080'
     ) {
       return <OccupancySensorCard key={item.id} entity={item.entity} />;
+    }
+
+    if (item.entity.entity_id === 'sun.sun') {
+      return <TempHumiditySensor key={item.id} entity={item.entity} />;
     }
 
     if (item.entity.entity_id === 'person.nemo2') {
