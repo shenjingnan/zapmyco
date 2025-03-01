@@ -4,7 +4,7 @@ import DebugCard from './components/devices/DebugCard';
 import LightCard from './components/devices/LightCard';
 import OccupancySensorCard from './components/devices/OccupancySensorCard';
 import GridLayout, { GridItem } from './GridLayout';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { RecordUtils } from './utils';
 import OneSwitchCard from './components/devices/OneSwitchCard';
 
@@ -95,8 +95,18 @@ function App() {
     return <DebugCard key={item.id} entity={item.entity} />;
   };
 
+  const debugSize = useMemo(() => {
+    return {
+      width: 1920,
+      height: 1080,
+    };
+  }, []);
+
   return (
-    <div className="box-border h-screen bg-gray-300 p-2">
+    <div
+      className="box-border h-screen bg-gray-300 p-2"
+      style={{ width: debugSize.width, height: debugSize.height }}
+    >
       <GridLayout
         items={items}
         onDragEnd={handleDragEnd}

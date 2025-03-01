@@ -26,7 +26,7 @@ interface CardProps {
 }
 
 const GRID_COLUMNS = 24;
-const GRID_ROWS = 12;
+const GRID_ROWS = 14;
 const GAP = 10;
 
 const calculateGridPosition = (
