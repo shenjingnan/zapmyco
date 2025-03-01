@@ -6,6 +6,7 @@ import OccupancySensorCard from './components/devices/OccupancySensorCard';
 import GridLayout, { GridItem } from './GridLayout';
 import { useRef, useState } from 'react';
 import { RecordUtils } from './utils';
+import OneSwitchCard from './components/devices/OneSwitchCard';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -27,7 +28,7 @@ function App() {
       RecordUtils.map(entities, (entity, entityId) => {
         let size = { width: 1, height: 1 };
         if (i === 0) {
-          size = { width: 2, height: 2 };
+          size = { width: 1, height: 1 };
         }
         if (i === 1) {
           size = { width: 1, height: 2 };
@@ -85,6 +86,10 @@ function App() {
       'sensor.linp_cn_blt_3_1kd89jrngco00_es2_has_someone_duration_p_2_1080'
     ) {
       return <OccupancySensorCard key={item.id} entity={item.entity} />;
+    }
+
+    if (item.entity.entity_id === 'person.nemo2') {
+      return <OneSwitchCard key={item.id} entity={item.entity} />;
     }
 
     return <DebugCard key={item.id} entity={item.entity} />;
