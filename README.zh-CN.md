@@ -1,27 +1,17 @@
 # Building OS
 
-## Introduction
+## 介绍
 
-## Quick Start
+本项目大部分代码由AI生成。
 
-```bash
-npm install
-```
+## 快速开始
 
-## Run
+本项目使用 Nx 进行构建和依赖管理。
 
-```bash
-npm run dev
-```
+### 常用命令
 
-## Build
-
-```bash
-npm run build
-```
-
-BentoUI style
-
-## Code Contribution
-
-## Setup
+- 运行前端应用：`nx serve frontend`
+- 构建前端应用：`nx build frontend`
+- 运行测试：`nx test frontend`
+- 运行受影响项目的测试：`nx affected:test`
+- 查看项目依赖图：`nx graph`
