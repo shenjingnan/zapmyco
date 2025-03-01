@@ -1,0 +1,15 @@
+{
+  "index": "Introduction",
+  "another": "shenjingnan",
+  "advanced": "Advanced (A Folder)",
+  "about": {
+    "title": "About",
+    "type": "page"
+  },
+  "contact": {
+    "title": "Contact ↗",
+    "type": "page",
+    "href": "https://github.com/shenjingnan",
+    "newWindow": true
+  }
+}
