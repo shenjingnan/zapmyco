@@ -17,6 +17,7 @@ import {
   WashingMachineCard,
   OvenCard,
   SceneCard,
+  AutomationCard,
 } from '@/components/devices';
 import GridLayout, { GridItem } from '@/GridLayout';
 import { useMemo, useRef, useState } from 'react';
@@ -58,6 +59,9 @@ function App() {
         }
         if (i === 5) {
           size = { width: 3, height: 3 };
+        }
+        if (entityId === 'event.xiaomi_cn_1143886953_hub1_network_changed_e_2_2') {
+          size = { width: 4, height: 4 };
         }
         if (entityId === 'sensor.linp_cn_blt_3_1kd89jrngco00_es2_occupancy_status_p_2_1078') {
           size = { width: 5, height: 4 };
@@ -129,6 +133,9 @@ function App() {
   const renderCard = (item: GridItem) => {
     if (['switch', 'light', 'input_boolean'].includes(item.entity.entity_id.split('.', 1)[0])) {
       return <LightCard key={item.id} entity={item.entity} />;
+    }
+    if (item.entity.entity_id === 'event.xiaomi_cn_1143886953_hub1_network_changed_e_2_2') {
+      return <AutomationCard key={item.id} entity={item.entity} />;
     }
     if (
       item.entity.entity_id === 'sensor.linp_cn_blt_3_1kd89jrngco00_es2_occupancy_status_p_2_1078'

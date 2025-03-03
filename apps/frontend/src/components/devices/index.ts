@@ -15,3 +15,4 @@ export { default as RefrigeratorCard } from './RefrigeratorCard';
 export { default as WashingMachineCard } from './WashingMachineCard';
 export { default as OvenCard } from './OvenCard';
 export { default as SceneCard } from './SceneCard';
+export { default as AutomationCard } from './AutomationCard';
