@@ -16,3 +16,4 @@ export { default as WashingMachineCard } from './WashingMachineCard';
 export { default as OvenCard } from './OvenCard';
 export { default as SceneCard } from './SceneCard';
 export { default as AutomationCard } from './AutomationCard';
+export { default as WeatherCard } from './WeatherCard';
