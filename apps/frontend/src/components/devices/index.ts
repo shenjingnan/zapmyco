@@ -8,3 +8,4 @@ export { default as ThermostatCard } from './ThermostatCard';
 export { default as EnergyCard } from './EnergyCard';
 export { default as SecurityCard } from './SecurityCard';
 export { default as AirPurifierCard } from './AirPurifierCard';
+export { default as HumidifierCard } from './HumidifierCard';

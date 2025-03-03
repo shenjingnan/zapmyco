@@ -10,6 +10,7 @@ import {
   EnergyCard,
   SecurityCard,
   AirPurifierCard,
+  HumidifierCard,
 } from '@/components/devices';
 import GridLayout, { GridItem } from '@/GridLayout';
 import { useMemo, useRef, useState } from 'react';
@@ -51,6 +52,9 @@ function App() {
         }
         if (i === 5) {
           size = { width: 3, height: 3 };
+        }
+        if (entityId === 'todo.shopping_list') {
+          size = { width: 4, height: 4 };
         }
         if (entityId === 'sun.sun') {
           size = { width: 3, height: 2 };
@@ -101,6 +105,9 @@ function App() {
   const renderCard = (item: GridItem) => {
     if (['switch', 'light', 'input_boolean'].includes(item.entity.entity_id.split('.', 1)[0])) {
       return <LightCard key={item.id} entity={item.entity} />;
+    }
+    if (item.entity.entity_id === 'todo.shopping_list') {
+      return <HumidifierCard key={item.id} entity={item.entity} />;
     }
     if (
       item.entity.entity_id === 'sensor.linp_cn_blt_3_1kd89jrngco00_es2_no_one_duration_p_2_1079'
