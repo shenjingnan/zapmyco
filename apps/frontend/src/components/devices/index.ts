@@ -17,3 +17,4 @@ export { default as OvenCard } from './OvenCard';
 export { default as SceneCard } from './SceneCard';
 export { default as AutomationCard } from './AutomationCard';
 export { default as WeatherCard } from './WeatherCard';
+export { default as HealthCard } from './HealthCard';
