@@ -7,3 +7,4 @@ export { default as LightCard } from './LightCard';
 export { default as ThermostatCard } from './ThermostatCard';
 export { default as EnergyCard } from './EnergyCard';
 export { default as SecurityCard } from './SecurityCard';
+export { default as AirPurifierCard } from './AirPurifierCard';
