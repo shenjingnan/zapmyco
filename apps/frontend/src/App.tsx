@@ -13,6 +13,9 @@ import {
   HumidifierCard,
   CurtainCard,
   SmartPlugCard,
+  RefrigeratorCard,
+  WashingMachineCard,
+  OvenCard,
 } from '@/components/devices';
 import GridLayout, { GridItem } from '@/GridLayout';
 import { useMemo, useRef, useState } from 'react';
@@ -54,6 +57,15 @@ function App() {
         }
         if (i === 5) {
           size = { width: 3, height: 3 };
+        }
+        if (entityId === 'sensor.xiaomi_cn_1143886953_hub1_ip_address_p_2_2') {
+          size = { width: 4, height: 4 };
+        }
+        if (entityId === 'sensor.linp_cn_blt_3_1kd89jrngco00_es2_illumination_p_2_1005') {
+          size = { width: 4, height: 4 };
+        }
+        if (entityId === 'event.xiaomi_cn_1143886953_hub1_virtual_event_e_4_1') {
+          size = { width: 4, height: 4 };
         }
         if (entityId === 'todo.shopping_list') {
           size = { width: 4, height: 4 };
@@ -113,6 +125,15 @@ function App() {
   const renderCard = (item: GridItem) => {
     if (['switch', 'light', 'input_boolean'].includes(item.entity.entity_id.split('.', 1)[0])) {
       return <LightCard key={item.id} entity={item.entity} />;
+    }
+    if (item.entity.entity_id === 'sensor.xiaomi_cn_1143886953_hub1_ip_address_p_2_2') {
+      return <RefrigeratorCard key={item.id} entity={item.entity} />;
+    }
+    if (item.entity.entity_id === 'sensor.linp_cn_blt_3_1kd89jrngco00_es2_illumination_p_2_1005') {
+      return <WashingMachineCard key={item.id} entity={item.entity} />;
+    }
+    if (item.entity.entity_id === 'event.xiaomi_cn_1143886953_hub1_virtual_event_e_4_1') {
+      return <OvenCard key={item.id} entity={item.entity} />;
     }
     if (item.entity.entity_id === 'sensor.xiaomi_cn_1143886953_hub1_wifi_ssid_p_2_3') {
       return <SmartPlugCard key={item.id} entity={item.entity} />;

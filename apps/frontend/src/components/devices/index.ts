@@ -11,3 +11,6 @@ export { default as AirPurifierCard } from './AirPurifierCard';
 export { default as HumidifierCard } from './HumidifierCard';
 export { default as CurtainCard } from './CurtainCard';
 export { default as SmartPlugCard } from './SmartPlugCard';
+export { default as RefrigeratorCard } from './RefrigeratorCard';
+export { default as WashingMachineCard } from './WashingMachineCard';
+export { default as OvenCard } from './OvenCard';
