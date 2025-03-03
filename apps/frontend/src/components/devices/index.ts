@@ -5,3 +5,4 @@ export { default as OneSwitchCard } from './OneSwitchCard';
 export { default as OccupancySensorCard } from './OccupancySensorCard';
 export { default as LightCard } from './LightCard';
 export { default as ThermostatCard } from './ThermostatCard';
+export { default as EnergyCard } from './EnergyCard';

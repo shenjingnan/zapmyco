@@ -7,6 +7,7 @@ import {
   LightCard,
   DebugCard,
   ThermostatCard,
+  EnergyCard,
 } from '@/components/devices';
 import GridLayout, { GridItem } from '@/GridLayout';
 import { useMemo, useRef, useState } from 'react';
@@ -55,6 +56,9 @@ function App() {
         if (entityId === 'zone.home') {
           size = { width: 4, height: 4 };
         }
+        if (entityId === 'conversation.home_assistant') {
+          size = { width: 4, height: 6 };
+        }
         i++;
         if (['switch', 'light', 'input_boolean'].includes(entityId.split('.', 1)[0])) {
           size = { width: 4, height: 4 };
@@ -89,6 +93,10 @@ function App() {
   const renderCard = (item: GridItem) => {
     if (['switch', 'light', 'input_boolean'].includes(item.entity.entity_id.split('.', 1)[0])) {
       return <LightCard key={item.id} entity={item.entity} />;
+    }
+
+    if (item.entity.entity_id === 'conversation.home_assistant') {
+      return <EnergyCard key={item.id} entity={item.entity} />;
     }
 
     if (
