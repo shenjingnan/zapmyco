@@ -9,3 +9,4 @@ export { default as EnergyCard } from './EnergyCard';
 export { default as SecurityCard } from './SecurityCard';
 export { default as AirPurifierCard } from './AirPurifierCard';
 export { default as HumidifierCard } from './HumidifierCard';
+export { default as CurtainCard } from './CurtainCard';
