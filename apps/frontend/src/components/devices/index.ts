@@ -6,3 +6,4 @@ export { default as OccupancySensorCard } from './OccupancySensorCard';
 export { default as LightCard } from './LightCard';
 export { default as ThermostatCard } from './ThermostatCard';
 export { default as EnergyCard } from './EnergyCard';
+export { default as SecurityCard } from './SecurityCard';
