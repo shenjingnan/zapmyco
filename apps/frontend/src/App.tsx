@@ -12,6 +12,7 @@ import {
   AirPurifierCard,
   HumidifierCard,
   CurtainCard,
+  SmartPlugCard,
 } from '@/components/devices';
 import GridLayout, { GridItem } from '@/GridLayout';
 import { useMemo, useRef, useState } from 'react';
@@ -75,6 +76,9 @@ function App() {
         if (entityId === 'sensor.xiaomi_cn_1143886953_hub1_access_mode_p_2_1') {
           size = { width: 4, height: 4 };
         }
+        if (entityId === 'sensor.xiaomi_cn_1143886953_hub1_wifi_ssid_p_2_3') {
+          size = { width: 4, height: 4 };
+        }
         i++;
         if (['switch', 'light', 'input_boolean'].includes(entityId.split('.', 1)[0])) {
           size = { width: 4, height: 4 };
@@ -109,6 +113,9 @@ function App() {
   const renderCard = (item: GridItem) => {
     if (['switch', 'light', 'input_boolean'].includes(item.entity.entity_id.split('.', 1)[0])) {
       return <LightCard key={item.id} entity={item.entity} />;
+    }
+    if (item.entity.entity_id === 'sensor.xiaomi_cn_1143886953_hub1_wifi_ssid_p_2_3') {
+      return <SmartPlugCard key={item.id} entity={item.entity} />;
     }
     if (item.entity.entity_id === 'sensor.xiaomi_cn_1143886953_hub1_access_mode_p_2_1') {
       return <CurtainCard key={item.id} entity={item.entity} />;

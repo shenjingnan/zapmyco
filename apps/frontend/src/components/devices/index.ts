@@ -10,3 +10,4 @@ export { default as SecurityCard } from './SecurityCard';
 export { default as AirPurifierCard } from './AirPurifierCard';
 export { default as HumidifierCard } from './HumidifierCard';
 export { default as CurtainCard } from './CurtainCard';
+export { default as SmartPlugCard } from './SmartPlugCard';
