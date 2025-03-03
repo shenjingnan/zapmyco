@@ -1,13 +1,16 @@
 import { useMount, useUpdateEffect } from 'react-use';
-import { useHomeAssistant } from './use-home-assistant';
-import DebugCard from './components/devices/DebugCard';
-import LightCard from './components/devices/LightCard';
-import OccupancySensorCard from './components/devices/OccupancySensorCard';
-import GridLayout, { GridItem } from './GridLayout';
+import { useHomeAssistant } from '@/use-home-assistant';
+import {
+  TempHumiditySensor,
+  OneSwitchCard,
+  OccupancySensorCard,
+  LightCard,
+  DebugCard,
+  ThermostatCard,
+} from '@/components/devices';
+import GridLayout, { GridItem } from '@/GridLayout';
 import { useMemo, useRef, useState } from 'react';
-import { RecordUtils } from './utils';
-import OneSwitchCard from './components/devices/OneSwitchCard';
-import TempHumiditySensor from './components/devices/TempHumiditySensor';
+import { RecordUtils } from '@/utils';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -48,6 +51,9 @@ function App() {
         }
         if (entityId === 'sun.sun') {
           size = { width: 3, height: 2 };
+        }
+        if (entityId === 'zone.home') {
+          size = { width: 4, height: 4 };
         }
         i++;
         if (['switch', 'light', 'input_boolean'].includes(entityId.split('.', 1)[0])) {
@@ -94,6 +100,10 @@ function App() {
 
     if (item.entity.entity_id === 'sun.sun') {
       return <TempHumiditySensor key={item.id} entity={item.entity} />;
+    }
+
+    if (item.entity.entity_id === 'zone.home') {
+      return <ThermostatCard key={item.id} entity={item.entity} />;
     }
 
     if (item.entity.entity_id === 'person.nemo2') {
