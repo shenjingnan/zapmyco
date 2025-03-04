@@ -32,7 +32,7 @@ interface LightCardProps {
   entity: HassEntity;
 }
 
-const LightCard = (props: Readonly<LightCardProps>) => {
+const LightCard: React.FC<LightCardProps> = (props) => {
   const { entity } = props;
   const { toggleLight: _toggleLight, changeLightAttributes: _changeLightAttributes } =
     useHomeAssistant();
@@ -149,4 +149,4 @@ const LightCard = (props: Readonly<LightCardProps>) => {
   );
 };
 
-export default LightCard;
+export { type LightCardProps, LightCard };
