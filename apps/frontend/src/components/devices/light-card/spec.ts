@@ -2,7 +2,7 @@ import { CardComponent } from '@/types';
 import { LightCard, type LightCardProps } from './LightCard';
 import { HassEntity } from 'home-assistant-js-websocket';
 
-const definition: CardComponent<LightCardProps> = {
+const spec: CardComponent<LightCardProps> = {
   component: LightCard,
   meta: {
     id: 'third-party/smart-light',
@@ -49,4 +49,4 @@ const definition: CardComponent<LightCardProps> = {
     },
   },
 };
-export { definition };
+export { spec };

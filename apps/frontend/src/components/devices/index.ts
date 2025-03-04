@@ -20,8 +20,8 @@ export { default as HealthCard } from './HealthCard';
 export { default as DefaultCard } from './DefaultCard';
 
 import { cardRegistry } from './card-registry';
-import { definition as lightCardDefinition } from './light-card';
+import { spec as lightCardSpec } from './light-card';
 
-cardRegistry.register(lightCardDefinition);
+cardRegistry.register(lightCardSpec);
 
 export { cardRegistry };

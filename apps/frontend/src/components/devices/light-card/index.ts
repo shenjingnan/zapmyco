@@ -1,2 +1,2 @@
-export * from './definition';
+export * from './spec';
 export * from './LightCard';
