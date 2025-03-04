@@ -1,27 +1,52 @@
-export { default as TempHumiditySensor } from './TempHumiditySensor';
-export { default as DebugCard } from './DebugCard';
-export { default as OneSwitchCard } from './OneSwitchCard';
-export { default as OccupancySensorCard } from './OccupancySensorCard';
+export * from './temp-humidity-sensor-card';
 export * from './light-card';
-export { default as ThermostatCard } from './ThermostatCard';
-export { default as EnergyCard } from './EnergyCard';
-export { default as SecurityCard } from './SecurityCard';
-export { default as AirPurifierCard } from './AirPurifierCard';
-export { default as HumidifierCard } from './HumidifierCard';
-export { default as CurtainCard } from './CurtainCard';
-export { default as SmartPlugCard } from './SmartPlugCard';
-export { default as RefrigeratorCard } from './RefrigeratorCard';
-export { default as WashingMachineCard } from './WashingMachineCard';
-export { default as OvenCard } from './OvenCard';
-export { default as SceneCard } from './SceneCard';
-export { default as AutomationCard } from './AutomationCard';
-export { default as WeatherCard } from './WeatherCard';
-export { default as HealthCard } from './HealthCard';
-export { default as DefaultCard } from './DefaultCard';
-
+export * from './occupancy-sensor-card';
+export * from './one-switch-card';
+export * from './thermostat-card';
+export * from './energy-card';
+export * from './air-purifier-card';
+export * from './humidifier-card';
+export * from './curtain-card';
+export * from './smart-plug-card';
+export * from './refrigerator-card';
+export * from './washing-machine-card';
+export * from './oven-card';
+export * from './scene-card';
+export * from './automation-card/AutomationCard';
+export * from './weather-card';
+export * from './health-card';
+export * from './default-card';
+export * from './security-card';
 import { cardRegistry } from './card-registry';
-import { spec as lightCardSpec } from './light-card';
+import { CardComponent } from './types';
 
-cardRegistry.register(lightCardSpec);
+// 使用动态导入自动发现所有卡片
+const moduleFiles = import.meta.glob('./*/spec.ts', { eager: true });
+
+// 自动注册所有找到的卡片
+Object.values(moduleFiles).forEach((module: any) => {
+  // 遍历模块中的所有导出
+  for (const key in module) {
+    const value = module[key];
+    // 检查是否是CardComponent类型对象
+    if (
+      value &&
+      typeof value === 'object' &&
+      'component' in value &&
+      'meta' in value &&
+      value.meta &&
+      typeof value.meta === 'object' &&
+      'matcher' in value.meta
+    ) {
+      cardRegistry.register(value as CardComponent<any>);
+      break; // 假设每个模块只有一个卡片规格
+    }
+  }
+});
+
+// 确保默认卡片最后注册
+import { defaultCardSpec } from './default-card/spec';
+cardRegistry.register(defaultCardSpec);
 
 export { cardRegistry };
+export * from './matching-system';

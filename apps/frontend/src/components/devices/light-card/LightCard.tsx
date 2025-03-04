@@ -19,7 +19,7 @@ const useColorTemp = (entity: HassEntity) => {
     setColorTempKelvin(entity.attributes.color_temp_kelvin);
   }, [entity]);
 
-  const isSupported = entity.attributes.supported_color_modes.includes('color_temp');
+  const isSupported = entity?.attributes?.supported_color_modes?.includes('color_temp') ?? false;
 
   if (!isSupported) {
     return { isSupported };

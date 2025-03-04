@@ -5,8 +5,7 @@ import { cardRegistry, DefaultCard } from '@/components/devices';
 interface DynamicCardRendererProps {
   entity: HassEntity;
   size: { width: number; height: number };
-  // 可以添加用户自定义配置
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
 }
 
 export const DynamicCardRenderer: React.FC<DynamicCardRendererProps> = ({
