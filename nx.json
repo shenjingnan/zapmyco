@@ -1,12 +1,7 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "plugins": [
-    {
-      "plugin": "@nx/eslint/plugin",
-      "options": {
-        "targetName": "lint"
-      }
-    },
+    { "plugin": "@nx/eslint/plugin", "options": { "targetName": "lint" } },
     {
       "plugin": "@nx/vite/plugin",
       "options": {
@@ -22,22 +17,16 @@
       }
     }
   ],
-  "nxCloudId": "67c279c9d47cd81f954fc290",
+  "nxCloudId": "67c98d3beddef96450d82d38",
   "extends": "nx/presets/npm.json",
   "defaultBase": "main",
   "tasksRunnerOptions": {
     "default": {
       "runner": "nx/tasks-runners/default",
-      "options": {
-        "cacheableOperations": ["build", "lint", "test", "e2e"]
-      }
+      "options": { "cacheableOperations": ["build", "lint", "test", "e2e"] }
     }
   },
-  "targetDefaults": {
-    "build": {
-      "dependsOn": ["^build"]
-    }
-  },
+  "targetDefaults": { "build": { "dependsOn": ["^build"] } },
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "sharedGlobals": ["{workspaceRoot}/babel.config.json"],
