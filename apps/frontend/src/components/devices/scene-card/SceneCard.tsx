@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HassEntity } from 'home-assistant-js-websocket';
@@ -16,7 +16,7 @@ import {
   Calendar,
   Clock,
 } from 'lucide-react';
-
+import { ServiceCard } from '@/components/devices/ServiceCard';
 interface SceneCardProps {
   entity: HassEntity;
   onSceneActivate?: (scene: string) => void;
@@ -52,7 +52,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
   const currentScene = getSceneInfo(activeScene);
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -126,7 +126,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
           </div>
         )}
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

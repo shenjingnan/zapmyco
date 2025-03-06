@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import {
@@ -15,7 +15,7 @@ import {
   Umbrella,
   Eye,
 } from 'lucide-react';
-
+import { ServiceCard } from '@/components/devices/ServiceCard';
 interface WeatherForecast {
   datetime: string;
   condition: string;
@@ -78,7 +78,7 @@ const WeatherCard: React.FC<WeatherCardProps> = (props) => {
   };
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -164,7 +164,7 @@ const WeatherCard: React.FC<WeatherCardProps> = (props) => {
           </div>
         </div>
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

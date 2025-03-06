@@ -1,11 +1,11 @@
 import React from 'react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { cn } from '@/lib/utils';
 import { Power, Zap, Clock, Timer } from 'lucide-react';
-
+import { ServiceCard } from '@/components/devices/ServiceCard';
 interface SmartPlugCardProps {
   entity: HassEntity;
   onToggle?: () => void;
@@ -36,7 +36,7 @@ const SmartPlugCard: React.FC<SmartPlugCardProps> = (props) => {
   const powerStatus = getPowerStatus();
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -118,7 +118,7 @@ const SmartPlugCard: React.FC<SmartPlugCardProps> = (props) => {
           {isOn ? '关闭' : '开启'}
         </Button>
       </CardFooter>
-    </Card>
+    </ServiceCard>
   );
 };
 

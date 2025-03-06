@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
 import { BarChart, Zap, TrendingDown, TrendingUp, Clock } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { twMerge } from 'tailwind-merge';
 import clsx from 'clsx';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface EnergyCardProps {
   entity: HassEntity;
@@ -121,7 +121,7 @@ const EnergyCard: React.FC<EnergyCardProps> = ({
   }, [dailyEnergy, monthlyEnergy]);
 
   return (
-    <Card className="h-full w-full overflow-hidden rounded-xl border-0 bg-gray-50/50 p-0 shadow-sm backdrop-blur">
+    <ServiceCard entity={entity}>
       <CardContent className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
@@ -230,7 +230,7 @@ const EnergyCard: React.FC<EnergyCardProps> = ({
           查看历史数据
         </button>
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

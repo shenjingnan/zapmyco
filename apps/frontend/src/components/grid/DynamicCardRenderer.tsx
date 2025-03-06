@@ -4,23 +4,20 @@ import { cardRegistry, DefaultCard } from '@/components/devices';
 
 interface DynamicCardRendererProps {
   entity: HassEntity;
-  size: { width: number; height: number };
   config?: Record<string, unknown>;
 }
 
 export const DynamicCardRenderer: React.FC<DynamicCardRendererProps> = ({
   entity,
-  size,
   config = {},
 }) => {
-  const matchedCard = cardRegistry.findCardForEntity(entity);
+  const matchedCardContent = cardRegistry.findCardForEntity(entity);
 
-  if (!matchedCard) {
+  if (!matchedCardContent) {
     return <DefaultCard entity={entity} />;
   }
 
-  const CardComponent = matchedCard.component;
+  const CardComponent = matchedCardContent.component;
 
-  // 将entity和用户配置传递给卡片组件
   return <CardComponent entity={entity} config={config} />;
 };

@@ -1,9 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { Heart, Activity, Moon, Footprints, Timer, Flame } from 'lucide-react';
-
+import { ServiceCard } from '@/components/devices/ServiceCard';
 interface HealthMetric {
   value: number;
   unit: string;
@@ -50,7 +50,7 @@ const HealthCard: React.FC<HealthCardProps> = (props) => {
   };
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -162,7 +162,7 @@ const HealthCard: React.FC<HealthCardProps> = (props) => {
           </div>
         </div>
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

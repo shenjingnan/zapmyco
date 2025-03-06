@@ -1,11 +1,12 @@
 import React from 'react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { cn } from '@/lib/utils';
 import { Power, Droplet, RefreshCw, Gauge } from 'lucide-react';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface AirPurifierCardProps {
   entity: HassEntity;
@@ -36,7 +37,7 @@ const AirPurifierCard: React.FC<AirPurifierCardProps> = (props) => {
   const airQuality = getAirQualityStatus(pm25);
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle>{entity.attributes.friendly_name || '空气净化器'}</CardTitle>
@@ -153,7 +154,7 @@ const AirPurifierCard: React.FC<AirPurifierCardProps> = (props) => {
           {isOn ? '关闭' : '开启'}
         </Button>
       </CardFooter>
-    </Card>
+    </ServiceCard>
   );
 };
 

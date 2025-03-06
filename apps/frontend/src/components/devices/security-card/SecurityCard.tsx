@@ -1,12 +1,13 @@
 import React, { useMemo, useCallback } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, Camera, Bell, DoorOpen, Clock, Eye } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { callService } from 'home-assistant-js-websocket';
 import { useHomeAssistant } from '@/use-home-assistant';
 import { twMerge } from 'tailwind-merge';
 import clsx from 'clsx';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 // 安防系统状态类型
 type SecurityState =
@@ -204,7 +205,7 @@ const SecurityCard: React.FC<SecurityCardProps> = ({
   }
 
   return (
-    <Card className="h-full w-full overflow-hidden rounded-xl border-0 bg-gray-50/50 p-0 shadow-sm backdrop-blur">
+    <ServiceCard entity={entity}>
       <CardContent className="p-4">
         {/* 标题和状态 */}
         <div className="mb-4 flex items-start justify-between">
@@ -351,7 +352,7 @@ const SecurityCard: React.FC<SecurityCardProps> = ({
           查看所有设备
         </button>
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

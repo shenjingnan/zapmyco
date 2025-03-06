@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -16,6 +16,7 @@ import {
   History,
   Settings2,
 } from 'lucide-react';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface AutomationRule {
   id: string;
@@ -42,7 +43,7 @@ const AutomationCard: React.FC<AutomationCardProps> = (props) => {
   const activeCount = automations.filter((auto) => auto.enabled).length;
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -141,7 +142,7 @@ const AutomationCard: React.FC<AutomationCardProps> = (props) => {
           </div>
         )}
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 
