@@ -1,12 +1,12 @@
 import React from 'react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { cn } from '@/lib/utils';
 import { Power, Droplet, Waves, ThermometerSun } from 'lucide-react';
-
+import { ServiceCard } from '@/components/devices/ServiceCard';
 interface HumidifierCardProps {
   entity: HassEntity;
   onToggle?: () => void;
@@ -35,7 +35,7 @@ const HumidifierCard: React.FC<HumidifierCardProps> = (props) => {
   const humidityStatus = getHumidityStatus(currentHumidity);
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle>{entity.attributes.friendly_name || '加湿器'}</CardTitle>
@@ -152,7 +152,7 @@ const HumidifierCard: React.FC<HumidifierCardProps> = (props) => {
           {isOn ? '关闭' : '开启'}
         </Button>
       </CardFooter>
-    </Card>
+    </ServiceCard>
   );
 };
 

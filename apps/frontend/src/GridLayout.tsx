@@ -320,7 +320,7 @@ const GridLayout = (props: GridLayoutProps) => {
       }));
       props.onLayoutChange(layout);
     }
-  }, [items, props.onLayoutChange]);
+  }, [items, props]);
 
   // 在items变化后通知外部
   useUpdateEffect(() => {

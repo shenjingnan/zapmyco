@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
-import { Droplets, Thermometer, ChevronRight, History } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { HassEntity } from 'home-assistant-js-websocket';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface TempHumiditySensorCardProps {
   entity: HassEntity;
@@ -33,7 +31,7 @@ const TempHumiditySensorCard: React.FC<TempHumiditySensorCardProps> = ({ entity 
   const humidityStatus = getHumidityStatus(humidity);
 
   return (
-    <Card className="h-full w-full max-w-sm p-3">
+    <ServiceCard entity={entity}>
       <CardContent className="p-0">
         <div className="flex items-center justify-between">
           <div>
@@ -76,7 +74,7 @@ const TempHumiditySensorCard: React.FC<TempHumiditySensorCardProps> = ({ entity 
           </div>
         </div>
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

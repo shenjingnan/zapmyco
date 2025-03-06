@@ -1,13 +1,12 @@
-import { SunDim, Sun as SunIcon } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Slider } from '@/components/ui/slider-ios';
-import { Badge } from '@/components/ui/badge';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { useHomeAssistant } from '@/use-home-assistant';
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { HassEntity } from 'home-assistant-js-websocket';
+import { SunDim, Sun as SunIcon } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import clsx from 'clsx';
-
+import { Badge } from '@/components/ui/badge';
+import { Slider } from '@/components/ui/slider-ios';
+import { useHomeAssistant } from '@/use-home-assistant';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 const useColorTemp = (entity: HassEntity) => {
   const [minColorTempKelvin, maxColorTempKelvin] = [
     entity.attributes.min_color_temp_kelvin,
@@ -63,14 +62,7 @@ const LightCard: React.FC<LightCardProps> = (props) => {
   );
 
   return (
-    <Card
-      className={twMerge(
-        clsx('group relative h-full w-full max-w-sm p-4', {
-          'bg-amber-50': entity.state === 'on',
-          'cursor-not-allowed opacity-50': entity.state === 'unavailable',
-        })
-      )}
-    >
+    <ServiceCard entity={entity}>
       <div className="h-full overflow-hidden">
         <div className="mb-4 flex items-start justify-between">
           <div>
@@ -140,12 +132,7 @@ const LightCard: React.FC<LightCardProps> = (props) => {
           </>
         )}
       </div>
-      {entity.state === 'unavailable' && (
-        <div className="invisible absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-800 px-3 py-1 text-sm text-white transition-all duration-200 group-hover:visible">
-          此设备当前不可用
-        </div>
-      )}
-    </Card>
+    </ServiceCard>
   );
 };
 

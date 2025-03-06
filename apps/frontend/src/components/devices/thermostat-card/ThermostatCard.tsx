@@ -1,13 +1,12 @@
 import React, { useCallback, useMemo } from 'react';
 import { ChevronUp, ChevronDown, Power } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { CardContent } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { callService } from 'home-assistant-js-websocket';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { useHomeAssistant } from '@/use-home-assistant';
-import { twMerge } from 'tailwind-merge';
-import clsx from 'clsx';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface ThermostatCardProps {
   entity: HassEntity;
@@ -141,13 +140,7 @@ const ThermostatCard: React.FC<ThermostatCardProps> = ({ entity, roomName }) => 
   const modeColors = useMemo(() => HVAC_MODE_COLORS[hvacMode], [hvacMode]);
 
   return (
-    <Card
-      className={twMerge(
-        clsx('h-full w-full overflow-hidden rounded-xl p-0', {
-          'opacity-50': !isAvailable,
-        })
-      )}
-    >
+    <ServiceCard entity={entity}>
       <CardContent className="p-4">
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -269,7 +262,7 @@ const ThermostatCard: React.FC<ThermostatCardProps> = ({ entity, roomName }) => 
           </div>
         </div>
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

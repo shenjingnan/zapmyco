@@ -1,11 +1,12 @@
 import React from 'react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { cn } from '@/lib/utils';
 import { Snowflake, ThermometerSnowflake, Beef, Wine } from 'lucide-react';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface RefrigeratorCardProps {
   entity: HassEntity;
@@ -25,7 +26,7 @@ const RefrigeratorCard: React.FC<RefrigeratorCardProps> = (props) => {
   const filterStatus = entity.attributes.filter_status || 90;
 
   return (
-    <Card className="w-full shadow-md">
+    <ServiceCard entity={entity}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -125,7 +126,7 @@ const RefrigeratorCard: React.FC<RefrigeratorCardProps> = (props) => {
           </div>
         </div>
       </CardContent>
-    </Card>
+    </ServiceCard>
   );
 };
 

@@ -26,6 +26,7 @@ import { useMemo, useRef, useState } from 'react';
 import { RecordUtils } from '@/utils';
 import { cardRegistry } from '@/components/devices';
 import { DynamicCardRenderer } from '@/components/grid/DynamicCardRenderer';
+import { HassEntities, HassEntity } from 'home-assistant-js-websocket';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -42,26 +43,29 @@ function App() {
   };
 
   useUpdateEffect(() => {
-    setItems(
-      RecordUtils.map(entities, (entity, entityId) => {
-        let size = { width: 1, height: 1 };
+    const mappedItems = RecordUtils.map(entities, (entity, entityId) => {
+      let size = { width: 1, height: 1 };
 
-        const matchedCard = cardRegistry.findCardForEntity(entity);
-        if (matchedCard) {
-          size = matchedCard.meta.defaultSize;
-        }
+      const matchedCard = cardRegistry.findCardForEntity(entity);
+      if (matchedCard) {
+        size = matchedCard.meta.defaultSize;
+      }
 
-        const position = getPosition(entityId) ?? { x: 0, y: 0 };
+      const position = getPosition(entityId) ?? { x: 0, y: 0 };
 
-        return {
-          id: entityId,
-          entity,
-          component: matchedCard?.component,
-          position,
-          size,
-        };
-      })
+      return {
+        id: entityId,
+        entity,
+        component: matchedCard?.component,
+        position,
+        size,
+      };
+    });
+    const filteredItems = RecordUtils.filter(mappedItems, (_, entityId) =>
+      entityId.includes('light')
     );
+
+    setItems(filteredItems);
   }, [entities]);
 
   const handleDragEnd = (item: { id: string | number; position: { x: number; y: number } }) => {

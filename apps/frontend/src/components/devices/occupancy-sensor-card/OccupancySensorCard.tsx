@@ -1,7 +1,6 @@
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Battery } from 'lucide-react';
 import { HassEntity } from 'home-assistant-js-websocket';
+import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface OccupancySensorCardProps {
   entity: HassEntity;
@@ -32,7 +31,7 @@ const OccupancySensorCard: React.FC<OccupancySensorCardProps> = (props) => {
   };
 
   return (
-    <Card className="h-full w-full max-w-sm p-4">
+    <ServiceCard entity={entity}>
       <div className="mb-2 flex items-center justify-between">
         <Badge variant="secondary">玄关</Badge>
         <div className="flex items-center">
@@ -64,7 +63,7 @@ const OccupancySensorCard: React.FC<OccupancySensorCardProps> = (props) => {
           <span className="block text-xs text-gray-500">当前光照</span>
         </div>
       </div>
-    </Card>
+    </ServiceCard>
   );
 };
 
