@@ -14,7 +14,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({ entity, children, clas
     <Card
       className={twMerge(
         clsx(
-          'group relative h-full w-full max-w-sm p-4',
+          'group relative h-full w-full max-w-sm bg-white p-4',
           {
             'cursor-not-allowed opacity-50': entity.state === 'unavailable',
           },

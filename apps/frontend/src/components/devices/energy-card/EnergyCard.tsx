@@ -5,6 +5,7 @@ import { HassEntity } from 'home-assistant-js-websocket';
 import { twMerge } from 'tailwind-merge';
 import clsx from 'clsx';
 import { ServiceCard } from '@/components/devices/ServiceCard';
+import { CardContent } from '@/components/ui/card';
 
 interface EnergyCardProps {
   entity: HassEntity;

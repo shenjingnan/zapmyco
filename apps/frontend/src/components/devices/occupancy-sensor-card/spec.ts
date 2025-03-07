@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { OccupancySensorCard, type OccupancySensorCardProps } from './OccupancySensorCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const occupancySensorCardSpec: CardComponent<OccupancySensorCardProps> = {

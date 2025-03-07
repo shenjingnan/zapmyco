@@ -113,7 +113,7 @@ const ThermostatCard: React.FC<ThermostatCardProps> = ({ entity, roomName }) => 
           : 'auto';
 
     handleModeChange(newMode);
-  }, [connection, entity, isAvailable, isOn, supportedModes, handleModeChange]);
+  }, [connection, isAvailable, isOn, supportedModes, handleModeChange]);
 
   // 增加/减少温度的快捷按钮
   const adjustTemperature = useCallback(

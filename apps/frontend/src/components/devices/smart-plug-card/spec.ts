@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { SmartPlugCard, type SmartPlugCardProps } from './SmartPlugCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const smartPlugCardSpec: CardComponent<SmartPlugCardProps> = {

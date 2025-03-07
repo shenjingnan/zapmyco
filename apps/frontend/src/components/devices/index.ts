@@ -20,15 +20,17 @@ export * from './security-card';
 import { cardRegistry } from './card-registry';
 import { CardComponent } from './types';
 
-// 使用动态导入自动发现所有卡片
 const moduleFiles = import.meta.glob('./*/spec.ts', { eager: true });
 
-// 自动注册所有找到的卡片
-Object.values(moduleFiles).forEach((module: any) => {
-  // 遍历模块中的所有导出
-  for (const key in module) {
-    const value = module[key];
-    // 检查是否是CardComponent类型对象
+interface ModuleWithExports {
+  [key: string]: unknown;
+}
+
+Object.values(moduleFiles).forEach((module) => {
+  const typedModule = module as ModuleWithExports;
+
+  for (const key in typedModule) {
+    const value = typedModule[key];
     if (
       value &&
       typeof value === 'object' &&
@@ -38,15 +40,15 @@ Object.values(moduleFiles).forEach((module: any) => {
       typeof value.meta === 'object' &&
       'matcher' in value.meta
     ) {
-      cardRegistry.register(value as CardComponent<any>);
-      break; // 假设每个模块只有一个卡片规格
+      cardRegistry.register(value as CardComponent<unknown>);
+      break;
     }
   }
 });
 
-// 确保默认卡片最后注册
 import { defaultCardSpec } from './default-card/spec';
-cardRegistry.register(defaultCardSpec);
+
+cardRegistry.register(defaultCardSpec as unknown as CardComponent<unknown>);
 
 export { cardRegistry };
 export * from './matching-system';

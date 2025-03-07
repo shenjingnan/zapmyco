@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { OneSwitchCard, type OneSwitchCardProps } from './OneSwitchCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const oneSwitchCardSpec: CardComponent<OneSwitchCardProps> = {

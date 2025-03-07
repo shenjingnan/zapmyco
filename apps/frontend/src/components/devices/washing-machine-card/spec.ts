@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { WashingMachineCard, type WashingMachineCardProps } from './WashingMachineCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { EntityMatchers } from '../matching-system';
 import { CombineMatchers } from '../matching-system';
 

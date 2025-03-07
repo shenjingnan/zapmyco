@@ -44,7 +44,7 @@ jobs:
         run: pnpm lint
 
       - name: Type check
-        run: pnpm tsc --noEmit
+        run: cd apps/frontend && pnpm type:check
 
       - name: Build
         run: pnpm build

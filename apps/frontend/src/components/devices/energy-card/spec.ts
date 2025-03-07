@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { EnergyCard, type EnergyCardProps } from './EnergyCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const energyCardSpec: CardComponent<EnergyCardProps> = {

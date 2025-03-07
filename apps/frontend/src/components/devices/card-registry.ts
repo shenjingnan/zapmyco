@@ -5,17 +5,17 @@ import { Matchers } from './matchers';
 
 // 卡片注册中心
 class CardRegistry {
-  private cards: CardComponent<any>[] = [];
+  private cards: CardComponent<unknown>[] = [];
 
   // 注册卡片
-  register(card: CardComponent<any>) {
+  register(card: CardComponent<unknown>) {
     this.cards.push(card);
     console.log(`注册卡片: ${card.meta.id}`);
     return this;
   }
 
   // 根据entity匹配卡片
-  findCardForEntity(entity: HassEntity): CardComponent<any> | undefined {
+  findCardForEntity(entity: HassEntity): CardComponent<unknown> | undefined {
     // 收集所有匹配的卡片及其优先级
     const matchedCards = this.cards
       .map((card) => {

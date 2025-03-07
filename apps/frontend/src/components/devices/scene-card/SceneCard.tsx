@@ -24,7 +24,7 @@ interface SceneCardProps {
 }
 
 const SceneCard: React.FC<SceneCardProps> = (props) => {
-  const { entity, onSceneActivate, onScheduleChange } = props;
+  const { entity, onSceneActivate } = props;
 
   // 从entity中提取状态数据
   const activeScene = entity.state;

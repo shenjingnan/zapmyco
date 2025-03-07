@@ -1,9 +1,8 @@
 import { HassEntity } from 'home-assistant-js-websocket';
-import { MatchResult } from './types';
-import { Matchers } from './matchers';
-import { CardMatchResult } from './constants';
+import { MatchResult } from '@/components/devices/types';
+import { Matchers } from '@/components/devices/matchers';
+import { CardMatchResult } from '@/components/devices/constants';
 
-// 优化后的实体匹配器，内置默认优先级
 export const EntityMatchers = {
   /**
    * 匹配实体ID前缀
@@ -100,7 +99,7 @@ export const EntityMatchers = {
    * @param value 属性值
    * @param result 匹配结果
    */
-  hasAttribute: (key: string, value: any, result: MatchResult) => {
+  hasAttribute: (key: string, value: unknown, result: MatchResult) => {
     return (entity: HassEntity): MatchResult =>
       Matchers.equals(entity.attributes[key], value, result);
   },

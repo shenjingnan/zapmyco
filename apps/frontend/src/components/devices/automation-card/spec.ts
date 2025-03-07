@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { AutomationCard, type AutomationCardProps } from './AutomationCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const automationCardSpec: CardComponent<AutomationCardProps> = {

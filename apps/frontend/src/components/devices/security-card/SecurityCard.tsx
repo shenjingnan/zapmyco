@@ -101,7 +101,6 @@ const SecurityCard: React.FC<SecurityCardProps> = ({
 }) => {
   const { connection } = useHomeAssistant();
 
-  // 获取安防系统当前状态
   const securityState = useMemo((): SecurityState => {
     if (!entity) return 'unknown';
 
@@ -110,29 +109,24 @@ const SecurityCard: React.FC<SecurityCardProps> = ({
     return Object.keys(SECURITY_STATES).includes(state) ? (state as SecurityState) : 'unknown';
   }, [entity]);
 
-  // 状态配置，增加安全检查，确保始终有有效配置
   const stateConfig = useMemo(() => {
     // 确保securityState是有效的键，否则返回默认配置
     return SECURITY_STATES[securityState] || DEFAULT_STATE_CONFIG;
   }, [securityState]);
 
-  // 计算摄像头在线数量
   const onlineCameras = useMemo(() => {
     return camerasEntities.filter((cam) => cam.state !== 'unavailable').length;
   }, [camerasEntities]);
 
-  // 计算开启的门窗数量
   const openDoors = useMemo(() => {
     return doorsEntities.filter((door) => door.state === 'on' || door.state === 'open').length;
   }, [doorsEntities]);
 
-  // 计算有活动的运动传感器数量
   const activeMotions = useMemo(() => {
     return motionEntities.filter((motion) => motion.state === 'on' || motion.state === 'detected')
       .length;
   }, [motionEntities]);
 
-  // 格式化最近事件时间
   const formatEventTime = (timeStr: string) => {
     try {
       const eventTime = new Date(timeStr);
@@ -150,7 +144,6 @@ const SecurityCard: React.FC<SecurityCardProps> = ({
     }
   };
 
-  // 切换安防模式
   const setSecurityMode = useCallback(
     (mode: SecurityState) => {
       if (
@@ -185,24 +178,10 @@ const SecurityCard: React.FC<SecurityCardProps> = ({
     [connection, entity]
   );
 
-  // 获取最近一次事件
   const latestEvent = useMemo(() => {
     if (lastEvents.length === 0) return null;
     return lastEvents[0];
   }, [lastEvents]);
-
-  // 如果没有entity，显示加载状态
-  if (!entity) {
-    return (
-      <Card className="h-full w-full overflow-hidden rounded-xl border-0 bg-gray-50/50 p-0 shadow-sm backdrop-blur">
-        <CardContent className="p-4">
-          <div className="flex h-40 items-center justify-center">
-            <div className="text-gray-400">加载中...</div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <ServiceCard entity={entity}>

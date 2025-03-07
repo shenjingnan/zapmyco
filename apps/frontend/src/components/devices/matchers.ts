@@ -1,8 +1,6 @@
-import { HassEntity } from 'home-assistant-js-websocket';
-import { MatchResult } from './types';
-import { CardMatchResult } from './constants';
+import { MatchResult } from '@/components/devices/types';
+import { CardMatchResult } from '@/components/devices/constants';
 
-// 基础条件匹配器
 export const Matchers = {
   /**
    * 检查条件，如果为true则返回指定优先级的匹配结果
@@ -29,7 +27,7 @@ export const Matchers = {
    * @param expected 期望的值
    * @param result 条件满足时返回的匹配结果
    */
-  equals: (value: any, expected: any, result: MatchResult): MatchResult => {
+  equals: (value: unknown, expected: unknown, result: MatchResult): MatchResult => {
     return value === expected ? result : CardMatchResult.NO_MATCH;
   },
 
@@ -38,7 +36,7 @@ export const Matchers = {
    * @param value 要检查的值
    * @param result 值存在时返回的匹配结果
    */
-  exists: (value: any, result: MatchResult): MatchResult => {
+  exists: (value: unknown, result: MatchResult): MatchResult => {
     return value !== undefined && value !== null ? result : CardMatchResult.NO_MATCH;
   },
 
@@ -68,7 +66,7 @@ export const Matchers = {
    * @param prop 属性名
    * @param result 条件满足时返回的匹配结果
    */
-  hasProperty: (obj: any, prop: string, result: MatchResult): MatchResult => {
-    return obj && prop in obj ? result : CardMatchResult.NO_MATCH;
+  hasProperty: (obj: unknown, prop: string, result: MatchResult): MatchResult => {
+    return obj && typeof obj === 'object' && prop in obj ? result : CardMatchResult.NO_MATCH;
   },
 };

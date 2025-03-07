@@ -18,18 +18,6 @@ const OccupancySensorCard: React.FC<OccupancySensorCardProps> = (props) => {
     lightLevel: 320, // 单位：lux
   };
 
-  // 生成24小时活动历史图表的柱状数据
-  const generateActivityBars = () => {
-    // 创建24个柱子的高度数据，模拟一天中不同时段的活动
-    const heights = [
-      1, 1, 1, 1, 2, 3, 8, 12, 10, 8, 14, 18, 22, 20, 24, 26, 18, 16, 12, 10, 8, 6, 3, 2,
-    ];
-
-    return heights.map((height, index) => (
-      <div key={index} className="w-2 rounded-sm bg-black" style={{ height: `${height}px` }}></div>
-    ));
-  };
-
   return (
     <ServiceCard entity={entity}>
       <div className="mb-2 flex items-center justify-between">

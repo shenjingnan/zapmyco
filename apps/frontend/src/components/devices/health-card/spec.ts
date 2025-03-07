@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { HealthCard, type HealthCardProps } from './HealthCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const healthCardSpec: CardComponent<HealthCardProps> = {

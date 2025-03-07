@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { SceneCard, type SceneCardProps } from './SceneCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const sceneCardSpec: CardComponent<SceneCardProps> = {

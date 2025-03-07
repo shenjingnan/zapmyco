@@ -1,8 +1,6 @@
 import { CardComponent } from '@/types';
+import { CombineMatchers, EntityMatchers } from '@/components/devices/matching-system';
 import { AirPurifierCard, type AirPurifierCardProps } from './AirPurifierCard';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { CardMatchResult } from '../constants';
-import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const airPurifierCardSpec: CardComponent<AirPurifierCardProps> = {
   component: AirPurifierCard,

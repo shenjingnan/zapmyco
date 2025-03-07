@@ -1,32 +1,10 @@
 import { useMount, useUpdateEffect } from 'react-use';
 import { useHomeAssistant } from '@/use-home-assistant';
-import {
-  TempHumiditySensor,
-  OneSwitchCard,
-  OccupancySensorCard,
-  LightCard,
-  DebugCard,
-  ThermostatCard,
-  EnergyCard,
-  SecurityCard,
-  AirPurifierCard,
-  HumidifierCard,
-  CurtainCard,
-  SmartPlugCard,
-  RefrigeratorCard,
-  WashingMachineCard,
-  OvenCard,
-  SceneCard,
-  AutomationCard,
-  WeatherCard,
-  HealthCard,
-} from '@/components/devices';
 import GridLayout, { GridItem } from '@/GridLayout';
 import { useMemo, useRef, useState } from 'react';
 import { RecordUtils } from '@/utils';
 import { cardRegistry } from '@/components/devices';
 import { DynamicCardRenderer } from '@/components/grid/DynamicCardRenderer';
-import { HassEntities, HassEntity } from 'home-assistant-js-websocket';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -96,9 +74,7 @@ function App() {
         items={items}
         onDragEnd={handleDragEnd}
         onLayoutChange={handleLayoutChange}
-        renderItem={(item) => (
-          <DynamicCardRenderer key={item.id} entity={item.entity} size={item.size} />
-        )}
+        renderItem={(item) => <DynamicCardRenderer key={item.id} entity={item.entity} />}
       />
     </div>
   );

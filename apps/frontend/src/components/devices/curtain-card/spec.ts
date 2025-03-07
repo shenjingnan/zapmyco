@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { CurtainCard, type CurtainCardProps } from './CurtainCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const curtainCardSpec: CardComponent<CurtainCardProps> = {

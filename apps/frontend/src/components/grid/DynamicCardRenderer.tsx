@@ -7,6 +7,11 @@ interface DynamicCardRendererProps {
   config?: Record<string, unknown>;
 }
 
+interface CardProps {
+  entity: HassEntity;
+  config?: Record<string, unknown>;
+}
+
 export const DynamicCardRenderer: React.FC<DynamicCardRendererProps> = ({
   entity,
   config = {},
@@ -17,7 +22,7 @@ export const DynamicCardRenderer: React.FC<DynamicCardRendererProps> = ({
     return <DefaultCard entity={entity} />;
   }
 
-  const CardComponent = matchedCardContent.component;
+  const CardComponent = matchedCardContent.component as React.ComponentType<CardProps>;
 
   return <CardComponent entity={entity} config={config} />;
 };

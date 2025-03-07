@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { TempHumiditySensorCard, type TempHumiditySensorCardProps } from './TempHumiditySensorCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const tempHumiditySensorCardSpec: CardComponent<TempHumiditySensorCardProps> = {

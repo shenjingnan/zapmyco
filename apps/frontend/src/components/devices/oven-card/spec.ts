@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { OvenCard, type OvenCardProps } from './OvenCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const ovenCardSpec: CardComponent<OvenCardProps> = {

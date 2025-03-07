@@ -1,6 +1,5 @@
 import { CardComponent } from '@/types';
 import { HumidifierCard, type HumidifierCardProps } from './HumidifierCard';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { CombineMatchers, EntityMatchers } from '../matching-system';
 
 const humidifierCardSpec: CardComponent<HumidifierCardProps> = {
