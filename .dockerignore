@@ -1,0 +1,91 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Node.js
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.pnpm-store
+.npm
+.yarn
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv
+venv/
+ENV/
+
+# Development environments
+.idea
+.vscode
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Project specific
+.nx/
+.next/
+out/
+.cache/
+.parcel-cache/
+
+# Large files and media
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.mp3
+*.wav
+*.flac
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Docker related
+docker-compose.override.yml
+
+# Keep .devcontainer files
+!.devcontainer/ 

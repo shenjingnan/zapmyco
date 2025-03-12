@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PYTHONPATH=/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      # 可选：如果需要持久化数据
+      - ./data:/app/data
+    # 可选：如果需要限制资源
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G 

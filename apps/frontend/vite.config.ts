@@ -11,6 +11,9 @@ export default defineConfig({
     outDir: path.resolve(projectRoot, 'dist/apps/frontend'),
     emptyOutDir: true,
   },
+  server: {
+    host: '0.0.0.0',
+  },
   plugins: [react()],
   resolve: {
     alias: {

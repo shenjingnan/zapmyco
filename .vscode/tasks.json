@@ -1,0 +1,49 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Develop Frontend",
+            "type": "shell",
+            "command": "cd ${workspaceFolder} && pnpm run dev",
+            "options": {
+                "shell": {
+                    "executable": "/bin/bash",
+                    "args": ["-l", "-i", "-c"]
+                },
+                "env": {
+                    "PATH": "/usr/local/nvm/versions/node/v20.18.3/bin:${env:PATH}:/usr/local/bin:/usr/bin:/bin:${env:HOME}/.npm-global/bin:${env:HOME}/.local/bin",
+                    "NVM_DIR": "/usr/local/nvm"
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new",
+                "group": "develop"
+            },
+            "detail": "Start the frontend development server using pnpm"
+        },
+        {
+            "label": "Develop Backend",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/apps/backend && ./start_server.sh",
+            "options": {
+                "shell": {
+                    "executable": "/bin/bash",
+                    "args": ["-l", "-i", "-c"]
+                },
+                "env": {
+                    "PATH": "/usr/local/nvm/versions/node/v20.18.3/bin:${env:PATH}:/usr/local/bin:/usr/bin:/bin:${env:HOME}/.npm-global/bin:${env:HOME}/.local/bin",
+                    "NVM_DIR": "/usr/local/nvm"
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new",
+                "group": "develop"
+            },
+            "detail": "Start the backend development server"
+        }
+    ]
+} 

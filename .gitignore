@@ -15,6 +15,7 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/tasks.json
 .idea
 .DS_Store
 *.suo
@@ -23,9 +24,19 @@ dist-ssr
 *.sln
 *.sw?
 
+# root
 .nx/cache
 .nx/workspace-data
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
 .next
 coverage
+
+# python
+__pycache__
+.pnpm-store
+*.egg-info
+*.pyc
+.pytest_cache
+.coverage
+htmlcov/

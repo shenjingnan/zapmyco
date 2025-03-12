@@ -1,0 +1,68 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "smart_home_system"
+version = "0.1.0"
+description = "智能家居控制系统"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+license = "MIT"
+packages = [
+    {include = "api"},
+    {include = "db"},
+    {include = "devices"},
+    {include = "services"},
+    {include = "utils"}
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+fastapi = ">=0.95.0"
+uvicorn = ">=0.22.0"
+sqlalchemy = ">=2.0.0"
+pydantic = ">=2.0.0"
+python-multipart = "*"
+python-jose = {extras = ["cryptography"], version = "*"}
+passlib = {extras = ["bcrypt"], version = "*"}
+aiohttp = "*"
+
+[tool.poetry.group.dev.dependencies]
+black = "*"
+isort = "*"
+mypy = "*"
+flake8 = "*"
+
+[tool.poetry.group.test.dependencies]
+pytest = ">=7.0.0"
+pytest-cov = ">=4.0.0"
+httpx = ">=0.24.0"
+pytest-asyncio = ">=0.21.0"
+
+[tool.poetry.scripts]
+server = "uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v"
+

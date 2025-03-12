@@ -32,12 +32,73 @@
   },
   "targetDefaults": {
     "build": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "dev:host": {
+      "dependsOn": [
+        "^dev:host"
+      ]
+    },
+    "lint": {
+      "dependsOn": [
+        "^lint"
+      ]
+    },
+    "lint:fix": {
+      "dependsOn": [
+        "^lint:fix"
+      ]
+    },
+    "format": {
+      "dependsOn": [
+        "^format"
+      ]
+    },
+    "format:check": {
+      "dependsOn": [
+        "^format:check"
+      ]
+    },
+    "type:check": {
+      "dependsOn": [
+        "^type:check"
+      ]
+    },
+    "prepare": {
+      "dependsOn": [
+        "^prepare"
+      ]
+    },
+    "precommit": {
+      "dependsOn": [
+        "^precommit"
+      ]
+    },
+    "check": {
+      "dependsOn": [
+        "^check"
+      ]
+    },
+    "fix": {
+      "dependsOn": [
+        "^fix"
+      ]
     }
   },
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
-    "sharedGlobals": ["{workspaceRoot}/babel.config.json"],
-    "production": ["default", "!{projectRoot}/.eslintrc.json", "!{projectRoot}/eslint.config.mjs"]
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals"
+    ],
+    "sharedGlobals": [
+      "{workspaceRoot}/babel.config.json"
+    ],
+    "production": [
+      "default",
+      "!{projectRoot}/.eslintrc.json",
+      "!{projectRoot}/eslint.config.mjs"
+    ]
   }
 }
