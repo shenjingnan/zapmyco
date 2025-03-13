@@ -105,7 +105,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: building-os:test
+          tags: zapmyco:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
@@ -115,7 +115,7 @@ jobs:
           docker images
           
           # Run container for basic validation
-          container_id=$(docker run -d -p 8000:8000 -p 80:80 building-os:test)
+          container_id=$(docker run -d -p 8000:8000 -p 80:80 zapmyco:test)
           
           # Wait for container to start
           echo "Waiting for container to start..."
@@ -204,6 +204,6 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: false
-          tags: building-os:multi-platform
+          tags: zapmyco:multi-platform
           cache-from: type=gha
           cache-to: type=gha,mode=max 

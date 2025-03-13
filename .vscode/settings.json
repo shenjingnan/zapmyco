@@ -1,0 +1,10 @@
+{
+  "cSpell.words": [
+    "Bento",
+    "zapmyco"
+  ],
+  "sonarlint.connectedMode.project": {
+    "connectionId": "zapmyco",
+    "projectKey": "zapmyco"
+  }
+}

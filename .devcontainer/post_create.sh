@@ -222,7 +222,7 @@ else
 fi
 
 # Check backend project and install dependencies
-BACKEND_DIR="/workspaces/building-os/apps/backend"
+BACKEND_DIR="/workspaces/zapmyco/apps/backend"
 if [ -d "$BACKEND_DIR" ]; then
   log_info "Installing backend dependencies with Poetry..."
   cd "$BACKEND_DIR"

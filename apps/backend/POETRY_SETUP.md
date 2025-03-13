@@ -20,7 +20,7 @@ The `pyproject.toml` file has already been updated to use Poetry's format. Now y
 
 ```bash
 # Navigate to the backend directory
-cd /workspaces/building-os/apps/backend
+cd /workspaces/zapmyco/apps/backend
 
 # Initialize the Poetry environment
 poetry install

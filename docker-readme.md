@@ -14,10 +14,10 @@
 
 ```bash
 # 构建镜像
-docker build -t building-os:latest .
+docker build -t zapmyco:latest .
 
 # 运行容器
-docker run -p 80:80 -p 8000:8000 building-os:latest
+docker run -p 80:80 -p 8000:8000 zapmyco:latest
 ```
 
 ### 镜像说明

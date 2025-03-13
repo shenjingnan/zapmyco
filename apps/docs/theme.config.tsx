@@ -2,17 +2,17 @@ import React from 'react'
 import { useConfig } from 'nextra-theme-docs'
 
 const config = {
-  logo: <span>Building OS</span>,
+  logo: <span>ZapMyco</span>,
   project: {
-    link: 'https://github.com/shenjingnan/building-os',
+    link: 'https://github.com/zapmyco/zapmyco',
   },
-  docsRepositoryBase: 'https://github.com/shenjingnan/building-os/tree/main/apps/docs',
+  docsRepositoryBase: 'https://github.com/zapmyco/zapmyco/tree/main/apps/docs',
   footer: {
-    text: 'Building OS Docs',
+    text: 'ZapMyco Docs',
   },
   useNextSeoProps() {
     return {
-      titleTemplate: '%s – Building OS'
+      titleTemplate: '%s – ZapMyco'
     }
   },
   head: () => {
@@ -20,7 +20,7 @@ const config = {
     return (
       <>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta name="description" content={frontMatter.description || 'Building OS: 智能建筑操作系统'} />
+        <meta name="description" content={frontMatter.description || 'ZapMyco: 智能建筑操作系统'} />
       </>
     )
   }

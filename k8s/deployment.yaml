@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: building-os
+  name: zapmyco
   labels:
-    app: building-os
+    app: zapmyco
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: building-os
+      app: zapmyco
   template:
     metadata:
       labels:
-        app: building-os
+        app: zapmyco
     spec:
       containers:
-      - name: building-os
-        image: building-os:latest
+      - name: zapmyco
+        image: zapmyco:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
@@ -51,10 +51,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: building-os
+  name: zapmyco
 spec:
   selector:
-    app: building-os
+    app: zapmyco
   ports:
   - name: http
     port: 80
@@ -67,18 +67,18 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: building-os
+  name: zapmyco
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
-  - host: building-os.example.com
+  - host: zapmyco.example.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: building-os
+            name: zapmyco
             port:
               number: 80 
