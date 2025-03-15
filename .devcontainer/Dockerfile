@@ -82,12 +82,13 @@ RUN curl -sSL https://install.python-poetry.org | python3 - \
     && poetry --version
 
 # Add Node.js environment activation script
-RUN echo 'if [ -d "$NVM_DIR" ]; then\n\
-    export NVM_DIR="$NVM_DIR"\n\
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"\n\
-    [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"\n\
-fi' > /etc/profile.d/nvm.sh \
-    && chmod +x /etc/profile.d/nvm.sh
+RUN echo -e '#!/bin/bash\n\
+export NVM_DIR="/usr/local/nvm"\n\
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"\n\
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"\n\
+export PATH=$PATH:$(npm bin -g)' > /etc/profile.d/nvm.sh \
+    && chmod +x /etc/profile.d/nvm.sh \
+    && echo -e '\n# Source NVM environment\nsource /etc/profile.d/nvm.sh' >> /home/vscode/.bashrc
 
 # Set default user to vscode
 USER vscode
