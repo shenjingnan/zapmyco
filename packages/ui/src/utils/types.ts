@@ -23,7 +23,7 @@ export interface DeviceStatus {
   temperature?: number;
   humidity?: number;
   batteryLevel?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -57,4 +57,4 @@ export interface DeviceControlProps {
   onUpdate?: (device: DeviceInfo, updates: Partial<DeviceStatus>) => void;
   className?: string;
   children?: ReactNode;
-} 
+}

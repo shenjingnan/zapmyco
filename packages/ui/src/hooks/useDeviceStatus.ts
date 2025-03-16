@@ -44,4 +44,4 @@ export function useDeviceStatus(
     setBrightness,
     setTemperature,
   };
-} 
+}

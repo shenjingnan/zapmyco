@@ -15,4 +15,4 @@ export * from './theme';
 export * from './hooks';
 
 // 导出类型
-export type { HassEntity } from 'home-assistant-js-websocket'; 
+export type { HassEntity } from 'home-assistant-js-websocket';

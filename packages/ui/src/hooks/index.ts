@@ -1,2 +1,2 @@
 export * from './useDeviceStatus';
-export * from './useMediaQuery'; 
+export * from './useMediaQuery';

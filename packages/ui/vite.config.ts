@@ -6,17 +6,17 @@ import dts from 'vite-plugin-dts';
 
 export default defineConfig({
   plugins: [
-    react() as any,
+    react(),
     dts({
       include: ['src'],
       outDir: 'dist',
       tsconfigPath: resolve(__dirname, 'tsconfig.json'),
-    }) as any
+    }),
   ],
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src')
-    }
+      '@': resolve(__dirname, './src'),
+    },
   },
   build: {
     lib: {
@@ -31,13 +31,13 @@ export default defineConfig({
         globals: {
           react: 'React',
           'react-dom': 'ReactDOM',
-          'clsx': 'clsx',
+          clsx: 'clsx',
           'tailwind-merge': 'tailwindMerge',
-          'home-assistant-js-websocket': 'homeAssistantJsWebsocket'
+          'home-assistant-js-websocket': 'homeAssistantJsWebsocket',
         },
       },
     },
     outDir: 'dist',
     emptyOutDir: true,
   },
-}); 
+});
