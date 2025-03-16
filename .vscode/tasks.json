@@ -4,7 +4,7 @@
         {
             "label": "Develop Frontend",
             "type": "shell",
-            "command": "cd ${workspaceFolder} && pnpm run dev",
+            "command": "cd ${workspaceFolder} && nx dev frontend",
             "options": {
                 "shell": {
                     "executable": "/bin/bash",
@@ -21,7 +21,7 @@
                 "panel": "new",
                 "group": "develop"
             },
-            "detail": "Start the frontend development server using pnpm"
+            "detail": "Start the frontend development server"
         },
         {
             "label": "Develop Backend",
@@ -44,6 +44,28 @@
                 "group": "develop"
             },
             "detail": "Start the backend development server"
+        },
+        {
+            "label": "Develop @zapmyco/ui",
+            "type": "shell",
+            "command": "cd ${workspaceFolder} && pnpm run dev:ui",
+            "options": {
+                "shell": {
+                    "executable": "/bin/bash",
+                    "args": ["-l", "-i", "-c"]
+                },
+                "env": {
+                    "PATH": "/usr/local/nvm/versions/node/v20.18.3/bin:${env:PATH}:/usr/local/bin:/usr/bin:/bin:${env:HOME}/.npm-global/bin:${env:HOME}/.local/bin",
+                    "NVM_DIR": "/usr/local/nvm"
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new",
+                "group": "develop"
+            },
+            "detail": "Start the UI component library development in watch mode"
         }
     ]
 } 

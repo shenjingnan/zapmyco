@@ -1,7 +1,7 @@
 import React from 'react';
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { HassEntity } from 'home-assistant-js-websocket';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
 import {
   Cloud,
   CloudRain,
@@ -15,7 +15,6 @@ import {
   Umbrella,
   Eye,
 } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
 interface WeatherForecast {
   datetime: string;
   condition: string;

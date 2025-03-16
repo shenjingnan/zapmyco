@@ -1,6 +1,5 @@
 // 组件导出
-export * from './components/card';
-export * from './components/button';
+export * from './components/service-card';
 // 以下两个模块不存在，暂时注释掉
 // export * from './components/device-control';
 // export * from './components/icons';
@@ -13,4 +12,7 @@ export * from './utils/types';
 export * from './theme';
 
 // 钩子函数
-export * from './hooks'; 
+export * from './hooks';
+
+// 导出类型
+export type { HassEntity } from 'home-assistant-js-websocket'; 

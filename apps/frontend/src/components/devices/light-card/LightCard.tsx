@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { SunDim, Sun as SunIcon } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import clsx from 'clsx';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider-ios';
 import { useHomeAssistant } from '@/use-home-assistant';
-import { ServiceCard } from '@/components/devices/ServiceCard';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
+
 const useColorTemp = (entity: HassEntity) => {
   const [minColorTempKelvin, maxColorTempKelvin] = [
     entity.attributes.min_color_temp_kelvin,

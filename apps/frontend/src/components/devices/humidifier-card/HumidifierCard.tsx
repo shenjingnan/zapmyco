@@ -3,10 +3,8 @@ import { CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { cn } from '@/lib/utils';
+import { ServiceCard, type HassEntity, cn } from '@zapmyco/ui';
 import { Power, Droplet, Waves, ThermometerSun } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
 interface HumidifierCardProps {
   entity: HassEntity;
   onToggle?: () => void;

@@ -3,10 +3,8 @@ import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { cn } from '@/lib/utils';
+import { ServiceCard, cn, type HassEntity } from '@zapmyco/ui';
 import { Flame, Timer, Pizza, Sandwich, Cake, Loader2 } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
 interface OvenCardProps {
   entity: HassEntity;
   onStart?: () => void;

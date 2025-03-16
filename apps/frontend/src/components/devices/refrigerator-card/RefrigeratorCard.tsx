@@ -3,10 +3,8 @@ import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { cn } from '@/lib/utils';
+import { ServiceCard, cn, type HassEntity } from '@zapmyco/ui';
 import { Snowflake, ThermometerSnowflake, Beef, Wine } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface RefrigeratorCardProps {
   entity: HassEntity;

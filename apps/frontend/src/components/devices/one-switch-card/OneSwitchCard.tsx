@@ -1,6 +1,5 @@
-import { HassEntity } from 'home-assistant-js-websocket';
 import { LogOut } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
 
 interface OneSwitchCardProps {
   entity: HassEntity;

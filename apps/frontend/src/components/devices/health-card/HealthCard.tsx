@@ -1,9 +1,9 @@
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { HassEntity } from 'home-assistant-js-websocket';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
 import { Heart, Activity, Moon, Footprints, Timer, Flame } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
+
 interface HealthMetric {
   value: number;
   unit: string;

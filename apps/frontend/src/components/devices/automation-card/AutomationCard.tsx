@@ -3,8 +3,6 @@ import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { cn } from '@/lib/utils';
 import {
   Zap,
   Clock,
@@ -16,7 +14,7 @@ import {
   History,
   Settings2,
 } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
+import { ServiceCard, type HassEntity, cn } from '@zapmyco/ui';
 
 interface AutomationRule {
   id: string;

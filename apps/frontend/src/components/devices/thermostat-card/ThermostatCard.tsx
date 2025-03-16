@@ -4,9 +4,8 @@ import { CardContent } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider-ios';
 import { Badge } from '@/components/ui/badge';
 import { callService } from 'home-assistant-js-websocket';
-import { HassEntity } from 'home-assistant-js-websocket';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
 import { useHomeAssistant } from '@/use-home-assistant';
-import { ServiceCard } from '@/components/devices/ServiceCard';
 
 interface ThermostatCardProps {
   entity: HassEntity;

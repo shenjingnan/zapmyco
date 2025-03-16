@@ -2,9 +2,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { join, resolve } from 'path';
+import dts from 'vite-plugin-dts';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react() as any,
+    dts({
+      include: ['src'],
+      outDir: 'dist',
+      tsconfigPath: resolve(__dirname, 'tsconfig.json'),
+    }) as any
+  ],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src')
@@ -18,13 +26,14 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'clsx', 'tailwind-merge'],
+      external: ['react', 'react-dom', 'clsx', 'tailwind-merge', 'home-assistant-js-websocket'],
       output: {
         globals: {
           react: 'React',
           'react-dom': 'ReactDOM',
           'clsx': 'clsx',
-          'tailwind-merge': 'tailwindMerge'
+          'tailwind-merge': 'tailwindMerge',
+          'home-assistant-js-websocket': 'homeAssistantJsWebsocket'
         },
       },
     },

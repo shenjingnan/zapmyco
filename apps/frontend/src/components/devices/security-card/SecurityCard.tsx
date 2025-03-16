@@ -2,12 +2,11 @@ import React, { useMemo, useCallback } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, Camera, Bell, DoorOpen, Clock, Eye } from 'lucide-react';
 import { CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { HassEntity } from 'home-assistant-js-websocket';
 import { callService } from 'home-assistant-js-websocket';
 import { useHomeAssistant } from '@/use-home-assistant';
 import { twMerge } from 'tailwind-merge';
 import clsx from 'clsx';
-import { ServiceCard } from '@/components/devices/ServiceCard';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
 
 // 安防系统状态类型
 type SecurityState =

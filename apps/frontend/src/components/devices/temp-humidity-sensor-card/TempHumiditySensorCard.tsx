@@ -1,7 +1,6 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { ServiceCard } from '@/components/devices/ServiceCard';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
 import { CardContent } from '@/components/ui/card';
 
 interface TempHumiditySensorCardProps {

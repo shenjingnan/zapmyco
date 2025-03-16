@@ -3,10 +3,8 @@ import { CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { HassEntity } from 'home-assistant-js-websocket';
-import { cn } from '@/lib/utils';
 import { Power, Droplet, RefreshCw, Gauge } from 'lucide-react';
-import { ServiceCard } from '@/components/devices/ServiceCard';
+import { ServiceCard, type HassEntity, cn } from '@zapmyco/ui';
 
 interface AirPurifierCardProps {
   entity: HassEntity;

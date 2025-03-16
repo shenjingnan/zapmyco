@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
 import { BarChart, Zap, TrendingDown, TrendingUp, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { HassEntity } from 'home-assistant-js-websocket';
+import { ServiceCard, type HassEntity } from '@zapmyco/ui';
 import { twMerge } from 'tailwind-merge';
 import clsx from 'clsx';
-import { ServiceCard } from '@/components/devices/ServiceCard';
 import { CardContent } from '@/components/ui/card';
 
 interface EnergyCardProps {
