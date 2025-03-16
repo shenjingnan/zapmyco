@@ -1,11 +1,8 @@
 {
   "dependencies": {
-    "frontend": [
-      "shared-ui"
-    ],
-    "cli": [
-      "core"
-    ],
+    "frontend": ["ui"],
+    "ui": [],
+    "cli": ["core"],
     "docs": []
   }
 }

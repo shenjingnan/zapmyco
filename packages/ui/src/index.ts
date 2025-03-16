@@ -1,7 +1,6 @@
 // 组件导出
 export * from './components/card';
 export * from './components/button';
-export * from './components/device-card';
 // 以下两个模块不存在，暂时注释掉
 // export * from './components/device-control';
 // export * from './components/icons';

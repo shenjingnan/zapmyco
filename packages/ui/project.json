@@ -5,15 +5,37 @@
   "projectType": "library",
   "tags": ["scope:ui", "type:lib"],
   "targets": {
+    "dev": {
+      "executor": "@nx/vite:build",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "development",
+      "options": {
+        "outputPath": "packages/ui/dist",
+        "main": "src/index.ts",
+        "tsConfig": "tsconfig.lib.json",
+        "assets": ["*.md"],
+        "watch": true,
+        "cwd": "packages/ui"
+      },
+      "configurations": {
+        "development": {
+          "mode": "development"
+        },
+        "production": {
+          "mode": "production"
+        }
+      }
+    },
     "build": {
       "executor": "@nx/vite:build",
       "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "options": {
         "outputPath": "packages/ui/dist",
-        "main": "packages/ui/src/index.ts",
-        "tsConfig": "packages/ui/tsconfig.lib.json",
-        "assets": ["packages/ui/*.md"]
+        "main": "src/index.ts",
+        "tsConfig": "tsconfig.lib.json",
+        "assets": ["*.md"],
+        "cwd": "packages/ui"
       },
       "configurations": {
         "development": {
@@ -57,7 +79,7 @@
         }
       }
     },
-    "build-storybook": {
+    "build:storybook": {
       "executor": "@nx/storybook:build",
       "outputs": ["{options.outputDir}"],
       "options": {

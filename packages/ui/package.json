@@ -25,14 +25,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "nx build ui",
-    "dev": "nx build ui --watch",
-    "lint": "nx lint ui",
-    "test": "nx test ui",
-    "clean": "rm -rf dist",
-    "typecheck": "nx typecheck ui",
-    "storybook": "nx storybook ui",
-    "build-storybook": "nx build-storybook ui"
+    "clean": "rm -rf dist"
   },
   "peerDependencies": {
     "clsx": "^2.0.0",

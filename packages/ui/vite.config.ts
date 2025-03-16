@@ -1,10 +1,15 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src')
+    }
+  },
   build: {
     lib: {
       entry: join(__dirname, 'src/index.ts'),
@@ -24,5 +29,6 @@ export default defineConfig({
       },
     },
     outDir: 'dist',
+    emptyOutDir: true,
   },
 }); 
