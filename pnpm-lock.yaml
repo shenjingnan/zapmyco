@@ -6,6 +6,8 @@ settings:
 
 overrides:
   home-assistant-js-websocket: ^9.4.0
+  vite: ^6.2.2
+  '@vitejs/plugin-react-swc': ^3.8.0
 
 importers:
 
@@ -53,7 +55,7 @@ importers:
         version: 20.4.6(@babel/traverse@7.26.9)(@swc/core@1.11.5(@swc/helpers@0.5.15))(@swc/helpers@0.5.15)(@types/node@22.13.8)(@zkochan/js-yaml@0.0.7)(eslint@9.21.0(jiti@2.4.2))(next@14.2.24(@babel/core@7.26.9)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(sass@1.85.1))(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.7.3)(webpack@5.98.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))
       '@nx/vite':
         specifier: 20.4.6
-        version: 20.4.6(@babel/traverse@7.26.9)(@swc/core@1.11.5(@swc/helpers@0.5.15))(@types/node@22.13.8)(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))(typescript@5.7.3)(vite@6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))(vitest@3.0.7)
+        version: 20.4.6(@babel/traverse@7.26.9)(@swc/core@1.11.5(@swc/helpers@0.5.15))(@types/node@22.13.8)(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))(typescript@5.7.3)(vite@6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))(vitest@3.0.7)
       '@nx/web':
         specifier: 20.4.6
         version: 20.4.6(@babel/traverse@7.26.9)(@swc/core@1.11.5(@swc/helpers@0.5.15))(@types/node@22.13.8)(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))(typescript@5.7.3)
@@ -76,8 +78,8 @@ importers:
         specifier: ^19.0.3
         version: 19.0.4(@types/react@19.0.10)
       '@vitejs/plugin-react-swc':
-        specifier: ^3.5.0
-        version: 3.8.0(@swc/helpers@0.5.15)(vite@6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))
+        specifier: ^3.8.0
+        version: 3.8.0(@swc/helpers@0.5.15)(vite@6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))
       '@vitest/coverage-v8':
         specifier: ^3.0.6
         version: 3.0.7(vitest@3.0.7)
@@ -142,8 +144,8 @@ importers:
         specifier: ^8.22.0
         version: 8.25.0(eslint@9.21.0(jiti@2.4.2))(typescript@5.7.3)
       vite:
-        specifier: ^6.1.0
-        version: 6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
+        specifier: ^6.2.2
+        version: 6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
       vitest:
         specifier: ^3.0.7
         version: 3.0.7(@types/debug@4.1.12)(@types/node@22.13.8)(@vitest/ui@3.0.7)(jiti@2.4.2)(jsdom@26.0.0)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
@@ -207,6 +209,13 @@ importers:
       zustand:
         specifier: ^5.0.3
         version: 5.0.3(@types/react@19.0.10)(react@18.3.1)
+    devDependencies:
+      '@vitejs/plugin-react-swc':
+        specifier: ^3.8.0
+        version: 3.8.0(@swc/helpers@0.5.15)(vite@6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))
+      vite:
+        specifier: ^6.2.2
+        version: 6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
 
   packages/ui:
     dependencies:
@@ -1456,7 +1465,7 @@ packages:
     resolution: {integrity: sha512-2D6y7fNvFmsLmRt6UCOFJPvFoPMJGT0Uh1Wg0RaigUp7kdQPs6yYn8Dmx6GZkOH/NW0yMTwRz/p0SRMMRo50vA==}
     peerDependencies:
       typescript: '>= 4.3.x'
-      vite: ^3.0.0 || ^4.0.0 || ^5.0.0
+      vite: ^6.2.2
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -2055,7 +2064,7 @@ packages:
   '@nx/vite@20.4.6':
     resolution: {integrity: sha512-kYkPA6uK0mGfneEp4W063y/5uG+sJjINQBLUC/kSQmAJflnuqo29UIH1XNxA/PnN5VMomqEKiVTVUFnwyXSVug==}
     peerDependencies:
-      vite: ^5.0.0
+      vite: ^6.2.2
       vitest: ^1.3.1 || ^2.0.0
 
   '@nx/web@20.4.6':
@@ -2930,7 +2939,7 @@ packages:
     peerDependencies:
       '@preact/preset-vite': '*'
       typescript: '>= 4.3.x'
-      vite: ^3.0.0 || ^4.0.0 || ^5.0.0
+      vite: ^6.2.2
       vite-plugin-glimmerx: '*'
     peerDependenciesMeta:
       '@preact/preset-vite':
@@ -3022,7 +3031,7 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
-      vite: ^3.0.0 || ^4.0.0 || ^5.0.0
+      vite: ^6.2.2
 
   '@storybook/react@7.6.20':
     resolution: {integrity: sha512-i5tKNgUbTNwlqBWGwPveDhh9ktlS0wGtd97A1ZgKZc3vckLizunlAFc7PRC1O/CMq5PTyxbuUb4RvRD2jWKwDA==}
@@ -3595,13 +3604,13 @@ packages:
   '@vitejs/plugin-react-swc@3.8.0':
     resolution: {integrity: sha512-T4sHPvS+DIqDP51ifPqa9XIRAz/kIvIi8oXcnOZZgHmMotgmmdxe/DD5tMFlt5nuIRzT0/QuiwmKlH0503Aapw==}
     peerDependencies:
-      vite: ^4 || ^5 || ^6
+      vite: ^6.2.2
 
   '@vitejs/plugin-react@3.1.0':
     resolution: {integrity: sha512-AfgcRL8ZBhAlc3BFdigClmTUMISmmzHn7sB2h9U1odvc5U/MjWXsAaz18b/WoppUTDBzxOJwo2VdClfUcItu9g==}
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
-      vite: ^4.1.0-beta.0
+      vite: ^6.2.2
 
   '@vitest/coverage-v8@3.0.7':
     resolution: {integrity: sha512-Av8WgBJLTrfLOer0uy3CxjlVuWK4CzcLBndW1Nm2vI+3hZ2ozHututkfc7Blu1u6waeQ7J8gzPK/AsBRnWA5mQ==}
@@ -3619,7 +3628,7 @@ packages:
     resolution: {integrity: sha512-qui+3BLz9Eonx4EAuR/i+QlCX6AUZ35taDQgwGkK/Tw6/WgwodSrjN1X2xf69IA/643ZX5zNKIn2svvtZDrs4w==}
     peerDependencies:
       msw: ^2.4.9
-      vite: ^5.0.0 || ^6.0.0
+      vite: ^6.2.2
     peerDependenciesMeta:
       msw:
         optional: true
@@ -9235,49 +9244,9 @@ packages:
     resolution: {integrity: sha512-P64VnD00dR+e8S26ESoFELqc17+w7pKkwlBpgXteOljFyT0zDwD8hH4zXp49M/kciy//7ZbVXIwQCekBJjfWzA==}
     peerDependencies:
       typescript: '*'
-      vite: '*'
+      vite: ^6.2.2
     peerDependenciesMeta:
       vite:
-        optional: true
-
-  vite@6.2.0:
-    resolution: {integrity: sha512-7dPxoo+WsT/64rDcwoOjk76XHj+TqNTIvHKcuMQ1k4/SeHDaQt5GFAeLYzrimZrMpn/O6DtdI03WUjdxuPM0oQ==}
-    engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
-    hasBin: true
-    peerDependencies:
-      '@types/node': ^18.0.0 || ^20.0.0 || >=22.0.0
-      jiti: '>=1.21.0'
-      less: '*'
-      lightningcss: ^1.21.0
-      sass: '*'
-      sass-embedded: '*'
-      stylus: '*'
-      sugarss: '*'
-      terser: ^5.16.0
-      tsx: ^4.8.1
-      yaml: ^2.4.2
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-      jiti:
-        optional: true
-      less:
-        optional: true
-      lightningcss:
-        optional: true
-      sass:
-        optional: true
-      sass-embedded:
-        optional: true
-      stylus:
-        optional: true
-      sugarss:
-        optional: true
-      terser:
-        optional: true
-      tsx:
-        optional: true
-      yaml:
         optional: true
 
   vite@6.2.2:
@@ -11820,7 +11789,7 @@ snapshots:
       - webpack
       - webpack-cli
 
-  '@nx/vite@20.4.6(@babel/traverse@7.26.9)(@swc/core@1.11.5(@swc/helpers@0.5.15))(@types/node@22.13.8)(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))(typescript@5.7.3)(vite@6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))(vitest@3.0.7)':
+  '@nx/vite@20.4.6(@babel/traverse@7.26.9)(@swc/core@1.11.5(@swc/helpers@0.5.15))(@types/node@22.13.8)(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))(typescript@5.7.3)(vite@6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))(vitest@3.0.7)':
     dependencies:
       '@nx/devkit': 20.4.6(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))
       '@nx/js': 20.4.6(@babel/traverse@7.26.9)(@swc/core@1.11.5(@swc/helpers@0.5.15))(@types/node@22.13.8)(nx@20.5.0(@swc/core@1.11.5(@swc/helpers@0.5.15)))(typescript@5.7.3)
@@ -11829,7 +11798,7 @@ snapshots:
       enquirer: 2.3.6
       minimatch: 9.0.3
       tsconfig-paths: 4.2.0
-      vite: 6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
+      vite: 6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
       vitest: 3.0.7(@types/debug@4.1.12)(@types/node@22.13.8)(@vitest/ui@3.0.7)(jiti@2.4.2)(jsdom@26.0.0)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
     transitivePeerDependencies:
       - '@babel/traverse'
@@ -13892,13 +13861,6 @@ snapshots:
       eslint-visitor-keys: 4.2.0
 
   '@ungap/structured-clone@1.3.0': {}
-
-  '@vitejs/plugin-react-swc@3.8.0(@swc/helpers@0.5.15)(vite@6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))':
-    dependencies:
-      '@swc/core': 1.11.5(@swc/helpers@0.5.15)
-      vite: 6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0)
-    transitivePeerDependencies:
-      - '@swc/helpers'
 
   '@vitejs/plugin-react-swc@3.8.0(@swc/helpers@0.5.15)(vite@6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0))':
     dependencies:
@@ -20432,21 +20394,6 @@ snapshots:
       - '@types/node'
       - rollup
       - supports-color
-
-  vite@6.2.0(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0):
-    dependencies:
-      esbuild: 0.25.0
-      postcss: 8.5.3
-      rollup: 4.34.8
-    optionalDependencies:
-      '@types/node': 22.13.8
-      fsevents: 2.3.3
-      jiti: 2.4.2
-      less: 4.1.3
-      sass: 1.85.1
-      stylus: 0.64.0
-      terser: 5.39.0
-      yaml: 2.7.0
 
   vite@6.2.2(@types/node@22.13.8)(jiti@2.4.2)(less@4.1.3)(sass@1.85.1)(stylus@0.64.0)(terser@5.39.0)(yaml@2.7.0):
     dependencies:

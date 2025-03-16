@@ -38,5 +38,9 @@
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
     "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "vite": "*",
+    "@vitejs/plugin-react-swc": "*"
   }
 }

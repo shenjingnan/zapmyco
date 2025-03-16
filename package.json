@@ -3,9 +3,7 @@
     "dev": "nx dev",
     "dev:frontend": "nx dev frontend",
     "dev:ui": "cd packages/ui && vite build --watch --mode development",
-    "build": "nx build",
-    "build:frontend": "nx build frontend",
-    "build:ui": "nx build ui",
+    "build": "nx run-many --target=build --all --exclude=core",
     "lint": "nx run-many --target=lint --all --exclude=core",
     "test": "nx test",
     "test:frontend": "nx test frontend",
@@ -35,7 +33,7 @@
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
-    "@vitejs/plugin-react-swc": "^3.5.0",
+    "@vitejs/plugin-react-swc": "^3.8.0",
     "@vitest/coverage-v8": "^3.0.6",
     "@vitest/ui": "^3.0.7",
     "autoprefixer": "^10.4.20",
@@ -55,7 +53,7 @@
     "tailwindcss": "^v3.4.17",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.22.0",
-    "vite": "^6.1.0",
+    "vite": "^6.2.2",
     "vitest": "^3.0.7",
     "tailwind-merge": "^3.0.2",
     "clsx": "^2.1.1"
@@ -70,7 +68,9 @@
   },
   "pnpm": {
     "overrides": {
-      "home-assistant-js-websocket": "^9.4.0"
+      "home-assistant-js-websocket": "^9.4.0",
+      "vite": "^6.2.2",
+      "@vitejs/plugin-react-swc": "^3.8.0"
     }
   }
 }

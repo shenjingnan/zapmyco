@@ -3,17 +3,24 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "packages/ui/src",
   "projectType": "library",
-  "tags": ["scope:ui", "type:lib"],
+  "tags": [
+    "scope:ui",
+    "type:lib"
+  ],
   "targets": {
     "dev": {
       "executor": "@nx/vite:build",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "defaultConfiguration": "development",
       "options": {
         "outputPath": "packages/ui/dist",
         "main": "src/index.ts",
         "tsConfig": "tsconfig.lib.json",
-        "assets": ["*.md"],
+        "assets": [
+          "*.md"
+        ],
         "watch": true,
         "cwd": "packages/ui"
       },
@@ -28,13 +35,17 @@
     },
     "build": {
       "executor": "@nx/vite:build",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "defaultConfiguration": "production",
       "options": {
         "outputPath": "packages/ui/dist",
         "main": "src/index.ts",
         "tsConfig": "tsconfig.lib.json",
-        "assets": ["*.md"],
+        "assets": [
+          "*.md"
+        ],
         "cwd": "packages/ui"
       },
       "configurations": {
@@ -48,7 +59,9 @@
     },
     "test": {
       "executor": "@nx/vite:test",
-      "outputs": ["{options.reportsDirectory}"],
+      "outputs": [
+        "{options.reportsDirectory}"
+      ],
       "options": {
         "passWithNoTests": true,
         "reportsDirectory": "../../coverage/packages/ui"
@@ -56,9 +69,13 @@
     },
     "lint": {
       "executor": "@nx/eslint:lint",
-      "outputs": ["{options.outputFile}"],
+      "outputs": [
+        "{options.outputFile}"
+      ],
       "options": {
-        "lintFilePatterns": ["packages/ui/**/*.{ts,tsx,js,jsx}"],
+        "lintFilePatterns": [
+          "packages/ui/**/*.{ts,tsx,js,jsx}"
+        ],
         "eslintConfig": "packages/ui/eslint.config.js"
       }
     },
@@ -82,7 +99,9 @@
     },
     "build:storybook": {
       "executor": "@nx/storybook:build",
-      "outputs": ["{options.outputDir}"],
+      "outputs": [
+        "{options.outputDir}"
+      ],
       "options": {
         "outputDir": "dist/storybook/ui",
         "configDir": "packages/ui/.storybook"
@@ -94,4 +113,4 @@
       }
     }
   }
-} 
+}
