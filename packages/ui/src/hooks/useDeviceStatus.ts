@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { DeviceInfo, DeviceStatus } from '../utils/types';
+import { useState } from 'react';
+import { DeviceStatus } from '../utils/types';
 
 /**
  * 设备状态钩子，用于监听和更新设备状态

@@ -10,7 +10,10 @@
       "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "options": {
-        "outputPath": "dist/packages/ui"
+        "outputPath": "packages/ui/dist",
+        "main": "packages/ui/src/index.ts",
+        "tsConfig": "packages/ui/tsconfig.lib.json",
+        "assets": ["packages/ui/*.md"]
       },
       "configurations": {
         "development": {

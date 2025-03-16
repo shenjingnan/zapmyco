@@ -14,7 +14,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
   className,
   children,
 }) => {
-  const { id, name, type, status, icon } = device;
+  const { name, type, status, icon } = device;
   const { online, power } = status;
 
   // 处理点击事件
