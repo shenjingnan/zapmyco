@@ -67,6 +67,7 @@
     "nextra": "^2.2.14",
     "nextra-theme-docs": "^2.2.14",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "home-assistant-js-websocket": "^9.4.0"
   }
 }

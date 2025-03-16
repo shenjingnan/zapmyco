@@ -36,6 +36,9 @@
     "react-dom": "^18.0.0",
     "tailwind-merge": "^2.0.0"
   },
+  "dependencies": {
+    "home-assistant-js-websocket": "*"
+  },
   "devDependencies": {
     "@storybook/addon-essentials": "^7.6.10",
     "@storybook/addon-interactions": "^7.6.10",

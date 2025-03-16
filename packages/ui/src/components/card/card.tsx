@@ -1,123 +1,55 @@
-import React, { HTMLAttributes, forwardRef } from 'react';
-import { cn } from '../../utils/cn';
+import * as React from 'react';
 
-export interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  /**
-   * 是否有边框
-   */
-  bordered?: boolean;
-  /**
-   * 是否有阴影
-   */
-  shadowed?: boolean;
-  /**
-   * 是否可点击（添加悬停效果）
-   */
-  clickable?: boolean;
-  /**
-   * 卡片内容
-   */
-  children?: React.ReactNode;
-}
+import { cn } from '@/utils/cn';
 
-/**
- * 卡片组件
- */
-export const Card = forwardRef<HTMLDivElement, CardProps>(
-  (
-    { className, bordered = true, shadowed = true, clickable = false, children, ...props },
-    ref
-  ) => {
-    return (
-      <div
-        ref={ref}
-        className={cn(
-          'rounded-lg bg-white dark:bg-gray-800',
-          bordered && 'border border-gray-200 dark:border-gray-700',
-          shadowed && 'shadow-sm',
-          clickable && 'cursor-pointer transition-shadow hover:shadow-md',
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </div>
-    );
-  }
+const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn('bg-card text-card-foreground rounded-xl', className)}
+      {...props}
+    />
+  )
 );
-
 Card.displayName = 'Card';
 
-/**
- * 卡片标题组件
- */
-export interface CardHeaderProps extends HTMLAttributes<HTMLDivElement> {
-  /**
-   * 卡片标题内容
-   */
-  children?: React.ReactNode;
-}
-
-export const CardHeader = forwardRef<HTMLDivElement, CardHeaderProps>(
-  ({ className, children, ...props }, ref) => {
-    return (
-      <div
-        ref={ref}
-        className={cn('px-4 py-3 border-b border-gray-200 dark:border-gray-700', className)}
-        {...props}
-      >
-        {children}
-      </div>
-    );
-  }
+const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex flex-col space-y-1.5 p-6', className)} {...props} />
+  )
 );
-
 CardHeader.displayName = 'CardHeader';
 
-/**
- * 卡片内容组件
- */
-export interface CardContentProps extends HTMLAttributes<HTMLDivElement> {
-  /**
-   * 卡片内容
-   */
-  children?: React.ReactNode;
-}
-
-export const CardContent = forwardRef<HTMLDivElement, CardContentProps>(
-  ({ className, children, ...props }, ref) => {
-    return (
-      <div ref={ref} className={cn('p-4', className)} {...props}>
-        {children}
-      </div>
-    );
-  }
+const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn('font-semibold leading-none tracking-tight', className)}
+      {...props}
+    />
+  )
 );
+CardTitle.displayName = 'CardTitle';
 
+const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('text-muted-foreground text-sm', className)} {...props} />
+  )
+);
+CardDescription.displayName = 'CardDescription';
+
+const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+  )
+);
 CardContent.displayName = 'CardContent';
 
-/**
- * 卡片底部组件
- */
-export interface CardFooterProps extends HTMLAttributes<HTMLDivElement> {
-  /**
-   * 卡片底部内容
-   */
-  children?: React.ReactNode;
-}
-
-export const CardFooter = forwardRef<HTMLDivElement, CardFooterProps>(
-  ({ className, children, ...props }, ref) => {
-    return (
-      <div
-        ref={ref}
-        className={cn('px-4 py-3 border-t border-gray-200 dark:border-gray-700', className)}
-        {...props}
-      >
-        {children}
-      </div>
-    );
-  }
+const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex items-center p-6 pt-0', className)} {...props} />
+  )
 );
+CardFooter.displayName = 'CardFooter';
 
-CardFooter.displayName = 'CardFooter'; 
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
