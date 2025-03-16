@@ -17,6 +17,9 @@
   "bugs": {
     "url": "https://github.com/zapmyco/zapmyco/issues"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
