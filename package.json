@@ -4,6 +4,8 @@
     "dev:frontend": "nx dev frontend",
     "dev:ui": "cd packages/ui && vite build --watch --mode development",
     "build": "nx run-many --target=build --all --exclude=core",
+    "build:ui": "nx build ui --tsConfig=packages/ui/tsconfig.lib.json",
+    "build:frontend": "nx build frontend",
     "lint": "nx run-many --target=lint --all --exclude=core",
     "test": "nx test",
     "test:frontend": "nx test frontend",
@@ -64,13 +66,19 @@
     "nextra-theme-docs": "^2.2.14",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "home-assistant-js-websocket": "^9.4.0"
+    "home-assistant-js-websocket": "^9.4.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.0.2"
   },
   "pnpm": {
     "overrides": {
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0",
+      "tailwind-merge": "^3.0.2",
       "home-assistant-js-websocket": "^9.4.0",
       "vite": "^6.2.2",
-      "@vitejs/plugin-react-swc": "^3.8.0"
+      "@vitejs/plugin-react-swc": "^3.8.0",
+      "clsx": "^2.1.1"
     }
   }
 }

@@ -31,13 +31,13 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "clsx": "^2.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "tailwind-merge": "^2.0.0"
+    "react": "*",
+    "react-dom": "*"
   },
   "dependencies": {
-    "home-assistant-js-websocket": "*"
+    "clsx": "*",
+    "home-assistant-js-websocket": "*",
+    "tailwind-merge": "*"
   },
   "devDependencies": {
     "@storybook/addon-essentials": "^7.6.10",

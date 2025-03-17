@@ -6,7 +6,9 @@ import dts from 'vite-plugin-dts';
 
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      jsxImportSource: 'react',
+    }),
     dts({
       include: ['src'],
       outDir: 'dist',
@@ -35,9 +37,14 @@ export default defineConfig({
           'tailwind-merge': 'tailwindMerge',
           'home-assistant-js-websocket': 'homeAssistantJsWebsocket',
         },
+        preserveModules: true,
       },
     },
     outDir: 'dist',
     emptyOutDir: true,
+  },
+  esbuild: {
+    jsxFactory: 'React.createElement',
+    jsxFragment: 'React.Fragment',
   },
 });

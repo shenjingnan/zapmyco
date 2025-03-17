@@ -1,7 +1,8 @@
+import * as React from 'react';
 import { HassEntity } from 'home-assistant-js-websocket';
 import { twMerge } from 'tailwind-merge';
-import { Card } from '@/components/card';
-import clsx from 'clsx';
+import { Card } from '../../components/card';
+import { clsx } from 'clsx';
 
 interface ServiceCardProps {
   entity: HassEntity;
@@ -9,9 +10,13 @@ interface ServiceCardProps {
   className?: string;
 }
 
-export const ServiceCard: React.FC<ServiceCardProps> = ({ entity, children, className }) => {
+export const ServiceCard = React.forwardRef<
+  HTMLDivElement,
+  ServiceCardProps
+>(({ entity, children, className }, ref) => {
   return (
     <Card
+      ref={ref}
       className={twMerge(
         clsx(
           'group relative h-full w-full max-w-sm bg-white p-4',
@@ -31,4 +36,6 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({ entity, children, clas
       )}
     </Card>
   );
-};
+});
+
+ServiceCard.displayName = 'ServiceCard';

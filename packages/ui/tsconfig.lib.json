@@ -6,7 +6,9 @@
     "composite": true,
     "noEmit": false,
     "allowImportingTsExtensions": false,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "moduleResolution": "node"
   },
   "files": [
     "../../node_modules/@nx/react/typings/cssmodule.d.ts",
