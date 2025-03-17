@@ -31,4 +31,8 @@ export default defineConfig({
       reportsDirectory: '../../coverage/apps/frontend',
     },
   },
+  esbuild: {
+    jsxFactory: 'React.createElement',
+    jsxFragment: 'React.Fragment',
+  },
 });
