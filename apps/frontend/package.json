@@ -36,6 +36,13 @@
     "recharts": "^2.15.1",
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
-    "zustand": "^5.0.3"
+    "zustand": "^5.0.3",
+    "react": "workspace:*",
+    "react-dom": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "workspace:*",
+    "@types/react-dom": "workspace:*",
+    "vite": "workspace:*"
   }
 }
