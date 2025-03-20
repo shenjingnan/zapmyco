@@ -1,9 +1,10 @@
 name: SonarCloud Analysis
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request_target:
-    branches: [ main ]
+    branches: [main]
     types: [opened, synchronize, reopened]
 
 jobs:
@@ -18,7 +19,7 @@ jobs:
           fetch-depth: 0
       
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v5
+        uses: SonarSource/sonarqube-scan-action@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
