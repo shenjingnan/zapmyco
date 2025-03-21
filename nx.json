@@ -1,12 +1,7 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "plugins": [
-    {
-      "plugin": "@nx/eslint/plugin",
-      "options": {
-        "targetName": "lint"
-      }
-    },
+    { "plugin": "@nx/eslint/plugin", "options": { "targetName": "lint" } },
     {
       "plugin": "@nx/vite/plugin",
       "options": {
@@ -22,83 +17,26 @@
       }
     }
   ],
-  "nxCloudId": "67c98d3beddef96450d82d38",
+  "nxCloudId": "67dd69c64aeb47e46a045b60",
   "extends": "nx/presets/npm.json",
   "defaultBase": "main",
-  "tasksRunnerOptions": {
-    "default": {
-      "runner": "nx/tasks-runners/default"
-    }
-  },
+  "tasksRunnerOptions": { "default": { "runner": "nx/tasks-runners/default" } },
   "targetDefaults": {
-    "build": {
-      "dependsOn": [
-        "^build"
-      ]
-    },
-    "dev:host": {
-      "dependsOn": [
-        "^dev:host"
-      ]
-    },
-    "lint": {
-      "dependsOn": [
-        "^lint"
-      ]
-    },
-    "lint:fix": {
-      "dependsOn": [
-        "^lint:fix"
-      ]
-    },
-    "format": {
-      "dependsOn": [
-        "^format"
-      ]
-    },
-    "format:check": {
-      "dependsOn": [
-        "^format:check"
-      ]
-    },
-    "type:check": {
-      "dependsOn": [
-        "^type:check"
-      ]
-    },
-    "prepare": {
-      "dependsOn": [
-        "^prepare"
-      ]
-    },
-    "precommit": {
-      "dependsOn": [
-        "^precommit"
-      ]
-    },
-    "check": {
-      "dependsOn": [
-        "^check"
-      ]
-    },
-    "fix": {
-      "dependsOn": [
-        "^fix"
-      ]
-    }
+    "build": { "dependsOn": ["^build"] },
+    "dev:host": { "dependsOn": ["^dev:host"] },
+    "lint": { "dependsOn": ["^lint"] },
+    "lint:fix": { "dependsOn": ["^lint:fix"] },
+    "format": { "dependsOn": ["^format"] },
+    "format:check": { "dependsOn": ["^format:check"] },
+    "type:check": { "dependsOn": ["^type:check"] },
+    "prepare": { "dependsOn": ["^prepare"] },
+    "precommit": { "dependsOn": ["^precommit"] },
+    "check": { "dependsOn": ["^check"] },
+    "fix": { "dependsOn": ["^fix"] }
   },
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*",
-      "sharedGlobals"
-    ],
-    "sharedGlobals": [
-      "{workspaceRoot}/babel.config.json"
-    ],
-    "production": [
-      "default",
-      "!{projectRoot}/.eslintrc.json",
-      "!{projectRoot}/eslint.config.mjs"
-    ]
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "sharedGlobals": ["{workspaceRoot}/babel.config.json"],
+    "production": ["default", "!{projectRoot}/.eslintrc.json", "!{projectRoot}/eslint.config.mjs"]
   }
 }
