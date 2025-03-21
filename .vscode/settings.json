@@ -1,7 +1,22 @@
 {
   "cSpell.words": [
+    "appuser",
     "Bento",
+    "Caddyfile",
+    "dearmor",
+    "dfsg",
+    "keyrings",
+    "libgl",
+    "libopencv",
+    "libsm",
+    "libxext",
+    "noninteractive",
     "pullrequest",
+    "PYTHONPATH",
+    "PYTHONUNBUFFERED",
+    "uvicorn",
+    "virtualenvs",
+    "VIRTUALENVS",
     "zapmyco"
   ],
   "sonarlint.connectedMode.project": {

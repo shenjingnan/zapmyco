@@ -3,19 +3,51 @@ name: SonarCloud Analysis
 on:
   push:
     branches: [main]
+  
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened]
 
 jobs:
-  sonarcloud:
-    name: SonarCloud
+  security_check:
+    name: Security Check
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_target'
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      
+      - name: Check for workflow modifications
+        id: check_files
+        run: |
+          echo "Checking for modifications to sensitive files..."
+          if git diff --name-only origin/${{ github.event.pull_request.base.ref }} | grep -q "\.github/workflows\|package.json\|package-lock.json\|yarn.lock\|pnpm-lock.yaml"; then
+            echo "::warning::PR contains changes to workflow files or package dependencies"
+            echo "workflow_modified=true" >> $GITHUB_OUTPUT
+          else
+            echo "workflow_modified=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Require review for workflow changes
+        if: steps.check_files.outputs.workflow_modified == 'true'
+        run: |
+          echo "::warning::This PR modifies workflow files or dependencies and requires manual review"
+          echo "Automated security checks cannot guarantee safety of these changes"
+
+  sonarcloud:
+    name: SonarCloud Analysis
+    needs: security_check
+    if: github.event_name == 'push' || (github.event_name == 'pull_request_target' && !failure())
+    runs-on: ubuntu-latest
+    environment: sonarcloud
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       
       - name: SonarCloud Scan
@@ -26,4 +58,13 @@ jobs:
         with:
           args: >
             -Dsonar.scm.provider=git
+            -Dsonar.sources=.
+            -Dsonar.exclusions=.github/**/*
             ${{ github.event_name == 'pull_request_target' && format('-Dsonar.pullrequest.key={0} -Dsonar.pullrequest.branch={1} -Dsonar.pullrequest.base={2}', github.event.pull_request.number, github.event.pull_request.head.ref, github.event.pull_request.base.ref) || '' }}
+      
+      - name: SonarCloud Quality Gate check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

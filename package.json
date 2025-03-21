@@ -32,31 +32,33 @@
     "@vitejs/plugin-react-swc": "^3.5.0",
     "@vitest/coverage-v8": "^3.0.6",
     "@vitest/ui": "^3.0.7",
+    "globals": "^15.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.3",
+    "nx": "20.5.0",
+    "next": "^14.0.0",
     "autoprefixer": "^10.4.20",
-    "eslint": "^9.19.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.3",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.18",
-    "globals": "^15.14.0",
-    "husky": "^9.1.7",
-    "jsdom": "^26.0.0",
-    "lint-staged": "^15.4.3",
-    "nx": "20.5.0",
     "postcss": "^8.5.2",
     "prettier": "^3.5.1",
     "prettier-plugin-tailwindcss": "^0.6.11",
     "tailwindcss": "^v3.4.17",
-    "typescript": "~5.7.2",
     "typescript-eslint": "^8.22.0",
+    "eslint": "^9.19.0",
+    "typescript": "~5.7.2",
+    "vitest": "^3.0.7",
     "vite": "^6.1.0",
-    "vitest": "^3.0.7"
+    "jsdom": "^26.0.0"
   },
-  "dependencies": {
-    "next": "^14.0.0",
-    "nextra": "^2.2.14",
-    "nextra-theme-docs": "^2.2.14",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+  "pnpm": {
+    "overrides": {
+      "clsx": "^2.1.1",
+      "home-assistant-js-websocket": "^9.4.0",
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0"
+    }
   }
 }
