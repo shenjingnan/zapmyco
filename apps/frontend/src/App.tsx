@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 import { RecordUtils } from '@/utils';
 import { cardRegistry } from '@/components/devices';
 import { DynamicCardRenderer } from '@/components/grid/DynamicCardRenderer';
+import { Ui } from '@zapmyco/ui';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -70,6 +71,7 @@ function App() {
       className="box-border h-screen bg-gray-300 p-2"
       style={{ width: debugSize.width, height: debugSize.height }}
     >
+      <Ui />
       <GridLayout
         items={items}
         onDragEnd={handleDragEnd}

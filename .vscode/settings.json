@@ -22,5 +22,6 @@
   "sonarlint.connectedMode.project": {
     "connectionId": "zapmyco",
     "projectKey": "zapmyco"
-  }
+  },
+  "typescript.tsdk": "node_modules/typescript/lib"
 }

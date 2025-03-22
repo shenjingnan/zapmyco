@@ -10,9 +10,15 @@ global.window = dom.window as unknown as Window & typeof globalThis;
 global.document = dom.window.document;
 global.HTMLElement = dom.window.HTMLElement;
 global.ResizeObserver = class ResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+  observe() {
+    // empty
+  }
+  unobserve() {
+    // empty
+  }
+  disconnect() {
+    // empty
+  }
 };
 
 const createMockEntity = (entityId: string): HassEntity => ({
@@ -51,7 +57,9 @@ describe('GridLayout', () => {
       bottom: 600,
       x: 0,
       y: 0,
-      toJSON: () => {},
+      toJSON: () => {
+        // empty
+      },
     }));
 
     const { container } = render(

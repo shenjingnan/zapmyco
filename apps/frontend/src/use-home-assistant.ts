@@ -77,8 +77,8 @@ const useHomeAssistant = create<HomeAssistantStore>((set, get) => ({
 
       const connection = await createConnection({ auth });
 
-      if (location.search.includes('auth_callback=1')) {
-        history.replaceState(null, '', location.pathname);
+      if (window.location.search.includes('auth_callback=1')) {
+        window.history.replaceState(null, '', window.location.pathname);
       }
 
       const user = await getUser(connection);

@@ -1,3 +1,7 @@
+import { CardComponent } from './types';
+import { cardRegistry } from './card-registry';
+import { defaultCardSpec } from './default-card/spec';
+
 export * from './temp-humidity-sensor-card';
 export * from './light-card';
 export * from './occupancy-sensor-card';
@@ -17,8 +21,6 @@ export * from './weather-card';
 export * from './health-card';
 export * from './default-card';
 export * from './security-card';
-import { cardRegistry } from './card-registry';
-import { CardComponent } from './types';
 
 const moduleFiles = import.meta.glob('./*/spec.ts', { eager: true });
 
@@ -45,8 +47,6 @@ Object.values(moduleFiles).forEach((module) => {
     }
   }
 });
-
-import { defaultCardSpec } from './default-card/spec';
 
 cardRegistry.register(defaultCardSpec as unknown as CardComponent<unknown>);
 

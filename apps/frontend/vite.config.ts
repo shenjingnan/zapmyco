@@ -1,34 +1,47 @@
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react-swc';
+/// <reference types='vitest' />
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, '../..'); // 回到项目根目录
-export default defineConfig({
+export default defineConfig(() => ({
   root: __dirname,
-  build: {
-    outDir: path.resolve(projectRoot, 'dist/apps/frontend'),
-    emptyOutDir: true,
-  },
+  cacheDir: '../../node_modules/.vite/apps/zapmyco',
   server: {
-    host: '0.0.0.0',
+    port: 4200,
+    host: 'localhost',
+  },
+  preview: {
+    port: 4300,
+    host: 'localhost',
   },
   plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+  // Uncomment this if you are using workers.
+  // worker: {
+  //  plugins: [ nxViteTsPaths() ],
+  // },
+  build: {
+    outDir: './dist',
+    emptyOutDir: true,
+    reportCompressedSize: true,
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
   test: {
+    watch: false,
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['./tests/setup/setup.ts'],
-    css: true,
+    include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    reporters: ['default'],
     coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      reportsDirectory: '../../coverage/apps/frontend',
+      reportsDirectory: './test-output/vitest/coverage',
+      provider: 'v8' as const,
     },
   },
-});
+  resolve: {
+    alias: {
+      '@zapmyco/ui': path.join(__dirname, '../../packages/ui/src/index.ts'),
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+}));

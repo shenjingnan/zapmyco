@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "frontend": [
-      "shared-ui"
+      "ui"
     ],
     "cli": [
       "core"
