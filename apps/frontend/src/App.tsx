@@ -6,6 +6,7 @@ import { RecordUtils } from '@/utils';
 import { cardRegistry } from '@/components/devices';
 import { DynamicCardRenderer } from '@/components/grid/DynamicCardRenderer';
 import { Ui } from '@zapmyco/ui';
+import WebSocketExample from '@/components/WebSocketExample';
 
 function App() {
   const { entities, init } = useHomeAssistant();
@@ -72,6 +73,7 @@ function App() {
       style={{ width: debugSize.width, height: debugSize.height }}
     >
       <Ui />
+      <WebSocketExample />
       <GridLayout
         items={items}
         onDragEnd={handleDragEnd}
