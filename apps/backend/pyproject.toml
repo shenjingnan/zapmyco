@@ -27,7 +27,6 @@ python-multipart = "*"
 python-jose = {extras = ["cryptography"], version = "*"}
 passlib = {extras = ["bcrypt"], version = "*"}
 aiohttp = "*"
-websockets = "^15.0.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
