@@ -18,7 +18,10 @@
     "dependabot",
     "shenjingnan",
     "rankdir",
-    "Qwen"
+    "Qwen",
+    "zapmyco",
+    "Zapmyco",
+    "zapmycorc"
   ],
   "ignorePaths": [
     "node_modules",
