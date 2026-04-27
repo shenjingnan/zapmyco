@@ -1,14 +1,21 @@
 {
-  "name": "ai-typescript-starter",
-  "version": "0.4.5",
-  "description": "AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造",
+  "name": "zapmyco",
+  "version": "0.1.0",
+  "description": "AI 原生并行任务编排系统 -- AI 总管 (Personal AI Chief of Staff)",
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
+  "bin": {
+    "zapmyco": "./dist/cli/index.mjs"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.mjs",
       "types": "./dist/index.d.mts"
+    },
+    "./protocol": {
+      "import": "./dist/protocol/index.mjs",
+      "types": "./dist/protocol/index.d.mts"
     }
   },
   "files": [
@@ -21,6 +28,7 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
+    "start": "node dist/cli/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -45,23 +53,33 @@
   },
   "packageManager": "pnpm@10.30.3",
   "keywords": [
-    "typescript",
     "ai",
-    "starter",
-    "template",
-    "vitest",
-    "biome",
-    "tsdown"
+    "agent",
+    "orchestrator",
+    "task",
+    "parallel",
+    "cli",
+    "typescript",
+    "llm"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/shenjingnan/ai-typescript-starter.git"
+    "url": "https://github.com/shenjingnan/zapmyco.git"
   },
   "bugs": {
-    "url": "https://github.com/shenjingnan/ai-typescript-starter/issues"
+    "url": "https://github.com/shenjingnan/zapmyco/issues"
   },
-  "homepage": "https://github.com/shenjingnan/ai-typescript-starter#readme",
+  "homepage": "https://github.com/shenjingnan/zapmyco#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@clack/prompts": "^0.9.0",
+    "chalk": "^5.4.0",
+    "commander": "^12.1.0",
+    "eventemitter3": "^5.0.1",
+    "ora": "^8.1.0",
+    "cosmiconfig": "^9.0.1"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",
     "@release-it/conventional-changelog": "^10.0.6",
