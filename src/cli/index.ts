@@ -59,7 +59,7 @@ program
   .argument('<goal>', '要执行的目标描述')
   .option('-j, --json', '以 JSON 格式输出结果')
   .option('--no-color', '禁用颜色输出')
-  .action((goal, options) => {
+  .action((goal, _options) => {
     console.log(`🎯 目标: ${goal}`);
     console.log(chalk.yellow('\n  任务执行引擎即将推出，敬请期待！\n'));
   });
