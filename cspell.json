@@ -23,7 +23,9 @@
     "Zapmyco",
     "zapmycorc",
     "mariozechner",
-    "apikey"
+    "apikey",
+    "Deepseek",
+    "unstub"
   ],
   "ignorePaths": [
     "node_modules",

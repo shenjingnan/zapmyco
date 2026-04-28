@@ -68,6 +68,27 @@ vi.mock('@/cli/repl/components/custom-editor', () => ({
   },
 }));
 
+// Mock PiAiProvider — 让 executeGoal() 能正常完成 LLM 调用
+const mockChatStreamGenerator = (async function* (): AsyncGenerator<string> {
+  yield 'Hello ';
+  yield 'from ';
+  yield 'AI!';
+})();
+
+vi.mock('@/llm/pi-ai-provider', () => ({
+  PiAiProvider: class MockPiAiProvider {
+    readonly providerId = 'pi-ai';
+    chatStream = vi.fn().mockReturnValue(mockChatStreamGenerator);
+    chat = vi.fn().mockResolvedValue({
+      content: 'Mock response',
+      inputTokens: 10,
+      outputTokens: 5,
+      model: 'test-model',
+    });
+    constructor(_config: unknown) {}
+  },
+}));
+
 // Mock eventBus
 vi.mock('@/infra/event-bus', () => ({
   eventBus: {
@@ -207,7 +228,16 @@ import type { ZapmycoConfig } from '@/config/types';
 
 function createTestConfig(overrides?: Partial<ZapmycoConfig>): ZapmycoConfig {
   return {
-    llm: { provider: 'anthropic', apiKey: 'sk-test' },
+    llm: {
+      defaultModel: 'anthropic/claude-sonnet-4-20250514',
+      models: {
+        'anthropic/claude-sonnet-4-20250514': {
+          provider: 'anthropic',
+          modelId: 'claude-sonnet-4-20250514',
+        },
+      },
+      providers: { anthropic: { apiKey: 'sk-test' } },
+    },
     scheduler: {
       maxConcurrency: 5,
       maxPerAgent: 3,
@@ -299,7 +329,8 @@ describe('ReplSession', () => {
       expect(result).toBeDefined();
       expect(result.overallStatus).toBe('success');
       expect(result.goalId).toContain('goal-');
-      expect(result.summary).toContain('测试目标');
+      // summary 现在是 LLM 回复内容
+      expect(result.summary).toBe('Hello from AI!');
     });
 
     it('执行完成后状态应重置为 idle', async () => {
@@ -334,10 +365,9 @@ describe('ReplSession', () => {
       const longInput = 'a'.repeat(200);
       const result = await session.executeGoal(longInput);
 
-      // summary 格式: [模拟] 已接收目标: {rawInput.slice(0,80)}...
-      // 前缀长度约 12 字符 + 80 + "..." = 95
-      expect(result.summary).toContain('...');
-      expect(result.summary.length).toBeLessThanOrEqual(95);
+      // summary 是 LLM 回复内容，截断至前 200 字符
+      expect(result.summary.length).toBeLessThanOrEqual(200);
+      expect(result.overallStatus).toBe('success');
     });
   });
 

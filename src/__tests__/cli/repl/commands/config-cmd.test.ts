@@ -4,7 +4,16 @@ import type { ReplSession } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
 
 const mockConfig: ZapmycoConfig = {
-  llm: { provider: 'anthropic', apiKey: 'sk-test-key', model: 'claude-sonnet-4-20250514' },
+  llm: {
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
+    models: {
+      'anthropic/claude-sonnet-4-20250514': {
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-20250514',
+      },
+    },
+    providers: { anthropic: { apiKey: 'sk-test-key' } },
+  },
   scheduler: {
     maxConcurrency: 5,
     maxPerAgent: 3,
@@ -74,25 +83,25 @@ describe('/config command', () => {
     expect(renderer.renderConfig).toHaveBeenCalledOnce();
   });
 
-  it('get 参数应输出单项配置值（apiKey 脱敏）到输出区', () => {
+  it('get 参数应输出单项配置值到输出区', () => {
     const session = createMockSession();
     const cmd = createConfigCommand();
 
-    cmd.handler(['get', 'llm.provider'], session);
+    cmd.handler(['get', 'llm.defaultModel'], session);
 
     expect(session.appendOutput).toHaveBeenCalledOnce();
     const calls = (session.appendOutput as ReturnType<typeof vi.fn>).mock.calls;
     const lines = calls[0]?.[0] as string[] | undefined;
     expect(lines).toBeDefined();
     const output = (lines ?? []).join('\n');
-    expect(output).toContain('anthropic');
+    expect(output).toContain('anthropic/claude-sonnet-4-20250514');
   });
 
   it('get apiKey 应脱敏显示', () => {
     const session = createMockSession();
     const cmd = createConfigCommand();
 
-    cmd.handler(['get', 'llm.apiKey'], session);
+    cmd.handler(['get', 'llm.providers.anthropic.apiKey'], session);
 
     const calls = (session.appendOutput as ReturnType<typeof vi.fn>).mock.calls;
     const lines = calls[0]?.[0] as string[] | undefined;

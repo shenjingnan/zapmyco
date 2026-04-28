@@ -8,7 +8,7 @@
  * - 组件化布局，可扩展
  */
 
-import { Container, ProcessTerminal, Text, TUI } from '@mariozechner/pi-tui';
+import { Container, ProcessTerminal, Text, TUI, wrapTextWithAnsi } from '@mariozechner/pi-tui';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
 import { createClearCommand } from '@/cli/repl/commands/clear';
@@ -34,6 +34,8 @@ import type { ZapmycoConfig } from '@/config/types';
 import { __VERSION__ } from '@/infra/constants';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
+import { PiAiProvider } from '@/llm/pi-ai-provider';
+import type { ChatMessage } from '@/llm/types';
 
 const log = logger.child('repl:session');
 
@@ -45,13 +47,28 @@ const log = logger.child('repl:session');
 class OutputArea extends Container {
   private lines: string[] = [];
 
-  override render(_width: number): string[] {
-    return this.lines;
+  override render(width: number): string[] {
+    // 对每行做自动换行，确保不超过终端宽度
+    const result: string[] = [];
+    for (const line of this.lines) {
+      result.push(...wrapTextWithAnsi(line, width));
+    }
+    return result;
   }
 
   /** 追加多行内容 */
   append(lines: string[]): void {
     this.lines.push(...lines);
+    this.invalidate();
+  }
+
+  /** 追加文本到当前行末尾（用于流式输出） */
+  appendText(text: string): void {
+    if (this.lines.length === 0) {
+      this.lines.push(text);
+    } else {
+      this.lines[this.lines.length - 1] += text;
+    }
     this.invalidate();
   }
 
@@ -84,6 +101,12 @@ export class ReplSession {
   private readonly renderer: RendererClass;
   private readonly history: HistoryStoreClass;
   private currentTaskAbort: AbortController | null = null;
+
+  /** LLM 提供商实例（会话级复用） */
+  private readonly llmProvider: PiAiProvider;
+
+  /** 多轮对话上下文 */
+  private conversationHistory: ChatMessage[] = [];
 
   // 会话统计
   private stats: SessionStats = {
@@ -131,6 +154,9 @@ export class ReplSession {
     this.registry = new CommandRegistry(this);
     this.renderer = new RendererClass(this.options);
     this.history = new HistoryStoreClass(this.options.maxHistorySize);
+
+    // 初始化 LLM 提供商
+    this.llmProvider = new PiAiProvider(config.llm);
 
     // 注册所有内置命令
     this.registerBuiltinCommands();
@@ -226,10 +252,7 @@ export class ReplSession {
   }
 
   /**
-   * 执行用户目标
-   *
-   * 当前阶段：引擎尚未完全实现，返回模拟结果。
-   * 预留 FinalResult 接口，对接引擎后替换为真实调用。
+   * 执行用户目标 — 调用 LLM 并流式输出回复
    */
   async executeGoal(rawInput: string): Promise<import('@/core/result/types').FinalResult> {
     const startTime = Date.now();
@@ -240,6 +263,9 @@ export class ReplSession {
       this._state = 'executing';
       this.updateStatsState();
       this.updateFooter();
+
+      // 创建 AbortController 用于取消
+      this.currentTaskAbort = new AbortController();
 
       // 记录到历史
       historyEntry = this.history.push({
@@ -253,34 +279,54 @@ export class ReplSession {
         rawInput,
       });
 
-      // ====== 当前阶段：占位实现 ======
-      //
-      // 未来对接流程：
-      // 1. IntentEngine.parse(rawInput) → Goal
-      // 2. TaskDecomposer.decompose(goal) → TaskGraph
-      // 3. renderer.renderTaskGraph(graph)
-      // 4. Scheduler.execute(graph) → 监听 ProgressEvent → renderer.renderProgress()
-      // 5. ResultAggregator.aggregate(results) → FinalResult
-      // 6. renderer.renderResult(finalResult)
-
-      const goalLines: string[] = [
-        '',
-        `  🎯 目标: ${rawInput}`,
-        '',
-        `  ⏳ 任务执行引擎开发中，当前返回模拟结果...`,
-        '',
-      ];
+      // 显示用户输入
+      const goalLines: string[] = ['', `  🎯 ${rawInput}`, '', '  💬 '];
       this.outputArea.append(goalLines);
 
-      // 模拟短暂延迟（让用户看到处理过程）
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // 构建消息上下文（含多轮对话历史）
+      this.conversationHistory.push({ role: 'user', content: rawInput });
 
-      // 返回模拟的 FinalResult
+      const messages: ChatMessage[] = [
+        {
+          role: 'system',
+          content: '你是 zapmyco AI 总管，一个智能任务编排助手。请用中文回答用户的问题。简洁高效。',
+        },
+        ...this.conversationHistory,
+      ];
+
+      // 流式调用 LLM
+      let fullResponse = '';
+      const stream = this.llmProvider.chatStream(messages, {
+        signal: this.currentTaskAbort.signal,
+      });
+
+      for await (const chunk of stream) {
+        // 检查是否已取消
+        if (this.currentTaskAbort.signal.aborted) {
+          break;
+        }
+
+        fullResponse += chunk;
+        // 实时追加流式内容到当前行末尾并触发重绘
+        this.outputArea.appendText(chunk);
+        this.tui.requestRender();
+      }
+
+      // 追加 assistant 回复到对话历史
+      if (fullResponse) {
+        this.conversationHistory.push({ role: 'assistant', content: fullResponse });
+      }
+
+      // 输出分隔线
+      this.outputArea.append(['', '']);
+
       const duration = Date.now() - startTime;
-      const mockResult: import('@/core/result/types').FinalResult = {
+
+      // 构建 FinalResult
+      const result: import('@/core/result/types').FinalResult = {
         goalId: `goal-${startTime}`,
         overallStatus: 'success',
-        summary: `[模拟] 已接收目标: ${rawInput.slice(0, 80)}${rawInput.length > 80 ? '...' : ''}`,
+        summary: fullResponse.slice(0, 200),
         taskResults: [],
         allArtifacts: [],
         totalDuration: duration,
@@ -298,21 +344,17 @@ export class ReplSession {
 
       // 发布完成事件
       eventBus.emit('goal:completed', {
-        goalId: mockResult.goalId,
-        result: mockResult,
+        goalId: result.goalId,
+        result,
       });
-
-      // 渲染结果到输出区域
-      const resultLines = this.renderer.renderResult(mockResult);
-      this.outputArea.append(resultLines);
 
       // 更新历史条目
       if (historyEntry) {
-        historyEntry.goalId = mockResult.goalId;
+        historyEntry.goalId = result.goalId;
         historyEntry.durationMs = duration;
       }
 
-      return mockResult;
+      return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       log.error('目标执行失败', { input: rawInput }, err);

@@ -13,7 +13,16 @@ function createMockSession(): ReplSession {
       continuationPrompt: '... ',
     },
     config: {
-      llm: { provider: 'anthropic' },
+      llm: {
+        defaultModel: 'anthropic/claude-sonnet-4-20250514',
+        models: {
+          'anthropic/claude-sonnet-4-20250514': {
+            provider: 'anthropic',
+            modelId: 'claude-sonnet-4-20250514',
+          },
+        },
+        providers: {},
+      },
       scheduler: {
         maxConcurrency: 5,
         maxPerAgent: 3,

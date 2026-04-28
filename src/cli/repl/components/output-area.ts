@@ -195,9 +195,14 @@ export class OutputFormatter {
     const c = this.getColor();
     const lines: string[] = ['', c.bold('  ⚙️  当前配置'), '', c.bold('  LLM:')];
 
-    lines.push(`    提供商: ${config.llm.provider}`);
-    lines.push(`    模型: ${config.llm.model ?? c.gray('(默认)')}`);
-    lines.push(`    API Key: ${config.llm.apiKey ? c.gray('***已配置***') : c.red('(未配置)')}`);
+    lines.push(`    默认模型: ${config.llm.defaultModel}`);
+    const defaultModelConfig = config.llm.models[config.llm.defaultModel];
+    if (defaultModelConfig) {
+      lines.push(`    提供商: ${defaultModelConfig.provider}`);
+      lines.push(`    模型 ID: ${defaultModelConfig.modelId}`);
+    }
+    const auth = config.llm.providers[defaultModelConfig?.provider ?? 'anthropic'];
+    lines.push(`    API Key: ${auth?.apiKey ? c.gray('***已配置***') : c.red('(未配置)')}`);
 
     lines.push(c.bold('  调度器:'));
     lines.push(`    最大并行: ${config.scheduler.maxConcurrency}`);

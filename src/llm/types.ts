@@ -57,4 +57,6 @@ export interface LlmCallOptions {
   stream?: boolean;
   /** 超时时间（毫秒） */
   timeoutMs?: number;
+  /** 取消信号（用于中断流式请求） */
+  signal?: AbortSignal;
 }
