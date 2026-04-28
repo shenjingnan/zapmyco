@@ -8,7 +8,7 @@
  * - 组件化布局，可扩展
  */
 
-import { Container, Text, TUI, ProcessTerminal } from '@mariozechner/pi-tui';
+import { Container, ProcessTerminal, Text, TUI } from '@mariozechner/pi-tui';
 import type { ZapmycoConfig } from '../../config/types.js';
 import { __VERSION__ } from '../../infra/constants.js';
 import { eventBus } from '../../infra/event-bus.js';
@@ -22,10 +22,10 @@ import { createHelpCommand } from './commands/help.js';
 import { createHistoryCommand } from './commands/history.js';
 import { createQuitCommand } from './commands/quit.js';
 import { createStatusCommand } from './commands/status.js';
+import { ZapmycoEditor } from './components/custom-editor.js';
 import { HistoryStore as HistoryStoreClass } from './history-store.js';
 import { InputParser } from './input-parser.js';
 import { Renderer as RendererClass } from './renderer.js';
-import { ZapmycoEditor } from './components/custom-editor.js';
 import { createTheme } from './theme.js';
 import type {
   HistoryStore,

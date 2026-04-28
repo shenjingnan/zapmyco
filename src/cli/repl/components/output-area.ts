@@ -168,7 +168,7 @@ export class OutputFormatter {
     }
 
     lines.push(
-      `  ${c.bold('ID').padEnd(20)} ${c.bold('状态').padEnd(10)} ${c.bold('负载').padEnd(8)} ${c.bold('能力')}`,
+      `  ${c.bold('ID').padEnd(20)} ${c.bold('状态').padEnd(10)} ${c.bold('负载').padEnd(8)} ${c.bold('能力')}`
     );
     lines.push(c.gray(`  ${'─'.repeat(60)}`));
 
@@ -182,7 +182,7 @@ export class OutputFormatter {
       const capabilities = agent.capabilities.map((cap) => cap.name).join(', ');
 
       lines.push(
-        `  ${agent.agentId.padEnd(20)} ${statusDot} ${String(agent.status).padEnd(8)} ${String(agent.currentLoad).padEnd(8)} ${capabilities}`,
+        `  ${agent.agentId.padEnd(20)} ${statusDot} ${String(agent.status).padEnd(8)} ${String(agent.currentLoad).padEnd(8)} ${capabilities}`
       );
     }
 
@@ -197,9 +197,7 @@ export class OutputFormatter {
 
     lines.push(`    提供商: ${config.llm.provider}`);
     lines.push(`    模型: ${config.llm.model ?? c.gray('(默认)')}`);
-    lines.push(
-      `    API Key: ${config.llm.apiKey ? c.gray('***已配置***') : c.red('(未配置)')}`,
-    );
+    lines.push(`    API Key: ${config.llm.apiKey ? c.gray('***已配置***') : c.red('(未配置)')}`);
 
     lines.push(c.bold('  调度器:'));
     lines.push(`    最大并行: ${config.scheduler.maxConcurrency}`);
@@ -251,7 +249,14 @@ export class OutputFormatter {
   }
 
   /** 格式化会话状态 */
-  formatStatus(stats: { totalRequests: number; successCount: number; failureCount: number; totalTokens: number; totalCostUsd: number; state: string }): string[] {
+  formatStatus(stats: {
+    totalRequests: number;
+    successCount: number;
+    failureCount: number;
+    totalTokens: number;
+    totalCostUsd: number;
+    state: string;
+  }): string[] {
     const c = this.getColor();
     const lines: string[] = ['', c.bold('  📊 会话状态'), ''];
 
@@ -266,7 +271,7 @@ export class OutputFormatter {
     lines.push(`  总请求数:   ${stats.totalRequests}`);
     lines.push(`  成功:       ${c.green(String(stats.successCount))}`);
     lines.push(
-      `  失败:       ${stats.failureCount > 0 ? c.red(String(stats.failureCount)) : String(stats.failureCount)}`,
+      `  失败:       ${stats.failureCount > 0 ? c.red(String(stats.failureCount)) : String(stats.failureCount)}`
     );
     lines.push(`  Token 消耗: ${stats.totalTokens.toLocaleString()}`);
     lines.push(`  总成本:     $${stats.totalCostUsd.toFixed(4)}`);

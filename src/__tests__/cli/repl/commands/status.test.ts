@@ -57,7 +57,7 @@ describe('/status command', () => {
         successCount: 8,
         failureCount: 2,
         state: 'executing',
-      }),
+      })
     );
     expect(session.appendOutput).toHaveBeenCalledOnce();
   });

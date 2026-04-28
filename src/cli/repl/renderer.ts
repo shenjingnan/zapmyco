@@ -9,8 +9,8 @@ import type { ZapmycoConfig } from '../../config/types.js';
 import type { FinalResult } from '../../core/result/types.js';
 import type { TaskGraph } from '../../core/task/types.js';
 import type { AgentRegistration } from '../../protocol/capability.js';
-import type { HistoryEntry, ReplOptions, SessionStats } from './types.js';
 import { OutputFormatter } from './components/output-area.js';
+import type { HistoryEntry, ReplOptions, SessionStats } from './types.js';
 
 /**
  * 渲染器实现
