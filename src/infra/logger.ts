@@ -4,7 +4,7 @@
  * 提供结构化的日志输出，支持不同级别和格式化。
  */
 
-import { ZapmycoError } from './errors.js';
+import { ZapmycoError } from '@/infra/errors';
 
 /** 日志级别 */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

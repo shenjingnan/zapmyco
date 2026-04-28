@@ -4,8 +4,8 @@
  * 列出所有已注册的 Agent 及其状态。
  */
 
+import type { CommandDefinition } from '@/cli/repl/types';
 import type { AgentRegistration } from '@/protocol/capability';
-import type { CommandDefinition } from '../types.js';
 
 /**
  * 创建 agents 命令定义
@@ -30,7 +30,9 @@ export function createAgentsCommand(): CommandDefinition {
  * 当前阶段：引擎尚未完全实现，从配置中的 agents 列表构造基本信息。
  * 未来：从 Agent 注册中心获取实时状态。
  */
-function buildAgentList(config: import('../types.js').ReplSession['config']): AgentRegistration[] {
+function buildAgentList(
+  config: import('@/cli/repl/types').ReplSession['config']
+): AgentRegistration[] {
   return config.agents
     .filter((agent) => agent.enabled)
     .map((agent) => {

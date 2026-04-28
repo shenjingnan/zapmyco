@@ -9,31 +9,31 @@
  */
 
 import { Container, ProcessTerminal, Text, TUI } from '@mariozechner/pi-tui';
-import type { ZapmycoConfig } from '@/config/types';
-import { __VERSION__ } from '@/infra/constants';
-import { eventBus } from '@/infra/event-bus';
-import { logger } from '@/infra/logger';
-import { CommandRegistry } from './command-registry.js';
-import { createAgentsCommand } from './commands/agents-cmd.js';
-import { createClearCommand } from './commands/clear.js';
-import { createConfigCommand } from './commands/config-cmd.js';
+import { CommandRegistry } from '@/cli/repl/command-registry';
+import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
+import { createClearCommand } from '@/cli/repl/commands/clear';
+import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
 // 导入内置命令
-import { createHelpCommand } from './commands/help.js';
-import { createHistoryCommand } from './commands/history.js';
-import { createQuitCommand } from './commands/quit.js';
-import { createStatusCommand } from './commands/status.js';
-import { ZapmycoEditor } from './components/custom-editor.js';
-import { HistoryStore as HistoryStoreClass } from './history-store.js';
-import { InputParser } from './input-parser.js';
-import { Renderer as RendererClass } from './renderer.js';
-import { createTheme } from './theme.js';
+import { createHelpCommand } from '@/cli/repl/commands/help';
+import { createHistoryCommand } from '@/cli/repl/commands/history';
+import { createQuitCommand } from '@/cli/repl/commands/quit';
+import { createStatusCommand } from '@/cli/repl/commands/status';
+import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
+import { HistoryStore as HistoryStoreClass } from '@/cli/repl/history-store';
+import { InputParser } from '@/cli/repl/input-parser';
+import { Renderer as RendererClass } from '@/cli/repl/renderer';
+import { createTheme } from '@/cli/repl/theme';
 import type {
   HistoryStore,
   ParsedInput,
   ReplOptions,
   SessionState,
   SessionStats,
-} from './types.js';
+} from '@/cli/repl/types';
+import type { ZapmycoConfig } from '@/config/types';
+import { __VERSION__ } from '@/infra/constants';
+import { eventBus } from '@/infra/event-bus';
+import { logger } from '@/infra/logger';
 
 const log = logger.child('repl:session');
 
@@ -194,7 +194,7 @@ export class ReplSession {
   }
 
   /** 获取渲染器引用 */
-  getRenderer(): import('./types.js').Renderer {
+  getRenderer(): import('@/cli/repl/types').Renderer {
     return this.renderer;
   }
 
@@ -233,7 +233,7 @@ export class ReplSession {
    */
   async executeGoal(rawInput: string): Promise<import('@/core/result/types').FinalResult> {
     const startTime = Date.now();
-    let historyEntry: import('./types.js').HistoryEntry | undefined;
+    let historyEntry: import('@/cli/repl/types').HistoryEntry | undefined;
 
     try {
       // 更新状态

@@ -6,11 +6,11 @@
  */
 
 import chalk, { Chalk } from 'chalk';
+import type { HistoryEntry } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
 import type { AgentRegistration } from '@/protocol/capability';
-import type { HistoryEntry } from '../types.js';
 
 /**
  * 格式化输出内容的工具类

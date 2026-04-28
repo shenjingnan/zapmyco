@@ -56,7 +56,7 @@ vi.mock('@mariozechner/pi-tui', () => ({
 }));
 
 // Mock ZapmycoEditor
-vi.mock('../../../cli/repl/components/custom-editor.js', () => ({
+vi.mock('@/cli/repl/components/custom-editor', () => ({
   ZapmycoEditor: class MockZapmycoEditor {
     onSubmit?: (text: string) => void;
     onEscape?: () => void;
@@ -88,7 +88,7 @@ vi.mock('@/infra/logger', () => ({
 }));
 
 // Mock CommandRegistry
-vi.mock('../../../cli/repl/command-registry.js', () => ({
+vi.mock('@/cli/repl/command-registry', () => ({
   CommandRegistry: class MockCommandRegistry {
     register = mockRegister;
     dispatch = vi.fn();
@@ -96,7 +96,7 @@ vi.mock('../../../cli/repl/command-registry.js', () => ({
 }));
 
 // Mock 内置命令
-vi.mock('../../../cli/repl/commands/help.js', () => ({
+vi.mock('@/cli/repl/commands/help', () => ({
   createHelpCommand: vi.fn().mockReturnValue({
     name: 'help',
     aliases: ['h'],
@@ -105,7 +105,7 @@ vi.mock('../../../cli/repl/commands/help.js', () => ({
     handler: vi.fn(),
   }),
 }));
-vi.mock('../../../cli/repl/commands/quit.js', () => ({
+vi.mock('@/cli/repl/commands/quit', () => ({
   createQuitCommand: vi.fn().mockReturnValue({
     name: 'quit',
     aliases: ['q'],
@@ -114,7 +114,7 @@ vi.mock('../../../cli/repl/commands/quit.js', () => ({
     handler: vi.fn(),
   }),
 }));
-vi.mock('../../../cli/repl/commands/clear.js', () => ({
+vi.mock('@/cli/repl/commands/clear', () => ({
   createClearCommand: vi.fn().mockReturnValue({
     name: 'clear',
     aliases: [],
@@ -123,7 +123,7 @@ vi.mock('../../../cli/repl/commands/clear.js', () => ({
     handler: vi.fn(),
   }),
 }));
-vi.mock('../../../cli/repl/commands/history.js', () => ({
+vi.mock('@/cli/repl/commands/history', () => ({
   createHistoryCommand: vi.fn().mockReturnValue({
     name: 'history',
     aliases: [],
@@ -132,7 +132,7 @@ vi.mock('../../../cli/repl/commands/history.js', () => ({
     handler: vi.fn(),
   }),
 }));
-vi.mock('../../../cli/repl/commands/config-cmd.js', () => ({
+vi.mock('@/cli/repl/commands/config-cmd', () => ({
   createConfigCommand: vi.fn().mockReturnValue({
     name: 'config',
     aliases: [],
@@ -141,7 +141,7 @@ vi.mock('../../../cli/repl/commands/config-cmd.js', () => ({
     handler: vi.fn(),
   }),
 }));
-vi.mock('../../../cli/repl/commands/agents-cmd.js', () => ({
+vi.mock('@/cli/repl/commands/agents-cmd', () => ({
   createAgentsCommand: vi.fn().mockReturnValue({
     name: 'agents',
     aliases: [],
@@ -150,7 +150,7 @@ vi.mock('../../../cli/repl/commands/agents-cmd.js', () => ({
     handler: vi.fn(),
   }),
 }));
-vi.mock('../../../cli/repl/commands/status.js', () => ({
+vi.mock('@/cli/repl/commands/status', () => ({
   createStatusCommand: vi.fn().mockReturnValue({
     name: 'status',
     aliases: [],
@@ -161,7 +161,7 @@ vi.mock('../../../cli/repl/commands/status.js', () => ({
 }));
 
 // Mock InputParser
-vi.mock('../../../cli/repl/input-parser.js', () => ({
+vi.mock('@/cli/repl/input-parser', () => ({
   InputParser: class MockInputParser {
     parse(line: string) {
       if (!line.trim()) return { kind: 'empty' as const };
@@ -175,7 +175,7 @@ vi.mock('../../../cli/repl/input-parser.js', () => ({
 }));
 
 // Mock Renderer
-vi.mock('../../../cli/repl/renderer.js', () => ({
+vi.mock('@/cli/repl/renderer', () => ({
   Renderer: class MockRenderer {
     renderWelcome = mockRenderWelcome;
     renderResult = mockRenderResult;
@@ -190,7 +190,7 @@ vi.mock('../../../cli/repl/renderer.js', () => ({
 }));
 
 // Mock HistoryStore
-vi.mock('../../../cli/repl/history-store.js', () => ({
+vi.mock('@/cli/repl/history-store', () => ({
   HistoryStore: class MockHistoryStore {
     push = mockHistoryPush;
     getAll = vi.fn().mockReturnValue([]);
@@ -201,9 +201,9 @@ vi.mock('../../../cli/repl/history-store.js', () => ({
   },
 }));
 
-import type { ZapmycoConfig } from '@/config/types';
 // ============ 导入被测模块 ============
-import { ReplSession } from '../../../cli/repl/session.js';
+import { ReplSession } from '@/cli/repl/session';
+import type { ZapmycoConfig } from '@/config/types';
 
 function createTestConfig(overrides?: Partial<ZapmycoConfig>): ZapmycoConfig {
   return {

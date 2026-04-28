@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createAgentsCommand } from '../../../../cli/repl/commands/agents-cmd.js';
-import type { ReplSession } from '../../../../cli/repl/types.js';
+import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
+import type { ReplSession } from '@/cli/repl/types';
 
 function createMockSession(): ReplSession {
   return {

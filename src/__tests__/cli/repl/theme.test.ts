@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTheme } from '../../../cli/repl/theme.js';
+import { createTheme } from '@/cli/repl/theme';
 
 describe('createTheme', () => {
   it('应返回包含所有样式函数的主题对象', () => {

@@ -6,7 +6,7 @@
  */
 
 import type { EventEmitter } from 'node:events';
-import type { Capability } from './capability.js';
+import type { Capability } from '@/protocol/capability';
 
 // ============ 导出类型 ============
 
@@ -38,7 +38,7 @@ export type {
   AgentRegistrationStatus,
   Capability,
   CapabilityCategory,
-} from './capability.js';
+} from '@/protocol/capability';
 
 // ============ Agent 接口 ============
 

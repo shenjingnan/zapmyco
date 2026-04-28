@@ -5,7 +5,7 @@
  * 区分命令、自然语言目标、空行和多行续行。
  */
 
-import type { ParsedInput } from './types.js';
+import type { ParsedInput } from '@/cli/repl/types';
 
 /**
  * 输入解析器

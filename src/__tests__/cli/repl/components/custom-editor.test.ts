@@ -13,7 +13,7 @@ vi.mock('@mariozechner/pi-tui', () => ({
   matchesKey: () => false,
 }));
 
-import { ZapmycoEditor } from '../../../../cli/repl/components/custom-editor.js';
+import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 
 describe('ZapmycoEditor', () => {
   const createEditor = () => {

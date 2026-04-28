@@ -4,7 +4,7 @@
  * 查看当前配置信息。
  */
 
-import type { CommandDefinition } from '../types.js';
+import type { CommandDefinition } from '@/cli/repl/types';
 
 /**
  * 创建 config 命令定义

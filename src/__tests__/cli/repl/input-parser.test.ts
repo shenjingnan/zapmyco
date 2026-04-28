@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { InputParser } from '../../../cli/repl/input-parser.js';
+import { InputParser } from '@/cli/repl/input-parser';
 
 describe('InputParser', () => {
   let parser: InputParser;

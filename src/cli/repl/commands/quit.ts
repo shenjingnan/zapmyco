@@ -4,7 +4,7 @@
  * 关闭 REPL 并退出进程。
  */
 
-import type { CommandDefinition } from '../types.js';
+import type { CommandDefinition } from '@/cli/repl/types';
 
 /**
  * 创建 quit 命令定义

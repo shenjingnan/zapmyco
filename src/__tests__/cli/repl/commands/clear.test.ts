@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createClearCommand } from '../../../../cli/repl/commands/clear.js';
-import type { ReplSession } from '../../../../cli/repl/types.js';
+import { createClearCommand } from '@/cli/repl/commands/clear';
+import type { ReplSession } from '@/cli/repl/types';
 
 function createMockSession(): ReplSession {
   return {

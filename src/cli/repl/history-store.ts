@@ -4,7 +4,7 @@
  * 基于内存的环形缓冲区，记录 REPL 会话中的用户输入和执行结果。
  */
 
-import type { HistoryEntry, HistoryStore as IHistoryStore } from './types.js';
+import type { HistoryEntry, HistoryStore as IHistoryStore } from '@/cli/repl/types';
 
 /** 默认最大历史条数 */
 const DEFAULT_MAX_SIZE = 100;

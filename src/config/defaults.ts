@@ -4,7 +4,7 @@
  * 当用户未提供配置时，使用这些默认值。
  */
 
-import type { ZapmycoConfig } from './types.js';
+import type { ZapmycoConfig } from '@/config/types';
 
 /** 默认配置 */
 export const DEFAULT_CONFIG: ZapmycoConfig = {
@@ -12,7 +12,7 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     provider: 'anthropic',
     // API Key 通过环境变量 ANTHROPIC_API_KEY 设置
     // model: undefined 表示使用提供商默认模型
-  } as import('./types.js').LlmProviderConfig,
+  } as import('@/config/types').LlmProviderConfig,
   scheduler: {
     maxConcurrency: 5,
     maxPerAgent: 3,

@@ -4,7 +4,7 @@
  * 显示当前会话状态和统计信息。
  */
 
-import type { CommandDefinition } from '../types.js';
+import type { CommandDefinition } from '@/cli/repl/types';
 
 /**
  * 创建 status 命令定义

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createQuitCommand } from '../../../../cli/repl/commands/quit.js';
-import type { ReplSession } from '../../../../cli/repl/types.js';
+import { createQuitCommand } from '@/cli/repl/commands/quit';
+import type { ReplSession } from '@/cli/repl/types';
 
 function createMockSession(): ReplSession {
   return {
