@@ -7,6 +7,11 @@ const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf-8')) as {
 };
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': resolve('src'),
+    },
+  },
   define: {
     __VERSION__: JSON.stringify(pkg.version),
   },
