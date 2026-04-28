@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { OutputFormatter } from '../../../../cli/repl/components/output-area.js';
+import type { HistoryEntry, SessionStats } from '../../../../cli/repl/types.js';
 import type { ZapmycoConfig } from '../../../../config/types.js';
-import type { FinalResult } from '../../../core/result/types.js';
-import type { TaskGraph } from '../../../core/task/types.js';
-import type { AgentRegistration } from '../../../protocol/capability.js';
-import type { HistoryEntry, SessionStats } from '../../types.js';
+import type { FinalResult } from '../../../../core/result/types.js';
+import type { TaskGraph } from '../../../../core/task/types.js';
+import type { AgentRegistration } from '../../../../protocol/capability.js';
 
 function createFormatter(color = false): OutputFormatter {
   return new OutputFormatter(color);
@@ -84,7 +84,7 @@ describe('OutputFormatter', () => {
           },
           {
             taskId: 'task-2',
-            status: 'failed',
+            status: 'failure',
             output: null,
             artifacts: [],
             duration: 2000,
@@ -358,7 +358,7 @@ describe('OutputFormatter', () => {
                 id: 'analysis',
                 name: '分析',
                 description: '',
-                category: 'analysis',
+                category: 'code-analysis',
               },
               dependencies: [],
               priority: 1,
@@ -388,7 +388,12 @@ describe('OutputFormatter', () => {
               id: 'task-1',
               name: '第一步',
               description: '第一步描述',
-              requiredCapability: { id: 'c1', name: 'c1', description: '', category: 'c1' },
+              requiredCapability: {
+                id: 'c1',
+                name: 'c1',
+                description: '',
+                category: 'code-generation',
+              },
               dependencies: [],
               priority: 1,
               status: 'succeeded',
@@ -400,7 +405,12 @@ describe('OutputFormatter', () => {
               id: 'task-2',
               name: '第二步',
               description: '第二步描述',
-              requiredCapability: { id: 'c2', name: 'c2', description: '', category: 'c2' },
+              requiredCapability: {
+                id: 'c2',
+                name: 'c2',
+                description: '',
+                category: 'code-modification',
+              },
               dependencies: ['task-1'],
               priority: 2,
               status: 'running',
@@ -429,7 +439,7 @@ describe('OutputFormatter', () => {
               id: 'ok',
               name: '成功任务',
               description: '成功任务描述',
-              requiredCapability: { id: 'x', name: 'x', description: '', category: 'x' },
+              requiredCapability: { id: 'x', name: 'x', description: '', category: 'generic' },
               dependencies: [],
               priority: 1,
               status: 'succeeded',
@@ -441,7 +451,7 @@ describe('OutputFormatter', () => {
               id: 'run',
               name: '运行中',
               description: '运行中描述',
-              requiredCapability: { id: 'x', name: 'x', description: '', category: 'x' },
+              requiredCapability: { id: 'x', name: 'x', description: '', category: 'generic' },
               dependencies: [],
               priority: 1,
               status: 'running',
@@ -453,7 +463,7 @@ describe('OutputFormatter', () => {
               id: 'fail',
               name: '失败任务',
               description: '失败任务描述',
-              requiredCapability: { id: 'x', name: 'x', description: '', category: 'x' },
+              requiredCapability: { id: 'x', name: 'x', description: '', category: 'generic' },
               dependencies: [],
               priority: 1,
               status: 'failed',
@@ -465,7 +475,7 @@ describe('OutputFormatter', () => {
               id: 'cancel',
               name: '已取消',
               description: '已取消描述',
-              requiredCapability: { id: 'x', name: 'x', description: '', category: 'x' },
+              requiredCapability: { id: 'x', name: 'x', description: '', category: 'generic' },
               dependencies: [],
               priority: 1,
               status: 'cancelled',
@@ -477,7 +487,7 @@ describe('OutputFormatter', () => {
               id: 'skip',
               name: '已跳过',
               description: '已跳过描述',
-              requiredCapability: { id: 'x', name: 'x', description: '', category: 'x' },
+              requiredCapability: { id: 'x', name: 'x', description: '', category: 'generic' },
               dependencies: [],
               priority: 1,
               status: 'skipped',
