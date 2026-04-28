@@ -1,10 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// vi.mock 会被 hoisted 到文件顶部，所以 spy 必须用 vi.hoisted 定义
+const { startReplSpy } = vi.hoisted(() => {
+  return {
+    startReplSpy: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+// mock 必须在文件顶层作用域（会被 hoisted）
+vi.mock('../../cli/repl/index.js', () => ({
+  startRepl: startReplSpy,
+}));
+
 describe('CLI', () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   async function runCli(args: string[]) {
@@ -19,11 +32,9 @@ describe('CLI', () => {
       .filter((line): line is string => line != null);
   }
 
-  it('default action should print welcome and REPL message', async () => {
+  it('default action should call startRepl', async () => {
     await runCli([]);
-    const output = getOutput();
-    expect(output.some((line) => line.includes('AI 总管'))).toBe(true);
-    expect(output.some((line) => line.includes('REPL') || line.includes('交互式'))).toBe(true);
+    expect(startReplSpy).toHaveBeenCalledOnce();
   });
 
   it('run command should print goal text', async () => {

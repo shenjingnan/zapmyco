@@ -16,19 +16,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { __VERSION__, APP_NAME } from '../infra/constants.js';
-
-/**
- * 显示欢迎信息
- */
-function printWelcome(): void {
-  console.log(
-    chalk.gray(`  v${__VERSION__}  · `) +
-      chalk.bold('AI 总管') +
-      chalk.gray('  · ') +
-      chalk.green('就绪')
-  );
-  console.log();
-}
+import { startRepl } from './repl/index.js';
 
 // ============ 主程序 ============
 
@@ -41,15 +29,14 @@ program
   .helpOption('-h, --help', '显示帮助信息');
 
 // 默认命令：进入 REPL 模式
-program.action(() => {
-  printWelcome();
-  console.log(chalk.yellow('  交互式 REPL 模式即将推出，敬请期待！'));
-  console.log();
-  console.log(chalk.gray(`  当前可用命令：`));
-  console.log(chalk.gray(`  ${APP_NAME} run <目标>     执行单个目标`));
-  console.log(chalk.gray(`  ${APP_NAME} agents        查看可用 Agent`));
-  console.log(chalk.gray(`  ${APP_NAME} --help         查看所有命令`));
-  console.log();
+program.action(async () => {
+  try {
+    await startRepl();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red('REPL 启动失败:'), message);
+    process.exit(1);
+  }
 });
 
 // run 命令：直接执行目标
