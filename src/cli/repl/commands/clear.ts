@@ -4,7 +4,7 @@
  * 清屏并重置多行输入缓冲区。
  */
 
-import type { CommandDefinition } from '../types.js';
+import type { CommandDefinition } from '@/cli/repl/types';
 
 /**
  * 创建 clear 命令定义

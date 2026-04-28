@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createStatusCommand } from '../../../../cli/repl/commands/status.js';
-import type { ReplSession } from '../../../../cli/repl/types.js';
+import { createStatusCommand } from '@/cli/repl/commands/status';
+import type { ReplSession } from '@/cli/repl/types';
 
 function createMockSession(): ReplSession {
   return {

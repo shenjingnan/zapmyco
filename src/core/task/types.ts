@@ -39,7 +39,7 @@ export interface SubTask {
   /** 当前状态 */
   status: TaskStatus;
   /** 执行结果（完成后填充） */
-  result?: import('../result/types.js').TaskResult;
+  result?: import('@/core/result/types').TaskResult;
 }
 
 /**

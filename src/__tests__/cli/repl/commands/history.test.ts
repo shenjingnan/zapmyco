@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHistoryCommand } from '../../../../cli/repl/commands/history.js';
-import type { HistoryEntry, ReplSession } from '../../../../cli/repl/types.js';
+import { createHistoryCommand } from '@/cli/repl/commands/history';
+import type { HistoryEntry, ReplSession } from '@/cli/repl/types';
 
 function createMockSession(entries?: HistoryEntry[]): ReplSession {
   return {

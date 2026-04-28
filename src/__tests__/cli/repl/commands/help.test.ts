@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHelpCommand } from '../../../../cli/repl/commands/help.js';
-import type { ReplSession } from '../../../../cli/repl/types.js';
+import { createHelpCommand } from '@/cli/repl/commands/help';
+import type { ReplSession } from '@/cli/repl/types';
 
 function createMockSession(overrides?: Partial<ReplSession>): ReplSession {
   return {

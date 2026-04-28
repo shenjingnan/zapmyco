@@ -5,7 +5,7 @@
  * MVP 阶段使用 Anthropic Claude，后续可扩展 OpenAI 等。
  */
 
-import type { ChatMessage, LlmCallOptions, LlmResponse } from './types.js';
+import type { ChatMessage, LlmCallOptions, LlmResponse } from '@/llm/types';
 
 /**
  * LLM 提供商接口

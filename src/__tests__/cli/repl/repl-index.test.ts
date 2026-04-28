@@ -23,14 +23,14 @@ vi.mock('@/config/loader', () => ({
 }));
 
 // Mock ReplSession
-vi.mock('../../../cli/repl/session.js', () => ({
+vi.mock('@/cli/repl/session', () => ({
   ReplSession: class MockReplSession {
     start = mockSessionStart;
     constructor(_config: unknown) {}
   },
 }));
 
-import { startRepl } from '../../../cli/repl/index.js';
+import { startRepl } from '@/cli/repl/index';
 
 describe('startRepl', () => {
   it('应加载配置并创建会话后启动', async () => {

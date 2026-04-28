@@ -13,4 +13,4 @@ export type {
   CapabilityCategory,
   IAgent,
   IStreamingAgent,
-} from './agent.js';
+} from '@/protocol/agent';

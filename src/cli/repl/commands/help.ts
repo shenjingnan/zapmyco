@@ -5,7 +5,7 @@
  */
 
 import chalk, { Chalk } from 'chalk';
-import type { CommandDefinition, ReplSession } from '../types.js';
+import type { CommandDefinition, ReplSession } from '@/cli/repl/types';
 
 /**
  * 创建 help 命令定义

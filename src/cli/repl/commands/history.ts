@@ -4,7 +4,7 @@
  * 查看会话历史记录。
  */
 
-import type { CommandDefinition } from '../types.js';
+import type { CommandDefinition } from '@/cli/repl/types';
 
 /** 默认显示条数 */
 const DEFAULT_COUNT = 10;

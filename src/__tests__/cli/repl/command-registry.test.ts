@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CommandRegistry } from '../../../cli/repl/command-registry.js';
-import type { CommandDefinition, ReplSession } from '../../../cli/repl/types.js';
+import { CommandRegistry } from '@/cli/repl/command-registry';
+import type { CommandDefinition, ReplSession } from '@/cli/repl/types';
 
 /** 创建 mock session */
 function createMockSession(): ReplSession {

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { Renderer } from '@/cli/repl/renderer';
+import type { HistoryEntry, ReplOptions, SessionStats } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
 import type { AgentRegistration } from '@/protocol/capability';
-import { Renderer } from '../../../cli/repl/renderer.js';
-import type { HistoryEntry, ReplOptions, SessionStats } from '../../../cli/repl/types.js';
 
 function createRenderer(color = false): Renderer {
   const opts: ReplOptions = {

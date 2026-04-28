@@ -8,7 +8,7 @@ const { startReplSpy } = vi.hoisted(() => {
 });
 
 // mock 必须在文件顶层作用域（会被 hoisted）
-vi.mock('../../cli/repl/index.js', () => ({
+vi.mock('@/cli/repl/index', () => ({
   startRepl: startReplSpy,
 }));
 
@@ -23,7 +23,7 @@ describe('CLI', () => {
   async function runCli(args: string[]) {
     process.argv = ['node', 'zapmyco', ...args];
     vi.resetModules();
-    await import('../../cli/index.js');
+    await import('@/cli/index');
   }
 
   function getOutput(): string[] {

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { OutputFormatter } from '@/cli/repl/components/output-area';
+import type { HistoryEntry, SessionStats } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
 import type { AgentRegistration } from '@/protocol/capability';
-import { OutputFormatter } from '../../../../cli/repl/components/output-area.js';
-import type { HistoryEntry, SessionStats } from '../../../../cli/repl/types.js';
 
 function createFormatter(color = false): OutputFormatter {
   return new OutputFormatter(color);

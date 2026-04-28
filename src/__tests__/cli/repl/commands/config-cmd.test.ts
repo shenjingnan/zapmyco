@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
+import type { ReplSession } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
-import { createConfigCommand } from '../../../../cli/repl/commands/config-cmd.js';
-import type { ReplSession } from '../../../../cli/repl/types.js';
 
 const mockConfig: ZapmycoConfig = {
   llm: { provider: 'anthropic', apiKey: 'sk-test-key', model: 'claude-sonnet-4-20250514' },

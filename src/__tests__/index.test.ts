@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_NAME, VERSION } from '../index';
+import { APP_NAME, VERSION } from '@/index';
 
 describe('VERSION', () => {
   it('should be a string', () => {

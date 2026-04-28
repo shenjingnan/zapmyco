@@ -5,9 +5,9 @@
  */
 
 import { cosmiconfig } from 'cosmiconfig';
+import { DEFAULT_CONFIG } from '@/config/defaults';
+import type { ZapmycoConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
-import { DEFAULT_CONFIG } from './defaults.js';
-import type { ZapmycoConfig } from './types.js';
 
 // cosmiconfig 的 explorer 名称
 const EXPLORER_NAME = 'zapmyco';

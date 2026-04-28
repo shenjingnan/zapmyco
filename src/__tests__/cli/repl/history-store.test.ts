@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { HistoryStore } from '../../../cli/repl/history-store.js';
+import { HistoryStore } from '@/cli/repl/history-store';
 
 describe('HistoryStore', () => {
   let store: HistoryStore;
