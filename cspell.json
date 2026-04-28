@@ -21,7 +21,9 @@
     "Qwen",
     "zapmyco",
     "Zapmyco",
-    "zapmycorc"
+    "zapmycorc",
+    "mariozechner",
+    "apikey"
   ],
   "ignorePaths": [
     "node_modules",
