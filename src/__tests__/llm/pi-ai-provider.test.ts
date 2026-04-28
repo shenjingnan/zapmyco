@@ -450,7 +450,7 @@ describe('PiAiProvider', () => {
       await provider.chat(messages);
 
       // complete 的第二个参数 context 应包含 systemPrompt
-      const contextArg = mockComplete.mock.calls[0][1];
+      const contextArg = mockComplete.mock.calls[0]![1];
       expect(contextArg.systemPrompt).toBe('You are helpful');
     });
 
@@ -459,7 +459,7 @@ describe('PiAiProvider', () => {
 
       await provider.chat([{ role: 'user', content: 'Hello' }]);
 
-      const contextArg = mockComplete.mock.calls[0][1];
+      const contextArg = mockComplete.mock.calls[0]![1];
       expect(contextArg.systemPrompt).toBeUndefined();
     });
 
@@ -475,7 +475,7 @@ describe('PiAiProvider', () => {
 
       await provider.chat(messages);
 
-      const contextArg = mockComplete.mock.calls[0][1];
+      const contextArg = mockComplete.mock.calls[0]![1];
       // system 消息不在 messages 中
       expect(contextArg.messages).toHaveLength(3); // user + assistant + user
       expect(contextArg.messages[0].role).toBe('user');
@@ -504,7 +504,7 @@ describe('PiAiProvider', () => {
       await customProvider.chat([{ role: 'user', content: 'test' }]);
 
       // getModel 返回的对象的 baseUrl 应被覆盖
-      const modelArg = mockComplete.mock.calls[0][0];
+      const modelArg = mockComplete.mock.calls[0]![0];
       expect(modelArg.baseUrl).toBe('https://deepseek.api.com/anthropic');
     });
 
@@ -526,7 +526,7 @@ describe('PiAiProvider', () => {
 
       await customProvider.chat([{ role: 'user', content: 'test' }]);
 
-      const modelArg = mockComplete.mock.calls[0][0];
+      const modelArg = mockComplete.mock.calls[0]![0];
       // id 应是 API 实际接受的值
       expect(modelArg.id).toBe('deepseek-v4-flash');
       // name 是显示用的完整 key
