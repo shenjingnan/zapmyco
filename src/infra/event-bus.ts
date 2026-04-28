@@ -44,7 +44,7 @@ interface EventMap {
  *
  * 使用方式：
  * ```typescript
- * import { eventBus } from '../infra/event-bus.js';
+ * import { eventBus } from '@/infra/event-bus';
  *
  * eventBus.on('task:started', ({ taskId, agentId }) => {
  *   console.log(`任务 ${taskId} 已在 ${agentId} 上启动`);
