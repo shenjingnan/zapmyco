@@ -4,7 +4,7 @@
  * 列出所有已注册的 Agent 及其状态。
  */
 
-import type { AgentRegistration } from '../../../protocol/capability.js';
+import type { AgentRegistration } from '@/protocol/capability';
 import type { CommandDefinition } from '../types.js';
 
 /**

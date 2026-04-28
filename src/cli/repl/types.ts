@@ -2,9 +2,9 @@
  * REPL 核心类型定义
  */
 
-import type { ZapmycoConfig } from '../../config/types.js';
-import type { FinalResult } from '../../core/result/types.js';
-import type { TaskGraph } from '../../core/task/types.js';
+import type { ZapmycoConfig } from '@/config/types';
+import type { FinalResult } from '@/core/result/types';
+import type { TaskGraph } from '@/core/task/types';
 
 // ============ 输入解析类型 ============
 
@@ -157,7 +157,7 @@ export interface Renderer {
   renderTaskGraph(graph: TaskGraph): string[];
 
   /** 渲染 Agent 列表 → 返回格式化行 */
-  renderAgents(agents: import('../../protocol/capability.js').AgentRegistration[]): string[];
+  renderAgents(agents: import('@/protocol/capability').AgentRegistration[]): string[];
 
   /** 渲染配置信息 → 返回格式化行 */
   renderConfig(config: ZapmycoConfig): string[];

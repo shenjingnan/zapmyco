@@ -4,7 +4,7 @@
  * 管理所有 REPL 内置命令的注册、查找和分发。
  */
 
-import { logger } from '../../infra/logger.js';
+import { logger } from '@/infra/logger';
 import type { CommandDefinition, ParsedInput, ReplSession } from './types.js';
 
 const log = logger.child('repl:command-registry');

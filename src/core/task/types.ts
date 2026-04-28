@@ -4,7 +4,7 @@
  * 将一个 Goal 拆分为多个可并行的 SubTask，组成 DAG（有向无环图）。
  */
 
-import type { Capability } from '../../protocol/capability.js';
+import type { Capability } from '@/protocol/capability';
 
 /** 子任务状态 */
 export type TaskStatus =

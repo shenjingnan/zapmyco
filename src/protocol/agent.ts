@@ -14,25 +14,25 @@ export type {
   ProgressEvent,
   ProgressEventType,
   ProgressPayload,
-} from '../core/aggregator/types.js';
+} from '@/core/aggregator/types';
 
 export type {
   Goal,
   GoalConstraints,
   GoalType,
   ProjectContext,
-} from '../core/intent/types.js';
+} from '@/core/intent/types';
 export type {
   Artifact,
   FinalResult,
   TaskResult,
   TokenUsage,
-} from '../core/result/types.js';
+} from '@/core/result/types';
 export type {
   SubTask,
   TaskGraph,
   TaskStatus,
-} from '../core/task/types.js';
+} from '@/core/task/types';
 export type {
   AgentRegistration,
   AgentRegistrationStatus,
@@ -59,7 +59,7 @@ export interface AgentExecuteRequest {
   /** 任务描述（来自 TaskDecomposer 的具体指令） */
   taskDescription: string;
   /** 上游任务的结果（作为上下文，有依赖时传入） */
-  upstreamResults?: import('../core/result/types.js').TaskResult[];
+  upstreamResults?: import('@/core/result/types').TaskResult[];
   /** 项目工作目录 */
   workdir: string;
   /** 执行配置 */
@@ -87,7 +87,7 @@ export interface IAgent {
   readonly status: AgentStatus;
   readonly currentLoad: number;
 
-  execute(request: AgentExecuteRequest): Promise<import('../core/result/types.js').TaskResult>;
+  execute(request: AgentExecuteRequest): Promise<import('@/core/result/types').TaskResult>;
 
   cancel(taskId: string): Promise<void>;
 

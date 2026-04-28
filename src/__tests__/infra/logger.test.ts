@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ZapmycoError, ZapmycoErrorCode } from '../../infra/errors.js';
-import { Logger, logger } from '../../infra/logger.js';
+import { ZapmycoError, ZapmycoErrorCode } from '@/infra/errors';
+import { Logger, logger } from '@/infra/logger';
 
 describe('Logger', () => {
   let log: Logger;

@@ -4,7 +4,7 @@
  * 导出 startRepl() 函数作为 REPL 交互模式的启动入口。
  */
 
-import { loadConfig } from '../../config/loader.js';
+import { loadConfig } from '@/config/loader';
 import { ReplSession } from './session.js';
 
 /**

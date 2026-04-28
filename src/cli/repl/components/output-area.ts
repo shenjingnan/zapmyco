@@ -6,10 +6,10 @@
  */
 
 import chalk, { Chalk } from 'chalk';
-import type { ZapmycoConfig } from '../../../config/types.js';
-import type { FinalResult } from '../../../core/result/types.js';
-import type { TaskGraph } from '../../../core/task/types.js';
-import type { AgentRegistration } from '../../../protocol/capability.js';
+import type { ZapmycoConfig } from '@/config/types';
+import type { FinalResult } from '@/core/result/types';
+import type { TaskGraph } from '@/core/task/types';
+import type { AgentRegistration } from '@/protocol/capability';
 import type { HistoryEntry } from '../types.js';
 
 /**

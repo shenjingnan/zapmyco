@@ -5,7 +5,7 @@
  */
 
 import { cosmiconfig } from 'cosmiconfig';
-import { logger } from '../infra/logger.js';
+import { logger } from '@/infra/logger';
 import { DEFAULT_CONFIG } from './defaults.js';
 import type { ZapmycoConfig } from './types.js';
 
