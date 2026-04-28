@@ -9,10 +9,25 @@ import type { ZapmycoConfig } from '@/config/types';
 /** 默认配置 */
 export const DEFAULT_CONFIG: ZapmycoConfig = {
   llm: {
-    provider: 'anthropic',
-    // API Key 通过环境变量 ANTHROPIC_API_KEY 设置
-    // model: undefined 表示使用提供商默认模型
-  } as import('@/config/types').LlmProviderConfig,
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
+    models: {
+      'anthropic/claude-sonnet-4-20250514': {
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-20250514',
+        description: 'Anthropic Claude Sonnet 4 - 均衡模型，日常使用推荐',
+      },
+    },
+    providers: {
+      anthropic: {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: 环境变量引用语法
+        apiKey: '${ANTHROPIC_API_KEY}',
+      },
+    },
+    defaults: {
+      maxTokens: 8192,
+      temperature: 0.7,
+    },
+  },
   scheduler: {
     maxConcurrency: 5,
     maxPerAgent: 3,

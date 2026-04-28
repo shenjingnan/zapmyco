@@ -26,7 +26,16 @@ const baseResult: FinalResult = {
 };
 
 const baseConfig: ZapmycoConfig = {
-  llm: { provider: 'anthropic', apiKey: 'sk-test', model: 'claude-sonnet' },
+  llm: {
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
+    models: {
+      'anthropic/claude-sonnet-4-20250514': {
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-20250514',
+      },
+    },
+    providers: { anthropic: { apiKey: 'sk-test' } },
+  },
   scheduler: {
     maxConcurrency: 5,
     maxPerAgent: 3,
@@ -234,18 +243,25 @@ describe('OutputFormatter', () => {
 
     it('无 apiKey 时应显示未配置', () => {
       const f = createFormatter();
-      const config = { ...baseConfig, llm: { ...baseConfig.llm, apiKey: '' } };
+      const config = {
+        ...baseConfig,
+        llm: {
+          ...baseConfig.llm,
+          providers: { anthropic: {} },
+        },
+      };
       const lines = f.formatConfig(config);
       const text = lines.join('\n');
       expect(text).toContain('(未配置)');
     });
 
-    it('无 model 时应显示默认提示', () => {
+    it('应显示默认模型和提供商信息', () => {
       const f = createFormatter();
-      const config = { ...baseConfig, llm: { ...baseConfig.llm, model: undefined } };
-      const lines = f.formatConfig(config);
+      const lines = f.formatConfig(baseConfig);
       const text = lines.join('\n');
-      expect(text).toContain('(默认)');
+      expect(text).toContain('默认模型:');
+      expect(text).toContain('anthropic');
+      expect(text).toContain('claude-sonnet-4-20250514');
     });
 
     it('应包含所有配置区域', () => {
