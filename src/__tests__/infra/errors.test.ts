@@ -7,7 +7,7 @@ import {
   SchedulerError,
   ZapmycoError,
   ZapmycoErrorCode,
-} from '../../infra/errors.js';
+} from '@/infra/errors';
 
 describe('ZapmycoErrorCode', () => {
   it('should contain all intent error codes', () => {

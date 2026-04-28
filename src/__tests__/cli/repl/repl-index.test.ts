@@ -18,7 +18,7 @@ const { mockConfig, mockSessionStart } = vi.hoisted(() => ({
 }));
 
 // Mock config loader
-vi.mock('../../../config/loader.js', () => ({
+vi.mock('@/config/loader', () => ({
   loadConfig: vi.fn().mockResolvedValue(mockConfig),
 }));
 

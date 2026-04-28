@@ -15,7 +15,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { __VERSION__, APP_NAME } from '../infra/constants.js';
+import { __VERSION__, APP_NAME } from '@/infra/constants';
 import { startRepl } from './repl/index.js';
 
 // ============ 主程序 ============

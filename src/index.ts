@@ -7,7 +7,7 @@
  */
 
 // __VERSION__ 由 tsdown 构建时从 package.json 注入
-import { __VERSION__ } from './infra/constants.js';
+import { __VERSION__ } from '@/infra/constants';
 
 /** 当前版本号 */
 export const VERSION: string = __VERSION__;
@@ -28,7 +28,7 @@ export type {
   CapabilityCategory,
   IAgent,
   IStreamingAgent,
-} from './protocol/agent.js';
+} from '@/protocol/agent';
 
 // ============ Core 类型导出 ============
 
@@ -36,13 +36,13 @@ export type {
   ProgressEvent,
   ProgressEventType,
   ProgressPayload,
-} from './core/aggregator/types.js';
+} from '@/core/aggregator/types';
 export type {
   Goal,
   GoalConstraints,
   GoalType,
   ProjectContext,
-} from './core/intent/types.js';
+} from '@/core/intent/types';
 export type {
   Artifact,
   ArtifactType,
@@ -50,30 +50,30 @@ export type {
   TaskError,
   TaskResult,
   TokenUsage,
-} from './core/result/types.js';
+} from '@/core/result/types';
 export type {
   SubTask,
   TaskGraph,
   TaskStatus,
-} from './core/task/types.js';
+} from '@/core/task/types';
 
 // ============ LLM 层导出 ============
 
-export { CostTracker, costTracker } from './llm/cost-tracker.js';
-export type { ILlmProvider } from './llm/provider.js';
+export { CostTracker, costTracker } from '@/llm/cost-tracker';
+export type { ILlmProvider } from '@/llm/provider';
 export type {
   ChatMessage,
   ChatRole,
   LlmCallOptions,
   LlmResponse,
   StructuredOutputSchema,
-} from './llm/types.js';
+} from '@/llm/types';
 
 // ============ Config 层导出 ============
 
-export { DEFAULT_CONFIG } from './config/defaults.js';
-export { loadConfig } from './config/loader.js';
-export type { ZapmycoConfig } from './config/types.js';
+export { DEFAULT_CONFIG } from '@/config/defaults';
+export { loadConfig } from '@/config/loader';
+export type { ZapmycoConfig } from '@/config/types';
 
 // ============ Infra 层导出 ============
 
@@ -85,11 +85,11 @@ export {
   SchedulerError,
   ZapmycoError,
   ZapmycoErrorCode,
-} from './infra/errors.js';
-export type { EventMap } from './infra/event-bus.js';
-export { eventBus } from './infra/event-bus.js';
-export type { LogEntry, LogLevel } from './infra/logger.js';
-export { Logger, logger } from './infra/logger.js';
+} from '@/infra/errors';
+export type { EventMap } from '@/infra/event-bus';
+export { eventBus } from '@/infra/event-bus';
+export type { LogEntry, LogLevel } from '@/infra/logger';
+export { Logger, logger } from '@/infra/logger';
 
 // 默认导出
 export default {

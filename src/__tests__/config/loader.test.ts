@@ -13,7 +13,7 @@ vi.mock('cosmiconfig', () => ({
   cosmiconfig: vi.fn(() => ({ search: searchMock, load: loadMock })),
 }));
 
-vi.mock('../../infra/logger.js', () => ({
+vi.mock('@/infra/logger', () => ({
   logger: {
     debug: debugMock,
     info: infoMock,
@@ -21,8 +21,8 @@ vi.mock('../../infra/logger.js', () => ({
   },
 }));
 
-import { DEFAULT_CONFIG } from '../../config/defaults.js';
-import { loadConfig } from '../../config/loader.js';
+import { DEFAULT_CONFIG } from '@/config/defaults';
+import { loadConfig } from '@/config/loader';
 
 describe('loadConfig', () => {
   beforeEach(() => {

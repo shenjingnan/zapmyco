@@ -5,8 +5,8 @@
  * 用于成本控制和用户展示。
  */
 
-import type { TokenUsage } from '../core/result/types.js';
-import { logger } from '../infra/logger.js';
+import type { TokenUsage } from '@/core/result/types';
+import { logger } from '@/infra/logger';
 
 /** 模型定价信息（每百万 token 的美元价格） */
 interface ModelPricing {
@@ -31,7 +31,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
  *
  * 使用方式：
  * ```typescript
- * import { costTracker } from '../llm/cost-tracker.js';
+ * import { costTracker } from '@/llm/cost-tracker';
  *
  * costTracker.record({ inputTokens: 1000, outputTokens: 500 }, 'claude-sonnet-4');
  * const summary = costTracker.getSummary();

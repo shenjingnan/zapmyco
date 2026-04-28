@@ -9,10 +9,10 @@
  */
 
 import { Container, ProcessTerminal, Text, TUI } from '@mariozechner/pi-tui';
-import type { ZapmycoConfig } from '../../config/types.js';
-import { __VERSION__ } from '../../infra/constants.js';
-import { eventBus } from '../../infra/event-bus.js';
-import { logger } from '../../infra/logger.js';
+import type { ZapmycoConfig } from '@/config/types';
+import { __VERSION__ } from '@/infra/constants';
+import { eventBus } from '@/infra/event-bus';
+import { logger } from '@/infra/logger';
 import { CommandRegistry } from './command-registry.js';
 import { createAgentsCommand } from './commands/agents-cmd.js';
 import { createClearCommand } from './commands/clear.js';
@@ -231,7 +231,7 @@ export class ReplSession {
    * 当前阶段：引擎尚未完全实现，返回模拟结果。
    * 预留 FinalResult 接口，对接引擎后替换为真实调用。
    */
-  async executeGoal(rawInput: string): Promise<import('../../core/result/types.js').FinalResult> {
+  async executeGoal(rawInput: string): Promise<import('@/core/result/types').FinalResult> {
     const startTime = Date.now();
     let historyEntry: import('./types.js').HistoryEntry | undefined;
 
@@ -277,7 +277,7 @@ export class ReplSession {
 
       // 返回模拟的 FinalResult
       const duration = Date.now() - startTime;
-      const mockResult: import('../../core/result/types.js').FinalResult = {
+      const mockResult: import('@/core/result/types').FinalResult = {
         goalId: `goal-${startTime}`,
         overallStatus: 'success',
         summary: `[模拟] 已接收目标: ${rawInput.slice(0, 80)}${rawInput.length > 80 ? '...' : ''}`,

@@ -69,7 +69,7 @@ vi.mock('../../../cli/repl/components/custom-editor.js', () => ({
 }));
 
 // Mock eventBus
-vi.mock('../../../infra/event-bus.js', () => ({
+vi.mock('@/infra/event-bus', () => ({
   eventBus: {
     emit: mockEmit,
     on: mockOn,
@@ -77,7 +77,7 @@ vi.mock('../../../infra/event-bus.js', () => ({
 }));
 
 // Mock logger
-vi.mock('../../../infra/logger.js', () => ({
+vi.mock('@/infra/logger', () => ({
   logger: {
     child: vi.fn().mockReturnValue({
       info: vi.fn(),
@@ -201,9 +201,9 @@ vi.mock('../../../cli/repl/history-store.js', () => ({
   },
 }));
 
+import type { ZapmycoConfig } from '@/config/types';
 // ============ 导入被测模块 ============
 import { ReplSession } from '../../../cli/repl/session.js';
-import type { ZapmycoConfig } from '../../../config/types.js';
 
 function createTestConfig(overrides?: Partial<ZapmycoConfig>): ZapmycoConfig {
   return {
