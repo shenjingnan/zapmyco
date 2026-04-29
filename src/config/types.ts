@@ -83,6 +83,18 @@ export interface SchedulerConfig {
   retryBaseDelayMs: number;
 }
 
+/** Agent 运行时配置（基于 pi-agent-core） */
+export interface AgentRuntimeConfig {
+  /** 是否启用 Agent 运行时 */
+  enabled: boolean;
+  /** 工具执行策略：顺序或并行 */
+  toolExecution?: 'sequential' | 'parallel';
+  /** agentLoop 最大轮次（防止无限循环） */
+  maxTurns?: number;
+  /** 推理级别 */
+  thinkingLevel?: string;
+}
+
 /** Agent 配置 */
 export interface AgentConfig {
   /** Agent ID */
@@ -126,6 +138,9 @@ export interface ZapmycoConfig {
 
   /** 已注册的 Agent 配置列表 */
   agents: AgentConfig[];
+
+  /** Agent 运行时配置（pi-agent-core 集成） */
+  agentRuntime?: AgentRuntimeConfig;
 
   /** CLI 配置 */
   cli: CliConfig;

@@ -57,6 +57,28 @@ export type {
   TaskStatus,
 } from '@/core/task/types';
 
+// ============ Agent Runtime 导出（pi-agent-core 集成层） ============
+
+export type {
+  AdaptedAgentEvent,
+  AgentAdapterOptions,
+  AgentRuntimeConfig,
+  ToolExecutionMode,
+  ToolRegistration,
+} from '@/core/agent-runtime';
+export {
+  adaptAgentEvent,
+  createEventBridgeListener,
+  createLlmBasedAgent,
+  createRequestFromSubTask,
+  createToolFromCapability,
+  createToolsFromCapabilities,
+  dispatchToEventBus,
+  LlmBasedAgent,
+  toAgentTool,
+  toAgentTools,
+} from '@/core/agent-runtime';
+
 // ============ LLM 层导出 ============
 
 export { CostTracker, costTracker } from '@/llm/cost-tracker';
