@@ -124,7 +124,7 @@ async function ensureHomeConfig(): Promise<void> {
     },
   };
 
-  await writeFile(HOME_CONFIG_PATH, JSON.stringify(template, null, 2) + '\n', 'utf-8');
+  await writeFile(HOME_CONFIG_PATH, `${JSON.stringify(template, null, 2)}\n`, 'utf-8');
   logger.info('已创建默认配置文件', { filepath: HOME_CONFIG_PATH });
 }
 
