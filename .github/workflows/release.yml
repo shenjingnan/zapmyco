@@ -21,7 +21,7 @@ jobs:
       - name: 设置 Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: file
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
