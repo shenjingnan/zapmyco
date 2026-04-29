@@ -18,8 +18,8 @@ describe('ILlmProvider interface', () => {
       chat: async () => ({
         content: 'response',
         model: 'test-model',
-        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
-        finishReason: 'end_turn',
+        inputTokens: 10,
+        outputTokens: 20,
       }),
       chatStream: async function* () {
         yield 'hello';

@@ -133,7 +133,12 @@ describe('LlmBasedAgent', () => {
 
       // Set up a message in the state so extractTaskResult finds something
       const mockState = agent.innerAgent.state;
-      mockState.messages = [{ role: 'assistant', content: 'Task completed successfully' }];
+      mockState.messages = [
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Task completed successfully' }],
+        } as never,
+      ];
 
       const result = await agent.execute({
         taskId: 'task-1',

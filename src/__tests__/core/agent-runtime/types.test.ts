@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { AdaptedAgentEvent, ToolExecutionMode } from '@/core/agent-runtime/types';
+import type {
+  AdaptedAgentEvent,
+  AgentRuntimeConfig,
+  ToolExecutionMode,
+} from '@/core/agent-runtime/types';
 
 describe('agent-runtime types', () => {
   describe('ToolExecutionMode', () => {

@@ -76,8 +76,8 @@ describe('tool-bridge', () => {
       const tools = toAgentTools(registrations);
 
       expect(tools).toHaveLength(2);
-      expect(tools[0].name).toBe('tool-a');
-      expect(tools[1].name).toBe('tool-b');
+      expect(tools[0]?.name).toBe('tool-a');
+      expect(tools[1]?.name).toBe('tool-b');
     });
 
     it('should return empty array for empty input', () => {
@@ -128,10 +128,10 @@ describe('tool-bridge', () => {
       const registrations = createToolsFromCapabilities(capabilities, factory);
 
       expect(registrations).toHaveLength(2);
-      expect(registrations[0].id).toBe('cap-1');
-      expect(registrations[0].execute).toBe(execute1);
-      expect(registrations[1].id).toBe('cap-2');
-      expect(registrations[1].execute).toBe(execute2);
+      expect(registrations[0]?.id).toBe('cap-1');
+      expect(registrations[0]?.execute).toBe(execute1);
+      expect(registrations[1]?.id).toBe('cap-2');
+      expect(registrations[1]?.execute).toBe(execute2);
       expect(factory).toHaveBeenCalledTimes(2);
     });
   });
