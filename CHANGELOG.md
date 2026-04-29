@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.0 (2026-04-29)
+
+### Features
+
+* **agent-runtime:** 集成 pi-agent-core 作为 Agent 运行时适配层 ([#13](https://github.com/shenjingnan/zapmyco/issues/13)) ([f6a551b](https://github.com/shenjingnan/zapmyco/commit/f6a551b5d57683e628bc0f000c736ac899112c8f))
+* **config:** 添加 @/ 路径别名配置 ([#7](https://github.com/shenjingnan/zapmyco/issues/7)) ([e55dc8e](https://github.com/shenjingnan/zapmyco/commit/e55dc8e78150b60a9ae01e315b7586d98c52f5dc))
+* **deps:** 引入 pi-agent-core 并移除冗余的 @anthropic-ai/sdk ([#12](https://github.com/shenjingnan/zapmyco/issues/12)) ([238c314](https://github.com/shenjingnan/zapmyco/commit/238c314b8fb49864c1f8ab9b72bf8114333b04e3))
+* **lint-staged:** 在 pre-commit 中添加 typecheck 和 test 拦截 ([#18](https://github.com/shenjingnan/zapmyco/issues/18)) ([38a4653](https://github.com/shenjingnan/zapmyco/commit/38a465380d31dafe30e814d9fa535895ebb9f403))
+* **llm:** 集成 @mariozechner/pi-ai 作为 LLM 提供商并接通 REPL 流式对话 ([#11](https://github.com/shenjingnan/zapmyco/issues/11)) ([402568e](https://github.com/shenjingnan/zapmyco/commit/402568e7f746e2b7f228c687421ac272613c7fd5))
+* **repl:** 将 REPL 执行路径从直接调 LLM 切换为 Agent 层 ([#14](https://github.com/shenjingnan/zapmyco/issues/14)) ([eeb80ec](https://github.com/shenjingnan/zapmyco/commit/eeb80ecfb0e357165be157eabcbea054a1b0d1a5))
+* **repl:** 迁移 REPL 至 @mariozechner/pi-tui 框架 ([#6](https://github.com/shenjingnan/zapmyco/issues/6)) ([324d1ea](https://github.com/shenjingnan/zapmyco/commit/324d1ea76ef5a872614d9ae5f702df8e0b979754))
+* 搭建 zapmyco Phase 0 骨架 — AI 总管并行任务编排系统 ([#4](https://github.com/shenjingnan/zapmyco/issues/4)) ([6ec7640](https://github.com/shenjingnan/zapmyco/commit/6ec7640036c3c9455d5ed135ea8cbb1d769afb97))
+
+### Code Refactoring
+
+* **ci:** release 工作流 Node 版本改为从 .node-version 读取 ([#17](https://github.com/shenjingnan/zapmyco/issues/17)) ([2cb558f](https://github.com/shenjingnan/zapmyco/commit/2cb558fc47ee7393b85c6c0d2c26d467b4ff5d8c))
+* **ci:** 移除工作流中 pnpm 硬编码版本号，改用 packageManager 字段 ([#15](https://github.com/shenjingnan/zapmyco/issues/15)) ([4c0b588](https://github.com/shenjingnan/zapmyco/commit/4c0b5882debb018e01c8714a99b1cfbaec6a7820))
+* 将 .nvmrc 替换为通用的 .node-version ([#16](https://github.com/shenjingnan/zapmyco/issues/16)) ([0f4ec8b](https://github.com/shenjingnan/zapmyco/commit/0f4ec8be3ae987391643894822f087ddecf2134f))
+* 将 JSDoc 注释中的相对路径 import 更新为 @/ 别名 ([#10](https://github.com/shenjingnan/zapmyco/issues/10)) ([a029005](https://github.com/shenjingnan/zapmyco/commit/a0290058f5a3954ee19cdf2ff683d25dc419b1e1)), closes [#8](https://github.com/shenjingnan/zapmyco/issues/8)
+* 将所有剩余相对路径 import 统一转换为 @/ 路径别名 ([#9](https://github.com/shenjingnan/zapmyco/issues/9)) ([fbea177](https://github.com/shenjingnan/zapmyco/commit/fbea177398a4b6c9d211adc94160383cb205b113)), closes [#8](https://github.com/shenjingnan/zapmyco/issues/8)
+* 将跨模块相对路径 import 统一转换为 @/ 路径别名 ([#8](https://github.com/shenjingnan/zapmyco/issues/8)) ([d8653fe](https://github.com/shenjingnan/zapmyco/commit/d8653fedf15cd607d2fd513012c170d83fdbc3f7))
+
+### Documentation
+
+* 更新 README.md 反映项目实际状态 ([#19](https://github.com/shenjingnan/zapmyco/issues/19)) ([cad257f](https://github.com/shenjingnan/zapmyco/commit/cad257f57cc1a797ea680064566f996effeaea01))
+
+### CI/CD
+
+* **deps:** bump pnpm/action-setup from 5 to 6 ([#1](https://github.com/shenjingnan/zapmyco/issues/1)) ([e42218c](https://github.com/shenjingnan/zapmyco/commit/e42218cdf3b37fd1ce121d11b849ae6b6ee99384))
+
 ## [0.4.5](https://github.com/shenjingnan/ai-typescript-starter/compare/v0.4.4...v0.4.5) (2026-04-14)
 
 ### Bug Fixes
