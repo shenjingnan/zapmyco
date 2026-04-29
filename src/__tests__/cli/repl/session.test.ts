@@ -360,7 +360,6 @@ describe('ReplSession', () => {
 
     it('应渲染欢迎信息', async () => {
       // start() 直接向 outputArea 追加硬编码的欢迎字符串，不再调用 renderWelcome
-      const mockAppend = vi.fn();
       // 通过 session.appendOutput 验证输出
       session.appendOutput(['ZapMyco: 欢迎回来!', '']);
 
