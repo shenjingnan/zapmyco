@@ -10,7 +10,7 @@
 
 import type { KnownProvider } from '@mariozechner/pi-ai';
 import { getModel } from '@mariozechner/pi-ai';
-import { Container, ProcessTerminal, Text, TUI, wrapTextWithAnsi } from '@mariozechner/pi-tui';
+import { Container, ProcessTerminal, TUI, wrapTextWithAnsi } from '@mariozechner/pi-tui';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
 import { createClearCommand } from '@/cli/repl/commands/clear';
@@ -35,7 +35,6 @@ import type {
 } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
-import { __VERSION__ } from '@/infra/constants';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import { parseModelKey } from '@/llm/pi-ai-provider';
@@ -96,8 +95,6 @@ export class ReplSession {
   private readonly tui: TUI;
   private readonly editor: ZapmycoEditor;
   private readonly outputArea: OutputArea;
-  private readonly header: Text;
-  private readonly footer: Text;
   private readonly options: ReplOptions;
   private _state: SessionState = 'idle';
   private readonly parser: InputParser;
@@ -142,16 +139,12 @@ export class ReplSession {
     this.tui = new TUI(terminal);
 
     // 创建组件
-    this.header = new Text('', 1, 0);
     this.outputArea = new OutputArea();
-    this.footer = new Text('', 1, 0);
     this.editor = new ZapmycoEditor(this.tui, theme.editorTheme);
 
-    // 组装组件树：header → outputArea → footer → editor(带边框)
+    // 组装组件树：outputArea → editor(无边框，带提示符)
     const root = new Container();
-    root.addChild(this.header);
     root.addChild(this.outputArea);
-    root.addChild(this.footer);
     root.addChild(this.editor);
 
     this.tui.addChild(root);
@@ -196,13 +189,8 @@ export class ReplSession {
     this._state = 'idle';
     this.updateStatsState();
 
-    // 渲染欢迎信息到输出区域
-    const welcomeLines = this.renderer.renderWelcome(__VERSION__);
-    this.outputArea.append(welcomeLines);
-
-    // 设置 header 和 footer
-    this.updateHeader();
-    this.updateFooter();
+    // 渲染简化的欢迎信息
+    this.outputArea.append(['ZapMyco: 欢迎回来!', '']);
 
     // 启动 TUI
     this.tui.start();
@@ -273,7 +261,7 @@ export class ReplSession {
       // 更新状态
       this._state = 'executing';
       this.updateStatsState();
-      this.updateFooter();
+      this.editor.setExecuting(true);
 
       // 创建 AbortController 用于取消（兼容保留）
       this.currentTaskAbort = new AbortController();
@@ -291,7 +279,7 @@ export class ReplSession {
       });
 
       // 显示用户输入
-      const goalLines: string[] = ['', `  🎯 ${rawInput}`, '', '  💬 '];
+      const goalLines: string[] = [`Me: ${rawInput}`, 'ZapMyco: '];
       this.outputArea.append(goalLines);
 
       // 设置流式输出桥接：Agent EVENT_OUTPUT -> outputArea.appendText()
@@ -359,13 +347,11 @@ export class ReplSession {
           error: taskResult.error,
           status: taskResult.status,
         });
-      } else if (outputText) {
-        // 成功且有输出：确保文本已显示（兜底，正常情况流式事件已输出）
-        this.outputArea.appendText(outputText);
       }
+      // 注意：成功时不再追加 outputText，流式事件（EVENT_OUTPUT）已经实时输出了全部内容
 
-      // 追加分隔线
-      this.outputArea.append(['', '']);
+      // 追加换行分隔
+      this.outputArea.append(['']);
       const duration = Date.now() - startTime;
 
       // 构建 FinalResult
@@ -449,7 +435,7 @@ export class ReplSession {
     } finally {
       this._state = 'idle';
       this.updateStatsState();
-      this.updateFooter();
+      this.editor.setExecuting(false);
       this.currentTaskAbort = null;
       this.currentTaskId = null;
     }
@@ -626,19 +612,18 @@ export class ReplSession {
       if (this._state === 'executing') {
         // 执行中：取消任务
         this.cancelCurrentTask();
-        this.outputArea.append(['', '  任务已取消', '']);
+        this.outputArea.append(['', '任务已取消', '']);
         return;
       }
 
       // 空闲中：累计按键次数
       ctrlCPressCount++;
       if (ctrlCPressCount >= 2) {
-        this.outputArea.append(['', '  再见！', '']);
         void this.shutdown('用户连续按下 Ctrl+C');
         return;
       }
 
-      this.outputArea.append(['', '  (再次按下 Ctrl+C 可强制退出)', '']);
+      this.outputArea.append(['', '(再次按下 Ctrl+C 可强制退出)', '']);
 
       clearTimeout(ctrlCTimer);
       ctrlCTimer = setTimeout(() => {
@@ -648,7 +633,6 @@ export class ReplSession {
 
     // Ctrl+D
     this.editor.onCtrlD = () => {
-      this.outputArea.append(['', '  再见！', '']);
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
   }
@@ -684,23 +668,5 @@ export class ReplSession {
   /** 更新统计中的状态字段 */
   private updateStatsState(): void {
     this.stats.state = this._state;
-  }
-
-  /** 更新 header 文本 */
-  private updateHeader(): void {
-    const theme = createTheme(this.options.color);
-    this.header.setText(theme.heading(`  zapmyco@${__VERSION__}`));
-  }
-
-  /** 更新 footer 文本 */
-  private updateFooter(): void {
-    const theme = createTheme(this.options.color);
-    const stateLabel =
-      this._state === 'idle'
-        ? theme.success('空闲')
-        : this._state === 'executing'
-          ? theme.warning('执行中')
-          : theme.dim('关闭中');
-    this.footer.setText(`  ${stateLabel}`);
   }
 }
