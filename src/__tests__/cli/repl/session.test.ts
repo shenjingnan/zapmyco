@@ -51,7 +51,6 @@ vi.mock('@mariozechner/pi-tui', () => ({
   ProcessTerminal: vi.fn(),
   Text: class MockText {
     setText = mockTextSetText;
-    constructor(_text: string, _height: number, _width: number) {}
   },
 }));
 
@@ -64,29 +63,73 @@ vi.mock('@/cli/repl/components/custom-editor', () => ({
     onCtrlD?: () => void;
     getText = vi.fn().mockReturnValue('');
     handleInput = vi.fn();
-    constructor(_tui: unknown, _theme: unknown) {}
   },
 }));
 
-// Mock PiAiProvider — 让 executeGoal() 能正常完成 LLM 调用
-const mockChatStreamGenerator = (async function* (): AsyncGenerator<string> {
-  yield 'Hello ';
-  yield 'from ';
-  yield 'AI!';
-})();
+// ============ pi-agent-core Mock ============
+const mockAgentSubscribe = vi.fn(() => vi.fn());
+const mockAgentPrompt = vi.fn().mockResolvedValue(undefined);
+const mockAgentWaitForIdle = vi.fn().mockResolvedValue(undefined);
+const mockAgentAbort = vi.fn();
 
+// 创建可变的 mock state（允许测试修改）
+const createMockAgentState = () => ({
+  systemPrompt: '',
+  model: { name: 'test-model', id: 'test-model' },
+  thinkingLevel: 'medium',
+  tools: [] as unknown[],
+  messages: [] as unknown[],
+  isStreaming: false,
+  pendingToolCalls: new Set<string>(),
+});
+
+let mockAgentState = createMockAgentState();
+
+vi.mock('@mariozechner/pi-agent-core', () => ({
+  Agent: vi.fn().mockImplementation(() => ({
+    get state() {
+      return mockAgentState;
+    },
+    set state(value: unknown) {
+      mockAgentState = value as typeof mockAgentState;
+    },
+    subscribe: mockAgentSubscribe,
+    prompt: mockAgentPrompt,
+    waitForIdle: mockAgentWaitForIdle,
+    abort: mockAgentAbort,
+    reset: vi.fn(),
+  })),
+}));
+
+// Mock @mariozechner/pi-ai（getModel 用于 Agent 初始化）
+vi.mock('@mariozechner/pi-ai', () => ({
+  getModel: vi.fn().mockReturnValue({
+    name: 'anthropic/claude-sonnet-4-20250514',
+    id: 'claude-sonnet-4-20250514',
+    baseUrl: undefined,
+  }),
+}));
+
+// Mock PiAiProvider — 不再需要 mock chatStream（REPL 通过 Agent 执行）
 vi.mock('@/llm/pi-ai-provider', () => ({
   PiAiProvider: class MockPiAiProvider {
     readonly providerId = 'pi-ai';
-    chatStream = vi.fn().mockReturnValue(mockChatStreamGenerator);
+    chatStream = vi.fn();
     chat = vi.fn().mockResolvedValue({
       content: 'Mock response',
       inputTokens: 10,
       outputTokens: 5,
       model: 'test-model',
     });
-    constructor(_config: unknown) {}
   },
+  parseModelKey: vi.fn((key: string) => {
+    const slashIndex = key.indexOf('/');
+    if (slashIndex <= 0 || slashIndex >= key.length - 1) return null;
+    return {
+      provider: key.slice(0, slashIndex),
+      modelId: key.slice(slashIndex + 1),
+    };
+  }),
 }));
 
 // Mock eventBus
@@ -158,7 +201,7 @@ vi.mock('@/cli/repl/commands/config-cmd', () => ({
     name: 'config',
     aliases: [],
     description: '配置信息',
-    usage: '/config',
+    usage: '/config [show | get <key>]',
     handler: vi.fn(),
   }),
 }));
@@ -218,8 +261,32 @@ vi.mock('@/cli/repl/history-store', () => ({
     getLast = vi.fn().mockReturnValue([]);
     clear = vi.fn();
     search = vi.fn().mockReturnValue([]);
-    constructor(_maxSize: number) {}
   },
+}));
+
+// Mock repl-agent-tools
+vi.mock('@/cli/repl/repl-agent-tools', () => ({
+  createReplBuiltinTools: vi.fn().mockReturnValue([
+    {
+      id: 'get_current_time',
+      label: '获取当前时间',
+      description: '获取当前日期和时间',
+      execute: vi.fn(),
+    },
+    {
+      id: 'get_workdir_info',
+      label: '获取工作目录信息',
+      description: '获取当前工作目录信息',
+      execute: vi.fn(),
+    },
+    {
+      id: 'read_file',
+      label: '读取文件',
+      description: '读取文件内容',
+      parameters: {},
+      execute: vi.fn(),
+    },
+  ]),
 }));
 
 // ============ 导入被测模块 ============
@@ -256,6 +323,8 @@ describe('ReplSession', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // 重置 Agent 状态 mock
+    mockAgentState = createMockAgentState();
     session = new ReplSession(createTestConfig());
   });
 
@@ -300,9 +369,9 @@ describe('ReplSession', () => {
     });
 
     it('应发布 system:shutdown 事件', async () => {
-      await session.shutdown('用户退出');
+      await session.shutdown('测试关闭');
 
-      expect(mockEmit).toHaveBeenCalledWith('system:shutdown', { reason: '用户退出' });
+      expect(mockEmit).toHaveBeenCalledWith('system:shutdown', { reason: '测试关闭' });
     });
 
     it('重复调用应幂等返回', async () => {
@@ -323,23 +392,71 @@ describe('ReplSession', () => {
   });
 
   describe('executeGoal()', () => {
-    it('应返回模拟 FinalResult', async () => {
+    it('应通过 Agent 执行并返回 FinalResult', async () => {
+      // 模拟 Agent 返回成功结果
+      const mockTaskResult = {
+        taskId: expect.any(String),
+        status: 'success' as const,
+        output: 'Agent 回复内容',
+        artifacts: [],
+        duration: expect.any(Number),
+        tokenUsage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          estimatedCostUsd: 0,
+        },
+      };
+
+      // 让 LlmBasedAgent.execute 返回模拟结果
+      const { LlmBasedAgent } = await import('@/core/agent-runtime');
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (LlmBasedAgent as any).prototype as any,
+        'execute'
+      ).mockResolvedValueOnce(mockTaskResult);
+
       const result = await session.executeGoal('测试目标');
 
       expect(result).toBeDefined();
       expect(result.overallStatus).toBe('success');
       expect(result.goalId).toContain('goal-');
-      // summary 现在是 LLM 回复内容
-      expect(result.summary).toBe('Hello from AI!');
+      expect(result.summary).toBe('Agent 回复内容');
     });
 
     it('执行完成后状态应重置为 idle', async () => {
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      ).mockResolvedValueOnce({
+        taskId: 'task-1',
+        status: 'success' as const,
+        output: 'ok',
+        artifacts: [],
+        duration: 100,
+        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+      });
+
       await session.executeGoal('测试');
 
       expect(session.currentState).toBe('idle');
     });
 
     it('应更新统计信息：totalRequests 和 successCount', async () => {
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      ).mockResolvedValueOnce({
+        taskId: 'task-1',
+        status: 'success' as const,
+        output: 'ok',
+        artifacts: [],
+        duration: 100,
+        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+      });
+
       await session.executeGoal('测试');
 
       const stats = session.getStats();
@@ -349,6 +466,19 @@ describe('ReplSession', () => {
     });
 
     it('应发布 goal:submitted 和 goal:completed 事件', async () => {
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      ).mockResolvedValueOnce({
+        taskId: 'task-1',
+        status: 'success' as const,
+        output: 'ok',
+        artifacts: [],
+        duration: 100,
+        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+      });
+
       await session.executeGoal('测试目标');
 
       expect(mockEmit).toHaveBeenCalledWith(
@@ -362,12 +492,39 @@ describe('ReplSession', () => {
     });
 
     it('长输入应截断 summary', async () => {
+      const longOutput = 'a'.repeat(300);
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      ).mockResolvedValueOnce({
+        taskId: 'task-1',
+        status: 'success' as const,
+        output: longOutput,
+        artifacts: [],
+        duration: 100,
+        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+      });
+
       const longInput = 'a'.repeat(200);
       const result = await session.executeGoal(longInput);
 
-      // summary 是 LLM 回复内容，截断至前 200 字符
+      // summary 是 Agent 输出内容，截断至前 200 字符
       expect(result.summary.length).toBeLessThanOrEqual(200);
       expect(result.overallStatus).toBe('success');
+    });
+
+    it('Agent 失败时应返回 failure 状态', async () => {
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      ).mockRejectedValueOnce(new Error('Agent 内部错误'));
+
+      const result = await session.executeGoal('触发错误');
+
+      expect(result.overallStatus).toBe('failure');
+      expect(result.summary).toContain('执行失败');
     });
   });
 
@@ -386,6 +543,19 @@ describe('ReplSession', () => {
     });
 
     it('自然语言输入应执行 goal', async () => {
+      vi.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      ).mockResolvedValueOnce({
+        taskId: 'task-1',
+        status: 'success' as const,
+        output: 'ok',
+        artifacts: [],
+        duration: 100,
+        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+      });
+
       await session.handleSubmit('帮我写个函数');
 
       const stats = session.getStats();

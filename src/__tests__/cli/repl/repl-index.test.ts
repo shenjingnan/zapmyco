@@ -35,7 +35,6 @@ vi.mock('@/config/loader', () => ({
 vi.mock('@/cli/repl/session', () => ({
   ReplSession: class MockReplSession {
     start = mockSessionStart;
-    constructor(_config: unknown) {}
   },
 }));
 

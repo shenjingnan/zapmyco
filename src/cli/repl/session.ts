@@ -8,6 +8,8 @@
  * - 组件化布局，可扩展
  */
 
+import type { KnownProvider } from '@mariozechner/pi-ai';
+import { getModel } from '@mariozechner/pi-ai';
 import { Container, ProcessTerminal, Text, TUI, wrapTextWithAnsi } from '@mariozechner/pi-tui';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
@@ -22,6 +24,7 @@ import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 import { HistoryStore as HistoryStoreClass } from '@/cli/repl/history-store';
 import { InputParser } from '@/cli/repl/input-parser';
 import { Renderer as RendererClass } from '@/cli/repl/renderer';
+import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import { createTheme } from '@/cli/repl/theme';
 import type {
   HistoryStore,
@@ -31,10 +34,11 @@ import type {
   SessionStats,
 } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
+import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { __VERSION__ } from '@/infra/constants';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
-import { PiAiProvider } from '@/llm/pi-ai-provider';
+import { parseModelKey } from '@/llm/pi-ai-provider';
 import type { ChatMessage } from '@/llm/types';
 
 const log = logger.child('repl:session');
@@ -102,10 +106,13 @@ export class ReplSession {
   private readonly history: HistoryStoreClass;
   private currentTaskAbort: AbortController | null = null;
 
-  /** LLM 提供商实例（会话级复用） */
-  private readonly llmProvider: PiAiProvider;
+  /** Agent 实例（会话级复用，替代直接 LLM 调用） */
+  private agent: LlmBasedAgent;
 
-  /** 多轮对话上下文 */
+  /** 当前正在执行的 taskId（用于取消操作） */
+  private currentTaskId: string | null = null;
+
+  /** 多轮对话上下文（兼容保留，Agent 内部也维护历史） */
   private conversationHistory: ChatMessage[] = [];
 
   // 会话统计
@@ -155,11 +162,14 @@ export class ReplSession {
     this.renderer = new RendererClass(this.options);
     this.history = new HistoryStoreClass(this.options.maxHistorySize);
 
-    // 初始化 LLM 提供商
-    this.llmProvider = new PiAiProvider(config.llm);
+    // 初始化 Agent 实例（替代直接 LLM 调用）
+    this.agent = this.createReplAgent();
 
     // 注册所有内置命令
     this.registerBuiltinCommands();
+
+    // 注册 Agent 工具
+    this.registerBuiltinTools();
 
     // 绑定编辑器事件
     this.setupEditorHandlers();
@@ -252,11 +262,12 @@ export class ReplSession {
   }
 
   /**
-   * 执行用户目标 — 调用 LLM 并流式输出回复
+   * 执行用户目标 — 通过 Agent 执行并流式输出回复
    */
   async executeGoal(rawInput: string): Promise<import('@/core/result/types').FinalResult> {
     const startTime = Date.now();
     let historyEntry: import('@/cli/repl/types').HistoryEntry | undefined;
+    const taskId = `task-${Date.now()}`;
 
     try {
       // 更新状态
@@ -264,7 +275,7 @@ export class ReplSession {
       this.updateStatsState();
       this.updateFooter();
 
-      // 创建 AbortController 用于取消
+      // 创建 AbortController 用于取消（兼容保留）
       this.currentTaskAbort = new AbortController();
 
       // 记录到历史
@@ -275,7 +286,7 @@ export class ReplSession {
 
       // 发布目标提交事件
       eventBus.emit('goal:submitted', {
-        goalId: `goal-${Date.now()}`,
+        goalId: `goal-${startTime}`,
         rawInput,
       });
 
@@ -283,54 +294,89 @@ export class ReplSession {
       const goalLines: string[] = ['', `  🎯 ${rawInput}`, '', '  💬 '];
       this.outputArea.append(goalLines);
 
-      // 构建消息上下文（含多轮对话历史）
-      this.conversationHistory.push({ role: 'user', content: rawInput });
+      // 设置流式输出桥接：Agent EVENT_OUTPUT -> outputArea.appendText()
+      const outputHandler = (event: { taskId: string; text: string }) => {
+        if (event.taskId === taskId) {
+          this.outputArea.appendText(event.text);
+          this.tui.requestRender();
+        }
+      };
 
-      const messages: ChatMessage[] = [
-        {
-          role: 'system',
-          content: '你是 zapmyco AI 总管，一个智能任务编排助手。请用中文回答用户的问题。简洁高效。',
-        },
-        ...this.conversationHistory,
-      ];
+      // 监听 Agent 错误事件
+      const errorHandler = (event: { taskId: string; error: Error }) => {
+        if (event.taskId === taskId) {
+          log.error('Agent 执行中收到 error 事件', {
+            error: event.error.message,
+          });
+        }
+      };
 
-      // 流式调用 LLM
-      let fullResponse = '';
-      const stream = this.llmProvider.chatStream(messages, {
-        signal: this.currentTaskAbort.signal,
+      this.agent.on(this.agent.EVENT_OUTPUT, outputHandler);
+      this.agent.on(this.agent.EVENT_ERROR, errorHandler);
+      this.currentTaskId = taskId;
+
+      log.debug('开始通过 Agent 执行目标', {
+        taskId,
+        taskDescription: rawInput.slice(0, 100),
       });
 
-      for await (const chunk of stream) {
-        // 检查是否已取消
-        if (this.currentTaskAbort.signal.aborted) {
-          break;
-        }
+      // 通过 Agent 执行（替代原来的 chatStream）
+      const taskResult = await this.agent.execute({
+        taskId,
+        taskDescription: rawInput,
+        workdir: process.cwd(),
+        options: {
+          timeout: this.config.scheduler.taskTimeoutMs,
+          verbose: this.options.debug,
+        },
+      });
 
-        fullResponse += chunk;
-        // 实时追加流式内容到当前行末尾并触发重绘
-        this.outputArea.appendText(chunk);
-        this.tui.requestRender();
+      // 移除监听器（防止重复绑定）
+      this.agent.off(this.agent.EVENT_OUTPUT, outputHandler);
+      this.agent.off(this.agent.EVENT_ERROR, errorHandler);
+
+      log.debug('Agent 执行完成', {
+        taskId,
+        status: taskResult.status,
+        hasOutput: taskResult.output != null,
+        duration: Date.now() - startTime,
+      });
+
+      // 根据执行结果渲染到 TUI
+      const outputText =
+        typeof taskResult.output === 'string'
+          ? taskResult.output
+          : taskResult.output != null
+            ? JSON.stringify(taskResult.output)
+            : null;
+
+      if (taskResult.status !== 'success') {
+        // Agent 返回 failure：渲染错误信息
+        const errorMsg = taskResult.error?.message ?? 'Agent 执行失败（无详细错误信息）';
+        this.outputArea.appendText(`[错误] ${errorMsg}`);
+        log.error('Agent 执行返回 failure', {
+          taskId,
+          error: taskResult.error,
+          status: taskResult.status,
+        });
+      } else if (outputText) {
+        // 成功且有输出：确保文本已显示（兜底，正常情况流式事件已输出）
+        this.outputArea.appendText(outputText);
       }
 
-      // 追加 assistant 回复到对话历史
-      if (fullResponse) {
-        this.conversationHistory.push({ role: 'assistant', content: fullResponse });
-      }
-
-      // 输出分隔线
+      // 追加分隔线
       this.outputArea.append(['', '']);
-
       const duration = Date.now() - startTime;
 
       // 构建 FinalResult
       const result: import('@/core/result/types').FinalResult = {
         goalId: `goal-${startTime}`,
-        overallStatus: 'success',
-        summary: fullResponse.slice(0, 200),
-        taskResults: [],
-        allArtifacts: [],
+        overallStatus: taskResult.status === 'success' ? 'success' : 'failure',
+        summary: outputText?.slice(0, 200) ?? '（无输出）',
+        taskResults: [taskResult],
+        allArtifacts: taskResult.artifacts ?? [],
         totalDuration: duration,
-        totalTokenUsage: {
+        totalTokenUsage: taskResult.tokenUsage ?? {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
@@ -340,7 +386,20 @@ export class ReplSession {
 
       // 更新统计
       this.stats.totalRequests++;
-      this.stats.successCount++;
+      if (taskResult.status === 'success') {
+        this.stats.successCount++;
+      } else {
+        this.stats.failureCount++;
+      }
+
+      // 兼容维护 conversationHistory
+      this.conversationHistory.push({ role: 'user', content: rawInput });
+      if (outputText) {
+        this.conversationHistory.push({
+          role: 'assistant',
+          content: outputText,
+        });
+      }
 
       // 发布完成事件
       eventBus.emit('goal:completed', {
@@ -392,6 +451,7 @@ export class ReplSession {
       this.updateStatsState();
       this.updateFooter();
       this.currentTaskAbort = null;
+      this.currentTaskId = null;
     }
   }
 
@@ -457,6 +517,102 @@ export class ReplSession {
     this.registry.register(createStatusCommand());
   }
 
+  /**
+   * 创建 REPL 专用的 Agent 实例
+   *
+   * Agent 复用 pi-ai 的 Model 对象进行 LLM 调用，
+   * 因此需要从 config.llm 解析 model 并注入到 Agent state。
+   */
+  private createReplAgent(): LlmBasedAgent {
+    const agent = createLlmBasedAgent({
+      agentId: 'repl-chat-agent',
+      displayName: 'Zapmyco AI 助手',
+      capabilities: [
+        {
+          id: 'chat',
+          name: '对话',
+          description: '自然语言对话、问答、任务编排',
+          category: 'chat',
+        },
+      ],
+      runtimeConfig: this.config.agentRuntime ?? {},
+    });
+
+    // 将 pi-ai Model 注入到 Agent state（关键：没有这个 Agent 不知道用哪个模型）
+    agent.innerAgent.state.model = this.resolveModelForAgent();
+
+    // 注入 getApiKey 函数（关键：Agent 内部调用 LLM 时需要解析 API Key）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (agent.innerAgent as any).getApiKey = (_provider: string): string | undefined => {
+      const modelKey = this.config.llm.defaultModel;
+      const modelConfig = this.config.llm.models[modelKey] as { provider?: string } | undefined;
+      const providerName = modelConfig?.provider;
+      if (providerName) {
+        const auth = this.config.llm.providers[providerName];
+        return auth?.apiKey;
+      }
+      return undefined;
+    };
+
+    return agent;
+  }
+
+  /**
+   * 为 Agent 解析 pi-ai Model 对象
+   *
+   * 复用 PiAiProvider 的模型解析逻辑（parseModelKey + getModel），
+   * 但不依赖 chat/chatStream 方法。
+   */
+  private resolveModelForAgent() {
+    const modelKey = this.config.llm.defaultModel;
+    const parsed = parseModelKey(modelKey);
+    if (!parsed) {
+      throw new Error(`无效的模型标识符: ${modelKey}`);
+    }
+
+    const modelConfig = this.config.llm.models[modelKey] as
+      | { provider?: string; modelId?: string; baseUrl?: string }
+      | undefined;
+
+    const provider = (modelConfig?.provider ?? parsed.provider) as KnownProvider;
+    const modelId = modelConfig?.modelId ?? parsed.modelId;
+
+    // 始终用同 provider 的已知模型作为基础模板（保证返回有效 Model 对象）
+    const baseModelId = provider === 'anthropic' ? 'claude-sonnet-4-20250514' : modelId;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let model: any;
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
+      model = getModel(provider as any, baseModelId as any);
+    } catch {
+      // 最终兜底
+      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
+      model = getModel('anthropic' as any, 'claude-sonnet-4-20250514' as any);
+    }
+
+    if (!model) {
+      throw new Error(`无法初始化模型 ${modelKey}：pi-ai 返回了无效的模型对象`);
+    }
+
+    // 无条件覆盖自定义属性
+    model.name = modelKey;
+    model.id = modelId;
+
+    if (modelConfig?.baseUrl) {
+      model.baseUrl = modelConfig.baseUrl;
+    }
+
+    return model;
+  }
+
+  /**
+   * 注册 REPL 场景下的基础工具
+   */
+  private registerBuiltinTools(): void {
+    this.agent.registerTools(createReplBuiltinTools());
+  }
+
   /** 设置编辑器事件绑定 */
   private setupEditorHandlers(): void {
     // 提交输入
@@ -513,6 +669,12 @@ export class ReplSession {
 
   /** 取消当前正在执行的任务 */
   private cancelCurrentTask(): void {
+    // 通过 Agent 取消（优先）
+    if (this.currentTaskId !== null) {
+      void this.agent.cancel(this.currentTaskId);
+      this.currentTaskId = null;
+    }
+    // 兼容旧的 AbortController 方式
     if (this.currentTaskAbort !== null) {
       this.currentTaskAbort.abort();
       this.currentTaskAbort = null;

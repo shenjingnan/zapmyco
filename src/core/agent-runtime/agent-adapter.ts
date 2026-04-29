@@ -132,47 +132,52 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   async execute(request: AgentExecuteRequest): Promise<TaskResult> {
     const startTime = Date.now();
     this._currentLoad++;
+    const cleanupFns: (() => void)[] = [];
 
     try {
       // 构建系统提示词并设置到 Agent 状态
       this.inner.state.systemPrompt = this.buildSystemPrompt(request);
 
-      // 绑定事件桥接（带 taskId）
-      this.inner.subscribe(createEventBridgeListener(request.taskId, this.agentId));
+      // 绑定事件桥接（带 taskId），收集清理函数用于后续移除
+      cleanupFns.push(
+        this.inner.subscribe(createEventBridgeListener(request.taskId, this.agentId))
+      );
 
       // 同时监听并转发到本地的 EventEmitter（支持 IStreamingAgent）
-      this.inner.subscribe((event) => {
-        if (event.type === 'message_update') {
-          const delta = extractDeltaFromEvent(event);
-          if (delta) {
-            this.emit(this.EVENT_OUTPUT, {
+      cleanupFns.push(
+        this.inner.subscribe((event) => {
+          if (event.type === 'message_update') {
+            const delta = extractDeltaFromEvent(event);
+            if (delta) {
+              this.emit(this.EVENT_OUTPUT, {
+                taskId: request.taskId,
+                text: delta,
+              });
+            }
+          }
+          if (event.type === 'tool_execution_start') {
+            this.emit(this.EVENT_PROGRESS, {
               taskId: request.taskId,
-              text: delta,
+              percent: 0,
+              message: `执行工具: ${event.toolName}`,
             });
           }
-        }
-        if (event.type === 'tool_execution_start') {
-          this.emit(this.EVENT_PROGRESS, {
-            taskId: request.taskId,
-            percent: 0,
-            message: `执行工具: ${event.toolName}`,
-          });
-        }
-        if (event.type === 'tool_execution_end') {
-          this.emit(this.EVENT_PROGRESS, {
-            taskId: request.taskId,
-            percent: 100,
-            message: `工具 ${event.toolName} 完成`,
-          });
-        }
-        if (event.type === 'agent_end') {
-          this.emit(this.EVENT_PROGRESS, {
-            taskId: request.taskId,
-            percent: 100,
-            message: '任务完成',
-          });
-        }
-      });
+          if (event.type === 'tool_execution_end') {
+            this.emit(this.EVENT_PROGRESS, {
+              taskId: request.taskId,
+              percent: 100,
+              message: `工具 ${event.toolName} 完成`,
+            });
+          }
+          if (event.type === 'agent_end') {
+            this.emit(this.EVENT_PROGRESS, {
+              taskId: request.taskId,
+              percent: 100,
+              message: '任务完成',
+            });
+          }
+        })
+      );
 
       // 执行 prompt
       await this.inner.prompt(request.taskDescription);
@@ -210,6 +215,10 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         },
       };
     } finally {
+      // 清理本次执行的事件订阅（防止复用 Agent 实例时监听器累积）
+      for (const fn of cleanupFns) {
+        fn();
+      }
       this._currentLoad--;
     }
   }

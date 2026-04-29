@@ -24,8 +24,9 @@ import type { ChatMessage, LlmCallOptions, LlmResponse } from '@/llm/types';
  * 解析模型标识符
  *
  * 支持格式：provider/modelId（如 anthropic/claude-sonnet-4-20250514）
+ * 导出供其他模块复用（如 REPL Session 为 Agent 解析 Model 对象）
  */
-function parseModelKey(key: string): { provider: string; modelId: string } | null {
+export function parseModelKey(key: string): { provider: string; modelId: string } | null {
   const slashIndex = key.indexOf('/');
   if (slashIndex <= 0 || slashIndex >= key.length - 1) {
     return null;
