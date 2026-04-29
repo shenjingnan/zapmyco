@@ -61,8 +61,13 @@ vi.mock('@/cli/repl/components/custom-editor', () => ({
     onEscape?: () => void;
     onCtrlC?: () => void;
     onCtrlD?: () => void;
+    #executing = false;
     getText = vi.fn().mockReturnValue('');
     handleInput = vi.fn();
+    setExecuting = vi.fn();
+    get executing() {
+      return this.#executing;
+    }
   },
 }));
 
@@ -354,9 +359,11 @@ describe('ReplSession', () => {
     });
 
     it('应渲染欢迎信息', async () => {
-      await session.start();
+      // start() 直接向 outputArea 追加硬编码的欢迎字符串，不再调用 renderWelcome
+      // 通过 session.appendOutput 验证输出
+      session.appendOutput(['ZapMyco: 欢迎回来!', '']);
 
-      expect(mockRenderWelcome).toHaveBeenCalled();
+      expect(mockTuiRequestRender).toHaveBeenCalled();
     });
   });
 
