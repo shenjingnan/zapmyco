@@ -140,7 +140,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
 
       // 绑定事件桥接（带 taskId），收集清理函数用于后续移除
       cleanupFns.push(
-        this.inner.subscribe(createEventBridgeListener(request.taskId, this.agentId))
+        this.inner.subscribe(createEventBridgeListener(request.taskId, this.agentId)),
       );
 
       // 同时监听并转发到本地的 EventEmitter（支持 IStreamingAgent）
@@ -176,7 +176,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
               message: '任务完成',
             });
           }
-        })
+        }),
       );
 
       // 执行 prompt
