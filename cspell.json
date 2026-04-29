@@ -10,7 +10,7 @@
     "typecheck",
     "husky",
     "lintstaged",
-    "nvmrc",
+    "node-version",
     "npmrc",
     "commitlint",
     "conventionalcommits",
