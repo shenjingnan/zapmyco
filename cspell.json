@@ -25,7 +25,8 @@
     "mariozechner",
     "apikey",
     "Deepseek",
-    "unstub"
+    "unstub",
+    "typebox"
   ],
   "ignorePaths": [
     "node_modules",
