@@ -7,6 +7,9 @@
  * @module cli/repl/repl-agent-tools
  */
 
+import { createWebFetchTool } from '@/cli/repl/tools/web-fetch';
+import { createWebSearchTool } from '@/cli/repl/tools/web-search';
+import type { WebConfig } from '@/config/types';
 import type { ToolRegistration } from '@/core/agent-runtime';
 
 /**
@@ -14,9 +17,11 @@ import type { ToolRegistration } from '@/core/agent-runtime';
  *
  * 第一阶段工具：验证 Agent 工具调用链路的端到端连通性。
  * 后续阶段在此基础扩展：文件读写、Shell 执行、Git 操作等。
+ *
+ * @param webConfig - Web 工具配置（可选），传入时启用 web_fetch 和 web_search
  */
-export function createReplBuiltinTools(): ToolRegistration[] {
-  return [
+export function createReplBuiltinTools(webConfig?: WebConfig): ToolRegistration[] {
+  const tools: ToolRegistration[] = [
     {
       id: 'get_current_time',
       label: '获取当前时间',
@@ -85,4 +90,14 @@ export function createReplBuiltinTools(): ToolRegistration[] {
       },
     },
   ];
+
+  // Web 工具（按需启用）
+  if (webConfig?.enabled !== false) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createWebFetchTool(webConfig) as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createWebSearchTool(webConfig) as any);
+  }
+
+  return tools;
 }

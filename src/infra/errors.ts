@@ -37,6 +37,16 @@ export enum ZapmycoErrorCode {
   // 通用
   UNKNOWN = 'UNKNOWN',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
+
+  // Web 工具相关
+  WEB_FETCH_FAILED = 'WEB_FETCH_FAILED',
+  WEB_FETCH_BLOCKED = 'WEB_FETCH_BLOCKED',
+  WEB_FETCH_TIMEOUT = 'WEB_FETCH_TIMEOUT',
+  WEB_FETCH_TOO_LARGE = 'WEB_FETCH_TOO_LARGE',
+  WEB_SEARCH_FAILED = 'WEB_SEARCH_FAILED',
+  WEB_SEARCH_NOT_CONFIGURED = 'WEB_SEARCH_NOT_CONFIGURED',
+  WEB_SEARCH_QUOTA_EXCEEDED = 'WEB_SEARCH_QUOTA_EXCEEDED',
+  WEB_INVALID_URL = 'WEB_INVALID_URL',
 }
 
 /**
@@ -139,5 +149,25 @@ export class LlmError extends ZapmycoError {
   ) {
     super(code, message, context);
     this.name = 'LlmError';
+  }
+}
+
+/** Web 工具错误 */
+export class WebError extends ZapmycoError {
+  constructor(
+    code:
+      | ZapmycoErrorCode.WEB_FETCH_FAILED
+      | ZapmycoErrorCode.WEB_FETCH_BLOCKED
+      | ZapmycoErrorCode.WEB_FETCH_TIMEOUT
+      | ZapmycoErrorCode.WEB_FETCH_TOO_LARGE
+      | ZapmycoErrorCode.WEB_SEARCH_FAILED
+      | ZapmycoErrorCode.WEB_SEARCH_NOT_CONFIGURED
+      | ZapmycoErrorCode.WEB_SEARCH_QUOTA_EXCEEDED
+      | ZapmycoErrorCode.WEB_INVALID_URL,
+    message: string,
+    context?: Record<string, unknown>
+  ) {
+    super(code, message, context);
+    this.name = 'WebError';
   }
 }

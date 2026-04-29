@@ -46,4 +46,26 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     debug: false,
     outputFormat: 'text',
   },
+  web: {
+    enabled: true,
+    fetch: {
+      timeoutMs: 30_000,
+      maxResponseBytes: 512_000,
+      maxChars: 20_000,
+      extractMainContent: true,
+      userAgent: 'ZapmycoBot/0.2 (https://github.com/shenjingnan/zapmyco)',
+      maxRedirects: 3,
+      cacheTtlMinutes: 15,
+    },
+    search: {
+      provider: 'tavily',
+      maxResults: 8,
+      language: 'zh-cn',
+      cacheTtlMinutes: 15,
+    },
+    ssrf: {
+      allowPrivateNetwork: false,
+      blockedDomains: ['localhost', '*.localhost', '*.local', '*.internal'],
+    },
+  },
 };

@@ -144,4 +144,65 @@ export interface ZapmycoConfig {
 
   /** CLI 配置 */
   cli: CliConfig;
+
+  /** Web 工具配置 */
+  web?: WebConfig;
+}
+
+/** Web 工具配置 */
+export interface WebConfig {
+  /** 是否启用 web_fetch 和 web_search 工具 */
+  enabled: boolean;
+
+  /** web_fetch 子配置 */
+  fetch?: {
+    /** 单次请求超时时间（毫秒） */
+    timeoutMs?: number;
+    /** 最大响应体大小（字节） */
+    maxResponseBytes?: number;
+    /** 提取内容的最大字符数 */
+    maxChars?: number;
+    /** 是否启用正文提取（提取 <main>/<article> 内容） */
+    extractMainContent?: boolean;
+    /** 自定义 User-Agent */
+    userAgent?: string;
+    /** 最大重定向次数 */
+    maxRedirects?: number;
+    /** 缓存 TTL（分钟，默认 15） */
+    cacheTtlMinutes?: number;
+  };
+
+  /** web_search 子配置 */
+  search?: {
+    /**
+     * 搜索引擎 provider 名称
+     *
+     * 内置选项:
+     * - tavily: Tavily 搜索 API（需 API Key，默认）
+     * - serpAPI: SerpAPI（需 API Key）
+     * - duckduckgo: DuckDuckGo HTML 抓取（免费，无需 Key）
+     * - custom: 用户自建端点
+     */
+    provider?: 'tavily' | 'serpapi' | 'duckduckgo' | 'custom';
+    /** API Key（支持 ${ENV_VAR} 引用，duckduckgo 不需要） */
+    apiKey?: string;
+    /** 自定义搜索端点（provider=custom 时使用） */
+    endpointUrl?: string;
+    /** 每次搜索返回的最大结果数（1-20，默认 8） */
+    maxResults?: number;
+    /** 搜索语言偏好 */
+    language?: string;
+    /** 缓存 TTL（分钟，默认 15） */
+    cacheTtlMinutes?: number;
+  };
+
+  /** SSRF 防护配置 */
+  ssrf?: {
+    /** 是否允许访问私有 IP 地址 */
+    allowPrivateNetwork?: boolean;
+    /** 允许访问的域名白名单（支持 *.example.com 通配符） */
+    allowedDomains?: string[];
+    /** 禁止访问的域名黑名单 */
+    blockedDomains?: string[];
+  };
 }
