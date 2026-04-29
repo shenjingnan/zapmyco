@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.1](https://github.com/shenjingnan/zapmyco/compare/v0.2.0...v0.2.1) (2026-04-29)
+
+### Bug Fixes
+
+* **ci:** 修复 release 工作流 node-version 参数兼容 v6 ([#20](https://github.com/shenjingnan/zapmyco/issues/20)) ([42e3e85](https://github.com/shenjingnan/zapmyco/commit/42e3e8582f3493f302e5b91568b353658c6b4c95))
+
 ## 0.2.0 (2026-04-29)
 
 ### Features
