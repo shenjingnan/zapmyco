@@ -36,6 +36,21 @@ function buildFetchOptions(
   return opts;
 }
 
+/**
+ * 判断 URL 是否为 DuckDuckGo 内部跳转链接
+ *
+ * 使用 URL 构造器解析 hostname，避免子串匹配被绕过
+ */
+function isDuckDuckGoInternalUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.hostname.endsWith('duckduckgo.com');
+  } catch {
+    // 非绝对 URL（如相对路径），保守处理视为内部链接
+    return true;
+  }
+}
+
 // ============ Tavily Provider ============
 
 class TavilyProvider implements SearchProvider {
@@ -262,7 +277,7 @@ class DuckDuckGoProvider implements SearchProvider {
       const rawText = match[3];
 
       if (rawUrl == null || rawText == null) continue;
-      if (rawUrl.startsWith('/') || rawUrl.includes('duckduckgo.com')) {
+      if (rawUrl.startsWith('/') || isDuckDuckGoInternalUrl(rawUrl)) {
         continue;
       }
 
@@ -280,14 +295,32 @@ class DuckDuckGoProvider implements SearchProvider {
     return results;
   }
 
-  /** 移除 HTML 标签 */
+  /** 移除 HTML 标签并解码 HTML 实体 */
   private stripHtmlTags(html: string): string {
-    return html
-      .replace(/<[^>]+>/g, '')
+    // 使用贪婪匹配移除完整标签（含属性中的 > 字符）
+    let text = html.replace(/<[^>]*>/g, '');
+    // 解码常见 HTML 实体，未知实体保持原样避免二次注入
+    text = text
       .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>');
+      .replace(/&(amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);/g, (_, token: string) => {
+        const entityMap: Record<string, string> = {
+          amp: '&',
+          lt: '<',
+          gt: '>',
+          quot: '"',
+        };
+        if (token in entityMap) return entityMap[token]!;
+        if (token.startsWith('#x')) {
+          const cp = parseInt(token.slice(2), 16);
+          return Number.isNaN(cp) ? _ : String.fromCharCode(cp);
+        }
+        if (token.startsWith('#')) {
+          const cp = parseInt(token.slice(1), 10);
+          return Number.isNaN(cp) ? _ : String.fromCharCode(cp);
+        }
+        return _;
+      });
+    return text;
   }
 
   /** 解码 DuckDuckGo 跳转 URL */

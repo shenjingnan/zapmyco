@@ -26,7 +26,13 @@
     "apikey",
     "Deepseek",
     "unstub",
-    "typebox"
+    "typebox",
+    "Tavily",
+    "tavily",
+    "SerpAPI",
+    "serpapi",
+    "duckduckgo",
+    "uddg"
   ],
   "ignorePaths": [
     "node_modules",
