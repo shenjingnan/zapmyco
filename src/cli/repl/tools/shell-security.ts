@@ -201,7 +201,7 @@ export function checkCommandSecurity(command: string): SecurityCheckResult {
   const normalized = cleaned.replace(/\s+/g, ' ').trim();
 
   if (!normalized) {
-    return { allowed: false, reason: '命令为空' };
+    return { allowed: false, blocked: true, reason: '命令为空' };
   }
 
   // Step 1: 硬性阻断检查
@@ -346,12 +346,12 @@ export function redactSensitiveInfo(text: string): string {
   result = result.replace(/sk-[a-zA-Z0-9_-]{20,}/g, 'sk-***');
   // GitHub Token
   result = result.replace(/ghp_[a-zA-Z0-9]{20,}/g, 'ghp_***');
-  // Generic API Key patterns
-  result = result.replace(/([a-zA-Z0-9_-]{15,}=)([a-zA-Z0-9+/]{20,})/g, '$1***');
+  // AWS Access Key (必须在 generic pattern 之前)
+  result = result.replace(/AKIA[0-9A-Z]{16}/g, 'AKIA***');
   // JWT
   result = result.replace(/eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, '<JWT-TOKEN>');
-  // AWS Access Key
-  result = result.replace(/AKIA[0-9A-Z]{16}/g, 'AKIA***');
+  // Generic API Key patterns
+  result = result.replace(/([a-zA-Z0-9_-]{15,}=)([a-zA-Z0-9+/]{20,})/g, '$1***');
   // Private key headers
   result = result.replace(
     /-----BEGIN (?:RSA|EC|DSA|OPENSSH) PRIVATE KEY-----[\s\S]*?-----END (?:RSA|EC|DSA|OPENSSH) PRIVATE KEY-----/g,

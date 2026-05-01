@@ -42,7 +42,14 @@
     "DYLD",
     "PYTHONPATH",
     "RUBYLIB",
-    "AKIA"
+    "AKIA",
+    "testuser",
+    "mshutdown",
+    "mgreen",
+    "mbold",
+    "Jcleared",
+    "AKIAIOSFODNN",
+    "AIBAAKCAQEA"
   ],
   "ignorePaths": [
     "node_modules",
