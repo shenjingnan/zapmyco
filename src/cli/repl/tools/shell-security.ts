@@ -187,7 +187,7 @@ const BLOCKED_ENV_KEY_PREFIXES = ['AWS_SECRET_', 'AZURE_CLIENT_SECRET_', 'GCP_SE
 
 // ============ 安全目录约束 ============
 
-const FORBIDDEN_WORKDIR_PREFIXES = ['/etc', '/root', '/home'];
+const FORBIDDEN_WORKDIR_PREFIXES = ['/etc', '/root'];
 
 // ============ 公开 API ============
 

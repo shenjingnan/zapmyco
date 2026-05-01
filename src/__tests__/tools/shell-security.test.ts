@@ -300,12 +300,12 @@ describe('shell-security', () => {
       expect(result.valid).toBe(false);
     });
 
-    it('应该拒绝 /home 目录', () => {
+    it('应该允许 /home 目录（Linux 用户目录）', () => {
       const result = validateWorkdir('/home');
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
     });
 
-    it('应该允许 /Users 目录（非 /home）', () => {
+    it('应该允许 /Users 目录', () => {
       const result = validateWorkdir('/Users/test/project');
       expect(result.valid).toBe(true);
     });
