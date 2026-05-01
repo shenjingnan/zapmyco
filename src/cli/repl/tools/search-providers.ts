@@ -45,7 +45,8 @@ function buildFetchOptions(
 function isDuckDuckGoInternalUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(rawUrl);
-    return parsed.hostname.endsWith('duckduckgo.com');
+    const host = parsed.hostname.toLowerCase();
+    return host === 'duckduckgo.com' || host.endsWith('.duckduckgo.com');
   } catch {
     // 非绝对 URL（如相对路径），保守处理视为内部链接
     return true;
