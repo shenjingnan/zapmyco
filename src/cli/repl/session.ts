@@ -596,7 +596,7 @@ export class ReplSession {
    * 注册 REPL 场景下的基础工具
    */
   private registerBuiltinTools(): void {
-    this.agent.registerTools(createReplBuiltinTools());
+    this.agent.registerTools(createReplBuiltinTools(this.config.web));
   }
 
   /** 设置编辑器事件绑定 */
