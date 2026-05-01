@@ -305,9 +305,8 @@ class DuckDuckGoProvider implements SearchProvider {
 
   /** 移除 HTML 标签并解码 HTML 实体 */
   private stripHtmlTags(html: string): string {
-    // 使用贪婪匹配移除完整标签（含属性中的 > 字符）
-    let text = html.replace(/<[^>]*>/g, '');
-    // 解码常见 HTML 实体，未知实体保持原样避免二次注入
+    let text = html;
+    // 先解码常见 HTML 实体，未知实体保持原样避免二次注入
     text = text
       .replace(/&nbsp;/g, ' ')
       .replace(/&(amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);/g, (_, token: string) => {
@@ -328,6 +327,8 @@ class DuckDuckGoProvider implements SearchProvider {
         }
         return _;
       });
+    // 字符级移除尖括号，避免多字符替换导致标签在清洗后重组
+    text = text.replace(/[<>]/g, '');
     return text;
   }
 
