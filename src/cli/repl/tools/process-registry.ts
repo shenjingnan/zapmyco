@@ -85,8 +85,8 @@ export class ProcessRegistry {
       });
     }
 
-    // 监听进程退出
-    childProcess.on('exit', (code, signal) => {
+    // 监听进程关闭（close 事件在所有 stdio 流关闭后触发，确保 data 已全部到达）
+    childProcess.on('close', (code, signal) => {
       session.endTime = Date.now();
       session.exitCode = code;
       session.signal = signal;
