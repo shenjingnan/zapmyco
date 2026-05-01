@@ -1,6 +1,6 @@
 {
   "name": "zapmyco",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "AI 原生并行任务编排系统 -- AI 总管 (Personal AI Chief of Staff)",
   "type": "module",
   "main": "./dist/index.mjs",

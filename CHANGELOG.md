@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/shenjingnan/zapmyco/compare/v0.2.1...v0.3.0) (2026-05-01)
+
+### Features
+
+* **repl:** 简化 TUI 界面为聊天式交互风格 ([#21](https://github.com/shenjingnan/zapmyco/issues/21)) ([a6e507c](https://github.com/shenjingnan/zapmyco/commit/a6e507c65f3313839d70117c91069b059d974887))
+* **web:** 新增 web_fetch 和 web_search 工具 ([#22](https://github.com/shenjingnan/zapmyco/issues/22)) ([84a8d66](https://github.com/shenjingnan/zapmyco/commit/84a8d66e0d5d91e460f53ad893e3ed3fdeb2f60e))
+
 ## [0.2.1](https://github.com/shenjingnan/zapmyco/compare/v0.2.0...v0.2.1) (2026-04-29)
 
 ### Bug Fixes
