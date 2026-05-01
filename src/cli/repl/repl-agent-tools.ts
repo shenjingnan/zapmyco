@@ -7,6 +7,8 @@
  * @module cli/repl/repl-agent-tools
  */
 
+import { createExecTool } from '@/cli/repl/tools/shell-exec';
+import { createProcessTool } from '@/cli/repl/tools/shell-process';
 import { createWebFetchTool } from '@/cli/repl/tools/web-fetch';
 import { createWebSearchTool } from '@/cli/repl/tools/web-search';
 import type { WebConfig } from '@/config/types';
@@ -90,6 +92,12 @@ export function createReplBuiltinTools(webConfig?: WebConfig): ToolRegistration[
       },
     },
   ];
+
+  // Shell 执行工具（exec + process）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools.push(createExecTool() as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools.push(createProcessTool() as any);
 
   // Web 工具（按需启用）
   if (webConfig?.enabled !== false) {
