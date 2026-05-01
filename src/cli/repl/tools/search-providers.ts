@@ -10,6 +10,7 @@
  * @module cli/repl/tools/search-providers
  */
 
+import { checkUrlSafety } from './ssrf-guard';
 import type {
   SearchOptions,
   SearchProvider,
@@ -96,8 +97,7 @@ class TavilyProvider implements SearchProvider {
     );
 
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Tavily API 错误 (${response.status}): ${body}`);
+      throw new Error(`Tavily API 错误 (${response.status})`);
     }
 
     const data = (await response.json()) as {
@@ -154,8 +154,15 @@ class SerpApiProvider implements SearchProvider {
     });
 
     const response = await fetch(
-      `https://serpapi.com/search?${params}`,
-      buildFetchOptions({}, signal)
+      'https://serpapi.com/search',
+      buildFetchOptions(
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString(),
+        },
+        signal
+      )
     );
 
     if (!response.ok) {
@@ -364,6 +371,12 @@ class CustomProvider implements SearchProvider {
     }
 
     const maxResults = Math.min(options.maxResults, 20);
+
+    // SSRF 安全检查：防止用户配置的端点指向内网地址
+    const safetyResult = await checkUrlSafety(endpointUrl);
+    if (!safetyResult.allowed) {
+      throw new Error(`自定义搜索端点 URL 未通过安全检查: ${safetyResult.reason ?? endpointUrl}`);
+    }
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (config.apiKey) {

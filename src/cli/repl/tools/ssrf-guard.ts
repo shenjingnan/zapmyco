@@ -213,7 +213,8 @@ function parseIpv6ToBigInt(ip: string): bigint | null {
     }
     let result = 0n;
     for (const part of parts) {
-      const value = parseInt(part, 16);
+      // 空字符串对应 :: 展开后的全零段，应视为 0
+      const value = part === '' ? 0 : parseInt(part, 16);
       if (Number.isNaN(value)) {
         return null;
       }

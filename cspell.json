@@ -32,7 +32,8 @@
     "SerpAPI",
     "serpapi",
     "duckduckgo",
-    "uddg"
+    "uddg",
+    "localdomain"
   ],
   "ignorePaths": [
     "node_modules",

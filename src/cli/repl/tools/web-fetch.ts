@@ -94,6 +94,7 @@ function isJsonContent(contentType: string): boolean {
 async function doFetch(
   url: string,
   options: NonNullable<WebConfig['fetch']>,
+  ssrfOptions: NonNullable<WebConfig['ssrf']>,
   signal?: AbortSignal
 ): Promise<{ buffer: ArrayBuffer; contentType: string; statusCode: number; finalUrl: string }> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -130,6 +131,15 @@ async function doFetch(
           );
         }
         currentUrl = new URL(location, currentUrl).href;
+        // 重定向目标重新检查 SSRF，防止通过重定向链绕过安全策略
+        const safetyResult = await checkUrlSafety(currentUrl, ssrfOptions);
+        if (!safetyResult.allowed) {
+          throw new WebError(
+            ZapmycoErrorCode.WEB_FETCH_BLOCKED,
+            safetyResult.reason ?? `重定向目标 URL 未通过安全检查: ${currentUrl}`,
+            { url: currentUrl, reason: safetyResult.reason }
+          );
+        }
         redirectCount++;
         continue;
       }
@@ -310,6 +320,7 @@ export function createWebFetchTool(webConfig?: WebConfig) {
       const { buffer, contentType, statusCode, finalUrl } = await doFetch(
         url,
         fetchOptions,
+        ssrfOptions,
         signal
       );
 
