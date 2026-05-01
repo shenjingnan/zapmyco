@@ -33,7 +33,16 @@
     "serpapi",
     "duckduckgo",
     "uddg",
-    "localdomain"
+    "localdomain",
+    "nvme",
+    "mmcblk",
+    "poweroff",
+    "HUGGINGFACE",
+    "PGPASSWORD",
+    "DYLD",
+    "PYTHONPATH",
+    "RUBYLIB",
+    "AKIA"
   ],
   "ignorePaths": [
     "node_modules",
