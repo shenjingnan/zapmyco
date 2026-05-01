@@ -1,6 +1,54 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWebFetchTool } from '@/cli/repl/tools/web-fetch';
 
+// Mock SSRF guard — 避免测试依赖真实 DNS 解析
+// 保留协议/hostname 检查逻辑，跳过 DNS/IP 检查返回公网安全结果
+vi.mock('@/cli/repl/tools/ssrf-guard', () => {
+  const BLOCKED_HOSTNAMES = [
+    'localhost',
+    'localhost.localdomain',
+    'ip6-localhost',
+    'ip6-loopback',
+    'metadata.google.internal',
+  ];
+
+  function isBlockedHostname(hostname: string): boolean {
+    const lower = hostname.toLowerCase();
+    if (BLOCKED_HOSTNAMES.includes(lower)) return true;
+    if (lower.endsWith('.localhost') || lower.endsWith('.local') || lower.endsWith('.internal'))
+      return true;
+    return false;
+  }
+
+  return {
+    checkUrlSafety: vi.fn(
+      async (
+        url: string,
+        _options?: {
+          allowPrivateNetwork?: boolean;
+          allowedDomains?: string[];
+          blockedDomains?: string[];
+        }
+      ) => {
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          return { allowed: false, reason: `无效的 URL: ${url}` };
+        }
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          return { allowed: false, reason: `不允许的协议: ${parsed.protocol}` };
+        }
+        if (isBlockedHostname(parsed.hostname)) {
+          return { allowed: false, reason: `被阻止的 hostname: ${parsed.hostname}` };
+        }
+        // 跳过 DNS 解析和 IP 检查，直接放行
+        return { allowed: true };
+      }
+    ),
+  };
+});
+
 // 保存原始 fetch
 const originalFetch = globalThis.fetch;
 
