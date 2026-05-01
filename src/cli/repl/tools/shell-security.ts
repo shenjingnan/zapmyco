@@ -20,18 +20,12 @@ import type { ApprovalRule, BlockRule, SecurityCheckResult } from './shell-types
 const BLOCK_RULES: BlockRule[] = [
   // 文件系统毁灭
   {
-    name: 'rm-root-recursive',
+    name: 'rm-rf-root',
+    // 避免 ReDoS: 不使用嵌套的 (?:[a-z]*r[a-z]*)* 重复组
     pattern:
-      /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*\s+)*-[a-zA-Z]*f[a-zA-Z]*\s+(?:--no-preserve-root\s+)?\/(?:\s|$)/,
+      /\brm\s+-[a-zA-Z0-9-]*[rf][a-zA-Z0-9-]*[rf][a-zA-Z0-9-]*\s+(?:--no-preserve-root\s+)?["']?\/["']?(?:\s|$)/,
     risk: 'critical',
     reason: '禁止递归强制删除根目录',
-  },
-  {
-    name: 'rm-rf-root-variant',
-    pattern:
-      /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*)\s+(?:["']?\/["']?)/,
-    risk: 'critical',
-    reason: '禁止删除根目录',
   },
   // 裸设备写入
   {

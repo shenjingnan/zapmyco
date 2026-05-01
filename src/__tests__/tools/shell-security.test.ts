@@ -45,7 +45,7 @@ describe('shell-security', () => {
       expect(result.allowed).toBe(false);
       expect(result.blocked).toBe(true);
       expect(result.risk).toBe('critical');
-      expect(result.matchedRule).toBe('rm-root-recursive');
+      expect(result.matchedRule).toBe('rm-rf-root');
     });
 
     it('应该阻断 rm -rf / 的变体', () => {
