@@ -60,6 +60,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   private toolRegistrations: ToolRegistration[] = [];
   private _currentLoad = 0;
 
+  /** 记忆快照内容（由外部注入，会话开始时冻结） */
+  memorySnapshot: string = '';
+
   constructor(options: AgentAdapterOptions) {
     super();
 
@@ -273,16 +276,44 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    */
   private buildSystemPrompt(request: AgentExecuteRequest): string {
     const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'task_manage');
+    const hasMemory = this.toolRegistrations.some((t) => t.id === 'memory');
 
     const parts: string[] = [
       `你是 ${this.displayName}，一个专业的 AI 助手。`,
       `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
     ];
 
+    // 记忆块 — 在系统提示最前面注入（快照在会话开始时冻结）
+    if (hasMemory && this.memorySnapshot) {
+      parts.push('', '## 持久化记忆（快照）', '', this.memorySnapshot);
+    }
+
+    // 记忆使用引导
+    if (hasMemory) {
+      parts.push(
+        '',
+        '## 记忆管理规范',
+        '',
+        '你有跨会话的持久化记忆能力。记忆存储在 ~/.zapmyco/memory/ 目录中。',
+        '会话开始时已加载记忆快照到系统提示中，你可以直接使用这些信息。',
+        '',
+        '### 何时保存记忆',
+        '- 用户明确告知偏好、习惯、技术背景时 → 使用 memory add type="user"',
+        '- 项目做出重要决策或约定时 → 使用 memory add type="project"',
+        '- 用户纠正你的行为或给出反馈时 → 使用 memory add type="user"',
+        '- 会话中有值得跨会话保留的结论时 → 使用 memory add type="session"',
+        '',
+        '### 何时不保存',
+        '- 临时任务进度、会话状态（使用 task_manage 管理）',
+        '- 代码细节（可直接从代码库获取，不需要记忆）',
+        '- 一次性查询的内容',
+        ''
+      );
+    }
+
     // 任务管理引导 — 必须放在最前面，确保 Agent 第一时间看到
     if (hasTaskManage) {
       parts.push(
-        '',
         '## 任务管理规范（最高优先级）',
         '',
         '收到用户任务后，第一时间判断是否包含 2 个以上独立步骤。',
