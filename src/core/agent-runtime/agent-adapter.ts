@@ -272,10 +272,29 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    * 构建系统提示词
    */
   private buildSystemPrompt(request: AgentExecuteRequest): string {
+    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'task_manage');
+
     const parts: string[] = [
       `你是 ${this.displayName}，一个专业的 AI 助手。`,
       `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
     ];
+
+    // 任务管理引导 — 必须放在最前面，确保 Agent 第一时间看到
+    if (hasTaskManage) {
+      parts.push(
+        '',
+        '## 任务管理规范（最高优先级）',
+        '',
+        '收到用户任务后，第一时间判断是否包含 2 个以上独立步骤。',
+        '如果是，你的**第一个工具调用必须且只能是** `task_manage` (action="write")，先分解任务列表！',
+        '在任何搜索、读取、写入操作之前完成规划。不得先做再补！',
+        '',
+        '1. **规划优先**：第一个 tool call = task_manage write。先规划，后执行。',
+        '2. **逐个更新**：完成一个子任务 → 立即 update 为 "completed" → 再开始下一个。绝不批量更新。',
+        '3. **保持专注**：同时只有 1 个 "in_progress"。',
+        '4. **先读后写**：不确定当前任务时先用 action="read" 查看。'
+      );
+    }
 
     if (request.upstreamResults?.length) {
       parts.push(
