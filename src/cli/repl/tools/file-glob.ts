@@ -61,6 +61,7 @@ function globSync(pattern: string, rootPath: string): string[] {
 
     // 构建正则表达式匹配
     let regexStr = normalizedPattern
+      .replace(/\\/g, '\\\\')
       .replace(/\./g, '\\.')
       .replace(/\*\*/g, '<<<GLOBSTAR>>>')
       .replace(/\*/g, '[^/]*')
@@ -121,6 +122,7 @@ function globSync(pattern: string, rootPath: string): string[] {
     // 简单模式匹配（不使用递归）
     const results: string[] = [];
     const regexStr = normalizedPattern
+      .replace(/\\/g, '\\\\')
       .replace(/\./g, '\\.')
       .replace(/\*/g, '[^/]*')
       .replace(/\?/g, '.');

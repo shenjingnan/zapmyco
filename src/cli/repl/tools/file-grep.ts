@@ -65,7 +65,7 @@ function collectFiles(searchPath: string, fileGlob?: string): string[] {
   let globRegex: RegExp | null = null;
   if (fileGlob) {
     const regexStr = fileGlob
-      .replace(/\\/g, '/')
+      .replace(/\\/g, '\\\\')
       .replace(/\./g, '\\.')
       .replace(/\*\*/g, '<<<GLOBSTAR>>>')
       .replace(/\*/g, '[^/]*')
