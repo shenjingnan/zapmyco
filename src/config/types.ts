@@ -107,6 +107,87 @@ export interface AgentConfig {
   params?: Record<string, unknown>;
 }
 
+/** 单个 MCP Server 配置 */
+export interface McpServerConfig {
+  /** Server 逻辑名称（用于工具命名：mcp__{name}__{tool}） */
+  name: string;
+  /** 传输类型（默认 'stdio'） */
+  transport?: 'stdio';
+  /** 启动命令 */
+  command: string;
+  /** 命令参数 */
+  args?: string[];
+  /** 注入 server 进程的环境变量 */
+  env?: Record<string, string>;
+  /** server 进程工作目录 */
+  cwd?: string;
+  /** 是否启用（默认 true） */
+  enabled?: boolean;
+  /** 连接超时（毫秒，默认 15000） */
+  connectTimeoutMs?: number;
+}
+
+/**
+ * MCP 客户端配置（兼容两种格式）
+ *
+ * 格式 A — 标准 key-value（推荐，与 Claude Code 兼容）：
+ * ```json
+ * { "mcp": { "server-a": { "command": "npx", "args": [...] } } }
+ * ```
+ *
+ * 格式 B — 显式 servers 数组：
+ * ```json
+ * { "mcp": { "servers": [{ "name": "server-a", "command": "npx", "args": [...] }] } }
+ * ```
+ */
+export interface McpConfig {
+  /** MCP Server 列表（格式 B）或 key-value 映射（格式 A） */
+  servers?: McpServerConfig[];
+  /** key-value 格式：key 为 server name，value 为配置 */
+  [serverName: string]: McpServerConfig | McpServerConfig[] | undefined;
+}
+
+/**
+ * 将用户配置的 MCP 格式标准化为 McpServerConfig 数组
+ *
+ * 支持两种输入格式自动检测：
+ * - `{ servers: [...] }` → 直接返回数组
+ * - `{ "server-a": {...}, "server-b": {...} }` → 以 key 作为 name 转换为数组
+ */
+export function normalizeMcpConfig(raw: McpConfig): McpServerConfig[] {
+  // 格式 B：显式 servers 数组
+  if (raw.servers && Array.isArray(raw.servers) && raw.servers.length > 0) {
+    return raw.servers;
+  }
+
+  // 格式 A：key-value，key 为 server name
+  const servers: McpServerConfig[] = [];
+  for (const [key, value] of Object.entries(raw)) {
+    // 跳过保留字段
+    if (key === 'servers') continue;
+    if (value === null || value === undefined || typeof value !== 'object') continue;
+    // 跳过数组（不是 server 配置）
+    if (Array.isArray(value)) continue;
+    const config = value as unknown as Record<string, unknown>;
+    if (typeof config.command !== 'string') continue;
+
+    const server: McpServerConfig = {
+      name: key,
+      transport: 'stdio',
+      command: config.command as string,
+    };
+    if (Array.isArray(config.args)) server.args = config.args as string[];
+    if (config.env && typeof config.env === 'object')
+      server.env = config.env as Record<string, string>;
+    if (typeof config.cwd === 'string') server.cwd = config.cwd;
+    if (typeof config.enabled === 'boolean') server.enabled = config.enabled;
+    if (typeof config.connectTimeoutMs === 'number')
+      server.connectTimeoutMs = config.connectTimeoutMs;
+    servers.push(server);
+  }
+  return servers;
+}
+
 /** CLI 配置 */
 export interface CliConfig {
   /** 是否启用颜色输出 */
@@ -147,6 +228,9 @@ export interface ZapmycoConfig {
 
   /** Web 工具配置 */
   web?: WebConfig;
+
+  /** MCP 客户端配置 */
+  mcp?: McpConfig;
 }
 
 /** Web 工具配置 */

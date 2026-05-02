@@ -68,4 +68,7 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
       blockedDomains: ['localhost', '*.localhost', '*.local', '*.internal'],
     },
   },
+  mcp: {
+    servers: [],
+  },
 };

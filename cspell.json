@@ -49,7 +49,9 @@
     "mbold",
     "Jcleared",
     "AKIAIOSFODNN",
-    "AIBAAKCAQEA"
+    "AIBAAKCAQEA",
+    "modelcontextprotocol",
+    "calltool"
   ],
   "ignorePaths": [
     "node_modules",
