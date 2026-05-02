@@ -12,6 +12,7 @@ import { createGlobTool } from '@/cli/repl/tools/file-glob';
 import { createGrepTool } from '@/cli/repl/tools/file-grep';
 import { readStateTracker } from '@/cli/repl/tools/file-security';
 import { createWriteFileTool } from '@/cli/repl/tools/file-write';
+import { createMemoryTool } from '@/cli/repl/tools/memory-tool';
 import { createExecTool } from '@/cli/repl/tools/shell-exec';
 import { createProcessTool } from '@/cli/repl/tools/shell-process';
 import { createTaskManageTool } from '@/cli/repl/tools/task-manage';
@@ -172,6 +173,10 @@ export function createReplBuiltinTools(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools.push(createTaskManageTool(taskStore) as any);
   }
+
+  // 持久化记忆工具
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools.push(createMemoryTool() as any);
 
   return tools;
 }

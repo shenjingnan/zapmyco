@@ -26,6 +26,7 @@ import { InputParser } from '@/cli/repl/input-parser';
 import { Renderer as RendererClass } from '@/cli/repl/renderer';
 import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import { createTheme } from '@/cli/repl/theme';
+import { getMemoryStore } from '@/cli/repl/tools/memory-tool';
 import type {
   HistoryStore,
   ParsedInput,
@@ -169,6 +170,12 @@ export class ReplSession {
     // 初始化 TaskStore（会话级持久化任务列表）
     this.taskStore = new TaskStore();
     this.taskStore.load();
+
+    // 初始化 MemoryStore 并冻结记忆快照（用于系统提示注入）
+    const memoryStore = getMemoryStore();
+    memoryStore.freezeSnapshot().then(() => {
+      this.agent.memorySnapshot = memoryStore.getSnapshot();
+    });
 
     // 注册所有内置命令
     this.registerBuiltinCommands();
