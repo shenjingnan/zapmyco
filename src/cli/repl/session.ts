@@ -33,8 +33,9 @@ import type {
   SessionState,
   SessionStats,
 } from '@/cli/repl/types';
-import type { ZapmycoConfig } from '@/config/types';
+import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
+import { initializeMcpTools, type McpManager } from '@/core/mcp';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import { parseModelKey } from '@/llm/pi-ai-provider';
@@ -105,6 +106,9 @@ export class ReplSession {
 
   /** Agent 实例（会话级复用，替代直接 LLM 调用） */
   private agent: LlmBasedAgent;
+
+  /** MCP 连接管理器（在 registerBuiltinTools 中异步初始化） */
+  private mcpManager: McpManager | null = null;
 
   /** 当前正在执行的 taskId（用于取消操作） */
   private currentTaskId: string | null = null;
@@ -212,6 +216,12 @@ export class ReplSession {
 
     // 发布关闭事件
     eventBus.emit('system:shutdown', { reason });
+
+    // 关闭 MCP 连接
+    if (this.mcpManager) {
+      await this.mcpManager.shutdown();
+      this.mcpManager = null;
+    }
 
     // 停止 TUI
     this.tui.stop();
@@ -594,9 +604,27 @@ export class ReplSession {
 
   /**
    * 注册 REPL 场景下的基础工具
+   *
+   * 在注册内置工具后，异步初始化 MCP 工具。
+   * MCP 连接不阻塞内置工具注册——Agent 立即可用内置工具，
+   * MCP 工具在连接完成后自动追加。
    */
   private registerBuiltinTools(): void {
+    // 1. 注册内置工具（同步，立即可用）
     this.agent.registerTools(createReplBuiltinTools(this.config.web));
+
+    // 2. 异步初始化 MCP 工具（fire-and-forget，完成后自动注册）
+    //    normalizeMcpConfig 兼容 key-value 和 servers 数组两种格式
+    const mcpServers = this.config.mcp ? normalizeMcpConfig(this.config.mcp) : [];
+    if (mcpServers.length > 0) {
+      initializeMcpTools(mcpServers, this.agent)
+        .then((manager) => {
+          this.mcpManager = manager;
+        })
+        .catch((err: unknown) => {
+          log.error('MCP 初始化失败', { error: err instanceof Error ? err.message : String(err) });
+        });
+    }
   }
 
   /** 设置编辑器事件绑定 */
