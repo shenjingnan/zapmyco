@@ -90,10 +90,13 @@ function findActualString(content: string, oldString: string): string | null {
   // 2. Unicode 归一化后匹配
   const normalizedContent = normalizeUnicode(content);
   const normalizedOld = normalizeUnicode(oldString);
+  const idx = normalizedContent.indexOf(normalizedOld);
 
-  if (normalizedContent.includes(normalizedOld)) {
-    // 找到了归一化后的匹配，返回归一化后的 old_string
-    return normalizedOld;
+  if (idx !== -1) {
+    // 在归一化内容中找到匹配后，从原始内容中提取对应位置的子串
+    // 适用于引号归一化（花括号引号→直引号，长度不变）的场景
+    // em dash 归一化（1→2 字符）可能导致偏移，但对于引号场景足够准确
+    return content.substring(idx, idx + normalizedOld.length);
   }
 
   return null;
@@ -136,7 +139,7 @@ export function createEditFileTool() {
       required: ['file_path', 'old_string', 'new_string'],
     } as const,
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
     async execute(_toolCallId: string, params: EditFileParams): Promise<any> {
       const startTime = Date.now();
       const replaceAll = params.replace_all === true;

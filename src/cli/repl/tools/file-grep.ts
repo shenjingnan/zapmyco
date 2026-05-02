@@ -232,7 +232,7 @@ export function createGrepTool() {
       required: ['pattern'],
     } as const,
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
     async execute(_toolCallId: string, params: GrepParams): Promise<any> {
       const startTime = Date.now();
       const searchPath = resolve(params.path ?? process.cwd());

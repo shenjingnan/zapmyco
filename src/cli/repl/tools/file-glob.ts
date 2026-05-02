@@ -60,12 +60,17 @@ function globSync(pattern: string, rootPath: string): string[] {
     const maxResults = 500;
 
     // 构建正则表达式匹配
-    const regexStr = normalizedPattern
+    let regexStr = normalizedPattern
       .replace(/\./g, '\\.')
       .replace(/\*\*/g, '<<<GLOBSTAR>>>')
       .replace(/\*/g, '[^/]*')
       .replace(/\?/g, '.')
       .replace(/<<<GLOBSTAR>>>/g, '.*');
+
+    // 当 pattern 以 **/ 开头时，允许匹配根目录下的文件（使目录前缀可选）
+    if (normalizedPattern.startsWith('**/')) {
+      regexStr = regexStr.replace(/^\.\*\//, '(.*/)?');
+    }
 
     const regex = new RegExp(`^${regexStr}$`);
 
@@ -94,8 +99,12 @@ function globSync(pattern: string, rootPath: string): string[] {
     }
 
     // 找到搜索的起始目录
+    // 当 pattern 以 ** 开头时（如 **/*.ts），从 rootPath 开始遍历
+    const startsWithGlobstar = normalizedPattern.startsWith('**');
     const staticPart = parts.find((p) => !p.includes('*') && !p.includes('?')) || '.';
-    const startDir = resolve(rootPath, staticPart === '**' ? '.' : dirname(normalizedPattern));
+    const startDir = startsWithGlobstar
+      ? rootPath
+      : resolve(rootPath, staticPart === '**' ? '.' : dirname(normalizedPattern));
     walk(startDir);
 
     // 按修改时间排序
@@ -120,6 +129,7 @@ function globSync(pattern: string, rootPath: string): string[] {
     const searchDir = rootPath;
 
     try {
+      // biome-ignore lint/suspicious/noExplicitAny: Node types don't include recursive option
       const entries = readdirSync(searchDir, { withFileTypes: true, recursive: false } as any);
       for (const entry of entries) {
         if (entry.isFile() && regex.test(entry.name)) {
@@ -169,7 +179,7 @@ export function createGlobTool() {
       required: ['pattern'],
     } as const,
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
     async execute(_toolCallId: string, params: GlobParams): Promise<any> {
       const startTime = Date.now();
       const searchPath = resolve(params.path ?? process.cwd());
