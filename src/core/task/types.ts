@@ -59,3 +59,69 @@ export interface TaskGraph {
   /** 拓扑排序后的执行层级（同层可并行） */
   layers: string[][];
 }
+
+// ============ Agent 任务管理工具类型 ============
+
+/** Agent 任务项状态 */
+export type TaskItemStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+
+/**
+ * Agent 任务项
+ *
+ * Agent 通过 task_manage 工具创建和维护的任务单元。
+ * 与 SubTask 不同，TaskItem 是 Agent 面向用户的"任务跟踪层"，
+ * 而 SubTask 是系统内部的"任务执行层"。
+ */
+export interface TaskItem {
+  /** 任务唯一标识（Agent 自选，如 "1", "2", "search-files"） */
+  id: string;
+  /** 简短标题（祈使句，如 "搜索相关文件"） */
+  subject: string;
+  /** 详细描述（可选） */
+  description?: string;
+  /** 当前状态 */
+  status: TaskItemStatus;
+  /** 创建时间戳 */
+  createdAt: number;
+  /** 最后更新时间戳 */
+  updatedAt: number;
+  /** 依赖的任务 ID 列表（Phase 2 启用） */
+  dependencies?: string[];
+  /** 所有者 Agent ID（Phase 2 启用） */
+  owner?: string;
+}
+
+/** task_manage 工具操作类型 */
+export type TaskManageAction = 'read' | 'write' | 'update';
+
+/** task_manage write/update 时传入的任务项 */
+export interface TaskManageInputItem {
+  id: string;
+  subject: string;
+  description?: string;
+  status: TaskItemStatus;
+}
+
+/** task_manage 工具参数 */
+export interface TaskManageParams {
+  action: TaskManageAction;
+  tasks?: TaskManageInputItem[];
+  merge?: boolean;
+}
+
+/** task_manage 工具返回的任务摘要统计 */
+export interface TaskManageSummary {
+  total: number;
+  pending: number;
+  in_progress: number;
+  completed: number;
+  cancelled: number;
+}
+
+/** task_manage 工具返回详情 */
+export interface TaskManageDetails {
+  action: TaskManageAction;
+  tasks: TaskItem[];
+  summary: TaskManageSummary;
+  error?: string;
+}

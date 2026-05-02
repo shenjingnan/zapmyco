@@ -157,3 +157,4 @@ Thumbs.db
 settings.local.json
 
 tmp
+.agents/plans

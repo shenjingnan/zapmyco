@@ -36,6 +36,7 @@ import type {
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
+import { TaskStore } from '@/core/task/task-store';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import { parseModelKey } from '@/llm/pi-ai-provider';
@@ -116,6 +117,9 @@ export class ReplSession {
   /** 多轮对话上下文（兼容保留，Agent 内部也维护历史） */
   private conversationHistory: ChatMessage[] = [];
 
+  /** 任务管理器（会话级持久化） */
+  private taskStore: TaskStore;
+
   // 会话统计
   private stats: SessionStats = {
     totalRequests: 0,
@@ -161,6 +165,10 @@ export class ReplSession {
 
     // 初始化 Agent 实例（替代直接 LLM 调用）
     this.agent = this.createReplAgent();
+
+    // 初始化 TaskStore（会话级持久化任务列表）
+    this.taskStore = new TaskStore();
+    this.taskStore.load();
 
     // 注册所有内置命令
     this.registerBuiltinCommands();
@@ -611,7 +619,7 @@ export class ReplSession {
    */
   private registerBuiltinTools(): void {
     // 1. 注册内置工具（同步，立即可用）
-    this.agent.registerTools(createReplBuiltinTools(this.config.web));
+    this.agent.registerTools(createReplBuiltinTools(this.config.web, this.taskStore));
 
     // 2. 异步初始化 MCP 工具（fire-and-forget，完成后自动注册）
     //    normalizeMcpConfig 兼容 key-value 和 servers 数组两种格式

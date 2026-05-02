@@ -14,17 +14,23 @@ import { readStateTracker } from '@/cli/repl/tools/file-security';
 import { createWriteFileTool } from '@/cli/repl/tools/file-write';
 import { createExecTool } from '@/cli/repl/tools/shell-exec';
 import { createProcessTool } from '@/cli/repl/tools/shell-process';
+import { createTaskManageTool } from '@/cli/repl/tools/task-manage';
 import { createWebFetchTool } from '@/cli/repl/tools/web-fetch';
 import { createWebSearchTool } from '@/cli/repl/tools/web-search';
 import type { WebConfig } from '@/config/types';
 import type { ToolRegistration } from '@/core/agent-runtime';
+import type { TaskStore } from '@/core/task/task-store';
 
 /**
  * 创建 REPL 基础工具集
  *
  * @param webConfig - Web 工具配置（可选），传入时启用 web_fetch 和 web_search
+ * @param taskStore - TaskStore 实例（可选），传入时启用 task_manage 工具
  */
-export function createReplBuiltinTools(webConfig?: WebConfig): ToolRegistration[] {
+export function createReplBuiltinTools(
+  webConfig?: WebConfig,
+  taskStore?: TaskStore
+): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
       id: 'get_current_time',
@@ -159,6 +165,12 @@ export function createReplBuiltinTools(webConfig?: WebConfig): ToolRegistration[
     tools.push(createWebFetchTool(webConfig) as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools.push(createWebSearchTool(webConfig) as any);
+  }
+
+  // 任务管理工具（依赖 TaskStore 实例）
+  if (taskStore) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createTaskManageTool(taskStore) as any);
   }
 
   return tools;
