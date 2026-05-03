@@ -193,5 +193,130 @@ allowed-tools:
       // 清理
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
+
+    it('should return error for empty skill name', async () => {
+      const { createSkillTool } = await import('@/cli/repl/tools/skill-tool');
+
+      const tool = createSkillTool();
+      // biome-ignore lint/suspicious/noExplicitAny: test parameter
+      const result = await tool.execute('call-3', { skill: '' } as any);
+
+      expect(result.content[0].text).toContain('请提供要调用的技能名称');
+    });
+
+    it('should return error for whitespace-only skill name', async () => {
+      const { createSkillTool } = await import('@/cli/repl/tools/skill-tool');
+
+      const tool = createSkillTool();
+      // biome-ignore lint/suspicious/noExplicitAny: test parameter
+      const result = await tool.execute('call-4', { skill: '   ' } as any);
+
+      expect(result.content[0].text).toContain('请提供要调用的技能名称');
+    });
+
+    it('should handle missing args gracefully', async () => {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+
+      const tmpDir = path.join('/tmp', `zapmyco-skill-test-${Date.now()}`);
+      const skillDir = path.join(tmpDir, 'no-args');
+      await fs.mkdir(skillDir, { recursive: true });
+
+      const skillContent = `---
+name: no-args
+description: 无参数技能
+---
+
+# 无参数
+
+正常执行即可。`;
+
+      await vi.waitFor(() => fs.writeFile(path.join(skillDir, 'SKILL.md'), skillContent, 'utf-8'));
+
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'no-args',
+            description: '无参数技能',
+            filePath: path.join(skillDir, 'SKILL.md'),
+            baseDir: skillDir,
+            source: 'bundled',
+            frontmatter: { name: 'no-args', description: '无参数技能' },
+            body: skillContent,
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: tmpDir,
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-5', { skill: 'no-args' });
+
+      expect(result.content[0].text).toContain('no-args');
+      expect(result.content[0].text).toContain('正常执行即可');
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should list available skills when skill not found', async () => {
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'existing',
+            description: '存在的技能',
+            filePath: '/tmp/existing/SKILL.md',
+            baseDir: '/tmp/existing',
+            source: 'bundled',
+            frontmatter: { name: 'existing', description: '存在的技能' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: '/tmp',
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-6', { skill: 'nonexistent' });
+
+      expect(result.content[0].text).toContain('未找到技能');
+      expect(result.content[0].text).toContain('existing');
+    });
+  });
+
+  describe('getSkillCommandSpecs', () => {
+    it('should sanitize skill names for commands', async () => {
+      const { getSkillCommandSpecs } = await import('@/cli/repl/tools/skill-tool');
+
+      const entries = [
+        {
+          skill: {
+            name: 'My Skill!',
+            description: 'test',
+            filePath: '/test/SKILL.md',
+            baseDir: '/test',
+            source: 'bundled' as const,
+            frontmatter: { name: 'My Skill!', description: 'test' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: '/test',
+        },
+      ];
+
+      const specs = getSkillCommandSpecs(entries);
+      expect(specs).toHaveLength(1);
+      // 名称应被规范化为小写，非字母数字替换为连字符
+      expect(specs[0]?.name).toBe('my-skill');
+    });
   });
 });

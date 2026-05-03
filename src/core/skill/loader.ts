@@ -119,8 +119,9 @@ const SOURCE_DIRS: Record<SkillSource, (workspaceDir?: string) => string> = {
  *
  * 同步规则：
  * - 用户目录不存在该 skill → 复制
- * - 用户目录存在且 manifest hash 匹配 bundled → 更新（新版本覆盖）
- * - 用户目录存在但 manifest hash 不匹配 → 跳过（用户已修改）
+ * - 用户目录存在且 manifest hash 等于 bundled hash → 跳过（已是最新）
+ * - bundled 有新版本且用户文件 hash 等于 manifest hash → 更新（用户未修改）
+ * - bundled 有新版本但用户文件 hash 不等于 manifest hash → 跳过（用户已修改）
  */
 export async function syncBundledSkills(): Promise<{ synced: string[]; skipped: string[] }> {
   const bundledDir = resolveBundledSkillsDir();
@@ -179,12 +180,20 @@ export async function syncBundledSkills(): Promise<{ synced: string[]; skipped: 
       } else if (manifestHash && manifestHash === bundledHash) {
         // 已经是当前版本，跳过
       } else if (manifestHash && manifestHash !== bundledHash) {
-        // bundled 有新版本，用户未修改 → 更新
-        await copyFile(bundledSkillFile, userSkillFile);
-        manifest[name] = bundledHash;
-        synced.push(name);
+        // bundled 有新版本：确认用户未修改后再更新
+        const userContent = await readFile(userSkillFile, 'utf-8');
+        const userHash = hashContent(userContent);
+        if (userHash === manifestHash) {
+          // 用户文件与 manifest 一致 → 安全更新
+          await copyFile(bundledSkillFile, userSkillFile);
+          manifest[name] = bundledHash;
+          synced.push(name);
+        } else {
+          // 用户已修改 → 跳过
+          skipped.push(name);
+        }
       } else {
-        // 用户在 manifest 中无记录或 hash 不匹配 → 用户可能已修改，跳过
+        // 用户在 manifest 中无记录 → 用户可能已修改，跳过
         skipped.push(name);
       }
     } catch (_err) {
@@ -222,7 +231,7 @@ async function writeManifest(path: string, manifest: Record<string, string>): Pr
   const lines = Object.entries(manifest)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, hash]) => `${name}:${hash}`);
-  await writeFile(path, lines.join('\n') + '\n', 'utf-8');
+  await writeFile(path, `${lines.join('\n')}\n`, 'utf-8');
 }
 
 function hashContent(content: string): string {
