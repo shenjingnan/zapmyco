@@ -53,7 +53,8 @@
     "modelcontextprotocol",
     "calltool",
     "oneline",
-    "prio"
+    "prio",
+    "ONESHOT"
   ],
   "ignorePaths": [
     "node_modules",

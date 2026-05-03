@@ -6,6 +6,12 @@
 
 import { ZapmycoError } from '@/infra/errors';
 
+/** 格式化本地时间为 ISO-like 字符串（YYYY-MM-DD HH:MM:SS） */
+function formatLocalTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 /** 日志级别 */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -74,7 +80,7 @@ class Logger {
     const entry: LogEntry = {
       level,
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: formatLocalTime(new Date()),
       ...(context !== undefined ? { context } : {}),
       ...(error !== undefined ? { error } : {}),
     };
