@@ -217,7 +217,7 @@ export class SubAgentManager {
       const statusIcon = r.status === 'success' ? '✅' : '❌';
       const durationSec = (r.duration / 1000).toFixed(1);
       const outputPreview = r.output
-        ? r.output.slice(0, 80).replace(/\n/g, ' ').replace(/\|/g, '\\|')
+        ? r.output.slice(0, 80).replace(/\\/g, '\\\\').replace(/\n/g, ' ').replace(/\|/g, '\\|')
         : r.error
           ? `错误: ${r.error.slice(0, 60)}`
           : '（无输出）';
