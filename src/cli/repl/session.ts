@@ -175,9 +175,17 @@ export class ReplSession {
 
     // 初始化 MemoryStore 并冻结记忆快照（用于系统提示注入）
     const memoryStore = getMemoryStore();
-    memoryStore.freezeSnapshot().then(() => {
-      this.agent.memorySnapshot = memoryStore.getSnapshot();
-    });
+    memoryStore
+      .freezeSnapshot()
+      .then(() => {
+        this.agent.memorySnapshot = memoryStore.getSnapshot();
+      })
+      .catch((err: unknown) => {
+        log.warn('记忆快照冻结失败，将使用空快照', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        this.agent.memorySnapshot = '';
+      });
 
     // 初始化 Skill 系统（异步加载，完成后更新 Agent）
     if (this.config.skill?.enabled !== false) {

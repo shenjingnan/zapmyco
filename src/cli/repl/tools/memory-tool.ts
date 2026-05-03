@@ -59,7 +59,8 @@ const MEMORY_LABELS: Record<MemoryType, string> = {
 export class MemoryStore {
   private baseDir: string;
   private snapshot: Map<MemoryType, string> = new Map();
-  private initialized = false;
+  /** Promise-based 锁，防止并发 initialize() 调用产生竞态 */
+  private initPromise: Promise<void> | null = null;
 
   constructor(homeDir?: string) {
     this.baseDir = homeDir ? join(homeDir, '.zapmyco', 'memory') : MEMORY_DIR;
@@ -67,9 +68,14 @@ export class MemoryStore {
 
   // ============ 初始化 ============
 
-  /** 确保目录和默认文件存在 */
+  /** 确保目录和默认文件存在（Promise 锁防并发竞态） */
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = this.doInitialize();
+    return this.initPromise;
+  }
+
+  private async doInitialize(): Promise<void> {
     await mkdir(this.baseDir, { recursive: true });
 
     // 为每种类型创建默认文件（如果不存在）
@@ -90,8 +96,6 @@ export class MemoryStore {
     } catch {
       await this.updateIndex();
     }
-
-    this.initialized = true;
   }
 
   // ============ 快照管理 ============
