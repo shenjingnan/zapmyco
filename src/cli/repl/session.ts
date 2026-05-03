@@ -27,6 +27,7 @@ import { Renderer as RendererClass } from '@/cli/repl/renderer';
 import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import { createTheme } from '@/cli/repl/theme';
 import { getMemoryStore } from '@/cli/repl/tools/memory-tool';
+import { getSkillCommandSpecs, setSkillEntries } from '@/cli/repl/tools/skill-tool';
 import type {
   HistoryStore,
   ParsedInput,
@@ -37,6 +38,7 @@ import type {
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
+import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
@@ -177,10 +179,15 @@ export class ReplSession {
       this.agent.memorySnapshot = memoryStore.getSnapshot();
     });
 
+    // 初始化 Skill 系统（异步加载，完成后更新 Agent）
+    if (this.config.skill?.enabled !== false) {
+      this.initSkills();
+    }
+
     // 注册所有内置命令
     this.registerBuiltinCommands();
 
-    // 注册 Agent 工具
+    // 注册 Agent 工具（Skill 工具在 initSkills 完成后再注册，此处先注册其他工具）
     this.registerBuiltinTools();
 
     // 绑定编辑器事件
@@ -626,7 +633,9 @@ export class ReplSession {
    */
   private registerBuiltinTools(): void {
     // 1. 注册内置工具（同步，立即可用）
-    this.agent.registerTools(createReplBuiltinTools(this.config.web, this.taskStore));
+    this.agent.registerTools(
+      createReplBuiltinTools(this.config.web, this.taskStore, this.config.skill)
+    );
 
     // 2. 异步初始化 MCP 工具（fire-and-forget，完成后自动注册）
     //    normalizeMcpConfig 兼容 key-value 和 servers 数组两种格式
@@ -639,6 +648,85 @@ export class ReplSession {
         .catch((err: unknown) => {
           log.error('MCP 初始化失败', { error: err instanceof Error ? err.message : String(err) });
         });
+    }
+  }
+
+  /**
+   * 初始化 Skill 系统
+   *
+   * 从 bundled/user/project/workspace 四个来源加载技能，
+   * 构建快照注入到 Agent 系统提示。
+   */
+  private initSkills(): void {
+    const skillConfig = this.config.skill;
+    if (!skillConfig?.enabled) return;
+
+    loadSkills(
+      {
+        enabled: true,
+        extraDirs: skillConfig.loadDirs,
+        maxSkillsInPrompt: skillConfig.maxSkillsInPrompt,
+        maxSkillFileBytes: skillConfig.maxSkillFileBytes,
+      },
+      process.cwd()
+    )
+      .then((entries) => {
+        // 更新 SkillTool 的条目（供工具查找）
+        setSkillEntries(entries);
+
+        // 更新 Agent 的 skill 条目（用于 allowed-tools 自动授权）
+        this.agent.skillEntries = entries;
+
+        // 构建快照并注入系统提示
+        const snapshot = buildSkillSnapshot(entries, skillConfig.maxSkillsInPrompt);
+        this.agent.skillPrompt = snapshot.prompt;
+
+        // 注册 Skill 斜杠命令（如 /commit, /review-pr）
+        this._registerSkillCommands(entries);
+
+        log.info('Skill 系统初始化完成', {
+          count: snapshot.count,
+          names: snapshot.names,
+        });
+      })
+      .catch((err: unknown) => {
+        log.error('Skill 加载失败', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
+
+  /**
+   * 为 user-invocable 技能注册斜杠命令
+   *
+   * 将每个用户可调用的技能注册为 /skill-name 格式的 CLI 命令。
+   * 命令执行时，将技能名称和用户参数作为 goal 发送给 Agent 处理。
+   */
+  private _registerSkillCommands(entries: SkillEntry[]): void {
+    const specs = getSkillCommandSpecs(entries);
+
+    for (const spec of specs) {
+      // 检查是否已存在同名命令（内置命令优先）
+      if (this.registry.getCommand(spec.name)) {
+        log.debug(`跳过 skill 命令 "${spec.name}"：与内置命令冲突`);
+        continue;
+      }
+
+      this.registry.register({
+        name: spec.name,
+        description: spec.description,
+        aliases: [],
+        usage: spec.name,
+        handler: async (args: string[]) => {
+          // 将 skill 调用作为 goal 发送给 Agent
+          const argsStr = args.join(' ');
+          const goalInput = argsStr
+            ? `请使用 /${spec.name} 技能，参数: ${argsStr}`
+            : `请使用 /${spec.name} 技能`;
+
+          await this.executeGoal(goalInput);
+        },
+      });
     }
   }
 

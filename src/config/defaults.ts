@@ -71,4 +71,9 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
   mcp: {
     servers: [],
   },
+  skill: {
+    enabled: true,
+    maxSkillsInPrompt: 50,
+    maxSkillFileBytes: 256 * 1024,
+  },
 };

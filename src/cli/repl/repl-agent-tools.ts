@@ -15,10 +15,11 @@ import { createWriteFileTool } from '@/cli/repl/tools/file-write';
 import { createMemoryTool } from '@/cli/repl/tools/memory-tool';
 import { createExecTool } from '@/cli/repl/tools/shell-exec';
 import { createProcessTool } from '@/cli/repl/tools/shell-process';
+import { createSkillTool } from '@/cli/repl/tools/skill-tool';
 import { createTaskManageTool } from '@/cli/repl/tools/task-manage';
 import { createWebFetchTool } from '@/cli/repl/tools/web-fetch';
 import { createWebSearchTool } from '@/cli/repl/tools/web-search';
-import type { WebConfig } from '@/config/types';
+import type { SkillConfig, WebConfig } from '@/config/types';
 import type { ToolRegistration } from '@/core/agent-runtime';
 import type { TaskStore } from '@/core/task/task-store';
 
@@ -30,7 +31,8 @@ import type { TaskStore } from '@/core/task/task-store';
  */
 export function createReplBuiltinTools(
   webConfig?: WebConfig,
-  taskStore?: TaskStore
+  taskStore?: TaskStore,
+  skillConfig?: SkillConfig
 ): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
@@ -177,6 +179,12 @@ export function createReplBuiltinTools(
   // 持久化记忆工具
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tools.push(createMemoryTool() as any);
+
+  // Skill 工具
+  if (skillConfig?.enabled !== false) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createSkillTool(skillConfig) as any);
+  }
 
   return tools;
 }

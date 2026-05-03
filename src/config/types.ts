@@ -188,6 +188,20 @@ export function normalizeMcpConfig(raw: McpConfig): McpServerConfig[] {
   return servers;
 }
 
+/** Skill 系统配置 */
+export interface SkillConfig {
+  /** 是否启用（默认 true） */
+  enabled: boolean;
+  /** 额外加载目录 */
+  loadDirs?: string[];
+  /** 系统提示中最大技能数（默认 50） */
+  maxSkillsInPrompt?: number;
+  /** SKILL.md 文件最大大小（字节，默认 256KB） */
+  maxSkillFileBytes?: number;
+  /** 每技能配置 */
+  entries?: Record<string, { enabled?: boolean }>;
+}
+
 /** CLI 配置 */
 export interface CliConfig {
   /** 是否启用颜色输出 */
@@ -231,6 +245,9 @@ export interface ZapmycoConfig {
 
   /** MCP 客户端配置 */
   mcp?: McpConfig;
+
+  /** Skill 系统配置 */
+  skill?: SkillConfig;
 }
 
 /** Web 工具配置 */

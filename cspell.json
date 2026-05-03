@@ -51,7 +51,9 @@
     "AKIAIOSFODNN",
     "AIBAAKCAQEA",
     "modelcontextprotocol",
-    "calltool"
+    "calltool",
+    "oneline",
+    "prio"
   ],
   "ignorePaths": [
     "node_modules",

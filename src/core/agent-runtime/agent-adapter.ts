@@ -63,6 +63,12 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** 记忆快照内容（由外部注入，会话开始时冻结） */
   memorySnapshot: string = '';
 
+  /** Skill 提示内容（由外部注入，会话开始时构建） */
+  skillPrompt: string = '';
+
+  /** Skill 条目列表（用于 allowed-tools 自动授权） */
+  skillEntries: import('@/core/skill/types').SkillEntry[] = [];
+
   constructor(options: AgentAdapterOptions) {
     super();
 
@@ -277,6 +283,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   private buildSystemPrompt(request: AgentExecuteRequest): string {
     const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'task_manage');
     const hasMemory = this.toolRegistrations.some((t) => t.id === 'memory');
+    const hasSkill = this.toolRegistrations.some((t) => t.id === 'Skill');
 
     const parts: string[] = [
       `你是 ${this.displayName}，一个专业的 AI 助手。`,
@@ -309,6 +316,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         '- 一次性查询的内容',
         ''
       );
+    }
+
+    // Skill 列表 — 在记忆后、任务管理前注入
+    if (hasSkill && this.skillPrompt) {
+      parts.push('', this.skillPrompt);
     }
 
     // 任务管理引导 — 必须放在最前面，确保 Agent 第一时间看到
