@@ -69,6 +69,15 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** Skill 条目列表（用于 allowed-tools 自动授权） */
   skillEntries: import('@/core/skill/types').SkillEntry[] = [];
 
+  /**
+   * 系统提示词覆盖
+   *
+   * 当设置时，execute() 将使用此内容替代默认的 buildSystemPrompt()。
+   * 用于子 Agent 等需要自定义系统提示词的场景。
+   * 设置为 null 或空字符串时恢复默认行为。
+   */
+  systemPromptOverride: string | null = null;
+
   constructor(options: AgentAdapterOptions) {
     super();
 
@@ -281,9 +290,19 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    * 构建系统提示词
    */
   private buildSystemPrompt(request: AgentExecuteRequest): string {
+    // 子 Agent 等场景使用自定义系统提示词
+    if (this.systemPromptOverride) {
+      const parts = [this.systemPromptOverride];
+      if (request.workdir) {
+        parts.push(`\n## 工作目录\n${request.workdir}`);
+      }
+      return parts.join('\n');
+    }
+
     const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'task_manage');
     const hasMemory = this.toolRegistrations.some((t) => t.id === 'memory');
     const hasSkill = this.toolRegistrations.some((t) => t.id === 'Skill');
+    const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'spawn_subagents');
 
     const parts: string[] = [
       `你是 ${this.displayName}，一个专业的 AI 助手。`,
@@ -337,6 +356,33 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         '3. **保持专注**：同时只有 1 个 "in_progress"。',
         '4. **先读后写**：不确定当前任务时先用 action="read" 查看。'
       );
+
+      // spawn_subagents 使用引导 — 紧接任务管理规范
+      if (hasSpawnSubAgents) {
+        parts.push(
+          '',
+          '## 并行执行规范（次高优先级）',
+          '',
+          '完成 task_manage write 分解后，识别其中**互不依赖**的独立子任务。',
+          '将这些子任务通过 `spawn_subagents` 工具并行派发给子 Agent 同时执行。',
+          '',
+          '### 工作流程',
+          '1. `task_manage write` → 分解所有子任务',
+          '2. 识别可并行的独立任务（无顺序依赖、无共享状态）',
+          '3. `spawn_subagents(agents: [...])` → 一次性并行执行',
+          '4. 根据返回结果逐一 `task_manage update` 更新状态',
+          '5. 将有依赖的串行任务保留给自己后续执行',
+          '',
+          '### 何时使用 spawn_subagents',
+          '- ✅ 多个独立的搜索/研究任务（如同时搜索三个不同技术方案）',
+          '- ✅ 多个独立的文件读取/分析任务（如同时分析多个模块）',
+          '- ✅ 互不依赖的信息收集任务',
+          '- ❌ 任务之间有严格的顺序依赖（必须先 A 后 B）',
+          '- ❌ 只有 1 个任务时（直接执行即可）',
+          '- ❌ 任务需要修改文件（子 Agent 默认只有只读工具）',
+          ''
+        );
+      }
     }
 
     if (request.upstreamResults?.length) {

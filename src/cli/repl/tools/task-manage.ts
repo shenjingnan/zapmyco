@@ -60,7 +60,9 @@ const TASK_MANAGE_DESCRIPTION = `任务管理工具 — 对于多步骤任务，
 2. 每次只能有 1 个任务处于 "in_progress" 状态
 3. 完成一个子任务后**立刻** update 为 "completed"，然后再开始下一个
 4. 任务状态: "pending"(未开始), "in_progress"(进行中), "completed"(已完成), "cancelled"(已取消)
-5. 不要在一条消息中批量标记多个任务完成 — 每个任务完成时单独 update`;
+5. 不要在一条消息中批量标记多个任务完成 — 每个任务完成时单独 update
+
+> 提示：如果项目启用了 spawn_subagents 工具，规划完成后识别其中互不依赖的子任务，使用 spawn_subagents 并行执行它们，然后根据结果更新任务状态。`;
 
 // ============ task_manage 工具 ============
 
