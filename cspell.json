@@ -51,7 +51,8 @@
     "AKIAIOSFODNN",
     "AIBAAKCAQEA",
     "modelcontextprotocol",
-    "calltool"
+    "calltool",
+    "oneline"
   ],
   "ignorePaths": [
     "node_modules",
