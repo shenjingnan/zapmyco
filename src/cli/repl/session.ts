@@ -21,6 +21,8 @@ import { createHistoryCommand } from '@/cli/repl/commands/history';
 import { createQuitCommand } from '@/cli/repl/commands/quit';
 import { createStatusCommand } from '@/cli/repl/commands/status';
 import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
+import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
+import { getCronStore } from '@/cli/repl/cron/cron-store';
 import { HistoryStore as HistoryStoreClass } from '@/cli/repl/history-store';
 import { InputParser } from '@/cli/repl/input-parser';
 import { Renderer as RendererClass } from '@/cli/repl/renderer';
@@ -120,6 +122,9 @@ export class ReplSession {
   /** 多轮对话上下文（兼容保留，Agent 内部也维护历史） */
   private conversationHistory: ChatMessage[] = [];
 
+  /** 定时任务调度器 */
+  private cronScheduler: CronScheduler | null = null;
+
   /** 任务管理器（会话级持久化） */
   private taskStore: TaskStore;
 
@@ -172,6 +177,12 @@ export class ReplSession {
     // 初始化 TaskStore（会话级持久化任务列表）
     this.taskStore = new TaskStore();
     this.taskStore.load();
+
+    // 初始化 CronScheduler（定时任务调度器）
+    this.cronScheduler = new CronScheduler(getCronStore(), {
+      isIdle: () => this._state === 'idle',
+    });
+    void this.cronScheduler.start();
 
     // 初始化 MemoryStore 并冻结记忆快照（用于系统提示注入）
     const memoryStore = getMemoryStore();
@@ -246,6 +257,12 @@ export class ReplSession {
 
     // 发布关闭事件
     eventBus.emit('system:shutdown', { reason });
+
+    // 停止定时任务调度器
+    if (this.cronScheduler) {
+      this.cronScheduler.stop();
+      this.cronScheduler = null;
+    }
 
     // 关闭 MCP 连接
     if (this.mcpManager) {
@@ -647,7 +664,8 @@ export class ReplSession {
         this.taskStore,
         this.config.skill,
         this.agent,
-        this.config.subAgent
+        this.config.subAgent,
+        this.cronScheduler ?? undefined
       )
     );
 

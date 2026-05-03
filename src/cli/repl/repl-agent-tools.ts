@@ -7,6 +7,8 @@
  * @module cli/repl/repl-agent-tools
  */
 
+import type { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
+import { createCronTool } from '@/cli/repl/tools/cron-tool';
 import { createEditFileTool } from '@/cli/repl/tools/file-edit';
 import { createGlobTool } from '@/cli/repl/tools/file-glob';
 import { createGrepTool } from '@/cli/repl/tools/file-grep';
@@ -37,18 +39,29 @@ export function createReplBuiltinTools(
   taskStore?: TaskStore,
   skillConfig?: SkillConfig,
   parentAgent?: LlmBasedAgent,
-  subAgentConfig?: SubAgentConfig
+  subAgentConfig?: SubAgentConfig,
+  cronScheduler?: CronScheduler
 ): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
       id: 'get_current_time',
       label: '获取当前时间',
       description:
-        '获取当前日期和时间。当用户询问时间、需要时间戳、或需要时间相关上下文时调用此工具。',
-      execute: async () => ({
-        content: [{ type: 'text', text: new Date().toISOString() }],
-        details: { timestamp: Date.now() },
-      }),
+        '获取当前日期和时间（含本地时间和 UTC 时间）。当用户询问时间、需要时间戳、或需要时间相关上下文时调用此工具。',
+      execute: async () => {
+        const now = new Date();
+        const offset = -now.getTimezoneOffset();
+        const tz = `UTC${offset >= 0 ? '+' : ''}${Math.floor(offset / 60)}:${String(offset % 60).padStart(2, '0')}`;
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `本地时间: ${now.toString()}\nISO (UTC): ${now.toISOString()}\n时区: ${tz}`,
+            },
+          ],
+          details: { timestamp: Date.now(), timezone: tz },
+        };
+      },
     },
     {
       id: 'get_workdir_info',
@@ -196,6 +209,12 @@ export function createReplBuiltinTools(
     const manager = new SubAgentManager(subAgentConfig, parentAgent, tools);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools.push(createSpawnSubAgentsTool(manager, subAgentConfig) as any);
+  }
+
+  // 定时任务工具（依赖 CronScheduler 实例）
+  if (cronScheduler) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createCronTool(cronScheduler) as any);
   }
 
   return tools;

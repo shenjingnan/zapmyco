@@ -110,10 +110,10 @@ describe('Logger', () => {
       expect(entry?.context).toBeUndefined();
     });
 
-    it('should format timestamp as ISO string', () => {
+    it('should format timestamp as local time string', () => {
       log.info('ts test');
       const entry = log.getEntries()[0];
-      expect(entry?.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(entry?.timestamp).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
     });
 
     it('should include ZapmycoError code in output', () => {
