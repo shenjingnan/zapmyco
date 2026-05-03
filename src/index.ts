@@ -75,6 +75,16 @@ export {
   syncBundledSkills,
 } from '@/core/skill';
 
+// ============ Sub-Agent 系统导出 ============
+
+export type {
+  SpawnSubAgentsParams,
+  SubAgentResultEntry,
+  SubAgentResults,
+  SubAgentSpec,
+} from '@/core/sub-agent';
+export { SubAgentManager } from '@/core/sub-agent';
+
 // ============ Agent Runtime 导出（pi-agent-core 集成层） ============
 
 export type {
@@ -113,7 +123,7 @@ export type {
 
 export { DEFAULT_CONFIG } from '@/config/defaults';
 export { loadConfig } from '@/config/loader';
-export type { SkillConfig, ZapmycoConfig } from '@/config/types';
+export type { SkillConfig, SubAgentConfig, ZapmycoConfig } from '@/config/types';
 
 // ============ Infra 层导出 ============
 

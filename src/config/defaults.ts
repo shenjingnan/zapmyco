@@ -76,4 +76,12 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     maxSkillsInPrompt: 50,
     maxSkillFileBytes: 256 * 1024,
   },
+  subAgent: {
+    enabled: true,
+    maxConcurrent: 5,
+    taskTimeoutMs: 300_000,
+    maxOutputChars: 5000,
+    maxTurns: 30,
+    allowRecursiveSpawn: false,
+  },
 };

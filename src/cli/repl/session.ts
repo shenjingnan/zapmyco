@@ -634,7 +634,13 @@ export class ReplSession {
   private registerBuiltinTools(): void {
     // 1. 注册内置工具（同步，立即可用）
     this.agent.registerTools(
-      createReplBuiltinTools(this.config.web, this.taskStore, this.config.skill)
+      createReplBuiltinTools(
+        this.config.web,
+        this.taskStore,
+        this.config.skill,
+        this.agent,
+        this.config.subAgent
+      )
     );
 
     // 2. 异步初始化 MCP 工具（fire-and-forget，完成后自动注册）

@@ -202,6 +202,22 @@ export interface SkillConfig {
   entries?: Record<string, { enabled?: boolean }>;
 }
 
+/** Sub-Agent 系统配置 */
+export interface SubAgentConfig {
+  /** 是否启用 spawn_subagents 工具（默认 true） */
+  enabled: boolean;
+  /** 最大并行子 Agent 数（默认 5） */
+  maxConcurrent: number;
+  /** 单个子 Agent 超时时间（毫秒，默认 300000 = 5 分钟） */
+  taskTimeoutMs: number;
+  /** 子 Agent 输出最大字符数（防止上下文爆炸，默认 5000） */
+  maxOutputChars: number;
+  /** 子 Agent 最大对话轮次（防止无限循环，默认 30） */
+  maxTurns: number;
+  /** 是否允许子 Agent 递归创建孙 Agent（默认 false） */
+  allowRecursiveSpawn: boolean;
+}
+
 /** CLI 配置 */
 export interface CliConfig {
   /** 是否启用颜色输出 */
@@ -248,6 +264,9 @@ export interface ZapmycoConfig {
 
   /** Skill 系统配置 */
   skill?: SkillConfig;
+
+  /** Sub-Agent 系统配置 */
+  subAgent?: SubAgentConfig;
 }
 
 /** Web 工具配置 */

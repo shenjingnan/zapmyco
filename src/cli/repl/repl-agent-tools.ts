@@ -16,11 +16,14 @@ import { createMemoryTool } from '@/cli/repl/tools/memory-tool';
 import { createExecTool } from '@/cli/repl/tools/shell-exec';
 import { createProcessTool } from '@/cli/repl/tools/shell-process';
 import { createSkillTool } from '@/cli/repl/tools/skill-tool';
+import { createSpawnSubAgentsTool } from '@/cli/repl/tools/subagent-spawn';
 import { createTaskManageTool } from '@/cli/repl/tools/task-manage';
 import { createWebFetchTool } from '@/cli/repl/tools/web-fetch';
 import { createWebSearchTool } from '@/cli/repl/tools/web-search';
-import type { SkillConfig, WebConfig } from '@/config/types';
+import type { SkillConfig, SubAgentConfig, WebConfig } from '@/config/types';
 import type { ToolRegistration } from '@/core/agent-runtime';
+import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
+import { SubAgentManager } from '@/core/sub-agent';
 import type { TaskStore } from '@/core/task/task-store';
 
 /**
@@ -32,7 +35,9 @@ import type { TaskStore } from '@/core/task/task-store';
 export function createReplBuiltinTools(
   webConfig?: WebConfig,
   taskStore?: TaskStore,
-  skillConfig?: SkillConfig
+  skillConfig?: SkillConfig,
+  parentAgent?: LlmBasedAgent,
+  subAgentConfig?: SubAgentConfig
 ): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
@@ -184,6 +189,13 @@ export function createReplBuiltinTools(
   if (skillConfig?.enabled !== false) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools.push(createSkillTool(skillConfig) as any);
+  }
+
+  // Sub-Agent 派发工具（依赖父 Agent 实例）
+  if (parentAgent && subAgentConfig?.enabled !== false && subAgentConfig) {
+    const manager = new SubAgentManager(subAgentConfig, parentAgent, tools);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createSpawnSubAgentsTool(manager, subAgentConfig) as any);
   }
 
   return tools;
