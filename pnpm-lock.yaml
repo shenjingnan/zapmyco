@@ -22,8 +22,8 @@ importers:
         specifier: ^0.70.5
         version: 0.70.5(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-tui':
-        specifier: ^0.70.2
-        version: 0.70.2
+        specifier: ^0.72.1
+        version: 0.72.1
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
@@ -951,8 +951,8 @@ packages:
     engines: {node: '>=20.0.0'}
     hasBin: true
 
-  '@mariozechner/pi-tui@0.70.2':
-    resolution: {integrity: sha512-PtKC0NepnrYcqMx6MXkWTrBzC9tI62KeC6w940oT46lCbfvgmfqXciR15+9BZpxxc1H4jd3CMrKsmOPVeUqZ0A==}
+  '@mariozechner/pi-tui@0.72.1':
+    resolution: {integrity: sha512-KjeqzMQp4vafomfkvI8HKv5/52PqRP5BmlowGC8WKyOaB+u0UkkTdfM5U1Ui3ty2gA7FOfglVRiyvcitiWwvMQ==}
     engines: {node: '>=20.0.0'}
 
   '@mistralai/mistralai@2.2.1':
@@ -4568,7 +4568,7 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-tui@0.70.2':
+  '@mariozechner/pi-tui@0.72.1':
     dependencies:
       '@types/mime-types': 2.1.4
       chalk: 5.6.2
