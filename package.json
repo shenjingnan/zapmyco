@@ -79,7 +79,7 @@
     "@mariozechner/pi-tui": "^0.70.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.4.0",
-    "commander": "^12.1.0",
+    "commander": "^14.0.3",
     "cosmiconfig": "^9.0.1",
     "eventemitter3": "^5.0.1",
     "ora": "^8.1.0",
