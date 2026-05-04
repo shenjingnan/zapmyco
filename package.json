@@ -82,7 +82,7 @@
     "commander": "^12.1.0",
     "cosmiconfig": "^9.0.1",
     "eventemitter3": "^5.0.1",
-    "ora": "^8.1.0",
+    "ora": "^9.4.0",
     "turndown": "^7.2.4"
   },
   "devDependencies": {
