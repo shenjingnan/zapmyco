@@ -174,10 +174,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
             }
           }
           if (event.type === 'tool_execution_start') {
+            const paramsStr = formatToolArgs(event.args);
             this.emit(this.EVENT_PROGRESS, {
               taskId: request.taskId,
               percent: 0,
-              message: `执行工具: ${event.toolName}`,
+              message: paramsStr ? `${event.toolName}(${paramsStr})` : event.toolName,
             });
           }
           if (event.type === 'tool_execution_end') {
@@ -510,12 +511,31 @@ function extractDeltaFromEvent(event: {
 }): string | null {
   const evt = event.assistantMessageEvent as Record<string, unknown> | null;
   if (!evt || typeof evt !== 'object') return null;
-  if (typeof evt.delta === 'string') return evt.delta;
-  if (
-    evt.type === 'text_delta' &&
-    typeof (evt as Record<string, unknown>).text_delta === 'string'
-  ) {
-    return (evt as Record<string, unknown>).text_delta as string;
+  // 仅处理 text_delta，过滤 toolcall_delta（其 delta 是工具参数 JSON）
+  if (evt.type === 'text_delta') {
+    if (typeof evt.delta === 'string') return evt.delta;
+    if (typeof (evt as Record<string, unknown>).text_delta === 'string') {
+      return (evt as Record<string, unknown>).text_delta as string;
+    }
   }
   return null;
+}
+
+/**
+ * 将工具调用参数格式化为可读字符串
+ *
+ * 例如: { file_path: "/a/b", pattern: "*.ts" }
+ *    → file_path="/a/b", pattern="*.ts"
+ */
+function formatToolArgs(args: unknown): string {
+  if (!args || typeof args !== 'object') return '';
+  const entries = Object.entries(args as Record<string, unknown>);
+  if (entries.length === 0) return '';
+  return entries
+    .map(([key, value]) => {
+      const raw = typeof value === 'string' ? value : JSON.stringify(value);
+      const display = raw.length > 80 ? raw.slice(0, 77) + '...' : raw;
+      return `${key}="${display.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    })
+    .join(', ');
 }

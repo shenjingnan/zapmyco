@@ -150,6 +150,7 @@ vi.mock('@/infra/logger', () => ({
   logger: {
     child: vi.fn().mockReturnValue({
       info: vi.fn(),
+      warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
     }),

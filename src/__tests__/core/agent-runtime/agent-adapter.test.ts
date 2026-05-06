@@ -6,7 +6,11 @@ import {
 } from '@/core/agent-runtime/agent-adapter';
 
 // Mock pi-agent-core
-const mockSubscribe = vi.fn(() => vi.fn());
+let capturedSubscriber: ((event: unknown) => void) | null = null;
+const mockSubscribe = vi.fn((handler: (event: unknown) => void) => {
+  capturedSubscriber = handler;
+  return vi.fn();
+});
 const mockPrompt = vi.fn();
 const mockWaitForIdle = vi.fn().mockResolvedValue(undefined);
 const mockAbort = vi.fn();
@@ -33,7 +37,7 @@ vi.mock('@mariozechner/pi-agent-core', () => ({
 describe('LlmBasedAgent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSubscribe.mockReturnValue(vi.fn());
+    capturedSubscriber = null;
     mockPrompt.mockResolvedValue(undefined);
     mockWaitForIdle.mockResolvedValue(undefined);
   });
@@ -341,5 +345,236 @@ describe('createRequestFromSubTask', () => {
 
     expect(request.options.timeout).toBe(60000);
     expect(request.options.verbose).toBe(true);
+  });
+});
+
+describe('LlmBasedAgent internal event handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedSubscriber = null;
+    mockPrompt.mockResolvedValue(undefined);
+    mockWaitForIdle.mockResolvedValue(undefined);
+  });
+
+  /**
+   * 触发 execute() 以捕获内部 subscribe handler，然后直接调用 handler 测试事件处理
+   */
+  async function setupAndCapture(): Promise<{
+    agent: LlmBasedAgent;
+    taskId: string;
+    progressEvents: Array<{ taskId: string; message: string }>;
+    outputEvents: Array<{ taskId: string; text: string }>;
+  }> {
+    const agent = new LlmBasedAgent({
+      agentId: 'a1',
+      displayName: 'A1',
+      capabilities: [],
+    });
+
+    const progressEvents: Array<{ taskId: string; message: string }> = [];
+    const outputEvents: Array<{ taskId: string; text: string }> = [];
+    agent.on('progress', (e) => progressEvents.push(e));
+    agent.on('output', (e) => outputEvents.push(e));
+    // 防止 unhandled error 事件导致测试失败
+    agent.on('error', () => {});
+
+    const taskId = 'task-event-test';
+
+    const mockState = agent.innerAgent.state;
+    mockState.messages = [
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+      } as never,
+    ];
+
+    // 不 await — execute 内部会 await prompt()，我们只需它完成 subscribe
+    void agent.execute({
+      taskId,
+      taskDescription: 'test event handling',
+      workdir: '/tmp',
+      options: { timeout: 30000, verbose: false },
+    });
+
+    // 等待一个 microtask 让 subscribe 被调用
+    await Promise.resolve();
+
+    return { agent, taskId, progressEvents, outputEvents };
+  }
+
+  describe('tool_execution_start event', () => {
+    it('should emit formatted progress with args', async () => {
+      const { taskId, progressEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'tool_execution_start',
+        toolCallId: 'call-1',
+        toolName: 'read_file',
+        args: { file_path: '/a/b.txt' },
+      });
+
+      expect(progressEvents).toHaveLength(1);
+      expect(progressEvents[0]).toEqual({
+        taskId,
+        percent: 0,
+        message: 'read_file(file_path="/a/b.txt")',
+      });
+    });
+
+    it('should emit progress with toolName only when args is empty', async () => {
+      const { taskId, progressEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'tool_execution_start',
+        toolCallId: 'call-1',
+        toolName: 'list_files',
+        args: {},
+      });
+
+      expect(progressEvents).toHaveLength(1);
+      expect(progressEvents[0]).toEqual({
+        taskId,
+        percent: 0,
+        message: 'list_files',
+      });
+    });
+
+    it('should emit progress with toolName only when args is null', async () => {
+      const { taskId, progressEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'tool_execution_start',
+        toolCallId: 'call-1',
+        toolName: 'ping',
+        args: null,
+      });
+
+      expect(progressEvents).toHaveLength(1);
+      expect(progressEvents[0]).toEqual({
+        taskId,
+        percent: 0,
+        message: 'ping',
+      });
+    });
+
+    it('should truncate long string args', async () => {
+      const { taskId, progressEvents } = await setupAndCapture();
+
+      const longStr = 'x'.repeat(100);
+      capturedSubscriber!({
+        type: 'tool_execution_start',
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        args: { command: longStr },
+      });
+
+      expect(progressEvents).toHaveLength(1);
+      expect(progressEvents[0]!.message).toContain('...');
+      expect(progressEvents[0]!.message.length).toBeLessThan(longStr.length + 20);
+      expect(progressEvents[0]!.taskId).toBe(taskId);
+    });
+
+    it('should format non-string args with JSON.stringify', async () => {
+      const { taskId, progressEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'tool_execution_start',
+        toolCallId: 'call-1',
+        toolName: 'counter',
+        args: { count: 99, flag: false },
+      });
+
+      expect(progressEvents).toHaveLength(1);
+      expect(progressEvents[0]!.message).toBe('counter(count="99", flag="false")');
+      expect(progressEvents[0]!.taskId).toBe(taskId);
+    });
+  });
+
+  describe('message_update event', () => {
+    it('should emit output for text_delta', async () => {
+      const { taskId, outputEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'message_update',
+        message: {},
+        assistantMessageEvent: { type: 'text_delta', delta: 'hello world' },
+      });
+
+      expect(outputEvents).toHaveLength(1);
+      expect(outputEvents[0]).toEqual({
+        taskId,
+        text: 'hello world',
+      });
+    });
+
+    it('should NOT emit output for toolcall_delta', async () => {
+      const { outputEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'message_update',
+        message: {},
+        assistantMessageEvent: {
+          type: 'toolcall_delta',
+          delta: '{"file_path":"/tmp/x"}',
+        },
+      });
+
+      expect(outputEvents).toHaveLength(0);
+    });
+
+    it('should emit output for text_delta using text_delta field', async () => {
+      const { outputEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'message_update',
+        message: {},
+        assistantMessageEvent: {
+          type: 'text_delta',
+          text_delta: 'from text_delta field',
+        },
+      });
+
+      expect(outputEvents).toHaveLength(1);
+      expect(outputEvents[0]!.text).toBe('from text_delta field');
+    });
+  });
+
+  describe('tool_execution_end event', () => {
+    it('should emit progress on tool completion', async () => {
+      const { taskId, progressEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'tool_execution_end',
+        toolCallId: 'call-1',
+        toolName: 'read_file',
+        result: {},
+        isError: false,
+      });
+
+      expect(progressEvents).toHaveLength(1);
+      expect(progressEvents[0]).toEqual({
+        taskId,
+        percent: 100,
+        message: '工具 read_file 完成',
+      });
+    });
+  });
+
+  describe('agent_end event', () => {
+    it('should emit progress on agent completion', async () => {
+      const { taskId, progressEvents } = await setupAndCapture();
+
+      capturedSubscriber!({
+        type: 'agent_end',
+        messages: [],
+      });
+
+      expect(progressEvents).toHaveLength(1);
+      expect(progressEvents[0]).toEqual({
+        taskId,
+        percent: 100,
+        message: '任务完成',
+      });
+    });
   });
 });

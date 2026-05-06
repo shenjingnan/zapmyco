@@ -356,8 +356,17 @@ export class ReplSession {
         }
       };
 
+      // 工具调用展示：Agent EVENT_PROGRESS -> outputArea.append()
+      const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
+        if (event.taskId === taskId && event.percent === 0) {
+          this.outputArea.append([`  → ${event.message}`]);
+          this.tui.requestRender();
+        }
+      };
+
       this.agent.on(this.agent.EVENT_OUTPUT, outputHandler);
       this.agent.on(this.agent.EVENT_ERROR, errorHandler);
+      this.agent.on(this.agent.EVENT_PROGRESS, progressHandler);
       this.currentTaskId = taskId;
 
       log.debug('开始通过 Agent 执行目标', {
@@ -379,6 +388,7 @@ export class ReplSession {
       // 移除监听器（防止重复绑定）
       this.agent.off(this.agent.EVENT_OUTPUT, outputHandler);
       this.agent.off(this.agent.EVENT_ERROR, errorHandler);
+      this.agent.off(this.agent.EVENT_PROGRESS, progressHandler);
 
       log.debug('Agent 执行完成', {
         taskId,

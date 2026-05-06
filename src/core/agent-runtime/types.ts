@@ -105,6 +105,7 @@ export type AdaptedAgentEvent =
       taskId: string;
       toolName: string;
       toolCallId: string;
+      args: unknown;
     }
   | {
       type: 'tool:update';
