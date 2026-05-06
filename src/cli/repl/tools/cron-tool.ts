@@ -73,7 +73,7 @@ const CRON_TOOL_DESCRIPTION = `定时任务管理工具 — 创建和管理按 c
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createCronTool(scheduler: CronScheduler): any {
   return {
-    id: 'scheduled_task' as const,
+    id: 'ScheduledTask' as const,
     label: '定时任务',
     description: CRON_TOOL_DESCRIPTION,
     parameters: {

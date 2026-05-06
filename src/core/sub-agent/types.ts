@@ -9,7 +9,7 @@
 /**
  * 子 Agent 任务规格
  *
- * 父 LLM 通过 spawn_subagents 工具传入的任务定义。
+ * 父 LLM 通过 SpawnSubAgents 工具传入的任务定义。
  */
 export interface SubAgentSpec {
   /** 子任务唯一标识（父 LLM 自行分配，如 "search-libs"） */
@@ -19,14 +19,14 @@ export interface SubAgentSpec {
   /**
    * 允许的工具 ID 白名单
    *
-   * - 为空或不传时使用默认安全工具集（read_file, glob, grep, web_fetch, web_search 等）
+   * - 为空或不传时使用默认安全工具集（ReadFile, Glob, Grep, WebFetch, WebSearch 等）
    * - 设为 ['*'] 表示继承父 Agent 的全部工具（危险，不推荐）
    */
   allowedTools?: string[];
 }
 
 /**
- * spawn_subagents 工具入参
+ * SpawnSubAgents 工具入参
  */
 export interface SpawnSubAgentsParams {
   /** 要并行创建的子 Agent 列表 */
@@ -56,7 +56,7 @@ export interface SubAgentResultEntry {
 }
 
 /**
- * spawn_subagents 工具返回
+ * SpawnSubAgents 工具返回
  *
  * 作为 tool result 返回给父 LLM，包含结构化结果和人类可读的汇总文本。
  */

@@ -48,7 +48,7 @@ const TASK_MANAGE_DESCRIPTION = `任务管理工具 — 对于多步骤任务，
 
 ## 何时必须使用
 收到任何需要 2 个以上独立步骤的任务时，**在调用任何其他工具之前**，必须先用 action="write" 将任务分解为子任务。
-**你的第一个 tool call 必须是 task_manage！** 不得先搜索、读取、执行任何操作！
+**你的第一个 tool call 必须是 TaskManage！** 不得先搜索、读取、执行任何操作！
 
 ## 操作类型 (action)
 - "read": 读取当前任务列表和进度摘要
@@ -56,13 +56,13 @@ const TASK_MANAGE_DESCRIPTION = `任务管理工具 — 对于多步骤任务，
 - "update": 更新单个任务状态。每完成一个子任务**立即**调用 update 标记状态，**不要等到所有任务做完才批量更新**
 
 ## 必须遵守的规则
-1. 任何 2 个以上步骤的任务：第一个 tool call = task_manage write，先规划再执行
+1. 任何 2 个以上步骤的任务：第一个 tool call = TaskManage write，先规划再执行
 2. 每次只能有 1 个任务处于 "in_progress" 状态
 3. 完成一个子任务后**立刻** update 为 "completed"，然后再开始下一个
 4. 任务状态: "pending"(未开始), "in_progress"(进行中), "completed"(已完成), "cancelled"(已取消)
 5. 不要在一条消息中批量标记多个任务完成 — 每个任务完成时单独 update
 
-> 提示：如果项目启用了 spawn_subagents 工具，规划完成后识别其中互不依赖的子任务，使用 spawn_subagents 并行执行它们，然后根据结果更新任务状态。`;
+> 提示：如果项目启用了 SpawnSubAgents 工具，规划完成后识别其中互不依赖的子任务，使用 SpawnSubAgents 并行执行它们，然后根据结果更新任务状态。`;
 
 // ============ task_manage 工具 ============
 
@@ -73,7 +73,7 @@ const TASK_MANAGE_DESCRIPTION = `任务管理工具 — 对于多步骤任务，
  */
 export function createTaskManageTool(store: TaskStore) {
   return {
-    id: 'task_manage' as const,
+    id: 'TaskManage' as const,
     label: '任务管理',
     description: TASK_MANAGE_DESCRIPTION,
     parameters: {

@@ -106,7 +106,7 @@ function findActualString(content: string, oldString: string): string | null {
 
 export function createEditFileTool() {
   return {
-    id: 'edit_file' as const,
+    id: 'EditFile' as const,
     label: '编辑文件',
     description:
       '在文件中执行精确字符串替换。' +
@@ -234,7 +234,7 @@ export function createEditFileTool() {
               text:
                 `[编辑失败] 在文件中未找到要替换的文本。\n` +
                 `搜索内容: "${params.old_string}"\n` +
-                `请使用 read_file 确认文件当前内容后重试。`,
+                `请使用 ReadFile 确认文件当前内容后重试。`,
             },
           ],
           details,

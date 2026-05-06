@@ -409,7 +409,7 @@ describe('LlmBasedAgent internal event handling', () => {
       capturedSubscriber!({
         type: 'tool_execution_start',
         toolCallId: 'call-1',
-        toolName: 'read_file',
+        toolName: 'ReadFile',
         args: { file_path: '/a/b.txt' },
       });
 
@@ -417,7 +417,7 @@ describe('LlmBasedAgent internal event handling', () => {
       expect(progressEvents[0]).toEqual({
         taskId,
         percent: 0,
-        message: 'read_file(file_path="/a/b.txt")',
+        message: 'ReadFile(file_path="/a/b.txt")',
       });
     });
 
@@ -546,7 +546,7 @@ describe('LlmBasedAgent internal event handling', () => {
       capturedSubscriber!({
         type: 'tool_execution_end',
         toolCallId: 'call-1',
-        toolName: 'read_file',
+        toolName: 'ReadFile',
         result: {},
         isError: false,
       });
@@ -555,7 +555,7 @@ describe('LlmBasedAgent internal event handling', () => {
       expect(progressEvents[0]).toEqual({
         taskId,
         percent: 100,
-        message: '工具 read_file 完成',
+        message: '工具 ReadFile 完成',
       });
     });
   });

@@ -184,7 +184,7 @@ describe('memory 工具', () => {
   describe('工具定义', () => {
     it('应该有正确的 id', () => {
       const tool = createTool();
-      expect(tool.id).toBe('memory');
+      expect(tool.id).toBe('Memory');
     });
 
     it('应该有正确的 label', () => {

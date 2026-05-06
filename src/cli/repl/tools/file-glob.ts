@@ -160,7 +160,7 @@ function globSync(pattern: string, rootPath: string): string[] {
 
 export function createGlobTool() {
   return {
-    id: 'glob' as const,
+    id: 'Glob' as const,
     label: '文件搜索',
     description:
       '使用 glob 模式匹配搜索文件。支持 ** (递归)、* (任意字符)、? (单字符) 通配符。' +

@@ -4,27 +4,27 @@ import { buildSubAgentSystemPrompt, DEFAULT_SAFE_TOOLS } from '@/core/sub-agent/
 describe('sub-agent-factory', () => {
   describe('DEFAULT_SAFE_TOOLS', () => {
     it('should include read-only and search tools', () => {
-      expect(DEFAULT_SAFE_TOOLS).toContain('read_file');
-      expect(DEFAULT_SAFE_TOOLS).toContain('glob');
-      expect(DEFAULT_SAFE_TOOLS).toContain('grep');
-      expect(DEFAULT_SAFE_TOOLS).toContain('web_fetch');
-      expect(DEFAULT_SAFE_TOOLS).toContain('web_search');
-      expect(DEFAULT_SAFE_TOOLS).toContain('get_current_time');
-      expect(DEFAULT_SAFE_TOOLS).toContain('get_workdir_info');
+      expect(DEFAULT_SAFE_TOOLS).toContain('ReadFile');
+      expect(DEFAULT_SAFE_TOOLS).toContain('Glob');
+      expect(DEFAULT_SAFE_TOOLS).toContain('Grep');
+      expect(DEFAULT_SAFE_TOOLS).toContain('WebFetch');
+      expect(DEFAULT_SAFE_TOOLS).toContain('WebSearch');
+      expect(DEFAULT_SAFE_TOOLS).toContain('GetCurrentTime');
+      expect(DEFAULT_SAFE_TOOLS).toContain('GetWorkdirInfo');
     });
 
     it('should not include write or shell tools', () => {
-      expect(DEFAULT_SAFE_TOOLS).not.toContain('write_file');
-      expect(DEFAULT_SAFE_TOOLS).not.toContain('edit_file');
-      expect(DEFAULT_SAFE_TOOLS).not.toContain('shell_exec');
-      expect(DEFAULT_SAFE_TOOLS).not.toContain('shell_process');
+      expect(DEFAULT_SAFE_TOOLS).not.toContain('WriteFile');
+      expect(DEFAULT_SAFE_TOOLS).not.toContain('EditFile');
+      expect(DEFAULT_SAFE_TOOLS).not.toContain('Exec');
+      expect(DEFAULT_SAFE_TOOLS).not.toContain('Process');
     });
 
     it('should not include recursive tools', () => {
-      expect(DEFAULT_SAFE_TOOLS).not.toContain('spawn_subagents');
-      expect(DEFAULT_SAFE_TOOLS).not.toContain('memory');
+      expect(DEFAULT_SAFE_TOOLS).not.toContain('SpawnSubAgents');
+      expect(DEFAULT_SAFE_TOOLS).not.toContain('Memory');
       expect(DEFAULT_SAFE_TOOLS).not.toContain('Skill');
-      expect(DEFAULT_SAFE_TOOLS).not.toContain('task_manage');
+      expect(DEFAULT_SAFE_TOOLS).not.toContain('TaskManage');
     });
   });
 

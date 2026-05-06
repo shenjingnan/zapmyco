@@ -36,7 +36,7 @@ describe('createSpawnSubAgentsTool', () => {
       const manager = createMockManager();
       const tool = createSpawnSubAgentsTool(manager, defaultConfig);
 
-      expect(tool.id).toBe('spawn_subagents');
+      expect(tool.id).toBe('SpawnSubAgents');
       expect(tool.label).toBe('派生子 Agent');
     });
 
@@ -46,7 +46,7 @@ describe('createSpawnSubAgentsTool', () => {
 
       expect(tool.description).toContain('并行启动多个子 Agent');
       expect(tool.description).toContain('何时使用此工具');
-      expect(tool.description).toContain('task_manage');
+      expect(tool.description).toContain('TaskManage');
     });
 
     it('should define parameters schema with required agents array', () => {

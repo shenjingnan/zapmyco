@@ -300,10 +300,10 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       return parts.join('\n');
     }
 
-    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'task_manage');
-    const hasMemory = this.toolRegistrations.some((t) => t.id === 'memory');
+    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'TaskManage');
+    const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
     const hasSkill = this.toolRegistrations.some((t) => t.id === 'Skill');
-    const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'spawn_subagents');
+    const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'SpawnSubAgents');
 
     const parts: string[] = [
       `你是 ${this.displayName}，一个专业的 AI 助手。`,
@@ -331,7 +331,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         '- 会话中有值得跨会话保留的结论时 → 使用 memory add type="session"',
         '',
         '### 何时不保存',
-        '- 临时任务进度、会话状态（使用 task_manage 管理）',
+        '- 临时任务进度、会话状态（使用 TaskManage 管理）',
         '- 代码细节（可直接从代码库获取，不需要记忆）',
         '- 一次性查询的内容',
         ''
@@ -349,32 +349,32 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         '## 任务管理规范（最高优先级）',
         '',
         '收到用户任务后，第一时间判断是否包含 2 个以上独立步骤。',
-        '如果是，你的**第一个工具调用必须且只能是** `task_manage` (action="write")，先分解任务列表！',
+        '如果是，你的**第一个工具调用必须且只能是** `TaskManage` (action="write")，先分解任务列表！',
         '在任何搜索、读取、写入操作之前完成规划。不得先做再补！',
         '',
-        '1. **规划优先**：第一个 tool call = task_manage write。先规划，后执行。',
+        '1. **规划优先**：第一个 tool call = TaskManage write。先规划，后执行。',
         '2. **逐个更新**：完成一个子任务 → 立即 update 为 "completed" → 再开始下一个。绝不批量更新。',
         '3. **保持专注**：同时只有 1 个 "in_progress"。',
         '4. **先读后写**：不确定当前任务时先用 action="read" 查看。'
       );
 
-      // spawn_subagents 使用引导 — 紧接任务管理规范
+      // SpawnSubAgents 使用引导 — 紧接任务管理规范
       if (hasSpawnSubAgents) {
         parts.push(
           '',
           '## 并行执行规范（次高优先级）',
           '',
-          '完成 task_manage write 分解后，识别其中**互不依赖**的独立子任务。',
-          '将这些子任务通过 `spawn_subagents` 工具并行派发给子 Agent 同时执行。',
+          '完成 TaskManage write 分解后，识别其中**互不依赖**的独立子任务。',
+          '将这些子任务通过 `SpawnSubAgents` 工具并行派发给子 Agent 同时执行。',
           '',
           '### 工作流程',
-          '1. `task_manage write` → 分解所有子任务',
+          '1. `TaskManage write` → 分解所有子任务',
           '2. 识别可并行的独立任务（无顺序依赖、无共享状态）',
-          '3. `spawn_subagents(agents: [...])` → 一次性并行执行',
-          '4. 根据返回结果逐一 `task_manage update` 更新状态',
+          '3. `SpawnSubAgents(agents: [...])` → 一次性并行执行',
+          '4. 根据返回结果逐一 `TaskManage update` 更新状态',
           '5. 将有依赖的串行任务保留给自己后续执行',
           '',
-          '### 何时使用 spawn_subagents',
+          '### 何时使用 SpawnSubAgents',
           '- ✅ 多个独立的搜索/研究任务（如同时搜索三个不同技术方案）',
           '- ✅ 多个独立的文件读取/分析任务（如同时分析多个模块）',
           '- ✅ 互不依赖的信息收集任务',
