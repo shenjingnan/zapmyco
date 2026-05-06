@@ -55,6 +55,7 @@ describe('agent-runtime types', () => {
         taskId: 't1',
         toolName: 'tool',
         toolCallId: 'c1',
+        args: {},
       };
       const toolUpdate: AdaptedAgentEvent = { type: 'tool:update', taskId: 't1', toolName: 'tool' };
       const toolEnd: AdaptedAgentEvent = {

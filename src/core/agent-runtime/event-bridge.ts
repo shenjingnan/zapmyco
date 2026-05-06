@@ -68,6 +68,7 @@ export function adaptAgentEvent(
         taskId,
         toolName: agentEvent.toolName ?? 'unknown',
         toolCallId: agentEvent.toolCallId,
+        args: agentEvent.args,
       };
 
     case 'tool_execution_update':
@@ -119,12 +120,28 @@ function extractTextContent(message: unknown): string {
 function extractDelta(event: unknown): string {
   if (!event || typeof event !== 'object') return '';
   const evt = event as Record<string, unknown>;
-  if (typeof evt.delta === 'string') return evt.delta;
-  // 尝试从 type 字段判断
-  if (evt.type === 'text_delta' && typeof evt.text_delta === 'string') {
-    return evt.text_delta;
+  // 仅处理 text_delta，过滤 toolcall_delta（其 delta 是工具参数 JSON）
+  if (evt.type === 'text_delta') {
+    if (typeof evt.delta === 'string') return evt.delta;
+    if (typeof evt.text_delta === 'string') return evt.text_delta;
   }
   return '';
+}
+
+/**
+ * 将工具调用参数格式化为可读字符串
+ */
+function formatArgsDisplay(args: unknown): string {
+  if (!args || typeof args !== 'object') return '';
+  const entries = Object.entries(args as Record<string, unknown>);
+  if (entries.length === 0) return '';
+  return entries
+    .map(([key, value]) => {
+      const raw = typeof value === 'string' ? value : JSON.stringify(value);
+      const display = raw.length > 80 ? raw.slice(0, 77) + '...' : raw;
+      return `${key}="${display.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    })
+    .join(', ');
 }
 
 // ============ 事件分发 ============
@@ -187,7 +204,7 @@ export function dispatchToEventBus(event: AdaptedAgentEvent): void {
       eventBus.emit('task:progress', {
         taskId: event.taskId,
         percent: 0,
-        message: `执行工具: ${event.toolName}`,
+        message: `${event.toolName}(${formatArgsDisplay(event.args)})`,
       });
       break;
 

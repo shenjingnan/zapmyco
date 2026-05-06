@@ -54,7 +54,8 @@
     "calltool",
     "oneline",
     "prio",
-    "ONESHOT"
+    "ONESHOT",
+    "toolcall"
   ],
   "ignorePaths": [
     "node_modules",

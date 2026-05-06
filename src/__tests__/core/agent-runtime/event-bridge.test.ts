@@ -58,7 +58,7 @@ describe('event-bridge', () => {
       });
     });
 
-    it('should convert message_update event', () => {
+    it('should convert message_update event (text_delta)', () => {
       const evt = { type: 'text_delta', delta: 'some text' };
       const result = adaptAgentEvent(
         {
@@ -73,6 +73,25 @@ describe('event-bridge', () => {
         type: 'message:update',
         taskId: 'task-1',
         delta: 'some text',
+      });
+    });
+
+    it('should filter out toolcall_delta from message_update', () => {
+      // toolcall_delta 的 delta 是工具参数 JSON，不应作为文本输出
+      const evt = { type: 'toolcall_delta', delta: '{"file_path":"/a/b"}' };
+      const result = adaptAgentEvent(
+        {
+          type: 'message_update',
+          message: { role: 'assistant', content: [] } as never,
+          assistantMessageEvent: evt as never,
+        },
+        'task-1',
+        'agent-1'
+      );
+      expect(result).toEqual({
+        type: 'message:update',
+        taskId: 'task-1',
+        delta: '', // 空字符串：toolcall_delta 被过滤
       });
     });
 
@@ -91,7 +110,12 @@ describe('event-bridge', () => {
 
     it('should convert tool_execution_start event', () => {
       const result = adaptAgentEvent(
-        { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'read_file', args: {} },
+        {
+          type: 'tool_execution_start',
+          toolCallId: 'call-1',
+          toolName: 'read_file',
+          args: { file_path: '/a/b.txt' },
+        },
         'task-1',
         'agent-1'
       );
@@ -100,6 +124,7 @@ describe('event-bridge', () => {
         taskId: 'task-1',
         toolName: 'read_file',
         toolCallId: 'call-1',
+        args: { file_path: '/a/b.txt' },
       });
     });
 
