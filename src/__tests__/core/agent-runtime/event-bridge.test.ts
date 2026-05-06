@@ -95,6 +95,59 @@ describe('event-bridge', () => {
       });
     });
 
+    it('should extract delta from text_delta event using text_delta field', () => {
+      const evt = { type: 'text_delta', text_delta: 'from text_delta field' };
+      const result = adaptAgentEvent(
+        {
+          type: 'message_update',
+          message: { role: 'assistant', content: [] } as never,
+          assistantMessageEvent: evt as never,
+        },
+        'task-1',
+        'agent-1'
+      );
+      expect(result).toEqual({
+        type: 'message:update',
+        taskId: 'task-1',
+        delta: 'from text_delta field',
+      });
+    });
+
+    it('should return empty delta when assistantMessageEvent is null', () => {
+      const result = adaptAgentEvent(
+        {
+          type: 'message_update',
+          message: { role: 'assistant', content: [] } as never,
+          assistantMessageEvent: null as never,
+        },
+        'task-1',
+        'agent-1'
+      );
+      expect(result).toEqual({
+        type: 'message:update',
+        taskId: 'task-1',
+        delta: '',
+      });
+    });
+
+    it('should return empty delta for unknown event type in message_update', () => {
+      const evt = { type: 'unknown_delta', delta: 'should be ignored' };
+      const result = adaptAgentEvent(
+        {
+          type: 'message_update',
+          message: { role: 'assistant', content: [] } as never,
+          assistantMessageEvent: evt as never,
+        },
+        'task-1',
+        'agent-1'
+      );
+      expect(result).toEqual({
+        type: 'message:update',
+        taskId: 'task-1',
+        delta: '',
+      });
+    });
+
     it('should convert message_end event', () => {
       const msg = {
         role: 'assistant',
@@ -226,6 +279,90 @@ describe('event-bridge', () => {
         taskId: 't1',
         error: err,
         retryable: false,
+      });
+      spy.mockRestore();
+    });
+
+    it('should format tool:start with args as toolName(key="value")', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'tool:start',
+        taskId: 't1',
+        toolName: 'read_file',
+        toolCallId: 'c1',
+        args: { file_path: '/path/to/file', pattern: '*.ts' },
+      });
+      expect(spy).toHaveBeenCalledWith('task:progress', {
+        taskId: 't1',
+        percent: 0,
+        message: 'read_file(file_path="/path/to/file", pattern="*.ts")',
+      });
+      spy.mockRestore();
+    });
+
+    it('should format tool:start with empty args as toolName only', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'tool:start',
+        taskId: 't1',
+        toolName: 'list_files',
+        toolCallId: 'c1',
+        args: {},
+      });
+      expect(spy).toHaveBeenCalledWith('task:progress', {
+        taskId: 't1',
+        percent: 0,
+        message: 'list_files()',
+      });
+      spy.mockRestore();
+    });
+
+    it('should format tool:start with null args as toolName only', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'tool:start',
+        taskId: 't1',
+        toolName: 'ping',
+        toolCallId: 'c1',
+        args: null,
+      });
+      expect(spy).toHaveBeenCalledWith('task:progress', {
+        taskId: 't1',
+        percent: 0,
+        message: 'ping()',
+      });
+      spy.mockRestore();
+    });
+
+    it('should truncate long string args in tool:start formatting', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      const longStr = 'a'.repeat(100);
+      dispatchToEventBus({
+        type: 'tool:start',
+        taskId: 't1',
+        toolName: 'bash',
+        toolCallId: 'c1',
+        args: { command: longStr },
+      });
+      const callArg = spy.mock.calls[0]![1] as { message: string };
+      expect(callArg.message).toContain('...');
+      expect(callArg.message.length).toBeLessThan(longStr.length + 20);
+      spy.mockRestore();
+    });
+
+    it('should format tool:start with non-string args using JSON.stringify', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'tool:start',
+        taskId: 't1',
+        toolName: 'some_tool',
+        toolCallId: 'c1',
+        args: { count: 42, enabled: true },
+      });
+      expect(spy).toHaveBeenCalledWith('task:progress', {
+        taskId: 't1',
+        percent: 0,
+        message: 'some_tool(count="42", enabled="true")',
       });
       spy.mockRestore();
     });
