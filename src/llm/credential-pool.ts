@@ -5,6 +5,7 @@
  * 每个提供商（如 anthropic、openai）拥有一个 CredentialPool 实例。
  */
 
+import { randomInt } from 'node:crypto';
 import { logger } from '@/infra/logger';
 import { maskApiKey, resolveApiKey } from '@/llm/key-utils';
 
@@ -307,7 +308,7 @@ export class CredentialPool {
   /** 随机选择 */
   private selectRandom(active: CredentialState[]): CredentialState | null {
     if (active.length === 0) return null;
-    return active[Math.floor(Math.random() * active.length)] ?? null;
+    return active[randomInt(active.length)] ?? null;
   }
 
   /** 按优先级选择（同优先级内 round-robin） */
