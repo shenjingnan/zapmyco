@@ -197,7 +197,7 @@ describe('loadConfig', () => {
   });
 
   describe('home directory config fallback', () => {
-    it('should load config from ~/.zapmyco/zapmyco.json when project config not found', async () => {
+    it('should load config from ~/.zapmyco/settings.json when project config not found', async () => {
       searchMock.mockResolvedValue(null);
       // 模拟家目录配置文件存在
       existsSyncMock.mockReturnValue(true);
