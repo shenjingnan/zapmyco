@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0](https://github.com/shenjingnan/zapmyco/compare/v0.3.0...v0.4.0) (2026-05-07)
+
+### Features
+
+* **cron:** 新增定时任务调度系统，支持 cron 表达式定时触发 Agent 任务 ([#30](https://github.com/shenjingnan/zapmyco/issues/30)) ([deaa1fb](https://github.com/shenjingnan/zapmyco/commit/deaa1fbcdb573b973df21f2cc80ffe492f0d0261))
+* **mcp:** 新增 MCP 客户端支持，可动态接入外部 MCP Server 工具 ([#25](https://github.com/shenjingnan/zapmyco/issues/25)) ([53c5c76](https://github.com/shenjingnan/zapmyco/commit/53c5c7696eb3c9f98d1c60f92f7e02f5528af2b7))
+* **memory:** 新增持久化记忆系统，支持跨会话用户画像与项目上下文记忆 ([#27](https://github.com/shenjingnan/zapmyco/issues/27)) ([e71d154](https://github.com/shenjingnan/zapmyco/commit/e71d1542a367f630a2c74a8a3638290f978f3a52))
+* **repl:** 新增 exec 和 process Shell 执行工具 ([#23](https://github.com/shenjingnan/zapmyco/issues/23)) ([03562e0](https://github.com/shenjingnan/zapmyco/commit/03562e0d634412f0c98a43b11f784f2b3d8a00fa))
+* **repl:** 新增文件写入、编辑、搜索工具（write_file / edit_file / glob / grep） ([#24](https://github.com/shenjingnan/zapmyco/issues/24)) ([bb61ef1](https://github.com/shenjingnan/zapmyco/commit/bb61ef1fc5951b1b1bdd4e5dd97b461e6a6ba6e0))
+* **skill:** 新增 Skill 技能系统，支持预定义工作流调用与自动同步 ([#28](https://github.com/shenjingnan/zapmyco/issues/28)) ([581ec6b](https://github.com/shenjingnan/zapmyco/commit/581ec6b0cde177931f69620001c307d142b963e5))
+* **sub-agent:** 新增 Sub-Agent 并行调度系统，支持独立子任务并行执行 ([#29](https://github.com/shenjingnan/zapmyco/issues/29)) ([69ad252](https://github.com/shenjingnan/zapmyco/commit/69ad252d1e2103123e852850fc8345e7d93dfdd7))
+* **task:** 新增 Agent 任务管理工具 task_manage ([#26](https://github.com/shenjingnan/zapmyco/issues/26)) ([f2d7b33](https://github.com/shenjingnan/zapmyco/commit/f2d7b3335b7457901071de062ad8751251a5001c))
+
+### Bug Fixes
+
+* **repl:** 优化工具调用展示为 ToolName(参数) 格式 ([#39](https://github.com/shenjingnan/zapmyco/issues/39)) ([d197e0a](https://github.com/shenjingnan/zapmyco/commit/d197e0aee3491a8ecf76d466a0d136e224ab7937))
+
+### Code Refactoring
+
+* **tools:** 统一工具 ID 命名规范为 PascalCase ([#40](https://github.com/shenjingnan/zapmyco/issues/40)) ([1b76030](https://github.com/shenjingnan/zapmyco/commit/1b760303e85e3e7a1d49ab3a1720de2518479435))
+
 ## [0.3.0](https://github.com/shenjingnan/zapmyco/compare/v0.2.1...v0.3.0) (2026-05-01)
 
 ### Features
