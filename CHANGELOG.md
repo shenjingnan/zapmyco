@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0](https://github.com/shenjingnan/zapmyco/compare/v0.4.0...v0.5.0) (2026-05-07)
+
+### Features
+
+* **logger:** 将日志输出从终端重定向到文件系统 ([#42](https://github.com/shenjingnan/zapmyco/issues/42)) ([249b978](https://github.com/shenjingnan/zapmyco/commit/249b978b5a530e81a653165285ddd3a452cdd382))
+
 ## [0.4.0](https://github.com/shenjingnan/zapmyco/compare/v0.3.0...v0.4.0) (2026-05-07)
 
 ### Features
