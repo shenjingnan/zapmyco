@@ -149,11 +149,25 @@ export function buildSubAgentSystemPrompt(spec: SubAgentSpec, context?: string):
 
 /**
  * 共享父 Agent 的 Model 和 API Key 给子 Agent
+ *
+ * 优先使用 AgentLlmFacade（支持凭据池独立 Key 选择），
+ * 回退到直接复制 Model + Key 闭包（向后兼容）。
  */
 function shareParentResources(subAgent: LlmBasedAgent, parentAgent: LlmBasedAgent): void {
   const parentInner = parentAgent.innerAgent;
 
-  // 共享 Model
+  // 方式 A：通过 AgentLlmFacade 共享（新架构）
+  if (parentAgent.llmFacade) {
+    subAgent.llmFacade = parentAgent.llmFacade;
+    // 子 Agent 默认使用父 Agent 的模型
+    subAgent.innerAgent.state.model = parentInner.state.model;
+    // 但通过 facade 获取 Key（支持凭据池轮转）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (subAgent.innerAgent as any).getApiKey = parentAgent.llmFacade.createGetApiKeyFn();
+    return;
+  }
+
+  // 方式 B：直接复制 Model + Key 闭包（向后兼容）
   subAgent.innerAgent.state.model = parentInner.state.model;
 
   // 共享 API Key 解析函数
