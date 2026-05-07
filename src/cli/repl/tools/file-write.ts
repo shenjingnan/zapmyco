@@ -46,7 +46,7 @@ export interface WriteFileDetails {
 
 export function createWriteFileTool() {
   return {
-    id: 'write_file' as const,
+    id: 'WriteFile' as const,
     label: '写入文件',
     description:
       '将内容写入文件，完全替换已有内容或创建新文件。' +

@@ -274,19 +274,19 @@ vi.mock('@/cli/repl/history-store', () => ({
 vi.mock('@/cli/repl/repl-agent-tools', () => ({
   createReplBuiltinTools: vi.fn().mockReturnValue([
     {
-      id: 'get_current_time',
+      id: 'GetCurrentTime',
       label: '获取当前时间',
       description: '获取当前日期和时间',
       execute: vi.fn(),
     },
     {
-      id: 'get_workdir_info',
+      id: 'GetWorkdirInfo',
       label: '获取工作目录信息',
       description: '获取当前工作目录信息',
       execute: vi.fn(),
     },
     {
-      id: 'read_file',
+      id: 'ReadFile',
       label: '读取文件',
       description: '读取文件内容',
       parameters: {},

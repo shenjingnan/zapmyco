@@ -37,7 +37,7 @@ const KILL_GRACE_PERIOD_MS = 2000;
 
 export function createExecTool() {
   return {
-    id: 'exec' as const,
+    id: 'Exec' as const,
     label: '执行命令' as const,
     description:
       '在本地执行 Shell 命令。支持前台/后台模式、超时控制、PTY 交互。' +

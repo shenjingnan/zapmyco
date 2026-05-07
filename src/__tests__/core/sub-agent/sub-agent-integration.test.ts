@@ -33,9 +33,9 @@ describe('Sub-Agent Integration', () => {
       subAgentConfig
     );
 
-    const spawnTool = tools.find((t) => t.id === 'spawn_subagents');
+    const spawnTool = tools.find((t) => t.id === 'SpawnSubAgents');
     expect(spawnTool).toBeDefined();
-    expect(spawnTool?.id).toBe('spawn_subagents');
+    expect(spawnTool?.id).toBe('SpawnSubAgents');
     expect(spawnTool?.label).toBe('派生子 Agent');
   });
 
@@ -48,7 +48,7 @@ describe('Sub-Agent Integration', () => {
       subAgentConfig
     );
 
-    const spawnTool = tools.find((t) => t.id === 'spawn_subagents');
+    const spawnTool = tools.find((t) => t.id === 'SpawnSubAgents');
     expect(spawnTool).toBeUndefined();
   });
 
@@ -66,16 +66,16 @@ describe('Sub-Agent Integration', () => {
       parentAgent,
       subAgentConfig
     );
-    const spawnTool = tools.find((t) => t.id === 'spawn_subagents');
+    const spawnTool = tools.find((t) => t.id === 'SpawnSubAgents');
     expect(spawnTool).toBeDefined();
 
     // 验证工具列表包含安全工具
     const toolIds = tools.map((t) => t.id);
-    expect(toolIds).toContain('read_file');
-    expect(toolIds).toContain('glob');
-    expect(toolIds).toContain('grep');
-    expect(toolIds).toContain('web_fetch');
-    expect(toolIds).toContain('web_search');
+    expect(toolIds).toContain('ReadFile');
+    expect(toolIds).toContain('Glob');
+    expect(toolIds).toContain('Grep');
+    expect(toolIds).toContain('WebFetch');
+    expect(toolIds).toContain('WebSearch');
   });
 
   it('should execute spawn_subagents and return results (mocked sub-agents)', async () => {
@@ -100,14 +100,14 @@ describe('Sub-Agent Integration', () => {
     // 手动注册工具并注入 mock
     parentAgent.clearTools();
     for (const tool of tools) {
-      if (tool.id === 'spawn_subagents') {
+      if (tool.id === 'SpawnSubAgents') {
         // 保留 spawn_subagents 工具
         // biome-ignore lint/suspicious/noExplicitAny: 测试中 mock 工具类型擦除
         parentAgent.registerTools([tool as any]);
       }
     }
 
-    const spawnTool = tools.find((t) => t.id === 'spawn_subagents');
+    const spawnTool = tools.find((t) => t.id === 'SpawnSubAgents');
     expect(spawnTool).toBeDefined();
     if (!spawnTool) return; // TypeScript narrows to defined
 

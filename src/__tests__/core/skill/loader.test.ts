@@ -143,14 +143,14 @@ body`;
     const content = `---
 name: test
 description: desc
-requires-tools: web_search
+requires-tools: WebSearch
 ---
 
 body`;
 
     const result = parseFrontmatter(content);
     expect(result).not.toBeNull();
-    expect(result?.frontmatter['requires-tools']).toEqual(['web_search']);
+    expect(result?.frontmatter['requires-tools']).toEqual(['WebSearch']);
   });
 
   it('should parse requires-tools as array', () => {
@@ -158,15 +158,15 @@ body`;
 name: test
 description: desc
 requires-tools:
-  - web_search
-  - memory
+  - WebSearch
+  - Memory
 ---
 
 body`;
 
     const result = parseFrontmatter(content);
     expect(result).not.toBeNull();
-    expect(result?.frontmatter['requires-tools']).toEqual(['web_search', 'memory']);
+    expect(result?.frontmatter['requires-tools']).toEqual(['WebSearch', 'Memory']);
   });
 
   it('should parse compatibility', () => {

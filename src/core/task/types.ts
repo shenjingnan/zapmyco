@@ -68,7 +68,7 @@ export type TaskItemStatus = 'pending' | 'in_progress' | 'completed' | 'cancelle
 /**
  * Agent 任务项
  *
- * Agent 通过 task_manage 工具创建和维护的任务单元。
+ * Agent 通过 TaskManage 工具创建和维护的任务单元。
  * 与 SubTask 不同，TaskItem 是 Agent 面向用户的"任务跟踪层"，
  * 而 SubTask 是系统内部的"任务执行层"。
  */
@@ -91,10 +91,10 @@ export interface TaskItem {
   owner?: string;
 }
 
-/** task_manage 工具操作类型 */
+/** TaskManage 工具操作类型 */
 export type TaskManageAction = 'read' | 'write' | 'update';
 
-/** task_manage write/update 时传入的任务项 */
+/** TaskManage write/update 时传入的任务项 */
 export interface TaskManageInputItem {
   id: string;
   subject: string;
@@ -102,14 +102,14 @@ export interface TaskManageInputItem {
   status: TaskItemStatus;
 }
 
-/** task_manage 工具参数 */
+/** TaskManage 工具参数 */
 export interface TaskManageParams {
   action: TaskManageAction;
   tasks?: TaskManageInputItem[];
   merge?: boolean;
 }
 
-/** task_manage 工具返回的任务摘要统计 */
+/** TaskManage 工具返回的任务摘要统计 */
 export interface TaskManageSummary {
   total: number;
   pending: number;
@@ -118,7 +118,7 @@ export interface TaskManageSummary {
   cancelled: number;
 }
 
-/** task_manage 工具返回详情 */
+/** TaskManage 工具返回详情 */
 export interface TaskManageDetails {
   action: TaskManageAction;
   tasks: TaskItem[];

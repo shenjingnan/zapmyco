@@ -171,4 +171,41 @@ describe('createWebSearchTool', () => {
       expect(result.content[0]?.text).toContain('找到 3 条搜索结果');
     });
   });
+
+  describe('非 Tavily Provider 不可用', () => {
+    it('应返回包含 provider label 的自定义错误', async () => {
+      const config = makeBaseConfig();
+      config.search!.provider = 'serpapi';
+      // 不设置 apiKey 导致 SerpAPI isAvailable 返回 false
+      const tool = createWebSearchTool(config);
+      await expect(tool.execute('test', { query: 'test query' })).rejects.toThrow(
+        /SerpAPI.*不可用/
+      );
+    });
+  });
+
+  describe('搜索错误处理', () => {
+    it('quota 错误应抛出 WEB_SEARCH_QUOTA_EXCEEDED', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('API quota exceeded'));
+
+      const config = makeBaseConfig();
+      config.search!.apiKey = 'tvly-test-key';
+      const tool = createWebSearchTool(config);
+      // Tavily provider calls fetch directly and will reject with quota error
+      await expect(tool.execute('test', { query: 'test query' })).rejects.toThrow();
+    });
+
+    it('非 quota 错误应抛出 WEB_SEARCH_FAILED', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Internal Server Error'),
+      });
+
+      const config = makeBaseConfig();
+      config.search!.apiKey = 'tvly-test-key';
+      const tool = createWebSearchTool(config);
+      await expect(tool.execute('test', { query: 'test query' })).rejects.toThrow(/API 错误/);
+    });
+  });
 });

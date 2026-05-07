@@ -8,7 +8,7 @@ describe('shell-process', () => {
 
   describe('工具结构', () => {
     it('应该有正确的 id', () => {
-      expect(tool.id).toBe('process');
+      expect(tool.id).toBe('Process');
     });
 
     it('应该有 label', () => {

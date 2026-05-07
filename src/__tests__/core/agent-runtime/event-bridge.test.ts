@@ -166,7 +166,7 @@ describe('event-bridge', () => {
         {
           type: 'tool_execution_start',
           toolCallId: 'call-1',
-          toolName: 'read_file',
+          toolName: 'ReadFile',
           args: { file_path: '/a/b.txt' },
         },
         'task-1',
@@ -175,7 +175,7 @@ describe('event-bridge', () => {
       expect(result).toEqual({
         type: 'tool:start',
         taskId: 'task-1',
-        toolName: 'read_file',
+        toolName: 'ReadFile',
         toolCallId: 'call-1',
         args: { file_path: '/a/b.txt' },
       });
@@ -186,7 +186,7 @@ describe('event-bridge', () => {
         {
           type: 'tool_execution_update',
           toolCallId: 'call-1',
-          toolName: 'read_file',
+          toolName: 'ReadFile',
           args: {},
           partialResult: {},
         },
@@ -196,7 +196,7 @@ describe('event-bridge', () => {
       expect(result).toEqual({
         type: 'tool:update',
         taskId: 'task-1',
-        toolName: 'read_file',
+        toolName: 'ReadFile',
       });
     });
 
@@ -205,7 +205,7 @@ describe('event-bridge', () => {
         {
           type: 'tool_execution_end',
           toolCallId: 'call-1',
-          toolName: 'read_file',
+          toolName: 'ReadFile',
           result: {},
           isError: false,
         },
@@ -215,7 +215,7 @@ describe('event-bridge', () => {
       expect(result).toEqual({
         type: 'tool:end',
         taskId: 'task-1',
-        toolName: 'read_file',
+        toolName: 'ReadFile',
         toolCallId: 'call-1',
         success: true,
       });
@@ -226,7 +226,7 @@ describe('event-bridge', () => {
         {
           type: 'tool_execution_end',
           toolCallId: 'call-1',
-          toolName: 'read_file',
+          toolName: 'ReadFile',
           result: {},
           isError: true,
         },
@@ -288,14 +288,14 @@ describe('event-bridge', () => {
       dispatchToEventBus({
         type: 'tool:start',
         taskId: 't1',
-        toolName: 'read_file',
+        toolName: 'ReadFile',
         toolCallId: 'c1',
         args: { file_path: '/path/to/file', pattern: '*.ts' },
       });
       expect(spy).toHaveBeenCalledWith('task:progress', {
         taskId: 't1',
         percent: 0,
-        message: 'read_file(file_path="/path/to/file", pattern="*.ts")',
+        message: 'ReadFile(file_path="/path/to/file", pattern="*.ts")',
       });
       spy.mockRestore();
     });

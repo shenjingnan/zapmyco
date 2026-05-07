@@ -184,7 +184,7 @@ export function createGrepTool() {
   const MAX_RESULTS = 250;
 
   return {
-    id: 'grep' as const,
+    id: 'Grep' as const,
     label: '内容搜索',
     description:
       '使用正则表达式搜索文件内容。支持 output_mode 控制输出格式：' +

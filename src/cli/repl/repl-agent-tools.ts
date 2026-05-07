@@ -31,8 +31,8 @@ import type { TaskStore } from '@/core/task/task-store';
 /**
  * 创建 REPL 基础工具集
  *
- * @param webConfig - Web 工具配置（可选），传入时启用 web_fetch 和 web_search
- * @param taskStore - TaskStore 实例（可选），传入时启用 task_manage 工具
+ * @param webConfig - Web 工具配置（可选），传入时启用 WebFetch 和 WebSearch
+ * @param taskStore - TaskStore 实例（可选），传入时启用 TaskManage 工具
  */
 export function createReplBuiltinTools(
   webConfig?: WebConfig,
@@ -44,7 +44,7 @@ export function createReplBuiltinTools(
 ): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
-      id: 'get_current_time',
+      id: 'GetCurrentTime',
       label: '获取当前时间',
       description:
         '获取当前日期和时间（含本地时间和 UTC 时间）。当用户询问时间、需要时间戳、或需要时间相关上下文时调用此工具。',
@@ -64,7 +64,7 @@ export function createReplBuiltinTools(
       },
     },
     {
-      id: 'get_workdir_info',
+      id: 'GetWorkdirInfo',
       label: '获取工作目录信息',
       description: '获取当前工作目录路径和系统平台信息。当需要了解当前项目位置或运行环境时调用。',
       execute: async () => ({
@@ -87,7 +87,7 @@ export function createReplBuiltinTools(
       }),
     },
     {
-      id: 'read_file',
+      id: 'ReadFile',
       label: '读取文件',
       description:
         '读取指定路径的文本文件内容。参数 file_path 为文件绝对路径。' +

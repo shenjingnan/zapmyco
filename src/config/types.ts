@@ -204,7 +204,7 @@ export interface SkillConfig {
 
 /** Sub-Agent 系统配置 */
 export interface SubAgentConfig {
-  /** 是否启用 spawn_subagents 工具（默认 true） */
+  /** 是否启用 SpawnSubAgents 工具（默认 true） */
   enabled: boolean;
   /** 最大并行子 Agent 数（默认 5） */
   maxConcurrent: number;
@@ -271,10 +271,10 @@ export interface ZapmycoConfig {
 
 /** Web 工具配置 */
 export interface WebConfig {
-  /** 是否启用 web_fetch 和 web_search 工具 */
+  /** 是否启用 WebFetch 和 WebSearch 工具 */
   enabled: boolean;
 
-  /** web_fetch 子配置 */
+  /** WebFetch 子配置 */
   fetch?: {
     /** 单次请求超时时间（毫秒） */
     timeoutMs?: number;
@@ -292,7 +292,7 @@ export interface WebConfig {
     cacheTtlMinutes?: number;
   };
 
-  /** web_search 子配置 */
+  /** WebSearch 子配置 */
   search?: {
     /**
      * 搜索引擎 provider 名称

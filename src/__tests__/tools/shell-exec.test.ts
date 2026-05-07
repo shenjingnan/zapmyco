@@ -6,7 +6,7 @@ describe('shell-exec', () => {
 
   describe('工具结构', () => {
     it('应该有正确的 id', () => {
-      expect(tool.id).toBe('exec');
+      expect(tool.id).toBe('Exec');
     });
 
     it('应该有 label', () => {

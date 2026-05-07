@@ -20,7 +20,7 @@ import type { ProcessDetails, ProcessParams } from './shell-types';
 
 export function createProcessTool() {
   return {
-    id: 'process' as const,
+    id: 'Process' as const,
     label: '管理进程' as const,
     description:
       '管理后台运行的进程。支持的操作：\n' +

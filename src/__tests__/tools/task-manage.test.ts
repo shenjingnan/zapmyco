@@ -6,11 +6,11 @@ import { createTaskManageTool } from '@/cli/repl/tools/task-manage';
 import { TaskStore } from '@/core/task/task-store';
 
 /**
- * task_manage 工具单元测试
+ * TaskManage 工具单元测试
  *
  * 覆盖：read / write / update 三种操作模式及错误处理
  */
-describe('task_manage', () => {
+describe('TaskManage', () => {
   let store: TaskStore;
   let tmpDir: string;
 
@@ -35,7 +35,7 @@ describe('task_manage', () => {
   describe('工具定义', () => {
     it('应该有正确的 id', () => {
       const tool = createTool();
-      expect(tool.id).toBe('task_manage');
+      expect(tool.id).toBe('TaskManage');
     });
 
     it('应该有正确的 label', () => {

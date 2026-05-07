@@ -81,7 +81,7 @@ export function createWebSearchTool(webConfig?: WebConfig) {
   const cacheTtlMinutes = searchOptions.cacheTtlMinutes ?? 15;
 
   return {
-    id: 'web_search' as const,
+    id: 'WebSearch' as const,
     label: '网页搜索' as const,
     description:
       '在互联网上搜索信息。支持多种搜索引擎后端。当用户需要查找最新信息、技术文档、新闻等时调用此工具。',

@@ -255,7 +255,7 @@ export function createWebFetchTool(webConfig?: WebConfig) {
   const cacheTtlMinutes = fetchOptions.cacheTtlMinutes ?? 15;
 
   return {
-    id: 'web_fetch' as const,
+    id: 'WebFetch' as const,
     label: '网页抓取' as const,
     description:
       '抓取指定 URL 的网页内容并转换为 Markdown 格式。支持 HTML 正文提取、JSON 美化、内容截断。当用户需要访问网页获取信息时调用此工具。',

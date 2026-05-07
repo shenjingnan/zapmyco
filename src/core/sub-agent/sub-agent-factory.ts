@@ -17,21 +17,21 @@ import type { SubAgentSpec } from './types';
  * 子 Agent 默认安全工具集
  *
  * 只包含只读和搜索工具，排除所有可能产生副作用的工具：
- * - write_file / edit_file → 可能破坏工作区
- * - shell_exec / shell_process → 可能执行危险命令
- * - memory → 子 Agent 不应跨会话记忆
+ * - WriteFile / EditFile → 可能破坏工作区
+ * - Exec / Process → 可能执行危险命令
+ * - Memory → 子 Agent 不应跨会话记忆
  * - Skill → 防止递归技能调用
- * - task_manage → 子 Agent 只执行单一任务，不需要规划
- * - spawn_subagents → 防止递归爆炸
+ * - TaskManage → 子 Agent 只执行单一任务，不需要规划
+ * - SpawnSubAgents → 防止递归爆炸
  */
 export const DEFAULT_SAFE_TOOLS: string[] = [
-  'read_file',
-  'glob',
-  'grep',
-  'web_fetch',
-  'web_search',
-  'get_current_time',
-  'get_workdir_info',
+  'ReadFile',
+  'Glob',
+  'Grep',
+  'WebFetch',
+  'WebSearch',
+  'GetCurrentTime',
+  'GetWorkdirInfo',
 ];
 
 // ============ 子 Agent 实例类型 ============
@@ -195,7 +195,7 @@ function filterTools(
 ): ToolRegistration[] {
   if (whitelist === '*') {
     // 全部工具，但排除 spawn_subagents（防止递归）
-    return availableTools.filter((t) => t.id !== 'spawn_subagents');
+    return availableTools.filter((t) => t.id !== 'SpawnSubAgents');
   }
 
   const whitelistSet = new Set(whitelist);

@@ -23,7 +23,7 @@ export function createSpawnSubAgentsTool(
   _config: SubAgentConfig
 ): ToolRegistration {
   return {
-    id: 'spawn_subagents',
+    id: 'SpawnSubAgents',
     label: '派生子 Agent',
     description: [
       '并行启动多个子 Agent 执行独立任务，等待全部完成后汇总返回结果。',
@@ -39,10 +39,10 @@ export function createSpawnSubAgentsTool(
       '- 任务非常简单（如读取单个文件）',
       '',
       '### 使用流程',
-      '1. 先用 task_manage write 规划所有子任务',
+      '1. 先用 TaskManage write 规划所有子任务',
       '2. 识别其中可并行的独立子任务',
       '3. 调用本工具一次性派发所有并行子任务',
-      '4. 根据返回结果更新 task_manage 状态',
+      '4. 根据返回结果更新 TaskManage 状态',
       '5. 继续处理依赖这些结果的后续任务',
       '',
       '### 参数说明',
@@ -50,7 +50,7 @@ export function createSpawnSubAgentsTool(
       '- context: 可选背景摘要，会注入给每个子 Agent 帮助它们理解任务背景',
       '',
       '### 子 Agent 的能力',
-      '默认情况下子 Agent 拥有安全的只读工具集：read_file, glob, grep, web_fetch, web_search。',
+      '默认情况下子 Agent 拥有安全的只读工具集：ReadFile, Glob, Grep, WebFetch, WebSearch。',
       '如需子 Agent 写文件或执行命令，请在 allowedTools 中显式指定。',
     ].join('\n'),
     parameters: {
