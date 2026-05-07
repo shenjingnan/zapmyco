@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/shenjingnan/zapmyco/compare/v0.5.0...v0.6.0) (2026-05-07)
+
+### Features
+
+* **repl:** 将 loading spinner 从编辑器移至输出区 "ZapMyco:" 行 ([#43](https://github.com/shenjingnan/zapmyco/issues/43)) ([8725154](https://github.com/shenjingnan/zapmyco/commit/87251544eb7fcccb223199b06ff0ead4a1d726d2))
+* **repl:** 支持上下方向键切换历史输入并持久化到文件 ([#46](https://github.com/shenjingnan/zapmyco/issues/46)) ([9415019](https://github.com/shenjingnan/zapmyco/commit/94150198fddbaed5a0f4e13d670c20228a1ac876))
+* **repl:** 输入 '/' 自动弹出命令补全菜单 ([#45](https://github.com/shenjingnan/zapmyco/issues/45)) ([675d2a2](https://github.com/shenjingnan/zapmyco/commit/675d2a27b1ed49fb9495e54cefabbf253dc10470))
+
 ## [0.5.0](https://github.com/shenjingnan/zapmyco/compare/v0.4.0...v0.5.0) (2026-05-07)
 
 ### Features
