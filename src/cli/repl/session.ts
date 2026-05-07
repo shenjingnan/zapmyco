@@ -8,6 +8,11 @@
  * - 组件化布局，可扩展
  */
 
+import { spawnSync } from 'node:child_process';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type { KnownProvider } from '@mariozechner/pi-ai';
 import { getModel } from '@mariozechner/pi-ai';
 import {
@@ -906,6 +911,9 @@ export class ReplSession {
     this.editor.onCtrlD = () => {
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
+
+    // Ctrl+O: 打开外部编辑器
+    this.editor.onOpenEditor = () => this.openInEditor();
   }
 
   /** 设置信号处理 */
@@ -933,6 +941,60 @@ export class ReplSession {
     if (this.currentTaskAbort !== null) {
       this.currentTaskAbort.abort();
       this.currentTaskAbort = null;
+    }
+  }
+
+  /**
+   * 打开外部编辑器（vim / $EDITOR）编辑当前输入内容
+   *
+   * 流程：
+   * 1. 将编辑器当前文本写入临时文件
+   * 2. 暂停 TUI（恢复终端 cooked 模式）
+   * 3. 启动外部编辑器，用户编辑并保存退出
+   * 4. 读取编辑后的内容并更新编辑器
+   * 5. 恢复 TUI 并重绘
+   */
+  private openInEditor(): void {
+    const tmpFile = join(tmpdir(), 'zapmyco-editor-input.txt');
+    let tuiStopped = false;
+
+    try {
+      const currentText = this.editor.getExpandedText();
+      writeFileSync(tmpFile, currentText, 'utf-8');
+
+      this.tui.stop();
+      tuiStopped = true;
+
+      const editorCmd = process.env.VISUAL || process.env.EDITOR || 'vim';
+      const result = spawnSync(editorCmd, [tmpFile], { stdio: 'inherit' });
+
+      const newText = readFileSync(tmpFile, 'utf-8');
+
+      if (newText !== currentText) {
+        this.editor.setText(newText);
+      }
+
+      if (result.error) {
+        const err = result.error as NodeJS.ErrnoException;
+        if (err.code === 'ENOENT') {
+          this.outputArea.append(['', `未找到编辑器: ${editorCmd}，请设置 $EDITOR 环境变量`, '']);
+        } else {
+          this.outputArea.append(['', `编辑器启动失败: ${err.message}`, '']);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.outputArea.append(['', `打开编辑器失败: ${message}`, '']);
+    } finally {
+      if (tuiStopped) {
+        this.tui.start();
+        this.tui.requestRender(true);
+      }
+      try {
+        unlinkSync(tmpFile);
+      } catch {
+        // 临时文件清理失败可忽略
+      }
     }
   }
 
