@@ -10,7 +10,14 @@
 
 import type { KnownProvider } from '@mariozechner/pi-ai';
 import { getModel } from '@mariozechner/pi-ai';
-import { Container, ProcessTerminal, TUI, wrapTextWithAnsi } from '@mariozechner/pi-tui';
+import {
+  CombinedAutocompleteProvider,
+  Container,
+  ProcessTerminal,
+  type SlashCommand,
+  TUI,
+  wrapTextWithAnsi,
+} from '@mariozechner/pi-tui';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
 import { createClearCommand } from '@/cli/repl/commands/clear';
@@ -618,6 +625,37 @@ export class ReplSession {
     this.registry.register(createConfigCommand());
     this.registry.register(createAgentsCommand());
     this.registry.register(createStatusCommand());
+
+    // 设置 autocomplete provider
+    this.buildAutocompleteProvider();
+  }
+
+  /** 构建并设置 autocomplete provider，将命令注册表中的命令接入 pi-tui 补全系统 */
+  private buildAutocompleteProvider(): void {
+    const slashCommands: SlashCommand[] = [];
+
+    for (const cmd of this.registry.listCommands()) {
+      const base: { name: string; description: string; argumentHint?: string } = {
+        name: cmd.name,
+        description: cmd.description,
+      };
+      if (cmd.usage !== `/${cmd.name}`) {
+        base.argumentHint = cmd.usage;
+      }
+      slashCommands.push(base);
+
+      // 同时注册别名
+      for (const alias of cmd.aliases) {
+        slashCommands.push({
+          name: alias,
+          description: `${cmd.description}（别名: /${cmd.name}）`,
+        });
+      }
+    }
+
+    const provider = new CombinedAutocompleteProvider(slashCommands, process.cwd(), null);
+    this.editor.setAutocompleteProvider(provider);
+    this.editor.setAutocompleteMaxVisible(12);
   }
 
   /**
@@ -775,6 +813,9 @@ export class ReplSession {
 
         // 注册 Skill 斜杠命令（如 /commit, /review-pr）
         this._registerSkillCommands(entries);
+
+        // 更新 autocomplete provider（包含新注册的 skill 命令）
+        this.buildAutocompleteProvider();
 
         log.info('Skill 系统初始化完成', {
           count: snapshot.count,
