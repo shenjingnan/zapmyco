@@ -148,6 +148,94 @@ describe('createWebFetchTool', () => {
     });
   });
 
+  describe('重定向处理', () => {
+    it('应处理 HTTP 301 重定向并跟随到新 URL', async () => {
+      const mockHtml =
+        '<html><head><title>Redirected</title></head><body><p>重定向后的内容</p></body></html>';
+
+      let callCount = 0;
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 301,
+            headers: new Headers({ location: 'https://example.com/new-location' }),
+            arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
+          arrayBuffer: () => Promise.resolve(new TextEncoder().encode(mockHtml).buffer),
+        });
+      });
+
+      const tool = createWebFetchTool(webConfig);
+      const result = await tool.execute('test-call', { url: 'https://example.com/old' });
+      expect(result.content[0]?.text).toContain('Redirected');
+      expect(callCount).toBe(2);
+    });
+
+    it('重定向无 Location 头应返回错误', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 301,
+        headers: new Headers(),
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+
+      const tool = createWebFetchTool(webConfig);
+      await expect(
+        tool.execute('test-call', { url: 'https://example.com/redirect-no-location' })
+      ).rejects.toThrow(/重定向但无 Location 头/);
+    });
+
+    it('重定向次数超过上限应返回错误', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 301,
+        headers: new Headers({ location: 'https://example.com/loop' }),
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+
+      const tool = createWebFetchTool(webConfig);
+      await expect(tool.execute('test-call', { url: 'https://example.com/loop' })).rejects.toThrow(
+        /重定向次数超过上限/
+      );
+    });
+  });
+
+  describe('Content-Length 校验', () => {
+    it('Content-Length 超过 maxBytes 应返回错误', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-length': '2048' }),
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+
+      const tool = createWebFetchTool(webConfig);
+      await expect(tool.execute('test-call', { url: 'https://example.com/large' })).rejects.toThrow(
+        /响应过大/
+      );
+    });
+  });
+
+  describe('通用异常处理', () => {
+    it('非 WebError/AbortError 的异常应包装为 WebError', async () => {
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        throw new Error('Network error');
+      });
+
+      const tool = createWebFetchTool(webConfig);
+      await expect(tool.execute('test-call', { url: 'https://example.com/error' })).rejects.toThrow(
+        /抓取失败/
+      );
+    });
+  });
+
   describe('缓存', () => {
     it('第二次请求相同 URL 应该命中缓存', async () => {
       let callCount = 0;

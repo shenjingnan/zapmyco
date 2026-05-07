@@ -56,7 +56,8 @@
     "oneline",
     "prio",
     "ONESHOT",
-    "toolcall"
+    "toolcall",
+    "xyznonexistent"
   ],
   "ignorePaths": [
     "node_modules",

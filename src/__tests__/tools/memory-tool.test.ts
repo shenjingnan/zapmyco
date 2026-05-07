@@ -1,7 +1,31 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// 使用 vi.hoisted 避免 TDZ — mock factory 中可用
+const { getHomedirPath, setHomedirPath } = vi.hoisted(() => {
+  let _path = '';
+  return {
+    getHomedirPath: () => _path,
+    setHomedirPath: (p: string) => {
+      _path = p;
+    },
+  };
+});
+
+vi.mock('node:os', async () => {
+  const actual = await vi.importActual<typeof import('node:os')>('node:os');
+  return {
+    ...actual,
+    homedir: vi.fn(() => {
+      const override = getHomedirPath();
+      if (override) return override;
+      return actual.tmpdir(); // 默认使用 tmpdir 避免污染用户目录
+    }),
+  };
+});
+
 import { createMemoryTool, MemoryStore } from '@/cli/repl/tools/memory-tool';
 
 /**
@@ -36,7 +60,6 @@ describe('MemoryStore', () => {
     it('重复调用 initialize 应该是幂等的', async () => {
       await store.initialize();
       await store.initialize();
-      // 不应抛出异常
     });
   });
 
@@ -140,11 +163,7 @@ describe('MemoryStore', () => {
     it('快照冻结后的写入不影响快照', async () => {
       await store.add('user', '旧内容');
       await store.freezeSnapshot();
-
-      // 写入新内容
       await store.add('user', '新内容');
-
-      // 快照应该仍是冻结时的内容
       const snapshot = store.getSnapshot('user');
       expect(snapshot).toContain('旧内容');
       expect(snapshot).not.toContain('新内容');
@@ -160,26 +179,21 @@ describe('MemoryStore', () => {
 });
 
 describe('memory 工具', () => {
-  let store: MemoryStore;
   let tmpDir: string;
 
   function createTool() {
     return createMemoryTool();
   }
 
-  beforeEach(async () => {
+  beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'zapmyco-memory-tool-'));
-    store = new MemoryStore(tmpDir);
-    // 替换全局 store（hack: 通过 import 的 getMemoryStore）
-    await store.initialize();
+    setHomedirPath(tmpDir);
   });
 
-  afterEach(() => {
+  afterAll(() => {
+    setHomedirPath('');
     rmSync(tmpDir, { recursive: true, force: true });
   });
-
-  // 重新导入以获取使用临时目录的 store
-  // 注：由于 memory 工具使用全局单例，这里的测试验证工具定义结构为主
 
   describe('工具定义', () => {
     it('应该有正确的 id', () => {
@@ -206,6 +220,113 @@ describe('memory 工具', () => {
         expect(props.content).toBeDefined();
         expect(props.old_content).toBeDefined();
       }
+    });
+  });
+
+  describe('action="read"', () => {
+    it('有记忆内容时应返回内容', async () => {
+      const tool = createTool();
+      // 通过 tool 添加记忆
+      await tool.execute('setup', {
+        action: 'add',
+        type: 'user',
+        content: '测试读取内容',
+      });
+      const result = await tool.execute('test-2', { action: 'read', type: 'user' });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('测试读取内容');
+    });
+  });
+
+  describe('action="add"', () => {
+    it('缺少 content 参数应返回错误', async () => {
+      const tool = createTool();
+      const result = await tool.execute('test-1', { action: 'add', type: 'user' });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('请提供 content 参数');
+      expect(result.details.error).toContain('content 参数为空');
+    });
+
+    it('添加成功应返回保存结果', async () => {
+      const tool = createTool();
+      const uniqueContent = `项目使用 Vitest 测试框架_${Date.now()}`;
+      const result = await tool.execute('test-2', {
+        action: 'add',
+        type: 'project',
+        content: uniqueContent,
+      });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('已保存到项目上下文');
+      expect(text).toContain(uniqueContent);
+    });
+  });
+
+  describe('action="remove"', () => {
+    it('缺少 old_content 参数应返回错误', async () => {
+      const tool = createTool();
+      const result = await tool.execute('test-1', { action: 'remove', type: 'user' });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('请提供 old_content 参数');
+    });
+
+    it('删除成功应返回结果', async () => {
+      const tool = createTool();
+      const uniqueContent = `唯一待删除内容_${Date.now()}`;
+      await tool.execute('setup', {
+        action: 'add',
+        type: 'user',
+        content: uniqueContent,
+      });
+      const result = await tool.execute('test-2', {
+        action: 'remove',
+        type: 'user',
+        old_content: uniqueContent,
+      });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('已从用户画像删除匹配条目');
+    });
+
+    it('多项匹配时应返回错误', async () => {
+      const tool = createTool();
+      await tool.execute('setup-1', {
+        action: 'add',
+        type: 'user',
+        content: '喜欢 TypeScript',
+      });
+      await tool.execute('setup-2', {
+        action: 'add',
+        type: 'user',
+        content: '喜欢 Python',
+      });
+      const result = await tool.execute('test-3', {
+        action: 'remove',
+        type: 'user',
+        old_content: '喜欢',
+      });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('[删除失败]');
+      expect(text).toContain('找到 2 个匹配项');
+    });
+
+    it('删除不存在的内容应返回错误', async () => {
+      const tool = createTool();
+      const result = await tool.execute('test-3', {
+        action: 'remove',
+        type: 'user',
+        old_content: '不存在的内容xyz123',
+      });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('[删除失败]');
+    });
+  });
+
+  describe('action="list"', () => {
+    it('应返回 MEMORY.md 索引内容', async () => {
+      const tool = createTool();
+      const result = await tool.execute('test-1', { action: 'list' });
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('# Memory Index');
+      expect(text).toContain('user.md');
     });
   });
 
