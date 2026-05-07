@@ -2,7 +2,7 @@
  * zapmyco 配置加载器
  *
  * 使用 cosmiconfig 搜索并加载配置文件。
- * 支持多路径搜索，包括用户家目录 ~/.zapmyco/zapmyco.json。
+ * 支持多路径搜索，包括用户家目录 ~/.zapmyco/settings.json。
  */
 
 import { existsSync } from 'node:fs';
@@ -18,7 +18,7 @@ import { logger } from '@/infra/logger';
 const EXPLORER_NAME = 'zapmyco';
 
 /** 用户家目录配置路径 */
-const HOME_CONFIG_PATH = join(homedir(), '.zapmyco', 'zapmyco.json');
+const HOME_CONFIG_PATH = join(homedir(), '.zapmyco', 'settings.json');
 
 /**
  * 解析配置值中的环境变量引用
@@ -155,7 +155,7 @@ async function tryLoadHomeConfig(): Promise<CosmiconfigResult | null> {
  * 搜索优先级：
  * 1. 显式指定的 configPath
  * 2. 项目级配置文件（cosmiconfig 默认搜索）
- * 3. 用户家目录 ~/.zapmyco/zapmyco.json
+ * 3. 用户家目录 ~/.zapmyco/settings.json
  * 4. 默认值
  *
  * @param configPath - 可选的显式配置文件路径

@@ -286,7 +286,7 @@ export interface CliConfig {
  * 配置加载优先级：
  * 1. 命令行参数（最高）
  * 2. 项目级配置文件 (zapmyco.config.*)
- * 3. 用户家目录配置 (~/.zapmyco/zapmyco.json)
+ * 3. 用户家目录配置 (~/.zapmyco/settings.json)
  * 4. 默认值（最低）
  */
 export interface ZapmycoConfig {
