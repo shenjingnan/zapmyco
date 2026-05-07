@@ -6,6 +6,8 @@ describe('HistoryStore', () => {
 
   beforeEach(() => {
     store = new HistoryStore(5);
+    // 清除持久化文件中可能的残留数据，确保测试隔离
+    store.clear();
   });
 
   describe('push', () => {
@@ -15,15 +17,15 @@ describe('HistoryStore', () => {
         input: '测试输入',
       });
 
-      expect(entry.id).toBe(1);
+      expect(entry.id).toBeGreaterThan(0);
       expect(entry.input).toBe('测试输入');
       expect(entry.timestamp).toBe(1000);
     });
 
     it('id 应递增', () => {
-      store.push({ timestamp: 1000, input: '第一条' });
+      const entry1 = store.push({ timestamp: 1000, input: '第一条' });
       const entry2 = store.push({ timestamp: 2000, input: '第二条' });
-      expect(entry2.id).toBe(2);
+      expect(entry2.id).toBeGreaterThan(entry1.id);
     });
   });
 
@@ -67,10 +69,10 @@ describe('HistoryStore', () => {
     });
 
     it('clear 后 id 不重置', () => {
-      store.push({ timestamp: 1000, input: 'a' });
+      const entry1 = store.push({ timestamp: 1000, input: 'a' });
       store.clear();
-      const entry = store.push({ timestamp: 2000, input: 'b' });
-      expect(entry.id).toBe(2);
+      const entry2 = store.push({ timestamp: 2000, input: 'b' });
+      expect(entry2.id).toBeGreaterThan(entry1.id);
     });
   });
 

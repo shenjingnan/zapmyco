@@ -69,6 +69,7 @@ vi.mock('@/cli/repl/components/custom-editor', () => ({
     setExecuting = vi.fn();
     setAutocompleteProvider = vi.fn();
     setAutocompleteMaxVisible = vi.fn();
+    addToHistory = vi.fn();
     get executing() {
       return this.#executing;
     }
