@@ -18,7 +18,7 @@ import { Editor, Key, matchesKey, truncateToWidth } from '@mariozechner/pi-tui';
 const PROMPT_PREFIX = '\u276f '; // "❯ "
 
 /** loading 动画帧 */
-const LOADING_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+export const LOADING_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /** ANSI 转义码正则（用于从渲染行中剥离颜色标记） */
 // biome-ignore lint/complexity/useRegexLiterals: 避免正则字面量中的控制字符
@@ -42,6 +42,9 @@ export class ZapmycoEditor extends Editor {
 
   /** 是否正在执行（用于显示 loading） */
   #executing = false;
+
+  /** 是否显示 spinner（执行期间禁用输入但不一定显示 spinner） */
+  #showSpinner = true;
 
   /** loading 动画帧索引 */
   #loadingFrame = 0;
@@ -69,11 +72,14 @@ export class ZapmycoEditor extends Editor {
 
   /**
    * 设置执行状态（控制 loading spinner 显示）
+   * @param executing 是否正在执行
+   * @param showSpinner 是否显示 spinner（默认 true）。设为 false 时仅禁用输入，不显示动画
    */
-  setExecuting(executing: boolean): void {
-    if (this.#executing === executing) return;
+  setExecuting(executing: boolean, showSpinner = true): void {
+    if (this.#executing === executing && this.#showSpinner === showSpinner) return;
     this.#executing = executing;
-    if (executing) {
+    this.#showSpinner = showSpinner;
+    if (executing && showSpinner) {
       this.#loadingFrame = 0;
       this.#loadingTimer = setInterval(() => {
         this.#loadingFrame = (this.#loadingFrame + 1) % LOADING_FRAMES.length;
@@ -127,8 +133,8 @@ export class ZapmycoEditor extends Editor {
       const prefix = i === 0 ? PROMPT_PREFIX : ' '.repeat(promptWidth);
 
       let line: string;
-      // 第一行：如果正在执行，在提示符后追加 loading spinner
-      if (i === 0 && this.#executing) {
+      // 第一行：如果正在执行且需要显示 spinner，在提示符后追加 loading spinner
+      if (i === 0 && this.#executing && this.#showSpinner) {
         const frame = LOADING_FRAMES[this.#loadingFrame];
         line = `${prefix}${frame} ${contentLines[i]}`;
       } else {
