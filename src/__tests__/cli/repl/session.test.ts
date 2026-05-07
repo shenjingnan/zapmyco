@@ -56,6 +56,7 @@ vi.mock('@mariozechner/pi-tui', () => ({
 
 // Mock ZapmycoEditor
 vi.mock('@/cli/repl/components/custom-editor', () => ({
+  LOADING_FRAMES: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
   ZapmycoEditor: class MockZapmycoEditor {
     onSubmit?: (text: string) => void;
     onEscape?: () => void;

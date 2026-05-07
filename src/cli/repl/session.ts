@@ -20,7 +20,7 @@ import { createHelpCommand } from '@/cli/repl/commands/help';
 import { createHistoryCommand } from '@/cli/repl/commands/history';
 import { createQuitCommand } from '@/cli/repl/commands/quit';
 import { createStatusCommand } from '@/cli/repl/commands/status';
-import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
+import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { getCronStore } from '@/cli/repl/cron/cron-store';
 import { HistoryStore as HistoryStoreClass } from '@/cli/repl/history-store';
@@ -78,6 +78,16 @@ class OutputArea extends Container {
       this.lines.push(text);
     } else {
       this.lines[this.lines.length - 1] += text;
+    }
+    this.invalidate();
+  }
+
+  /** 替换最后一行的完整内容（用于 spinner 动画和首 chunk 替换） */
+  replaceLastLine(text: string): void {
+    if (this.lines.length > 0) {
+      this.lines[this.lines.length - 1] = text;
+    } else {
+      this.lines.push(text);
     }
     this.invalidate();
   }
@@ -314,11 +324,16 @@ export class ReplSession {
     let historyEntry: import('@/cli/repl/types').HistoryEntry | undefined;
     const taskId = `task-${Date.now()}`;
 
+    // 输出区 spinner 相关变量（需要跨 try/catch 访问）
+    const ZAPMYCO_PREFIX = 'ZapMyco: ';
+    let spinnerActive = true;
+    let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+
     try {
-      // 更新状态
+      // 更新状态（禁用编辑器输入，但不显示编辑器 spinner）
       this._state = 'executing';
       this.updateStatsState();
-      this.editor.setExecuting(true);
+      this.editor.setExecuting(true, false);
 
       // 创建 AbortController 用于取消（兼容保留）
       this.currentTaskAbort = new AbortController();
@@ -335,14 +350,31 @@ export class ReplSession {
         rawInput,
       });
 
-      // 显示用户输入
-      const goalLines: string[] = [`Me: ${rawInput}`, 'ZapMyco: '];
-      this.outputArea.append(goalLines);
+      // 显示用户输入 + ZapMyco: 带 spinner
+      this.outputArea.append([`Me: ${rawInput}`, ZAPMYCO_PREFIX + LOADING_FRAMES[0]]);
 
-      // 设置流式输出桥接：Agent EVENT_OUTPUT -> outputArea.appendText()
+      // 输出区 spinner 动画
+      let spinnerFrame = 0;
+      spinnerActive = true;
+      spinnerInterval = setInterval(() => {
+        if (!spinnerActive) return;
+        spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
+        this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame]);
+        this.tui.requestRender();
+      }, 100);
+
+      // 设置流式输出桥接：Agent EVENT_OUTPUT -> outputArea (首 chunk 替换 spinner)
+      let firstOutputReceived = false;
       const outputHandler = (event: { taskId: string; text: string }) => {
         if (event.taskId === taskId) {
-          this.outputArea.appendText(event.text);
+          if (!firstOutputReceived) {
+            firstOutputReceived = true;
+            spinnerActive = false;
+            clearInterval(spinnerInterval);
+            this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + event.text);
+          } else {
+            this.outputArea.appendText(event.text);
+          }
           this.tui.requestRender();
         }
       };
@@ -404,6 +436,15 @@ export class ReplSession {
           : taskResult.output != null
             ? JSON.stringify(taskResult.output)
             : null;
+
+      // 如果 spinner 还在运行（Agent 未发射流式输出），停止并处理
+      if (spinnerActive) {
+        spinnerActive = false;
+        clearInterval(spinnerInterval);
+        if (outputText) {
+          this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + outputText);
+        }
+      }
 
       if (taskResult.status !== 'success') {
         // Agent 返回 failure：渲染错误信息
@@ -471,6 +512,10 @@ export class ReplSession {
       const err = error instanceof Error ? error : new Error(String(error));
       log.error('目标执行失败', { input: rawInput }, err);
 
+      // 停止 spinner（如果还在运行）
+      spinnerActive = false;
+      clearInterval(spinnerInterval);
+
       this.stats.totalRequests++;
       this.stats.failureCount++;
 
@@ -479,9 +524,12 @@ export class ReplSession {
         error: err,
       });
 
-      // 渲染错误到输出区域
-      const errorLines = this.renderer.renderError(err);
-      this.outputArea.append(errorLines);
+      // 渲染错误到输出区域（替换 spinner 行 + 追加错误详情）
+      this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + `[错误] ${err.message}`);
+      const errorLines = this.renderer.renderError(err).slice(1); // 跳过第一行（已替换 spinner）
+      if (errorLines.length > 0) {
+        this.outputArea.append(errorLines);
+      }
 
       // 返回失败结果
       const duration = Date.now() - startTime;
@@ -500,6 +548,8 @@ export class ReplSession {
         },
       };
     } finally {
+      spinnerActive = false;
+      if (spinnerInterval) clearInterval(spinnerInterval);
       this._state = 'idle';
       this.updateStatsState();
       this.editor.setExecuting(false);
