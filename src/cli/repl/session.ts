@@ -188,6 +188,11 @@ export class ReplSession {
     this.renderer = new RendererClass(this.options);
     this.history = new HistoryStoreClass(this.options.maxHistorySize);
 
+    // 将持久化的历史注入编辑器，支持上下方向键跨会话导航
+    for (const entry of this.history.getAll()) {
+      this.editor.addToHistory(entry.input);
+    }
+
     // 初始化 Agent 实例（替代直接 LLM 调用）
     this.agent = this.createReplAgent();
 
@@ -603,12 +608,14 @@ export class ReplSession {
       case 'command': {
         // 命令分发
         await this.registry.dispatch(parsed);
+        this.editor.addToHistory(line);
         break;
       }
 
       case 'goal': {
         // 自然语言目标执行
         await this.executeGoal(parsed.rawInput);
+        this.editor.addToHistory(line);
         break;
       }
     }
