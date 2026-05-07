@@ -23,6 +23,7 @@ import {
   TUI,
   wrapTextWithAnsi,
 } from '@mariozechner/pi-tui';
+import chalk from 'chalk';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
 import { createClearCommand } from '@/cli/repl/commands/clear';
@@ -343,6 +344,12 @@ export class ReplSession {
 
     // 输出区 spinner 相关变量（需要跨 try/catch 访问）
     const ZAPMYCO_PREFIX = 'ZapMyco: ';
+    const THINKING_PREFIX = '  \uD83D\uDCAD ';
+    const colorEnabled = this.options.color;
+    const userStyle = (s: string) => (colorEnabled ? chalk.bold.cyan(s) : s);
+    const responseStyle = (s: string) => s;
+    const toolStyle = (s: string) => (colorEnabled ? chalk.yellow(s) : s);
+    const thinkingStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -368,7 +375,10 @@ export class ReplSession {
       });
 
       // 显示用户输入 + ZapMyco: 带 spinner
-      this.outputArea.append([`Me: ${rawInput}`, ZAPMYCO_PREFIX + LOADING_FRAMES[0]]);
+      this.outputArea.append([
+        userStyle(`Me: ${rawInput}`),
+        responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[0]),
+      ]);
 
       // 输出区 spinner 动画
       let spinnerFrame = 0;
@@ -376,24 +386,54 @@ export class ReplSession {
       spinnerInterval = setInterval(() => {
         if (!spinnerActive) return;
         spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
-        this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame]);
+        this.outputArea.replaceLastLine(
+          responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame])
+        );
         this.tui.requestRender();
       }, 100);
 
       // 设置流式输出桥接：Agent EVENT_OUTPUT -> outputArea (首 chunk 替换 spinner)
       let firstOutputReceived = false;
+      let outputAccumulator = '';
+      let thinkingAccumulator = '';
+      let streamMode: 'none' | 'response' | 'thinking' = 'response';
+
       const outputHandler = (event: { taskId: string; text: string }) => {
-        if (event.taskId === taskId) {
-          if (!firstOutputReceived) {
-            firstOutputReceived = true;
-            spinnerActive = false;
-            clearInterval(spinnerInterval);
-            this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + event.text);
-          } else {
-            this.outputArea.appendText(event.text);
-          }
-          this.tui.requestRender();
+        if (event.taskId !== taskId || !event.text) return;
+
+        if (!firstOutputReceived) {
+          firstOutputReceived = true;
+          spinnerActive = false;
+          clearInterval(spinnerInterval);
+          streamMode = 'response';
+          thinkingAccumulator = '';
+          outputAccumulator = event.text;
+          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputAccumulator));
+        } else if (streamMode !== 'response') {
+          streamMode = 'response';
+          thinkingAccumulator = '';
+          outputAccumulator = event.text;
+          this.outputArea.append([responseStyle(ZAPMYCO_PREFIX + outputAccumulator)]);
+        } else {
+          outputAccumulator += event.text;
+          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputAccumulator));
         }
+        this.tui.requestRender();
+      };
+
+      const thinkingHandler = (event: { taskId: string; text: string }) => {
+        if (event.taskId !== taskId || !event.text) return;
+
+        if (streamMode !== 'thinking') {
+          streamMode = 'thinking';
+          outputAccumulator = '';
+          thinkingAccumulator = event.text;
+          this.outputArea.append([thinkingStyle(THINKING_PREFIX + thinkingAccumulator)]);
+        } else {
+          thinkingAccumulator += event.text;
+          this.outputArea.replaceLastLine(thinkingStyle(THINKING_PREFIX + thinkingAccumulator));
+        }
+        this.tui.requestRender();
       };
 
       // 监听 Agent 错误事件
@@ -408,12 +448,13 @@ export class ReplSession {
       // 工具调用展示：Agent EVENT_PROGRESS -> outputArea.append()
       const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
         if (event.taskId === taskId && event.percent === 0) {
-          this.outputArea.append([`  → ${event.message}`]);
+          this.outputArea.append([toolStyle(`  → ${event.message}`)]);
           this.tui.requestRender();
         }
       };
 
       this.agent.on(this.agent.EVENT_OUTPUT, outputHandler);
+      this.agent.on(this.agent.EVENT_THINKING, thinkingHandler);
       this.agent.on(this.agent.EVENT_ERROR, errorHandler);
       this.agent.on(this.agent.EVENT_PROGRESS, progressHandler);
       this.currentTaskId = taskId;
@@ -436,6 +477,7 @@ export class ReplSession {
 
       // 移除监听器（防止重复绑定）
       this.agent.off(this.agent.EVENT_OUTPUT, outputHandler);
+      this.agent.off(this.agent.EVENT_THINKING, thinkingHandler);
       this.agent.off(this.agent.EVENT_ERROR, errorHandler);
       this.agent.off(this.agent.EVENT_PROGRESS, progressHandler);
 
@@ -459,7 +501,7 @@ export class ReplSession {
         spinnerActive = false;
         clearInterval(spinnerInterval);
         if (outputText) {
-          this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + outputText);
+          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputText));
         }
       }
 
@@ -542,7 +584,7 @@ export class ReplSession {
       });
 
       // 渲染错误到输出区域（替换 spinner 行 + 追加错误详情）
-      this.outputArea.replaceLastLine(ZAPMYCO_PREFIX + `[错误] ${err.message}`);
+      this.outputArea.replaceLastLine(responseStyle(`${ZAPMYCO_PREFIX}[错误] ${err.message}`));
       const errorLines = this.renderer.renderError(err).slice(1); // 跳过第一行（已替换 spinner）
       if (errorLines.length > 0) {
         this.outputArea.append(errorLines);

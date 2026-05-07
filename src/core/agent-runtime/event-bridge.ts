@@ -120,10 +120,13 @@ function extractTextContent(message: unknown): string {
 function extractDelta(event: unknown): string {
   if (!event || typeof event !== 'object') return '';
   const evt = event as Record<string, unknown>;
-  // 仅处理 text_delta，过滤 toolcall_delta（其 delta 是工具参数 JSON）
   if (evt.type === 'text_delta') {
     if (typeof evt.delta === 'string') return evt.delta;
     if (typeof evt.text_delta === 'string') return evt.text_delta;
+  }
+  if (evt.type === 'thinking_delta') {
+    if (typeof evt.delta === 'string') return evt.delta;
+    if (typeof evt.thinking_delta === 'string') return evt.thinking_delta;
   }
   return '';
 }

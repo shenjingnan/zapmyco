@@ -45,6 +45,7 @@ const DEFAULT_RUNTIME_CONFIG: Required<AgentRuntimeConfig> = {
 export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   readonly EVENT_PROGRESS = 'progress' as const;
   readonly EVENT_OUTPUT = 'output' as const;
+  readonly EVENT_THINKING = 'thinking' as const;
   readonly EVENT_ERROR = 'error' as const;
 
   // ============ IAgent 契约 ============
@@ -165,12 +166,19 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       cleanupFns.push(
         this.inner.subscribe((event) => {
           if (event.type === 'message_update') {
-            const delta = extractDeltaFromEvent(event);
-            if (delta) {
-              this.emit(this.EVENT_OUTPUT, {
-                taskId: request.taskId,
-                text: delta,
-              });
+            const extracted = extractDeltaFromEvent(event);
+            if (extracted) {
+              if (extracted.kind === 'thinking') {
+                this.emit(this.EVENT_THINKING, {
+                  taskId: request.taskId,
+                  text: extracted.delta,
+                });
+              } else {
+                this.emit(this.EVENT_OUTPUT, {
+                  taskId: request.taskId,
+                  text: extracted.delta,
+                });
+              }
             }
           }
           if (event.type === 'tool_execution_start') {
@@ -508,14 +516,21 @@ function extractDeltaFromEvent(event: {
   type: 'message_update';
   message: unknown;
   assistantMessageEvent: unknown;
-}): string | null {
+}): { delta: string; kind: 'text' | 'thinking' } | null {
   const evt = event.assistantMessageEvent as Record<string, unknown> | null;
   if (!evt || typeof evt !== 'object') return null;
-  // 仅处理 text_delta，过滤 toolcall_delta（其 delta 是工具参数 JSON）
+  // 处理 text_delta
   if (evt.type === 'text_delta') {
-    if (typeof evt.delta === 'string') return evt.delta;
+    if (typeof evt.delta === 'string') return { delta: evt.delta, kind: 'text' };
     if (typeof (evt as Record<string, unknown>).text_delta === 'string') {
-      return (evt as Record<string, unknown>).text_delta as string;
+      return { delta: (evt as Record<string, unknown>).text_delta as string, kind: 'text' };
+    }
+  }
+  // 处理 thinking_delta
+  if (evt.type === 'thinking_delta') {
+    if (typeof evt.delta === 'string') return { delta: evt.delta, kind: 'thinking' };
+    if (typeof (evt as Record<string, unknown>).thinking_delta === 'string') {
+      return { delta: (evt as Record<string, unknown>).thinking_delta as string, kind: 'thinking' };
     }
   }
   return null;
