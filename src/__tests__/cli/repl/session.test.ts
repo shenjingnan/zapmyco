@@ -52,6 +52,7 @@ vi.mock('@mariozechner/pi-tui', () => ({
   Text: class MockText {
     setText = mockTextSetText;
   },
+  CombinedAutocompleteProvider: vi.fn(),
 }));
 
 // Mock ZapmycoEditor
@@ -66,6 +67,8 @@ vi.mock('@/cli/repl/components/custom-editor', () => ({
     getText = vi.fn().mockReturnValue('');
     handleInput = vi.fn();
     setExecuting = vi.fn();
+    setAutocompleteProvider = vi.fn();
+    setAutocompleteMaxVisible = vi.fn();
     get executing() {
       return this.#executing;
     }
@@ -159,10 +162,39 @@ vi.mock('@/infra/logger', () => ({
 }));
 
 // Mock CommandRegistry
+const mockCommandList = [
+  {
+    name: 'help',
+    aliases: ['h', '?'],
+    description: '显示帮助信息',
+    usage: '/help',
+    handler: vi.fn(),
+  },
+  {
+    name: 'quit',
+    aliases: ['exit', 'q', 'x'],
+    description: '退出 REPL',
+    usage: '/quit',
+    handler: vi.fn(),
+  },
+  {
+    name: 'clear',
+    aliases: ['cl'],
+    description: '清空输出区域',
+    usage: '/clear',
+    handler: vi.fn(),
+  },
+];
 vi.mock('@/cli/repl/command-registry', () => ({
   CommandRegistry: class MockCommandRegistry {
     register = mockRegister;
     dispatch = vi.fn();
+    listCommands = vi.fn().mockReturnValue(mockCommandList);
+    getCommand = vi
+      .fn()
+      .mockImplementation((name: string) =>
+        mockCommandList.find((c) => c.name === name || c.aliases.includes(name))
+      );
   },
 }));
 
