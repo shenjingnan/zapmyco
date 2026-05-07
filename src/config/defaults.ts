@@ -46,6 +46,9 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     debug: false,
     outputFormat: 'text',
   },
+  logging: {
+    level: 'info',
+  },
   web: {
     enabled: true,
     fetch: {

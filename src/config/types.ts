@@ -3,6 +3,7 @@
  */
 
 import type { KnownProvider } from '@mariozechner/pi-ai';
+import type { LogLevel } from '@/infra/logger';
 
 /** 单个模型配置 */
 export interface ModelConfig {
@@ -218,6 +219,14 @@ export interface SubAgentConfig {
   allowRecursiveSpawn: boolean;
 }
 
+/** 日志配置 */
+export interface LoggingConfig {
+  /** 日志文件路径（默认 ~/.zapmyco/logs/zapmyco.log） */
+  file?: string;
+  /** 日志级别（默认 'info'） */
+  level?: LogLevel;
+}
+
 /** CLI 配置 */
 export interface CliConfig {
   /** 是否启用颜色输出 */
@@ -252,6 +261,9 @@ export interface ZapmycoConfig {
 
   /** Agent 运行时配置（pi-agent-core 集成） */
   agentRuntime?: AgentRuntimeConfig;
+
+  /** 日志配置 */
+  logging?: LoggingConfig;
 
   /** CLI 配置 */
   cli: CliConfig;
