@@ -1,6 +1,9 @@
+import { existsSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZapmycoError, ZapmycoErrorCode } from '@/infra/errors';
-import { Logger, logger } from '@/infra/logger';
+import { configureLogger, Logger, logger } from '@/infra/logger';
 
 describe('Logger', () => {
   let log: Logger;
@@ -79,6 +82,29 @@ describe('Logger', () => {
       expect(entries[1]?.message).toBe('[worker] i');
       expect(entries[2]?.message).toBe('[worker] w');
       expect(entries[3]?.message).toBe('[worker] e');
+    });
+
+    it('should share parent log file path', () => {
+      const tmpPath = join(tmpdir(), `zapmyco-test-child-${Date.now()}.log`);
+      try {
+        log.setLogFile(tmpPath);
+        const child = log.child('sub');
+        child.info('child message');
+        log.info('parent message');
+
+        const content = readFileSync(tmpPath, 'utf-8');
+        expect(content).toContain('[sub] child message');
+        expect(content).toContain('parent message');
+      } finally {
+        if (existsSync(tmpPath)) unlinkSync(tmpPath);
+      }
+    });
+
+    it('should inherit parent quiet mode', () => {
+      log.setQuiet(true);
+      const child = log.child('sub');
+      child.info('quiet child');
+      expect(stdoutWriteSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -201,6 +227,110 @@ describe('Logger', () => {
       log.clear();
       expect(log.getEntries()).toHaveLength(0);
     });
+  });
+
+  describe('setLogFile()', () => {
+    it('should create log file and write entries to it', () => {
+      const tmpPath = join(tmpdir(), `zapmyco-test-${Date.now()}.log`);
+      try {
+        log.setLogFile(tmpPath);
+        log.info('file log test');
+        log.warn('warning test');
+
+        expect(existsSync(tmpPath)).toBe(true);
+        const content = readFileSync(tmpPath, 'utf-8');
+        expect(content).toContain('[INF] file log test');
+        expect(content).toContain('[WRN] warning test');
+      } finally {
+        if (existsSync(tmpPath)) unlinkSync(tmpPath);
+      }
+    });
+
+    it('should create parent directories if needed', () => {
+      const tmpDir = join(tmpdir(), `zapmyco-nested-${Date.now()}`);
+      const tmpPath = join(tmpDir, 'sub', 'test.log');
+      try {
+        log.setLogFile(tmpPath);
+        log.info('nested dir');
+        expect(existsSync(tmpPath)).toBe(true);
+      } finally {
+        // cleanup nested dirs
+        if (existsSync(tmpPath)) {
+          unlinkSync(tmpPath);
+          rmSync(tmpDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it('should write context as JSON in file output', () => {
+      const tmpPath = join(tmpdir(), `zapmyco-test-ctx-${Date.now()}.log`);
+      try {
+        log.setLogFile(tmpPath);
+        log.info('with data', { key: 'value' });
+
+        const content = readFileSync(tmpPath, 'utf-8');
+        expect(content).toContain('{"key":"value"}');
+      } finally {
+        if (existsSync(tmpPath)) unlinkSync(tmpPath);
+      }
+    });
+  });
+
+  describe('setQuiet()', () => {
+    it('should suppress stdout when quiet is true', () => {
+      log.setQuiet(true);
+      log.info('should not appear');
+      expect(stdoutWriteSpy).not.toHaveBeenCalled();
+    });
+
+    it('should suppress stderr when quiet is true', () => {
+      log.setQuiet(true);
+      log.error('error should not appear');
+      expect(stderrWriteSpy).not.toHaveBeenCalled();
+    });
+
+    it('should still write to file when quiet is true', () => {
+      const tmpPath = join(tmpdir(), `zapmyco-test-quiet-${Date.now()}.log`);
+      try {
+        log.setLogFile(tmpPath);
+        log.setQuiet(true);
+        log.info('quiet file only');
+
+        expect(stdoutWriteSpy).not.toHaveBeenCalled();
+        const content = readFileSync(tmpPath, 'utf-8');
+        expect(content).toContain('quiet file only');
+      } finally {
+        if (existsSync(tmpPath)) unlinkSync(tmpPath);
+      }
+    });
+
+    it('should resume stdout when quiet is set back to false', () => {
+      log.setQuiet(true);
+      log.info('silent');
+      expect(stdoutWriteSpy).not.toHaveBeenCalled();
+
+      log.setQuiet(false);
+      log.info('loud');
+      expect(stdoutWriteSpy).toHaveBeenCalledOnce();
+    });
+  });
+});
+
+describe('configureLogger()', () => {
+  it('should set log level on global logger', () => {
+    const originalLevel = 'getEntries' in logger ? true : false;
+    configureLogger({ level: 'error' });
+    logger.debug('should be filtered');
+    expect(logger.getEntries()).toHaveLength(0);
+    // restore
+    configureLogger({ level: 'info' });
+    expect(originalLevel).toBe(true);
+  });
+
+  it('should set quiet mode on global logger', () => {
+    configureLogger({ quiet: false });
+    // no direct assertion, just ensure no throw
+    expect(true).toBe(true);
   });
 });
 

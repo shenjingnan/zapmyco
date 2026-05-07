@@ -21,9 +21,22 @@ const { mockConfig, mockSessionStart } = vi.hoisted(() => ({
       retryBaseDelayMs: 1000,
     },
     agents: [{ id: 'test-agent', enabled: true }],
-    cli: { color: false, debug: false, outputFormat: 'text' },
+    cli: { color: false, debug: false, outputFormat: 'text' as const },
+    logging: { level: 'info' as const },
   },
   mockSessionStart: vi.fn(),
+}));
+
+// Mock logger
+vi.mock('@/infra/logger', () => ({
+  configureLogger: vi.fn(),
+  logger: {
+    setLevel: vi.fn(),
+    setLogFile: vi.fn(),
+    setQuiet: vi.fn(),
+    child: vi.fn(),
+  },
+  Logger: class MockLogger {},
 }));
 
 // Mock config loader
