@@ -347,7 +347,7 @@ export class ReplSession {
     const THINKING_PREFIX = '  \uD83D\uDCAD ';
     const colorEnabled = this.options.color;
     const userStyle = (s: string) => (colorEnabled ? chalk.bold.cyan(s) : s);
-    const responseStyle = (s: string) => (colorEnabled ? chalk.green(s) : s);
+    const responseStyle = (s: string) => s;
     const toolStyle = (s: string) => (colorEnabled ? chalk.yellow(s) : s);
     const thinkingStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
