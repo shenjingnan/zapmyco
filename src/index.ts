@@ -109,8 +109,21 @@ export {
 
 // ============ LLM 层导出 ============
 
+export { AgentLlmFacade } from '@/llm/agent-llm-facade';
 export { CostTracker, costTracker } from '@/llm/cost-tracker';
+export type {
+  CredentialEntry,
+  CredentialPoolStats,
+  CredentialStrategy,
+} from '@/llm/credential-pool';
+export { CredentialPool } from '@/llm/credential-pool';
+export { CredentialPoolManager } from '@/llm/credential-pool-manager';
+export { maskApiKey, resolveApiKey } from '@/llm/key-utils';
+export type { RoutingContext, RoutingDecision, RoutingStats } from '@/llm/model-router';
+export { ModelRouter } from '@/llm/model-router';
 export type { ILlmProvider } from '@/llm/provider';
+export type { ModelInfo, ProviderInfo, RegistryStats } from '@/llm/provider-registry';
+export { ProviderRegistry } from '@/llm/provider-registry';
 export type {
   ChatMessage,
   ChatRole,

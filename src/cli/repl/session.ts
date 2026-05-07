@@ -12,9 +12,6 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import type { KnownProvider } from '@mariozechner/pi-ai';
-import { getModel } from '@mariozechner/pi-ai';
 import {
   CombinedAutocompleteProvider,
   Container,
@@ -57,7 +54,7 @@ import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
-import { parseModelKey } from '@/llm/pi-ai-provider';
+import { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type { ChatMessage } from '@/llm/types';
 
 const log = logger.child('repl:session');
@@ -733,72 +730,20 @@ export class ReplSession {
       runtimeConfig: this.config.agentRuntime ?? {},
     });
 
-    // 将 pi-ai Model 注入到 Agent state（关键：没有这个 Agent 不知道用哪个模型）
-    agent.innerAgent.state.model = this.resolveModelForAgent();
+    // 创建 AgentLlmFacade（统一管理 Model 解析 + Key 获取 + 故障转移）
+    const facade = new AgentLlmFacade(this.config.llm);
 
-    // 注入 getApiKey 函数（关键：Agent 内部调用 LLM 时需要解析 API Key）
+    // 将 pi-ai Model 注入到 Agent state
+    agent.innerAgent.state.model = facade.resolvePiModel();
+
+    // 注入 getApiKey 函数（支持凭据池轮转）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (agent.innerAgent as any).getApiKey = (_provider: string): string | undefined => {
-      const modelKey = this.config.llm.defaultModel;
-      const modelConfig = this.config.llm.models[modelKey] as { provider?: string } | undefined;
-      const providerName = modelConfig?.provider;
-      if (providerName) {
-        const auth = this.config.llm.providers[providerName];
-        return auth?.apiKey;
-      }
-      return undefined;
-    };
+    (agent.innerAgent as any).getApiKey = facade.createGetApiKeyFn();
+
+    // 存储 facade 引用，供子 Agent 共享
+    agent.llmFacade = facade;
 
     return agent;
-  }
-
-  /**
-   * 为 Agent 解析 pi-ai Model 对象
-   *
-   * 复用 PiAiProvider 的模型解析逻辑（parseModelKey + getModel），
-   * 但不依赖 chat/chatStream 方法。
-   */
-  private resolveModelForAgent() {
-    const modelKey = this.config.llm.defaultModel;
-    const parsed = parseModelKey(modelKey);
-    if (!parsed) {
-      throw new Error(`无效的模型标识符: ${modelKey}`);
-    }
-
-    const modelConfig = this.config.llm.models[modelKey] as
-      | { provider?: string; modelId?: string; baseUrl?: string }
-      | undefined;
-
-    const provider = (modelConfig?.provider ?? parsed.provider) as KnownProvider;
-    const modelId = modelConfig?.modelId ?? parsed.modelId;
-
-    // 始终用同 provider 的已知模型作为基础模板（保证返回有效 Model 对象）
-    const baseModelId = provider === 'anthropic' ? 'claude-sonnet-4-20250514' : modelId;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let model: any;
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-      model = getModel(provider as any, baseModelId as any);
-    } catch {
-      // 最终兜底
-      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-      model = getModel('anthropic' as any, 'claude-sonnet-4-20250514' as any);
-    }
-
-    if (!model) {
-      throw new Error(`无法初始化模型 ${modelKey}：pi-ai 返回了无效的模型对象`);
-    }
-
-    // 无条件覆盖自定义属性
-    model.name = modelKey;
-    model.id = modelId;
-
-    if (modelConfig?.baseUrl) {
-      model.baseUrl = modelConfig.baseUrl;
-    }
-
-    return model;
   }
 
   /**

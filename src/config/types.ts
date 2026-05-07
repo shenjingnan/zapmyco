@@ -4,6 +4,7 @@
 
 import type { KnownProvider } from '@mariozechner/pi-ai';
 import type { LogLevel } from '@/infra/logger';
+import type { CredentialEntry, CredentialStrategy } from '@/llm/credential-pool';
 
 /** 单个模型配置 */
 export interface ModelConfig {
@@ -28,6 +29,17 @@ export interface ModelConfig {
 export interface LlmProviderAuthConfig {
   /** API Key（支持 ${ENV_VAR} 环境变量引用） */
   apiKey?: string;
+  /**
+   * 凭据池：支持多 API Key 轮转和故障转移
+   *
+   * 配置 credentials 后，apiKey 字段将被忽略。
+   * 向后兼容：只配置 apiKey 时，自动包装为单条目凭据池。
+   */
+  credentials?: CredentialEntry[];
+  /** 凭据选择策略（默认 'round-robin'） */
+  credentialStrategy?: CredentialStrategy;
+  /** 故障恢复等待时间（毫秒，默认 60000） */
+  recoveryMs?: number;
   /** API 基础 URL（自定义提供商时使用） */
   baseUrl?: string;
 }
@@ -38,6 +50,31 @@ export interface LlmDefaultsConfig {
   maxTokens?: number;
   /** 温度参数（0-1） */
   temperature?: number;
+}
+
+/** 任务类型（用于模型路由） */
+export type TaskType = 'chat' | 'code' | 'analysis' | 'planning';
+
+/** 故障转移配置 */
+export interface LlmFallbackConfig {
+  /** 是否启用自动故障转移（默认 false） */
+  enabled: boolean;
+  /** 故障转移模型链（按优先级排序的 modelKey 列表） */
+  chain?: string[];
+  /** 最多尝试次数（默认 3） */
+  maxAttempts?: number;
+  /** 同提供商 Key 耗尽后才尝试下一提供商（默认 true） */
+  prioritizeSameProvider?: boolean;
+}
+
+/** 路由配置 */
+export interface LlmRoutingConfig {
+  /** 基于任务类型的模型映射 */
+  taskBasedModels?: Partial<Record<TaskType, string>>;
+  /** 成本层级上限（默认 'high'） */
+  maxCostTier?: 'low' | 'medium' | 'high' | 'premium';
+  /** 路由策略 */
+  strategy?: 'default-then-fallback' | 'task-based' | 'lowest-cost';
 }
 
 /** LLM 配置（基于 pi-ai 多模型架构） */
@@ -53,6 +90,12 @@ export interface LlmConfig {
 
   /** 全局 LLM 调用默认参数 */
   defaults?: LlmDefaultsConfig;
+
+  /** 故障转移配置（可选，向后兼容） */
+  fallback?: LlmFallbackConfig;
+
+  /** 路由配置（可选，向后兼容） */
+  routing?: LlmRoutingConfig;
 }
 
 /**

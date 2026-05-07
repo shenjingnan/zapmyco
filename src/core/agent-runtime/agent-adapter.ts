@@ -10,6 +10,7 @@
 import { EventEmitter } from 'node:events';
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core';
 import type { TaskResult } from '@/core/result/types';
+import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type {
   AgentExecuteRequest,
   AgentHealthStatus,
@@ -78,6 +79,14 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    * 设置为 null 或空字符串时恢复默认行为。
    */
   systemPromptOverride: string | null = null;
+
+  /**
+   * LLM 外观（由外部注入，用于 Model 解析 + Key 获取 + 故障转移）
+   *
+   * 设置后，子 Agent 可以通过共享此 facade 来获得独立的 Key 选择能力，
+   * 而不是直接复制父 Agent 的 Model + Key。
+   */
+  llmFacade: AgentLlmFacade | null = null;
 
   constructor(options: AgentAdapterOptions) {
     super();
