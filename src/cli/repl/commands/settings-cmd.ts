@@ -319,26 +319,20 @@ async function handleInteractiveMode(
     state.current = readSettings();
 
     // Main menu — uses SelectList (items are actions, not values)
+    const providers =
+      (_getByDotPath(state.current, 'llm.providers') as Record<string, unknown> | undefined) ?? {};
+    const providerCount = Object.keys(providers).length;
+
     const mainActions: SelectItem[] = [
       {
         value: 'default-model',
-        label: `Default Model`,
+        label: 'Default Model',
         description: String(_getByDotPath(state.current, 'llm.defaultModel') ?? 'not configured'),
       },
-      ...Object.entries(
-        (_getByDotPath(state.current, 'llm.providers') as Record<string, unknown>) ?? {}
-      ).map(([name]) => {
-        const hasK = hasApiKey(state.current, name);
-        return {
-          value: `provider:${name}`,
-          label: name,
-          description: hasK ? 'key configured' : 'no key',
-        };
-      }),
       {
-        value: 'add-provider',
-        label: 'Add Provider',
-        description: 'Select from a list of known providers',
+        value: 'manage-providers',
+        label: 'Manage Providers',
+        description: providerCount > 0 ? `${providerCount} configured` : 'none configured',
       },
       {
         value: 'view-config',
@@ -442,105 +436,129 @@ async function handleInteractiveMode(
           session.appendOutput(['', `  [ok] Default model set to: ${selectedKey}`, '']);
         }
       }
-    } else if (value.startsWith('provider:')) {
-      const providerName = value.slice('provider:'.length);
-
-      // Provider action menu
-      const providerActions: SelectItem[] = [
-        { value: 'api-key', label: 'Configure API Key', description: '' },
-        { value: 'model', label: 'Select Model', description: '' },
-        { value: 'base-url', label: 'Base URL', description: '' },
-        { value: 'set-default', label: 'Set as Default', description: '' },
+    } else if (value === 'manage-providers') {
+      // Manage Providers submenu — shows configured providers + Add Provider
+      const providerEntries: SelectItem[] = [
+        ...Object.entries(providers).map(([name]) => {
+          const hasK = hasApiKey(state.current, name);
+          return {
+            value: `provider:${name}`,
+            label: name,
+            description: hasK ? 'key configured' : 'no key',
+          };
+        }),
+        {
+          value: 'add-provider',
+          label: 'Add Provider',
+          description: 'Select from a list of known providers',
+        },
       ];
 
-      const action = await showSelectList(tui, providerActions);
-      if (!action) continue;
+      const providerChoice = await showSelectList(tui, providerEntries);
+      if (!providerChoice) continue; // cancelled → back to main menu
 
-      switch (action.value) {
-        case 'api-key':
-          await handleApiKeyConfig(
-            providerName,
-            String(_getByDotPath(state.current, `llm.providers.${providerName}.apiKey`) ?? '')
-          );
-          break;
-        case 'model':
-          await handleModelSelect(providerName);
-          break;
-        case 'base-url':
-          await handleBaseUrlConfig(
-            providerName,
-            String(_getByDotPath(state.current, `llm.providers.${providerName}.baseUrl`) ?? '')
-          );
-          break;
-        case 'set-default':
-          await handleSetDefault(providerName);
-          break;
-      }
-    } else if (value === 'add-provider') {
-      // Add new provider
-      const selected = await showSelectList(
-        tui,
-        KNOWN_PROVIDERS.map((p) => ({
-          value: p.id,
-          label: `${p.label} (${p.id})`,
-          description: p.apiFormat ? `API format: ${p.apiFormat}` : 'OpenAI compatible',
-        })),
-        { maxVisible: 12 }
-      );
+      const providerValue = providerChoice.value;
 
-      if (!selected || !selected.value) continue;
+      if (providerValue.startsWith('provider:')) {
+        // Provider action submenu
+        const providerName = providerValue.slice('provider:'.length);
 
-      const providerName = selected.value;
+        const providerActions: SelectItem[] = [
+          { value: 'api-key', label: 'Configure API Key', description: '' },
+          { value: 'model', label: 'Select Model', description: '' },
+          { value: 'base-url', label: 'Base URL', description: '' },
+          { value: 'set-default', label: 'Set as Default', description: '' },
+        ];
 
-      // Check if already exists
-      const existingProviders = _getByDotPath(state.current, 'llm.providers') as
-        | Record<string, unknown>
-        | undefined;
-      if (existingProviders && providerName in existingProviders) {
-        session.appendOutput([
-          '',
-          `  ${providerName} already exists, use the provider entry to configure it`,
-          '',
+        const action = await showSelectList(tui, providerActions);
+        if (!action) continue;
+
+        switch (action.value) {
+          case 'api-key':
+            await handleApiKeyConfig(
+              providerName,
+              String(_getByDotPath(state.current, `llm.providers.${providerName}.apiKey`) ?? '')
+            );
+            break;
+          case 'model':
+            await handleModelSelect(providerName);
+            break;
+          case 'base-url':
+            await handleBaseUrlConfig(
+              providerName,
+              String(_getByDotPath(state.current, `llm.providers.${providerName}.baseUrl`) ?? '')
+            );
+            break;
+          case 'set-default':
+            await handleSetDefault(providerName);
+            break;
+        }
+      } else if (providerValue === 'add-provider') {
+        // Add new provider from curated list
+        const selected = await showSelectList(
+          tui,
+          KNOWN_PROVIDERS.map((p) => ({
+            value: p.id,
+            label: `${p.label} (${p.id})`,
+            description: p.apiFormat ? `API format: ${p.apiFormat}` : 'OpenAI compatible',
+          })),
+          { maxVisible: 12 }
+        );
+
+        if (!selected || !selected.value) continue;
+
+        const providerName = selected.value;
+
+        // Check if already exists
+        const existingProviders = _getByDotPath(state.current, 'llm.providers') as
+          | Record<string, unknown>
+          | undefined;
+        if (existingProviders && providerName in existingProviders) {
+          session.appendOutput([
+            '',
+            `  ${providerName} already exists, use the provider entry to configure it`,
+            '',
+          ]);
+          continue;
+        }
+
+        // Add to config
+        const known = KNOWN_PROVIDERS.find((p) => p.id === providerName);
+        const newProvider: Record<string, unknown> = {
+          apiKey: '',
+        };
+        if (known?.apiFormat) {
+          newProvider.apiFormat = known.apiFormat;
+        }
+
+        const settings = readSettings();
+        _setByDotPath(settings, `llm.providers.${providerName}`, newProvider);
+        writeSettings(settings);
+        _setByDotPath(
+          session.config as unknown as Record<string, unknown>,
+          `llm.providers.${providerName}`,
+          newProvider
+        );
+
+        session.appendOutput(['', `  [ok] Added provider: ${providerName}`, '']);
+
+        // Prompt to configure API key
+        const shouldConfigure = await showSelectList(tui, [
+          {
+            value: 'yes',
+            label: 'Yes, configure API Key now',
+            description: 'Go to API Key settings',
+          },
+          {
+            value: 'no',
+            label: 'Later',
+            description: 'Return to main menu',
+          },
         ]);
-        continue;
-      }
 
-      // Add to config
-      const known = KNOWN_PROVIDERS.find((p) => p.id === providerName);
-      const newProvider: Record<string, unknown> = {
-        apiKey: '',
-      };
-      if (known?.apiFormat) {
-        newProvider.apiFormat = known.apiFormat;
-      }
-
-      const settings = readSettings();
-      _setByDotPath(settings, `llm.providers.${providerName}`, newProvider);
-      writeSettings(settings);
-      _setByDotPath(
-        session.config as unknown as Record<string, unknown>,
-        `llm.providers.${providerName}`,
-        newProvider
-      );
-
-      session.appendOutput(['', `  [ok] Added provider: ${providerName}`, '']);
-
-      // Prompt to configure API key
-      const shouldConfigure = await showSelectList(tui, [
-        {
-          value: 'yes',
-          label: 'Yes, configure API Key now',
-          description: 'Go to API Key settings',
-        },
-        {
-          value: 'no',
-          label: 'Later',
-          description: 'Return to main menu',
-        },
-      ]);
-
-      if (shouldConfigure?.value === 'yes') {
-        await handleApiKeyConfig(providerName, '');
+        if (shouldConfigure?.value === 'yes') {
+          await handleApiKeyConfig(providerName, '');
+        }
       }
     } else if (value === 'view-config') {
       const renderer = session.getRenderer();
