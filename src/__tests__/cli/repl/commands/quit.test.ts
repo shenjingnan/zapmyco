@@ -23,6 +23,7 @@ function createMockSession(): ReplSession {
     requestRender: vi.fn(),
     getCommandRegistry: vi.fn(),
     getInputParser: vi.fn(),
+    getTui: vi.fn(),
     applyConfigUpdate: vi.fn(),
   };
 }

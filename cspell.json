@@ -57,6 +57,14 @@
     "prio",
     "ONESHOT",
     "toolcall",
+    "groq",
+    "Groq",
+    "openrouter",
+    "cerebras",
+    "Cerebras",
+    "moonshotai",
+    "Kimi",
+    "opencode",
     "xyznonexistent"
   ],
   "ignorePaths": [
