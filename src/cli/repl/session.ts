@@ -195,10 +195,12 @@ export class ReplSession {
     const terminal = new ProcessTerminal();
     this.tui = new TUI(terminal);
 
-    // 注册 Vim 风格 j/k 导航键（替代方向键）
+    // 注册 Vim 风格 j/k 导航键（替代方向键），以及 h/l 返回/进入
     getKeybindings().setUserBindings({
       'tui.select.up': ['up', 'k'],
       'tui.select.down': ['down', 'j'],
+      'tui.select.cancel': ['escape', 'h'],
+      'tui.select.confirm': ['enter', 'l'],
     });
 
     // 创建组件
