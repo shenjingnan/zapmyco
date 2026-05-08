@@ -49,6 +49,10 @@ class SelectListWithFooter implements Component {
   /** Callbacks stored at wrapper level, forwarded through inner SelectList */
   onSelect?: (item: SelectItem) => void;
   onCancel?: () => void;
+  /** Called when user presses q/esc — exits settings entirely */
+  onExit?: () => void;
+  /** Called when user presses backspace/h — goes back one level */
+  onBack?: () => void;
 
   constructor(tui: TUI, items: SelectItem[], maxVisible: number, theme: SelectListTheme) {
     this.tui = tui;
@@ -99,8 +103,14 @@ class SelectListWithFooter implements Component {
         this.isFiltering = true;
         this.filterText = '';
         this.selectList.invalidate();
+      } else if (data === 'escape' || data === 'q') {
+        // Exit settings entirely (same as onCancel's former role, now mapped to exit)
+        this.onExit?.();
+      } else if (data === 'backspace' || data === '\x7f' || data === '\b' || data === 'h') {
+        // Go back one level
+        this.onBack?.();
       } else {
-        // Normal mode: pass through to SelectList
+        // Normal mode: pass through to SelectList (arrows, enter, etc.)
         this.selectList.handleInput(data);
       }
     }
@@ -168,13 +178,15 @@ class SelectListWithFooter implements Component {
       if (this.isFiltering) {
         lines.push(chalk.gray('  输入文字搜索  ·  ↑↓ 导航  ·  Enter 确认  ·  Esc 取消'));
       } else {
-        lines.push(chalk.gray('  k/j ↑↓ 导航  ·  / 搜索  ·  Enter 选择  ·  Esc 取消'));
+        lines.push(
+          chalk.gray('  k/j ↑↓ 导航  ·  / 搜索  ·  Enter 选择  ·  Esc/q 退出  ·  BS/h 返回')
+        );
       }
     } else {
       if (this.isFiltering) {
         lines.push(chalk.gray('  Enter 确认  ·  Esc 取消'));
       } else {
-        lines.push(chalk.gray('  ↑↓=k/j  /  Enter  Esc'));
+        lines.push(chalk.gray('  ↑↓=k/j  /  Enter  Esc/q  BS/h'));
       }
     }
     lines.push('');
@@ -191,7 +203,7 @@ class SelectListWithFooter implements Component {
 export function showSelectList(
   tui: TUI,
   items: SelectItem[],
-  options?: { maxVisible?: number; title?: string }
+  options?: { maxVisible?: number; title?: string; onExit?: () => void }
 ): Promise<SelectItem | null> {
   return new Promise((resolve) => {
     const list = new SelectListWithFooter(tui, items, options?.maxVisible ?? 10, SELECT_THEME);
@@ -202,6 +214,15 @@ export function showSelectList(
       resolve(item);
     };
     list.onCancel = () => {
+      handle?.hide();
+      resolve(null);
+    };
+    list.onExit = () => {
+      handle?.hide();
+      resolve(null);
+      options?.onExit?.();
+    };
+    list.onBack = () => {
       handle?.hide();
       resolve(null);
     };

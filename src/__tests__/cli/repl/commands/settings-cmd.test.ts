@@ -124,6 +124,18 @@ function cancelSelection(component: Component): void {
   (component as unknown as WithCancel).onCancel?.();
 }
 
+/** Trigger exit (q/escape) on a captured SelectList component */
+function exitSelection(component: Component): void {
+  type WithExit = { onExit?: () => void };
+  (component as unknown as WithExit).onExit?.();
+}
+
+/** Trigger back (backspace/h) on a captured SelectList component */
+function backSelection(component: Component): void {
+  type WithBack = { onBack?: () => void };
+  (component as unknown as WithBack).onBack?.();
+}
+
 // ============ Tests ============
 
 describe('/settings command', () => {
@@ -228,6 +240,34 @@ describe('/settings command', () => {
       await handlerPromise;
 
       // handler completed without error
+      expect(session.shutdown).not.toHaveBeenCalled();
+    });
+
+    it('q 应退出交互菜单', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      exitSelection(mockTui.capturedComponents[0]!);
+      await handlerPromise;
+
+      expect(session.shutdown).not.toHaveBeenCalled();
+    });
+
+    it('backspace 在主菜单应退出（无父级菜单）', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      backSelection(mockTui.capturedComponents[0]!);
+      await handlerPromise;
+
       expect(session.shutdown).not.toHaveBeenCalled();
     });
 
@@ -422,6 +462,123 @@ describe('/settings command', () => {
       menu.handleInput('enter');
       expect(menu.isFiltering).toBe(false);
 
+      cancelSelection(mockTui.capturedComponents[0]!);
+      await handlerPromise;
+    });
+
+    it('普通模式下 q 应触发退出', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      const menu = mockTui.capturedComponents[0] as unknown as {
+        handleInput: (data: string) => void;
+        onExit?: () => void;
+      };
+
+      let exitCalled = false;
+      const origExit = menu.onExit;
+      menu.onExit = () => {
+        exitCalled = true;
+        origExit?.();
+      };
+
+      menu.handleInput('q');
+      expect(exitCalled).toBe(true);
+
+      // cleanup: onCancel still works (not overridden), resolves the promise
+      cancelSelection(mockTui.capturedComponents[0]!);
+      await handlerPromise;
+    });
+
+    it('普通模式下 h 应触发返回', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      const menu = mockTui.capturedComponents[0] as unknown as {
+        handleInput: (data: string) => void;
+        onBack?: () => void;
+        onCancel?: () => void;
+      };
+
+      let backCalled = false;
+      menu.onBack = () => {
+        backCalled = true;
+      };
+
+      menu.handleInput('h');
+      expect(backCalled).toBe(true);
+
+      cancelSelection(mockTui.capturedComponents[0]!);
+      await handlerPromise;
+    });
+
+    it('普通模式下 backspace 应触发返回', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      const menu = mockTui.capturedComponents[0] as unknown as {
+        handleInput: (data: string) => void;
+        onBack?: () => void;
+        onCancel?: () => void;
+      };
+
+      let backCalled = false;
+      menu.onBack = () => {
+        backCalled = true;
+      };
+
+      menu.handleInput('backspace');
+      expect(backCalled).toBe(true);
+
+      cancelSelection(mockTui.capturedComponents[0]!);
+      await handlerPromise;
+    });
+
+    it('普通模式下 escape 应触发退出而非取消', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      const menu = mockTui.capturedComponents[0] as unknown as {
+        handleInput: (data: string) => void;
+        onExit?: () => void;
+        onCancel?: () => void;
+      };
+
+      let exitCalled = false;
+      let cancelCalled = false;
+      const origExit = menu.onExit;
+      const origCancel = menu.onCancel;
+      menu.onExit = () => {
+        exitCalled = true;
+        origExit?.();
+      };
+      menu.onCancel = () => {
+        cancelCalled = true;
+        origCancel?.();
+      };
+
+      menu.handleInput('escape');
+      expect(exitCalled).toBe(true);
+      // Should NOT trigger onCancel — escape is now an exit key
+      expect(cancelCalled).toBe(false);
+
+      // cleanup: onCancel chains to original, resolves the promise
       cancelSelection(mockTui.capturedComponents[0]!);
       await handlerPromise;
     });

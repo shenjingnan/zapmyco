@@ -188,23 +188,27 @@ async function handleInteractiveMode(
   const handleApiKeyConfig = async (providerName: string, _currentKey: string): Promise<void> => {
     const envVarName = `${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
 
-    const choice = await showSelectList(tui, [
-      {
-        value: 'env',
-        label: `Use env var ${'${' + envVarName + '}'}`,
-        description: 'Recommended — more secure',
-      },
-      {
-        value: 'manual',
-        label: 'Enter manually',
-        description: 'Type the key directly (stored in plaintext in settings.json)',
-      },
-      {
-        value: 'clear',
-        label: 'Clear',
-        description: 'Remove the configured key',
-      },
-    ]);
+    const choice = await showSelectList(
+      tui,
+      [
+        {
+          value: 'env',
+          label: `Use env var ${'${' + envVarName + '}'}`,
+          description: 'Recommended — more secure',
+        },
+        {
+          value: 'manual',
+          label: 'Enter manually',
+          description: 'Type the key directly (stored in plaintext in settings.json)',
+        },
+        {
+          value: 'clear',
+          label: 'Clear',
+          description: 'Remove the configured key',
+        },
+      ],
+      { onExit: exitAll }
+    );
 
     if (!choice) return;
 
@@ -275,7 +279,8 @@ async function handleInteractiveMode(
 
     const selected = await showSelectList(
       tui,
-      modelIds.map((id) => ({ value: id, label: id, description: '' }))
+      modelIds.map((id) => ({ value: id, label: id, description: '' })),
+      { onExit: exitAll }
     );
 
     if (selected && selected.value) {
@@ -313,6 +318,9 @@ async function handleInteractiveMode(
   // ============ Main Loop ============
 
   let running = true;
+  const exitAll = () => {
+    running = false;
+  };
 
   while (running) {
     // Refresh config
@@ -341,7 +349,7 @@ async function handleInteractiveMode(
       },
     ];
 
-    const choice = await showSelectList(tui, mainActions);
+    const choice = await showSelectList(tui, mainActions, { onExit: exitAll });
 
     if (!choice) {
       // Cancelled → exit
@@ -390,7 +398,7 @@ async function handleInteractiveMode(
         continue;
       }
 
-      const selected = await showSelectList(tui, modelItems);
+      const selected = await showSelectList(tui, modelItems, { onExit: exitAll });
       if (!selected || !selected.value) continue;
 
       const selectedKey = selected.value;
@@ -454,7 +462,7 @@ async function handleInteractiveMode(
         },
       ];
 
-      const providerChoice = await showSelectList(tui, providerEntries);
+      const providerChoice = await showSelectList(tui, providerEntries, { onExit: exitAll });
       if (!providerChoice) continue; // cancelled → back to main menu
 
       const providerValue = providerChoice.value;
@@ -470,7 +478,7 @@ async function handleInteractiveMode(
           { value: 'set-default', label: 'Set as Default', description: '' },
         ];
 
-        const action = await showSelectList(tui, providerActions);
+        const action = await showSelectList(tui, providerActions, { onExit: exitAll });
         if (!action) continue;
 
         switch (action.value) {
@@ -502,7 +510,7 @@ async function handleInteractiveMode(
             label: `${p.label} (${p.id})`,
             description: p.apiFormat ? `API format: ${p.apiFormat}` : 'OpenAI compatible',
           })),
-          { maxVisible: 12 }
+          { maxVisible: 12, onExit: exitAll }
         );
 
         if (!selected || !selected.value) continue;
@@ -543,18 +551,22 @@ async function handleInteractiveMode(
         session.appendOutput(['', `  [ok] Added provider: ${providerName}`, '']);
 
         // Prompt to configure API key
-        const shouldConfigure = await showSelectList(tui, [
-          {
-            value: 'yes',
-            label: 'Yes, configure API Key now',
-            description: 'Go to API Key settings',
-          },
-          {
-            value: 'no',
-            label: 'Later',
-            description: 'Return to main menu',
-          },
-        ]);
+        const shouldConfigure = await showSelectList(
+          tui,
+          [
+            {
+              value: 'yes',
+              label: 'Yes, configure API Key now',
+              description: 'Go to API Key settings',
+            },
+            {
+              value: 'no',
+              label: 'Later',
+              description: 'Return to main menu',
+            },
+          ],
+          { onExit: exitAll }
+        );
 
         if (shouldConfigure?.value === 'yes') {
           await handleApiKeyConfig(providerName, '');
