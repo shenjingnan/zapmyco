@@ -28,9 +28,7 @@ import { HOME_CONFIG_PATH } from '@/config/loader';
 
 /** Overlay layout options for menus */
 const OVERLAY_OPTIONS: OverlayOptions = {
-  width: '70%',
-  minWidth: 60,
-  maxHeight: '75%',
+  width: '100%',
   anchor: 'top-left',
   margin: { top: 1, bottom: 1 },
 };
@@ -67,6 +65,65 @@ const SELECT_THEME: SelectListTheme = {
   noMatch: (text: string) => chalk.red(text),
 };
 
+// ============ SelectList with Footer ============
+
+/**
+ * Wraps SelectList with a footer hint showing available keybindings.
+ * This lets users discover navigation keys without relying on terminal conventions.
+ */
+class SelectListWithFooter implements Component {
+  private selectList: SelectList;
+  private tui: TUI;
+
+  /** Callbacks stored at wrapper level, forwarded through inner SelectList */
+  onSelect?: (item: SelectItem) => void;
+  onCancel?: () => void;
+
+  constructor(tui: TUI, items: SelectItem[], maxVisible: number, theme: SelectListTheme) {
+    this.tui = tui;
+    this.selectList = new SelectList(items, maxVisible, theme);
+    // Forward inner callbacks through wrapper properties (resolved at call time)
+    this.selectList.onSelect = (item) => {
+      this.onSelect?.(item);
+    };
+    this.selectList.onCancel = () => {
+      this.onCancel?.();
+    };
+  }
+
+  handleInput(data: string): void {
+    this.selectList.handleInput(data);
+  }
+
+  invalidate(): void {
+    this.selectList.invalidate();
+  }
+
+  render(width: number): string[] {
+    const lines = this.selectList.render(width);
+
+    // Push footer to the bottom of the terminal by padding with blank lines
+    const termHeight = this.tui.terminal.rows;
+    const overlayStartRow = 1; // OVERLAY_OPTIONS.margin.top
+    const footerLines = 3; // separator + hint + trailing empty
+    const padding = Math.max(0, termHeight - overlayStartRow - lines.length - footerLines);
+    for (let i = 0; i < padding; i++) {
+      lines.push('');
+    }
+
+    // Append footer separator and keybinding hints
+    if (width >= 50) {
+      lines.push(chalk.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`));
+      lines.push(chalk.gray('  k/j ↑↓ 导航  ·  Enter 选择  ·  Esc 取消'));
+    } else {
+      // Short hint for narrow terminals
+      lines.push(chalk.gray('  ↑↓=k/j  Enter  Esc'));
+    }
+    lines.push('');
+    return lines;
+  }
+}
+
 // ============ Overlay Helpers ============
 
 /**
@@ -79,7 +136,7 @@ function showSelectList(
   options?: { maxVisible?: number; title?: string }
 ): Promise<SelectItem | null> {
   return new Promise((resolve) => {
-    const list = new SelectList(items, options?.maxVisible ?? 10, SELECT_THEME);
+    const list = new SelectListWithFooter(tui, items, options?.maxVisible ?? 10, SELECT_THEME);
     let handle: OverlayHandle | null = null;
 
     list.onSelect = (item: SelectItem) => {
