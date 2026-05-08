@@ -9,7 +9,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { getModels } from '@mariozechner/pi-ai';
+import { getModels, getProviders } from '@mariozechner/pi-ai';
 import {
   type Component,
   Input,
@@ -74,6 +74,8 @@ const SELECT_THEME: SelectListTheme = {
 class SelectListWithFooter implements Component {
   private selectList: SelectList;
   private tui: TUI;
+  private filterText = '';
+  private isFiltering = false;
 
   /** Callbacks stored at wrapper level, forwarded through inner SelectList */
   onSelect?: (item: SelectItem) => void;
@@ -92,7 +94,75 @@ class SelectListWithFooter implements Component {
   }
 
   handleInput(data: string): void {
-    this.selectList.handleInput(data);
+    if (this.isFiltering) {
+      // --- Filter mode: capture printable chars, delegate navigation to SelectList ---
+      if (data.length === 1 && data >= ' ' && data <= '~') {
+        // Printable character → append to filter
+        this.filterText += data;
+        this.applyFilter();
+      } else if (data === 'backspace' || data === '\x7f' || data === '\b') {
+        if (this.filterText.length > 0) {
+          this.filterText = this.filterText.slice(0, -1);
+          this.applyFilter();
+        } else {
+          // Empty filter + backspace → exit filter mode
+          this.isFiltering = false;
+          this.resetFilteredItems();
+          this.selectList.invalidate();
+        }
+      } else if (data === 'escape') {
+        // Cancel filter → exit filter mode, clear filter, restore full list
+        this.isFiltering = false;
+        this.filterText = '';
+        this.resetFilteredItems();
+        this.selectList.invalidate();
+      } else if (data === 'enter') {
+        // Confirm → exit filter mode (keeps filter applied), delegate to confirm selection
+        this.isFiltering = false;
+        this.selectList.handleInput('enter');
+      } else {
+        // Pass through for navigation (arrow keys)
+        this.selectList.handleInput(data);
+      }
+    } else {
+      if (data === '/') {
+        // Enter filter mode
+        this.isFiltering = true;
+        this.filterText = '';
+        this.selectList.invalidate();
+      } else {
+        // Normal mode: pass through to SelectList
+        this.selectList.handleInput(data);
+      }
+    }
+  }
+
+  /** Apply current filter text to the SelectList (uses includes, not startsWith) */
+  private applyFilter(): void {
+    const sl = this.selectList as unknown as {
+      items: SelectItem[];
+      filteredItems: SelectItem[];
+      selectedIndex: number;
+    };
+    if (!this.filterText) {
+      sl.filteredItems = [...sl.items];
+    } else {
+      const lower = this.filterText.toLowerCase();
+      sl.filteredItems = sl.items.filter((item) => item.value.toLowerCase().includes(lower));
+    }
+    sl.selectedIndex = 0;
+    this.selectList.invalidate();
+  }
+
+  /** Restore SelectList to show all unfiltered items */
+  private resetFilteredItems(): void {
+    const sl = this.selectList as unknown as {
+      items: SelectItem[];
+      filteredItems: SelectItem[];
+      selectedIndex: number;
+    };
+    sl.filteredItems = [...sl.items];
+    sl.selectedIndex = 0;
   }
 
   invalidate(): void {
@@ -100,7 +170,19 @@ class SelectListWithFooter implements Component {
   }
 
   render(width: number): string[] {
-    const lines = this.selectList.render(width);
+    const lines: string[] = [];
+
+    // Search bar at top when filtering
+    if (this.isFiltering) {
+      lines.push('');
+      lines.push(chalk.cyan(`  /${this.filterText}█`));
+      lines.push(chalk.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`));
+      lines.push('');
+    }
+
+    // SelectList content
+    const listLines = this.selectList.render(width);
+    lines.push(...listLines);
 
     // Push footer to the bottom of the terminal by padding with blank lines
     const termHeight = this.tui.terminal.rows;
@@ -114,10 +196,17 @@ class SelectListWithFooter implements Component {
     // Append footer separator and keybinding hints
     if (width >= 50) {
       lines.push(chalk.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`));
-      lines.push(chalk.gray('  k/j ↑↓ 导航  ·  Enter 选择  ·  Esc 取消'));
+      if (this.isFiltering) {
+        lines.push(chalk.gray('  输入文字搜索  ·  ↑↓ 导航  ·  Enter 确认  ·  Esc 取消'));
+      } else {
+        lines.push(chalk.gray('  k/j ↑↓ 导航  ·  / 搜索  ·  Enter 选择  ·  Esc 取消'));
+      }
     } else {
-      // Short hint for narrow terminals
-      lines.push(chalk.gray('  ↑↓=k/j  Enter  Esc'));
+      if (this.isFiltering) {
+        lines.push(chalk.gray('  Enter 确认  ·  Esc 取消'));
+      } else {
+        lines.push(chalk.gray('  ↑↓=k/j  /  Enter  Esc'));
+      }
     }
     lines.push('');
     return lines;
@@ -616,41 +705,89 @@ async function handleInteractiveMode(
     const value = choice.value;
 
     if (value === 'default-model') {
-      // Model selector
-      const providers = _getByDotPath(state.current, 'llm.providers') as
+      // Model selector — show all models from all pi-ai providers
+      const configuredProviders = _getByDotPath(state.current, 'llm.providers') as
         | Record<string, unknown>
         | undefined;
-      if (!providers || Object.keys(providers).length === 0) {
-        session.appendOutput(['', '  Configure at least one provider first', '']);
-        continue;
-      }
+      const allProviders = getProviders();
 
-      const modelItems: SelectItem[] = [];
-      for (const [providerName] of Object.entries(providers)) {
+      const enabledItems: SelectItem[] = [];
+      const disabledItems: SelectItem[] = [];
+      for (const providerName of allProviders) {
         const models = getProviderModels(state.current, providerName);
+        if (models.length === 0) continue;
+
+        const isEnabled =
+          configuredProviders !== undefined &&
+          providerName in configuredProviders &&
+          hasApiKey(state.current, providerName);
+
         for (const modelId of models) {
-          modelItems.push({
-            value: `${providerName}/${modelId}`,
-            label: `${providerName}/${modelId}`,
-            description: '',
-          });
+          const key = `${providerName}/${modelId}`;
+          if (isEnabled) {
+            enabledItems.push({ value: key, label: key, description: '' });
+          } else {
+            disabledItems.push({
+              value: key,
+              label: chalk.gray(key),
+              description: chalk.gray('未配置 - Enter 设置 API Key'),
+            });
+          }
         }
       }
+      // Enabled models first, then disabled
+      const modelItems: SelectItem[] = [...enabledItems, ...disabledItems];
 
       if (modelItems.length === 0) {
-        session.appendOutput([
-          '',
-          '  No models available',
-          '  Configure a provider with models first',
-          '',
-        ]);
+        session.appendOutput(['', '  No models available from pi-ai registry', '']);
         continue;
       }
 
       const selected = await showSelectList(tui, modelItems);
-      if (selected && selected.value) {
-        setConfigValue(session, 'llm.defaultModel', selected.value);
-        session.appendOutput(['', `  [ok] Default model set to: ${selected.value}`, '']);
+      if (!selected || !selected.value) continue;
+
+      const selectedKey = selected.value;
+      const slashIndex = selectedKey.indexOf('/');
+      const providerName = selectedKey.slice(0, slashIndex);
+
+      // Check if provider is enabled
+      const isEnabled =
+        configuredProviders !== undefined &&
+        providerName in configuredProviders &&
+        hasApiKey(state.current, providerName);
+
+      if (isEnabled) {
+        // Enabled provider — set as default immediately
+        setConfigValue(session, 'llm.defaultModel', selectedKey);
+        session.appendOutput(['', `  [ok] Default model set to: ${selectedKey}`, '']);
+      } else {
+        // Not enabled — add provider and guide apiKey setup first
+        if (!configuredProviders || !(providerName in configuredProviders)) {
+          const known = KNOWN_PROVIDERS.find((p) => p.id === providerName);
+          const newProvider: Record<string, unknown> = { apiKey: '' };
+          if (known?.apiFormat) {
+            newProvider.apiFormat = known.apiFormat;
+          }
+          const settings = readSettings();
+          _setByDotPath(settings, `llm.providers.${providerName}`, newProvider);
+          writeSettings(settings);
+          _setByDotPath(
+            session.config as unknown as Record<string, unknown>,
+            `llm.providers.${providerName}`,
+            newProvider
+          );
+          state.current = readSettings();
+        }
+
+        // Prompt for apiKey
+        await handleApiKeyConfig(providerName, '');
+
+        // If apiKey was configured, set as default
+        state.current = readSettings();
+        if (hasApiKey(state.current, providerName)) {
+          setConfigValue(session, 'llm.defaultModel', selectedKey);
+          session.appendOutput(['', `  [ok] Default model set to: ${selectedKey}`, '']);
+        }
       }
     } else if (value.startsWith('provider:')) {
       const providerName = value.slice('provider:'.length);
