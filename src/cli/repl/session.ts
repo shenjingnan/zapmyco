@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import {
   CombinedAutocompleteProvider,
   Container,
+  getKeybindings,
   ProcessTerminal,
   type SlashCommand,
   TUI,
@@ -174,6 +175,12 @@ export class ReplSession {
     // 初始化 TUI
     const terminal = new ProcessTerminal();
     this.tui = new TUI(terminal);
+
+    // 注册 Vim 风格 j/k 导航键（替代方向键）
+    getKeybindings().setUserBindings({
+      'tui.select.up': ['up', 'k'],
+      'tui.select.down': ['down', 'j'],
+    });
 
     // 创建组件
     this.outputArea = new OutputArea();

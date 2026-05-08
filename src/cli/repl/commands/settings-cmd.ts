@@ -82,24 +82,11 @@ function showSelectList(
     const list = new SelectList(items, options?.maxVisible ?? 10, SELECT_THEME);
     let handle: OverlayHandle | null = null;
 
-    // Register vim-style j/k navigation when this overlay is active
-    const removeVimListener = tui.addInputListener((data: string) => {
-      if (data === 'j') return { data: 'down' };
-      if (data === 'k') return { data: 'up' };
-      return undefined;
-    });
-
-    const cleanup = () => {
-      removeVimListener();
-    };
-
     list.onSelect = (item: SelectItem) => {
-      cleanup();
       handle?.hide();
       resolve(item);
     };
     list.onCancel = () => {
-      cleanup();
       handle?.hide();
       resolve(null);
     };
