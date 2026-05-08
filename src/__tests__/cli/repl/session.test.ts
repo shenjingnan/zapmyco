@@ -341,13 +341,11 @@ function createTestConfig(overrides?: Partial<ZapmycoConfig>): ZapmycoConfig {
   return {
     llm: {
       defaultModel: 'anthropic/claude-sonnet-4-20250514',
-      models: {
-        'anthropic/claude-sonnet-4-20250514': {
-          provider: 'anthropic',
-          modelId: 'claude-sonnet-4-20250514',
+      providers: {
+        anthropic: {
+          apiKey: 'sk-test',
         },
       },
-      providers: { anthropic: { apiKey: 'sk-test' } },
     },
     scheduler: {
       maxConcurrency: 5,

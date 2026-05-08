@@ -6,7 +6,7 @@
  */
 
 import type { KnownProvider, Model } from '@mariozechner/pi-ai';
-import { getModel } from '@mariozechner/pi-ai';
+import { getModel, getModels } from '@mariozechner/pi-ai';
 import type { LlmConfig, LlmFallbackConfig, LlmRoutingConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
 import { CredentialPoolManager } from '@/llm/credential-pool-manager';
@@ -23,13 +23,15 @@ export type CostTier = 'low' | 'medium' | 'high' | 'premium';
 /** 模型信息 */
 export interface ModelInfo {
   /** 模型 ID（API 实际值） */
-  modelId: string;
+  id: string;
   /** 所属提供商名称 */
   provider: string;
   /** 唯一 key："provider/modelId" */
   key: string;
   /** 模型描述 */
   description?: string;
+  /** 支持的输入类型 */
+  input?: string[];
   /** 能力标签 */
   capabilities?: ModelCapability[];
   /** 成本层级 */
@@ -89,54 +91,156 @@ export class ProviderRegistry {
       config.routing
     );
 
-    // 1. 遍历 models 配置，按提供商分组注册
-    for (const [modelKey, modelConfig] of Object.entries(config.models)) {
-      const provider = modelConfig.provider;
-      const modelId = modelConfig.modelId;
+    // 1. 遍历 providers 配置，注册每个提供商及其模型
+    for (const [providerName, providerConfig] of Object.entries(config.providers)) {
+      registry.ensureProvider(providerName);
 
-      // 确保提供商存在
-      if (!registry.providers.has(provider)) {
-        registry.providers.set(provider, {
-          name: provider,
-          displayName: provider,
-          models: [],
-          enabled: true,
-        });
+      const hasExplicitModels =
+        providerConfig.models !== undefined && Object.keys(providerConfig.models).length > 0;
+
+      if (hasExplicitModels) {
+        // 用户显式配置了模型 → 使用用户配置
+        for (const [modelName, modelConfig] of Object.entries(providerConfig.models!)) {
+          registry.addModelFromConfig(providerName, modelName, modelConfig, providerConfig.baseUrl);
+        }
+      } else {
+        // 无显式模型 → 从 pi-ai 内置注册表自动填充
+        registry.populateFromPiAi(providerName, providerConfig.baseUrl);
       }
-
-      const modelInfo: ModelInfo = {
-        modelId,
-        provider,
-        key: modelKey,
-      };
-
-      if (modelConfig.description !== undefined) {
-        modelInfo.description = modelConfig.description;
-      }
-      if (modelConfig.baseUrl !== undefined) {
-        modelInfo.baseUrl = modelConfig.baseUrl;
-      }
-
-      registry.providers.get(provider)?.models.push(modelInfo);
-      registry.models.set(modelKey, modelInfo);
     }
 
-    // 2. 为未在 models 中注册的提供商创建空条目（仅有凭据的提供商）
+    // 2. 确保 defaultModel 已注册（用户可能只配了 apiKey 没配模型）
+    registry.ensureDefaultModel(config);
+
+    // 3. 为未注册但有凭据的提供商创建空条目
     for (const providerName of credentialManager.getProviderNames()) {
-      if (!registry.providers.has(providerName)) {
-        registry.providers.set(providerName, {
-          name: providerName,
-          displayName: providerName,
-          models: [],
-          enabled: true,
-        });
-      }
+      registry.ensureProvider(providerName);
     }
 
     logger.debug(
       `ProviderRegistry 初始化完成: ${registry.getStats().modelCount} 个模型, ${registry.getStats().providerCount} 个提供商`
     );
     return registry;
+  }
+
+  // ============ 注册辅助方法 ============
+
+  /** 确保提供商条目存在 */
+  private ensureProvider(providerName: string): void {
+    if (!this.providers.has(providerName)) {
+      this.providers.set(providerName, {
+        name: providerName,
+        displayName: providerName,
+        models: [],
+        enabled: true,
+      });
+    }
+  }
+
+  /** 从用户配置注册单个模型 */
+  private addModelFromConfig(
+    providerName: string,
+    modelName: string,
+    modelConfig: import('@/config/types').ModelConfig,
+    providerBaseUrl?: string
+  ): void {
+    const modelKey = `${providerName}/${modelName}`;
+    const modelInfo: ModelInfo = {
+      id: modelConfig.id ?? modelName,
+      provider: providerName,
+      key: modelKey,
+    };
+
+    if (modelConfig.description !== undefined) {
+      modelInfo.description = modelConfig.description;
+    }
+    if (modelConfig.input !== undefined) {
+      modelInfo.input = modelConfig.input;
+    }
+    // baseUrl 优先级：模型级别 > provider 级别
+    if (modelConfig.baseUrl !== undefined) {
+      modelInfo.baseUrl = modelConfig.baseUrl;
+    } else if (providerBaseUrl !== undefined) {
+      modelInfo.baseUrl = providerBaseUrl;
+    }
+
+    this.models.set(modelKey, modelInfo);
+    this.providers.get(providerName)?.models.push(modelInfo);
+  }
+
+  /** 从 pi-ai 内置注册表自动填充模型 */
+  private populateFromPiAi(providerName: string, providerBaseUrl?: string): void {
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束
+      const piModels = getModels(providerName as any);
+      for (const piModel of piModels) {
+        const modelKey = `${providerName}/${piModel.id}`;
+        if (this.models.has(modelKey)) continue;
+
+        const modelInfo: ModelInfo = {
+          id: piModel.id,
+          provider: providerName,
+          key: modelKey,
+          input: [...piModel.input],
+        };
+
+        // 用户 provider 级别的 baseUrl 覆盖 pi-ai 内置值
+        if (providerBaseUrl) {
+          modelInfo.baseUrl = providerBaseUrl;
+        }
+
+        this.models.set(modelKey, modelInfo);
+        this.providers.get(providerName)?.models.push(modelInfo);
+      }
+      logger.debug(`从 pi-ai 自动填充 ${piModels.length} 个模型 [${providerName}]`);
+    } catch {
+      logger.debug(`pi-ai 中没有提供商 [${providerName}] 的模型数据`);
+    }
+  }
+
+  /** 确保 defaultModel 在注册表中 */
+  private ensureDefaultModel(config: LlmConfig): void {
+    if (this.models.has(config.defaultModel)) return;
+
+    const parsed = parseModelKey(config.defaultModel);
+    if (!parsed) return;
+
+    this.ensureProvider(parsed.provider);
+    const providerConfig = config.providers[parsed.provider];
+
+    // 尝试从 pi-ai 获取
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束
+      const piModel = getModel(parsed.provider as any, parsed.modelId as any);
+      if (piModel) {
+        const modelInfo: ModelInfo = {
+          id: piModel.id,
+          provider: parsed.provider,
+          key: config.defaultModel,
+          input: [...piModel.input],
+        };
+        if (providerConfig?.baseUrl) {
+          modelInfo.baseUrl = providerConfig.baseUrl;
+        }
+        this.models.set(config.defaultModel, modelInfo);
+        this.providers.get(parsed.provider)?.models.push(modelInfo);
+        return;
+      }
+    } catch {
+      // pi-ai 中没有，使用手动兜底
+    }
+
+    // 兜底：手动注册最小模型信息
+    const modelInfo: ModelInfo = {
+      id: parsed.modelId,
+      provider: parsed.provider,
+      key: config.defaultModel,
+    };
+    if (providerConfig?.baseUrl) {
+      modelInfo.baseUrl = providerConfig.baseUrl;
+    }
+    this.models.set(config.defaultModel, modelInfo);
+    this.providers.get(parsed.provider)?.models.push(modelInfo);
   }
 
   // ============ 模型解析 ============
@@ -174,7 +278,7 @@ export class ProviderRegistry {
     }
 
     const provider = (modelInfo?.provider ?? parsed.provider) as KnownProvider;
-    const modelId = modelInfo?.modelId ?? parsed.modelId;
+    const modelId = modelInfo?.id ?? parsed.modelId;
 
     // 始终用同 provider 的已知模型作为基础模板
     const baseModelId = provider === 'anthropic' ? 'claude-sonnet-4-20250514' : modelId;

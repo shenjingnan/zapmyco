@@ -10,13 +10,6 @@ import type { ZapmycoConfig } from '@/config/types';
 export const DEFAULT_CONFIG: ZapmycoConfig = {
   llm: {
     defaultModel: 'anthropic/claude-sonnet-4-20250514',
-    models: {
-      'anthropic/claude-sonnet-4-20250514': {
-        provider: 'anthropic',
-        modelId: 'claude-sonnet-4-20250514',
-        description: 'Anthropic Claude Sonnet 4 - 均衡模型，日常使用推荐',
-      },
-    },
     providers: {
       anthropic: {
         // biome-ignore lint/suspicious/noTemplateCurlyInString: 环境变量引用语法

@@ -15,12 +15,6 @@ function createMockSession(): ReplSession {
     config: {
       llm: {
         defaultModel: 'anthropic/claude-sonnet-4-20250514',
-        models: {
-          'anthropic/claude-sonnet-4-20250514': {
-            provider: 'anthropic',
-            modelId: 'claude-sonnet-4-20250514',
-          },
-        },
         providers: {},
       },
       scheduler: {

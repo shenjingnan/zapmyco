@@ -70,13 +70,11 @@ import type { ChatMessage } from '@/llm/types';
 function createTestConfig(overrides?: Partial<LlmConfig>): LlmConfig {
   return {
     defaultModel: 'anthropic/claude-sonnet-4-20250514',
-    models: {
-      'anthropic/claude-sonnet-4-20250514': {
-        provider: 'anthropic',
-        modelId: 'claude-sonnet-4-20250514',
+    providers: {
+      anthropic: {
+        apiKey: 'sk-test',
       },
     },
-    providers: { anthropic: { apiKey: 'sk-test' } },
     defaults: { maxTokens: 8192, temperature: 0.7 },
     ...overrides,
   };
@@ -204,12 +202,16 @@ describe('PiAiProvider', () => {
       const customProvider = new PiAiProvider(
         createTestConfig({
           defaultModel: 'anthropic/default-model',
-          models: {
-            'anthropic/default-model': { provider: 'anthropic', modelId: 'default-model' },
-            'anthropic/custom-model': {
-              provider: 'anthropic',
-              modelId: 'custom-id',
-              baseUrl: 'https://custom.api.com',
+          providers: {
+            anthropic: {
+              apiKey: 'sk-test',
+              models: {
+                'default-model': { id: 'default-model' },
+                'custom-model': {
+                  id: 'custom-id',
+                  baseUrl: 'https://custom.api.com',
+                },
+              },
             },
           },
         })
@@ -265,7 +267,11 @@ describe('PiAiProvider', () => {
 
       const customProvider = new PiAiProvider(
         createTestConfig({
-          providers: { anthropic: { apiKey: 'sk-custom-key' } },
+          providers: {
+            anthropic: {
+              apiKey: 'sk-custom-key',
+            },
+          },
         })
       );
 
@@ -491,11 +497,15 @@ describe('PiAiProvider', () => {
 
       const customProvider = new PiAiProvider(
         createTestConfig({
-          models: {
-            'anthropic/claude-sonnet-4-20250514': {
-              provider: 'anthropic',
-              modelId: 'claude-sonnet-4-20250514',
-              baseUrl: 'https://deepseek.api.com/anthropic',
+          providers: {
+            anthropic: {
+              apiKey: 'sk-test',
+              models: {
+                'claude-sonnet-4-20250514': {
+                  id: 'claude-sonnet-4-20250514',
+                  baseUrl: 'https://deepseek.api.com/anthropic',
+                },
+              },
             },
           },
         })
@@ -514,11 +524,15 @@ describe('PiAiProvider', () => {
       const customProvider = new PiAiProvider(
         createTestConfig({
           defaultModel: 'anthropic/deepseek-v4-flash',
-          models: {
-            'anthropic/deepseek-v4-flash': {
-              provider: 'anthropic',
-              modelId: 'deepseek-v4-flash',
-              baseUrl: 'https://api.deepseek.com/anthropic',
+          providers: {
+            anthropic: {
+              apiKey: 'sk-test',
+              models: {
+                'deepseek-v4-flash': {
+                  id: 'deepseek-v4-flash',
+                  baseUrl: 'https://api.deepseek.com/anthropic',
+                },
+              },
             },
           },
         })
@@ -554,9 +568,14 @@ describe('PiAiProvider', () => {
 
       const multiProvider = new PiAiProvider(
         createTestConfig({
-          models: {
-            'anthropic/model-a': { provider: 'anthropic', modelId: 'model-a' },
-            'anthropic/model-b': { provider: 'anthropic', modelId: 'model-b' },
+          providers: {
+            anthropic: {
+              apiKey: 'sk-test',
+              models: {
+                'model-a': { id: 'model-a' },
+                'model-b': { id: 'model-b' },
+              },
+            },
           },
         })
       );

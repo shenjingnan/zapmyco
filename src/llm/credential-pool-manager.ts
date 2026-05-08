@@ -5,7 +5,7 @@
  * 自动将旧的单个 apiKey 配置包装为单条目凭据池（向后兼容）。
  */
 
-import type { LlmConfig, LlmProviderAuthConfig } from '@/config/types';
+import type { LlmConfig, LlmProviderConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
 import type { CredentialEntry, CredentialPoolOptions } from '@/llm/credential-pool';
 import { CredentialPool } from '@/llm/credential-pool';
@@ -48,7 +48,7 @@ export class CredentialPoolManager {
    *
    * 规则：credentials 优先；如果 credentials 为空但 apiKey 存在，自动包装。
    */
-  private static normalizeCredentials(auth: LlmProviderAuthConfig): CredentialEntry[] {
+  private static normalizeCredentials(auth: LlmProviderConfig): CredentialEntry[] {
     if (auth.credentials && auth.credentials.length > 0) {
       return auth.credentials;
     }

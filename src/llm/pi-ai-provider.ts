@@ -14,7 +14,7 @@ import {
   type Message,
   stream,
 } from '@mariozechner/pi-ai';
-import type { LlmConfig, ModelConfig } from '@/config/types';
+import type { LlmConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
 import { costTracker } from '@/llm/cost-tracker';
 import type { ILlmProvider } from '@/llm/provider';
@@ -175,14 +175,15 @@ export class PiAiProvider implements ILlmProvider {
       throw new Error(`无效的模型标识符格式: ${modelKey}，期望格式为 provider/modelId`);
     }
 
-    // 优先从 models 配置中获取详细信息
-    const modelConfig = this.config.models[modelKey] as ModelConfig | undefined;
+    // 从嵌套结构中查找模型配置：config.providers[providerName].models[modelName]
+    const providerConfig = this.config.providers[parsed.provider];
+    const modelConfig = providerConfig?.models?.[parsed.modelId];
 
-    const provider = (modelConfig?.provider ?? parsed.provider) as KnownProvider;
-    const modelId = modelConfig?.modelId ?? parsed.modelId;
+    const provider = parsed.provider as KnownProvider;
+    const modelId = modelConfig?.id ?? parsed.modelId;
 
     // 始终用同 provider 的已知模型作为基础模板（保证返回有效 Model 对象）
-    const baseModelId = provider === 'anthropic' ? 'claude-sonnet-4-20250514' : modelId; // 非 anthropic provider 尝试直接获取
+    const baseModelId = provider === 'anthropic' ? 'claude-sonnet-4-20250514' : modelId;
 
     logger.debug('解析模型', { provider, modelId, baseModelId, modelKey });
 
@@ -206,12 +207,14 @@ export class PiAiProvider implements ILlmProvider {
     this.resolvedModel.name = modelKey;
     this.resolvedModel.id = modelId;
 
-    if (modelConfig?.baseUrl) {
+    // baseUrl 优先级：模型级别 > provider 级别
+    const baseUrl = modelConfig?.baseUrl ?? providerConfig?.baseUrl;
+    if (baseUrl) {
       logger.debug('覆盖模型 baseUrl', {
         original: this.resolvedModel.baseUrl,
-        custom: modelConfig.baseUrl,
+        custom: baseUrl,
       });
-      this.resolvedModel.baseUrl = modelConfig.baseUrl;
+      this.resolvedModel.baseUrl = baseUrl;
     }
 
     return this.resolvedModel;
@@ -221,18 +224,9 @@ export class PiAiProvider implements ILlmProvider {
    * 获取当前模型的认证信息（API Key）
    */
   private getApiKey(modelKey: string): string | undefined {
-    const modelConfig = this.config.models[modelKey] as ModelConfig | undefined;
-    const providerName = modelConfig?.provider;
-
-    // 优先从对应提供商的 auth 配置中获取
-    if (providerName) {
-      const auth = this.config.providers[providerName];
-      if (auth?.apiKey) {
-        return auth.apiKey;
-      }
-    }
-
-    return undefined;
+    const parsed = parseModelKey(modelKey);
+    if (!parsed) return undefined;
+    return this.config.providers[parsed.provider]?.apiKey;
   }
 
   /**

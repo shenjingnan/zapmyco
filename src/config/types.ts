@@ -2,33 +2,31 @@
  * zapmyco 配置类型定义
  */
 
-import type { KnownProvider } from '@mariozechner/pi-ai';
 import type { LogLevel } from '@/infra/logger';
 import type { CredentialEntry, CredentialStrategy } from '@/llm/credential-pool';
 
-/** 单个模型配置 */
+/** 单个模型配置（嵌套在 provider 内部，所有字段均可选，未填则从 pi-ai 内置注册表自动获取） */
 export interface ModelConfig {
-  /** 提供商标识（对应 pi-ai 的 Provider，决定 API 格式） */
-  provider: KnownProvider | string;
-  /** 模型 ID（发送给 API 的模型名称） */
-  modelId: string;
+  /** 模型 ID（发送给 API 的模型名称，默认等于模型 key 名） */
+  id?: string;
+  /** 模型支持的输入类型（从 pi-ai 自动获取） */
+  input?: string[];
   /** 模型描述 */
   description?: string;
   /**
-   * 自定义 API 基础 URL
-   *
-   * 设置后覆盖 pi-ai 默认的 baseUrl。
-   * 典型用法：使用 Anthropic 消息格式连接兼容端点（如 Deepseek）
-   *
-   * @example "https://api.deepseek.com/anthropic"
+   * 自定义 API 基础 URL（覆盖 provider 级别和 pi-ai 内置值）
    */
   baseUrl?: string;
 }
 
-/** LLM 提供商认证配置 */
-export interface LlmProviderAuthConfig {
+/** LLM 提供商配置（认证信息 + 模型列表） */
+export interface LlmProviderConfig {
+  /** API 基础 URL */
+  baseUrl?: string;
   /** API Key（支持 ${ENV_VAR} 环境变量引用） */
   apiKey?: string;
+  /** API 格式：决定使用哪个 pi-ai 适配器（openai / anthropic） */
+  apiFormat?: 'openai' | 'anthropic' | string;
   /**
    * 凭据池：支持多 API Key 轮转和故障转移
    *
@@ -40,8 +38,8 @@ export interface LlmProviderAuthConfig {
   credentialStrategy?: CredentialStrategy;
   /** 故障恢复等待时间（毫秒，默认 60000） */
   recoveryMs?: number;
-  /** API 基础 URL（自定义提供商时使用） */
-  baseUrl?: string;
+  /** 该提供商下的可用模型 */
+  models?: Record<string, ModelConfig>;
 }
 
 /** LLM 全局默认参数 */
@@ -82,11 +80,8 @@ export interface LlmConfig {
   /** 默认使用的模型标识（格式：provider/modelId，如 anthropic/claude-sonnet-4-20250514） */
   defaultModel: string;
 
-  /** 所有可用模型配置（key 为 "provider/modelId" 格式） */
-  models: Record<string, ModelConfig>;
-
-  /** 各提供商的认证信息 */
-  providers: Partial<Record<KnownProvider | string, LlmProviderAuthConfig>>;
+  /** 各提供商的配置（认证信息 + 模型列表） */
+  providers: Record<string, LlmProviderConfig>;
 
   /** 全局 LLM 调用默认参数 */
   defaults?: LlmDefaultsConfig;
@@ -102,7 +97,7 @@ export interface LlmConfig {
  * @deprecated 使用 LlmConfig 替代
  * 保留向后兼容，内部会自动转换
  */
-export interface LlmProviderConfig {
+export interface LegacyLlmProviderConfig {
   /** 提供商类型 */
   provider: 'anthropic' | 'openai' | 'custom';
   /** API Key（也可通过环境变量 ANTHROPIC_API_KEY 等设置） */
@@ -294,7 +289,7 @@ export interface ZapmycoConfig {
   llm: LlmConfig;
 
   /** @deprecated 向后兼容字段，优先使用 llm */
-  _legacyLlm?: LlmProviderConfig;
+  _legacyLlm?: LegacyLlmProviderConfig;
 
   /** 调度器配置 */
   scheduler: SchedulerConfig;
