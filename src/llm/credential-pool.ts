@@ -96,7 +96,19 @@ export class CredentialPool {
         disabled: false,
         disabledUntil: null,
         currentConcurrency: 0,
-      }));
+      }))
+      .filter((state) => {
+        if (state.resolvedKey !== '') return true;
+
+        // resolvedKey 为空 → 可能是环境变量未设置或 Key 为空
+        const envVarMatch = state.entry.apiKey.match(/\$\{(\w+)\}/);
+        if (envVarMatch) {
+          logger.warn(`凭据池 [${this.provider}] 环境变量 ${envVarMatch[1]} 未设置，跳过该 Key`);
+        } else {
+          logger.warn(`凭据池 [${this.provider}] Key 为空，跳过`);
+        }
+        return false;
+      });
 
     if (this.entries.length === 0) {
       logger.warn(`凭据池 [${provider}] 没有可用的 Key`);
