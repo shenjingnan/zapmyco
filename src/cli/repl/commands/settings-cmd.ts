@@ -31,7 +31,7 @@ const OVERLAY_OPTIONS: OverlayOptions = {
   width: '70%',
   minWidth: 60,
   maxHeight: '75%',
-  anchor: 'center',
+  anchor: 'top-left',
   margin: { top: 1, bottom: 1 },
 };
 
@@ -186,7 +186,7 @@ function showTextInput(
       width: '60%',
       minWidth: 50,
       maxHeight: 12,
-      anchor: 'center',
+      anchor: 'top-left',
     });
   });
 }
