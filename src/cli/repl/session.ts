@@ -29,6 +29,7 @@ import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
 import { createHelpCommand } from '@/cli/repl/commands/help';
 import { createHistoryCommand } from '@/cli/repl/commands/history';
 import { createQuitCommand } from '@/cli/repl/commands/quit';
+import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
@@ -302,6 +303,11 @@ export class ReplSession {
   /** 获取渲染器引用 */
   getRenderer(): import('@/cli/repl/types').Renderer {
     return this.renderer;
+  }
+
+  /** 获取 TUI 实例（用于显示 overlay 菜单） */
+  getTui(): TUI {
+    return this.tui;
   }
 
   /** 获取历史存储引用 */
@@ -688,6 +694,7 @@ export class ReplSession {
     this.registry.register(createConfigCommand());
     this.registry.register(createAgentsCommand());
     this.registry.register(createStatusCommand());
+    this.registry.register(createSettingsCommand());
 
     // 设置 autocomplete provider
     this.buildAutocompleteProvider();

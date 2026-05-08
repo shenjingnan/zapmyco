@@ -25,6 +25,7 @@ function createMockSession(): ReplSession {
     getInputParser: vi.fn().mockReturnValue({
       reset: vi.fn(),
     }),
+    getTui: vi.fn(),
     applyConfigUpdate: vi.fn(),
   };
 }

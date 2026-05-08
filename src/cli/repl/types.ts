@@ -2,6 +2,7 @@
  * REPL 核心类型定义
  */
 
+import type { TUI } from '@mariozechner/pi-tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
@@ -128,6 +129,9 @@ export interface ReplSession {
 
   /** 请求 TUI 重绘 */
   requestRender(): void;
+
+  /** 获取 TUI 实例（用于显示 overlay 菜单组件） */
+  getTui(): TUI;
 
   /** 内部：获取命令注册表（供 help 命令使用） */
   getCommandRegistry(): unknown;
