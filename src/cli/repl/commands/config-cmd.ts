@@ -8,15 +8,20 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import type { CommandDefinition } from '@/cli/repl/types';
 import { HOME_CONFIG_PATH } from '@/config/loader';
 
-/**
- * 通过 dot-path 获取嵌套对象属性
- */
+/** 判断 key 是否可能触发原型污染 */
+function isPrototypePollutionKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype';
+}
+
 function getByDotPath(obj: Record<string, unknown>, path: string): unknown {
   const keys = path.split('.');
   let current: unknown = obj;
 
   for (const key of keys) {
     if (current === null || current === undefined || typeof current !== 'object') {
+      return undefined;
+    }
+    if (isPrototypePollutionKey(key)) {
       return undefined;
     }
     current = (current as Record<string, unknown>)[key];
@@ -34,6 +39,9 @@ function setByDotPath(obj: Record<string, unknown>, path: string, value: unknown
 
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i]!;
+    if (isPrototypePollutionKey(key)) {
+      return;
+    }
     if (!(key in current) || typeof current[key] !== 'object' || current[key] === null) {
       current[key] = {};
     }
@@ -41,6 +49,9 @@ function setByDotPath(obj: Record<string, unknown>, path: string, value: unknown
   }
 
   const lastKey = keys[keys.length - 1]!;
+  if (isPrototypePollutionKey(lastKey)) {
+    return;
+  }
   current[lastKey] = value;
 }
 
