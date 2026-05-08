@@ -1016,6 +1016,29 @@ export class ReplSession {
     }
   }
 
+  /**
+   * 应用配置更新到运行中的 Agent（无需重启）
+   *
+   * 当前处理以 "llm." 开头的配置变更，重新创建 AgentLlmFacade
+   * 并注入到运行中的 Agent 实例，使新 Key/模型立即生效。
+   */
+  applyConfigUpdate(key: string): void {
+    if (!key.startsWith('llm.')) return;
+
+    // 从更新后的 config 重新创建 LLM facade
+    const newFacade = new AgentLlmFacade(this.config.llm);
+
+    // 重新注入 pi-ai Model 对象到 Agent state
+    this.agent.innerAgent.state.model = newFacade.resolvePiModel();
+
+    // 重新注入 getApiKey 函数（供 pi-agent-core 每次 LLM 调用时使用）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.agent.innerAgent as any).getApiKey = newFacade.createGetApiKeyFn();
+
+    // 更新 facade 引用（供子 Agent 共享）
+    this.agent.llmFacade = newFacade;
+  }
+
   /** 更新统计中的状态字段 */
   private updateStatsState(): void {
     this.stats.state = this._state;

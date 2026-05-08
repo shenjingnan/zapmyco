@@ -131,6 +131,18 @@ export function createConfigCommand(): CommandDefinition {
         const result = updateSettingsFile(key, value);
 
         if (result.success) {
+          // 同步更新内存中的 config 对象（使变更立即生效）
+          let parsedValue: unknown = value;
+          try {
+            parsedValue = JSON.parse(value);
+          } catch {
+            // 保持原始字符串
+          }
+          setByDotPath(session.config as unknown as Record<string, unknown>, key, parsedValue);
+
+          // 通知 session 将配置变更应用到运行中的 Agent
+          session.applyConfigUpdate(key);
+
           // 脱敏显示
           const displayValue =
             key.toLowerCase().includes('apikey') || key.toLowerCase().includes('api_key')
@@ -140,7 +152,6 @@ export function createConfigCommand(): CommandDefinition {
             '',
             `  ✅ 配置已更新: ${key} = ${displayValue}`,
             `  已持久化到 ${HOME_CONFIG_PATH}`,
-            '  请重启 zapmyco 使配置生效',
             '',
           ]);
         } else {
