@@ -295,16 +295,16 @@ describe('/settings command', () => {
 
       // Enter filter mode and type characters
       menu.handleInput('/');
+      menu.handleInput('m');
+      expect(menu.filterText).toBe('m');
       menu.handleInput('a');
-      expect(menu.filterText).toBe('a');
-      menu.handleInput('d');
-      expect(menu.filterText).toBe('ad');
+      expect(menu.filterText).toBe('ma');
 
       const filteredItems = menu.selectList.filteredItems;
       expect(filteredItems.length).toBeGreaterThan(0);
       expect(filteredItems.length).toBeLessThan(menu.selectList.items.length);
       for (const item of filteredItems) {
-        expect(item.value.toLowerCase()).toContain('ad');
+        expect(item.value.toLowerCase()).toContain('ma');
       }
 
       cancelSelection(mockTui.capturedComponents[0]!);
