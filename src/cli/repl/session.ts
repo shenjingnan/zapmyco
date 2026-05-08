@@ -33,6 +33,8 @@ import { createQuitCommand } from '@/cli/repl/commands/quit';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
+import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { getCronStore } from '@/cli/repl/cron/cron-store';
 import { HistoryStore as HistoryStoreClass } from '@/cli/repl/history-store';
@@ -60,6 +62,23 @@ import { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type { ChatMessage } from '@/llm/types';
 
 const log = logger.child('repl:session');
+
+/**
+ * 检查错误消息是否匹配 "No API key for provider"，返回解决指引行
+ */
+function getApiKeyErrorHelp(errorMessage: string): string[] {
+  const match = errorMessage.match(/No API key for provider: (\w+)/);
+  if (!match) return [];
+
+  const providerName = match[1]!;
+  const envVarName = `${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+
+  return [
+    '',
+    chalk.yellow(`  请设置环境变量: export ${envVarName}=<your-api-key>`),
+    chalk.yellow(`  或在 REPL 中使用: /config set llm.providers.${providerName}.apiKey <your-key>`),
+  ];
+}
 
 /**
  * 输出区域组件
@@ -516,6 +535,64 @@ export class ReplSession {
           // 无输出 + 失败状态 → 显示错误
           const errorMsg = taskResult.error?.message ?? 'Agent 执行失败（无详细错误信息）';
           this.outputArea.replaceLastLine(chalk.red(`ZapMyco: [错误] ${errorMsg}`));
+          const helpLines = getApiKeyErrorHelp(errorMsg);
+          if (helpLines.length > 0) {
+            this.outputArea.append(helpLines);
+
+            // 检测 "No API key for provider" 错误，提供交互式修复
+            const providerMatch = errorMsg.match(/No API key for provider: (\w+)/);
+            if (providerMatch) {
+              const providerName = providerMatch[1]!;
+
+              this.outputArea.append(['']);
+              const choice = await showSelectList(
+                this.tui,
+                [
+                  {
+                    value: 'yes',
+                    label: '好的，我来输入 API Key',
+                    description: `直接输入 ${providerName} 的 API Key，立即配置并重试`,
+                  },
+                  {
+                    value: 'no',
+                    label: '稍后再说',
+                    description: '回到对话',
+                  },
+                ],
+                { title: `需要配置 ${providerName} 的 API Key` }
+              );
+
+              if (choice?.value === 'yes') {
+                const apiKey = await showTextInput(
+                  this.tui,
+                  `请输入 ${providerName} 的 API Key:`,
+                  '',
+                  'sk-...'
+                );
+
+                if (apiKey && apiKey.length > 0) {
+                  // 保存 API Key 到配置文件并热加载
+                  const dotPath = `llm.providers.${providerName}.apiKey`;
+                  const settings = readSettings();
+                  _setByDotPath(settings, dotPath, apiKey);
+                  writeSettings(settings);
+                  _setByDotPath(this.config as unknown as Record<string, unknown>, dotPath, apiKey);
+                  this.applyConfigUpdate(dotPath);
+
+                  this.outputArea.append([
+                    '',
+                    chalk.green(`已配置 ${providerName} 的 API Key，正在重试...`),
+                    '',
+                  ]);
+
+                  // 递归重试
+                  return await this.executeGoal(rawInput);
+                }
+              }
+
+              this.outputArea.append(['']);
+            }
+          }
         } else {
           // 无输出但状态为成功 → 可能是 API Key 等配置问题
           this.outputArea.replaceLastLine(
@@ -607,6 +684,64 @@ export class ReplSession {
 
       // 渲染错误到输出区域（替换 spinner 行 + 追加错误详情）
       this.outputArea.replaceLastLine(responseStyle(`${ZAPMYCO_PREFIX}[错误] ${err.message}`));
+      const helpLines = getApiKeyErrorHelp(err.message);
+      if (helpLines.length > 0) {
+        this.outputArea.append(helpLines);
+
+        // 检测 "No API key for provider" 错误，提供交互式修复
+        const providerMatch = err.message.match(/No API key for provider: (\w+)/);
+        if (providerMatch) {
+          const providerName = providerMatch[1]!;
+
+          this.outputArea.append(['']);
+          const choice = await showSelectList(
+            this.tui,
+            [
+              {
+                value: 'yes',
+                label: '好的，我来输入 API Key',
+                description: `直接输入 ${providerName} 的 API Key，立即配置并重试`,
+              },
+              {
+                value: 'no',
+                label: '稍后再说',
+                description: '回到对话',
+              },
+            ],
+            { title: `需要配置 ${providerName} 的 API Key` }
+          );
+
+          if (choice?.value === 'yes') {
+            const apiKey = await showTextInput(
+              this.tui,
+              `请输入 ${providerName} 的 API Key:`,
+              '',
+              'sk-...'
+            );
+
+            if (apiKey && apiKey.length > 0) {
+              // 保存 API Key 到配置文件并热加载
+              const dotPath = `llm.providers.${providerName}.apiKey`;
+              const settings = readSettings();
+              _setByDotPath(settings, dotPath, apiKey);
+              writeSettings(settings);
+              _setByDotPath(this.config as unknown as Record<string, unknown>, dotPath, apiKey);
+              this.applyConfigUpdate(dotPath);
+
+              this.outputArea.append([
+                '',
+                chalk.green(`已配置 ${providerName} 的 API Key，正在重试...`),
+                '',
+              ]);
+
+              // 递归重试（新的 taskId，干净的 listener 状态）
+              return await this.executeGoal(rawInput);
+            }
+          }
+
+          this.outputArea.append(['']);
+        }
+      }
       const errorLines = this.renderer.renderError(err).slice(1); // 跳过第一行（已替换 spinner）
       if (errorLines.length > 0) {
         this.outputArea.append(errorLines);
