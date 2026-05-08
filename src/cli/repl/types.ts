@@ -134,6 +134,14 @@ export interface ReplSession {
 
   /** 内部：获取输入解析器（供 clear 命令使用） */
   getInputParser(): unknown;
+
+  /**
+   * 应用配置更新到运行中的 Agent（无需重启）
+   *
+   * 当前处理以 "llm." 开头的配置变更，重新创建 AgentLlmFacade
+   * 并注入到运行中的 Agent 实例，使新 Key/模型立即生效。
+   */
+  applyConfigUpdate(key: string): void;
 }
 
 // ============ 渲染器接口 ============

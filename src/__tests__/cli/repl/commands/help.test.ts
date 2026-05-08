@@ -49,6 +49,7 @@ function createMockSession(overrides?: Partial<ReplSession>): ReplSession {
       ],
     }),
     getInputParser: vi.fn(),
+    applyConfigUpdate: vi.fn(),
     ...overrides,
   };
 }
