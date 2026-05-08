@@ -53,6 +53,9 @@ vi.mock('@mariozechner/pi-tui', () => ({
     setText = mockTextSetText;
   },
   CombinedAutocompleteProvider: vi.fn(),
+  getKeybindings: vi.fn(() => ({
+    setUserBindings: vi.fn(),
+  })),
 }));
 
 // Mock ZapmycoEditor
