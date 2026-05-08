@@ -6,13 +6,11 @@ import type { ZapmycoConfig } from '@/config/types';
 const mockConfig: ZapmycoConfig = {
   llm: {
     defaultModel: 'anthropic/claude-sonnet-4-20250514',
-    models: {
-      'anthropic/claude-sonnet-4-20250514': {
-        provider: 'anthropic',
-        modelId: 'claude-sonnet-4-20250514',
+    providers: {
+      anthropic: {
+        apiKey: 'sk-test-key',
       },
     },
-    providers: { anthropic: { apiKey: 'sk-test-key' } },
   },
   scheduler: {
     maxConcurrency: 5,

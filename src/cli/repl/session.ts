@@ -499,13 +499,25 @@ export class ReplSession {
         clearInterval(spinnerInterval);
         if (outputText) {
           this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputText));
+        } else if (taskResult.status !== 'success') {
+          // 无输出 + 失败状态 → 显示错误
+          const errorMsg = taskResult.error?.message ?? 'Agent 执行失败（无详细错误信息）';
+          this.outputArea.replaceLastLine(chalk.red(`ZapMyco: [错误] ${errorMsg}`));
+        } else {
+          // 无输出但状态为成功 → 可能是 API Key 等配置问题
+          this.outputArea.replaceLastLine(
+            chalk.red('ZapMyco: [错误] 模型未返回任何内容，请检查 API Key 配置')
+          );
         }
       }
 
       if (taskResult.status !== 'success') {
-        // Agent 返回 failure：渲染错误信息
+        // Agent 返回 failure：渲染详细错误信息（如果 spinner 已处理则只追加详情）
         const errorMsg = taskResult.error?.message ?? 'Agent 执行失败（无详细错误信息）';
-        this.outputArea.appendText(`[错误] ${errorMsg}`);
+        if (!spinnerActive || outputText) {
+          // spinner 未处理此错误（已收到输出后才失败的情况）
+          this.outputArea.appendText(`[错误] ${errorMsg}`);
+        }
         log.error('Agent 执行返回 failure', {
           taskId,
           error: taskResult.error,
@@ -742,6 +754,25 @@ export class ReplSession {
 
     // 存储 facade 引用，供子 Agent 共享
     agent.llmFacade = facade;
+
+    // 验证默认 provider 的 API Key
+    const defaultModelInfo = facade.getModelInfo();
+    if (defaultModelInfo) {
+      const key = facade.getApiKey(defaultModelInfo.provider);
+      if (!key) {
+        const providerName = defaultModelInfo.provider;
+        const envVar = providerName.toUpperCase() + '_API_KEY';
+        this.outputArea.append([
+          chalk.red(`[!] 提供商 "${providerName}" 没有配置 API Key`),
+          chalk.yellow(`    请设置环境变量: export ${envVar}=<your-key>`),
+          chalk.yellow(
+            `    或在 REPL 中使用: /config set llm.providers.${providerName}.apiKey <your-key>`
+          ),
+          '',
+        ]);
+        log.warn('默认提供商缺少 API Key', { provider: providerName });
+      }
+    }
 
     return agent;
   }

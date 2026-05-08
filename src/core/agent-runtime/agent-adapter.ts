@@ -429,6 +429,41 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
 
     const output = lastAssistantMessage ? extractTextFromMessage(lastAssistantMessage) : null;
 
+    // 检测真正的错误状态（pi-agent-core 内部 catch 不会向外抛异常）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stateError = (state as any).errorMessage as string | undefined;
+    const hasStreamError = lastAssistantMessage?.stopReason === 'error';
+    const hasErrorMessage =
+      hasStreamError &&
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      typeof (lastAssistantMessage as any)?.errorMessage === 'string';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const errorText = hasErrorMessage ? (lastAssistantMessage as any).errorMessage : undefined;
+    const isEmpty = !output || output.trim().length === 0;
+
+    if (stateError || hasStreamError || isEmpty) {
+      const errorMsg =
+        errorText ?? stateError ?? 'Agent 执行出错（未返回有效内容，请检查 API Key 配置）';
+      return {
+        taskId,
+        status: 'failure',
+        output,
+        error: {
+          code: stateError ? 'AGENT_ERROR' : 'EMPTY_OUTPUT',
+          message: errorMsg,
+          retryable: false,
+        },
+        artifacts: [],
+        duration,
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          estimatedCostUsd: 0,
+        },
+      };
+    }
+
     return {
       taskId,
       status: 'success',

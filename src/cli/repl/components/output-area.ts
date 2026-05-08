@@ -196,13 +196,26 @@ export class OutputFormatter {
     const lines: string[] = ['', c.bold('  ⚙️  当前配置'), '', c.bold('  LLM:')];
 
     lines.push(`    默认模型: ${config.llm.defaultModel}`);
-    const defaultModelConfig = config.llm.models[config.llm.defaultModel];
-    if (defaultModelConfig) {
-      lines.push(`    提供商: ${defaultModelConfig.provider}`);
-      lines.push(`    模型 ID: ${defaultModelConfig.modelId}`);
+    // 解析 defaultModel 获取 provider 和 model 名称
+    const defaultModelKey = config.llm.defaultModel;
+    const slashIdx = defaultModelKey.indexOf('/');
+    const defaultProvider = slashIdx > 0 ? defaultModelKey.slice(0, slashIdx) : 'anthropic';
+    const defaultModelName = slashIdx > 0 ? defaultModelKey.slice(slashIdx + 1) : defaultModelKey;
+    const providerConfig = config.llm.providers[defaultProvider];
+    const modelConfig = providerConfig?.models?.[defaultModelName];
+    lines.push(`    提供商: ${defaultProvider}`);
+    // 模型 ID：优先从配置读取，否则使用模型名（pi-ai 自动推断）
+    lines.push(`    模型 ID: ${modelConfig?.id ?? defaultModelName}`);
+    if (modelConfig?.input && modelConfig.input.length > 0) {
+      lines.push(`    输入类型: ${modelConfig.input.join(', ')}`);
     }
-    const auth = config.llm.providers[defaultModelConfig?.provider ?? 'anthropic'];
-    lines.push(`    API Key: ${auth?.apiKey ? c.gray('***已配置***') : c.red('(未配置)')}`);
+    lines.push(
+      `    API Key: ${providerConfig?.apiKey ? c.gray('***已配置***') : c.red('(未配置)')}`
+    );
+    // API 格式从 pi-ai 自动推断，仅当用户显式配置时显示
+    if (providerConfig?.apiFormat) {
+      lines.push(`    API 格式: ${providerConfig.apiFormat}`);
+    }
 
     lines.push(c.bold('  调度器:'));
     lines.push(`    最大并行: ${config.scheduler.maxConcurrency}`);
