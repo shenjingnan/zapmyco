@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/shenjingnan/zapmyco/compare/v0.7.0...v0.8.0) (2026-05-09)
+
+### Features
+
+* **i18n:** 添加国际化支持并集成至设置界面 ([#65](https://github.com/shenjingnan/zapmyco/issues/65)) ([6468eeb](https://github.com/shenjingnan/zapmyco/commit/6468eeb0db469f8dca36076b61ee8685cb51e0aa))
+* **settings:** 在 /settings 中添加语言配置选项 ([#63](https://github.com/shenjingnan/zapmyco/issues/63)) ([97d1ea7](https://github.com/shenjingnan/zapmyco/commit/97d1ea716b0411485a5cf3fc8f6e4004d100cd1d))
+
+### Bug Fixes
+
+* **cli/repl:** 优化 REPL 会话关闭流程，修复定时器与进程退出问题 ([#67](https://github.com/shenjingnan/zapmyco/issues/67)) ([ccbdd50](https://github.com/shenjingnan/zapmyco/commit/ccbdd50821ed63d7965fb9b97ddb382680c040fd))
+* 修复 `zapmyco -v` 版本号始终显示 `0.0.0-dev` 的问题 ([#66](https://github.com/shenjingnan/zapmyco/issues/66)) ([a166618](https://github.com/shenjingnan/zapmyco/commit/a1666188985ab6d5c63ef98a19bb229cb09b4c0d))
+
 ## [0.7.0](https://github.com/shenjingnan/zapmyco/compare/v0.6.0...v0.7.0) (2026-05-09)
 
 ### Features
