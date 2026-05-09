@@ -336,6 +336,11 @@ vi.mock('@/cli/repl/repl-agent-tools', () => ({
   ]),
 }));
 
+// ============ 全局 mock：阻止 process.exit 在测试中实际退出进程 ============
+vi.spyOn(process, 'exit').mockImplementation((() => {
+  // 在测试环境中不实际退出
+}) as unknown as (code?: string | number | null | undefined) => never);
+
 // ============ 导入被测模块 ============
 import { ReplSession } from '@/cli/repl/session';
 import type { ZapmycoConfig } from '@/config/types';
