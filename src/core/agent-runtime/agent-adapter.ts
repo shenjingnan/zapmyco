@@ -9,7 +9,17 @@
 
 import { EventEmitter } from 'node:events';
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core';
+import {
+  Compactor,
+  ContextErrorRecovery,
+  isContextOverflowError,
+  resolveContextWindow,
+  TokenTracker,
+  ToolResultPruner,
+} from '@/core/context';
+import type { CompactionResult, ContextWindowInfo } from '@/core/context/types';
 import type { TaskResult } from '@/core/result/types';
+import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type {
   AgentExecuteRequest,
@@ -23,6 +33,8 @@ import { type ToolRegistration, toAgentTools } from './tool-bridge';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';
 
 // ============ 默认配置 ============
+
+const log = logger.child('agent-adapter');
 
 const DEFAULT_RUNTIME_CONFIG: Required<AgentRuntimeConfig> = {
   enabled: true,
@@ -88,6 +100,23 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    */
   llmFacade: AgentLlmFacade | null = null;
 
+  // ============ 上下文压缩 ============
+
+  /** Token 追踪器 */
+  readonly tokenTracker = new TokenTracker();
+
+  /** 工具输出剪枝器 */
+  readonly toolPruner = new ToolResultPruner();
+
+  /** 自动压缩器 */
+  readonly compactor = new Compactor();
+
+  /** 错误恢复器 */
+  readonly errorRecovery = new ContextErrorRecovery(3);
+
+  /** 上下文窗口信息（首次 execute() 时通过模型解析） */
+  private _contextWindowInfo: ContextWindowInfo | null = null;
+
   constructor(options: AgentAdapterOptions) {
     super();
 
@@ -100,6 +129,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.inner = new PiAgent({
       toolExecution: this.config.toolExecution,
     });
+
+    // 设置 transformContext hook：每次 LLM 调用前自动剪枝旧工具输出
+    this.inner.transformContext = async (messages) => {
+      return this.toolPruner.transform(messages);
+    };
   }
 
   // ============ 属性访问器 ============
@@ -161,8 +195,21 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     const startTime = Date.now();
     this._currentLoad++;
     const cleanupFns: (() => void)[] = [];
+    let hadContextOverflowError = false;
 
     try {
+      // 解析上下文窗口信息（首次执行时）
+      if (!this._contextWindowInfo && this.llmFacade) {
+        try {
+          const model = this.llmFacade.resolvePiModel();
+          this._contextWindowInfo = resolveContextWindow(model);
+          // 将 LLM Facade 注入到 compactor
+          this.compactor.setLlmFacade(this.llmFacade);
+        } catch {
+          // 上下文窗口解析失败非致命
+        }
+      }
+
       // 构建系统提示词并设置到 Agent 状态
       this.inner.state.systemPrompt = this.buildSystemPrompt(request);
 
@@ -174,6 +221,15 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       // 同时监听并转发到本地的 EventEmitter（支持 IStreamingAgent）
       cleanupFns.push(
         this.inner.subscribe((event) => {
+          // Token 追踪：从 turn_end 事件提取 usage
+          if (event.type === 'turn_end' && event.message) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const usage = (event.message as any).usage;
+            if (usage && typeof usage.input === 'number') {
+              this.tokenTracker.recordUsage(usage);
+            }
+          }
+
           if (event.type === 'message_update') {
             const extracted = extractDeltaFromEvent(event);
             if (extracted) {
@@ -228,10 +284,54 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
+      // 检测上下文溢出错误并尝试恢复
+      if (
+        isContextOverflowError(err) &&
+        this.errorRecovery.shouldRecover(err) &&
+        this._contextWindowInfo
+      ) {
+        hadContextOverflowError = true;
+        log.warn('检测到上下文溢出错误，尝试紧急压缩恢复', {
+          error: err.message,
+          recoveryStatus: this.errorRecovery.getStatus(),
+        });
+
+        try {
+          const recoveryConfig = this.errorRecovery.prepareRecovery();
+
+          // 更激进的剪枝配置
+          this.toolPruner.updateConfig({
+            protectLastMessages: recoveryConfig.protectLastMessages,
+          });
+
+          // 紧急压缩
+          const compactionResult = await this.compactor.compact(
+            this.inner,
+            this._contextWindowInfo,
+            true
+          );
+
+          if (compactionResult.success) {
+            this.tokenTracker.reset();
+            this.errorRecovery.reset();
+            log.info('紧急压缩成功，即将重试执行');
+            // 不直接返回，由外部调用者处理重试
+          } else {
+            log.error('紧急压缩失败', { error: compactionResult.error });
+          }
+        } catch (compactionError) {
+          log.error('紧急压缩过程中发生错误', {
+            error:
+              compactionError instanceof Error ? compactionError.message : String(compactionError),
+          });
+        }
+      }
+
       // 发送错误事件
       this.emit(this.EVENT_ERROR, { taskId: request.taskId, error: err });
 
-      return {
+      // 构建错误结果
+      const errorResult: TaskResult = {
         taskId: request.taskId,
         status: 'failure',
         output: null,
@@ -244,12 +344,21 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           estimatedCostUsd: 0,
         },
         error: {
-          code: 'AGENT_EXECUTION_FAILED',
-          message: err.message,
-          retryable: false,
+          code: hadContextOverflowError ? 'CONTEXT_OVERFLOW' : 'AGENT_EXECUTION_FAILED',
+          message: hadContextOverflowError ? `上下文超出窗口限制: ${err.message}` : err.message,
+          retryable: hadContextOverflowError,
           details: { stack: err.stack },
         },
       };
+
+      // 如果是上下文溢出，在 error 上附加恢复建议
+      if (hadContextOverflowError) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (errorResult.error as any).suggestion =
+          '建议使用 /compact 命令手动压缩上下文，或使用更长的上下文窗口模型';
+      }
+
+      return errorResult;
     } finally {
       // 清理本次执行的事件订阅（防止复用 Agent 实例时监听器累积）
       for (const fn of cleanupFns) {
@@ -257,6 +366,63 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       }
       this._currentLoad--;
     }
+  }
+
+  // ============ 上下文压缩 ============
+
+  /**
+   * 判断是否应该触发自动压缩
+   */
+  shouldCompact(): boolean {
+    if (!this._contextWindowInfo) return false;
+    return this.compactor.shouldCompact(this.inner, this._contextWindowInfo);
+  }
+
+  /**
+   * 执行压缩并返回结果
+   */
+  async compact(): Promise<CompactionResult> {
+    if (!this._contextWindowInfo) {
+      // 尝试解析上下文窗口
+      if (this.llmFacade) {
+        const model = this.llmFacade.resolvePiModel();
+        this._contextWindowInfo = resolveContextWindow(model);
+        this.compactor.setLlmFacade(this.llmFacade);
+      }
+
+      if (!this._contextWindowInfo) {
+        return {
+          beforeMessageCount: 0,
+          afterMessageCount: 0,
+          beforeEstimatedTokens: 0,
+          afterEstimatedTokens: 0,
+          savingsRatio: 0,
+          success: false,
+          durationMs: 0,
+          error: '无法解析上下文窗口信息',
+        };
+      }
+    }
+
+    const result = await this.compactor.compact(this.inner, this._contextWindowInfo);
+    if (result.success) {
+      this.tokenTracker.reset();
+    }
+    return result;
+  }
+
+  /**
+   * 获取上下文窗口信息
+   */
+  getContextWindowInfo(): ContextWindowInfo | null {
+    return this._contextWindowInfo;
+  }
+
+  /**
+   * 获取 token 追踪快照
+   */
+  getTokenSnapshot() {
+    return this.tokenTracker.getSnapshot(this.inner.state.messages.length);
   }
 
   /**

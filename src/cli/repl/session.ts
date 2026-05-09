@@ -53,6 +53,7 @@ import type {
 } from '@/cli/repl/types';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
+import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
 import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
@@ -529,6 +530,56 @@ export class ReplSession {
         duration: Date.now() - startTime,
       });
 
+      // 上下文溢出错误恢复：自动压缩后重试
+      if (taskResult.status === 'failure' && taskResult.error?.code === 'CONTEXT_OVERFLOW') {
+        log.info('上下文溢出错误，尝试紧急压缩后重试', { taskId });
+        this.outputArea.append([
+          '',
+          chalk.yellow('  ⚠ 上下文超出窗口限制，正在自动整理并重试...'),
+          '',
+        ]);
+
+        // 暂停 spinner
+        spinnerActive = false;
+        clearInterval(spinnerInterval);
+
+        try {
+          // 执行紧急压缩
+          const compactionResult = await this.agent.compact();
+          if (compactionResult.success) {
+            this.outputArea.append([
+              chalk.green(
+                `  上下文已整理 (${compactionResult.beforeEstimatedTokens} → ${compactionResult.afterEstimatedTokens} tokens)，正在重试...`
+              ),
+              '',
+            ]);
+            // 递归重试
+            return await this.executeGoal(rawInput);
+          } else {
+            this.outputArea.append([
+              chalk.red(`  上下文整理失败: ${compactionResult.error ?? '未知错误'}`),
+              '',
+            ]);
+          }
+        } catch (compactionErr) {
+          log.error('紧急压缩异常', {
+            error: compactionErr instanceof Error ? compactionErr.message : String(compactionErr),
+          });
+          this.outputArea.append([chalk.red('  上下文整理异常，请手动执行 /compact 后重试'), '']);
+        }
+
+        // 恢复 spinner 用于后续错误显示
+        spinnerActive = true;
+        spinnerInterval = setInterval(() => {
+          if (!spinnerActive) return;
+          spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
+          this.outputArea.replaceLastLine(
+            responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame])
+          );
+          this.tui.requestRender();
+        }, 100);
+      }
+
       // 根据执行结果渲染到 TUI
       const outputText =
         typeof taskResult.output === 'string'
@@ -677,6 +728,11 @@ export class ReplSession {
       if (historyEntry) {
         historyEntry.goalId = result.goalId;
         historyEntry.durationMs = duration;
+      }
+
+      // 自动压缩检测（成功时在后台检查，不影响响应）
+      if (taskResult.status === 'success') {
+        void this.checkAndAutoCompact();
       }
 
       return result;
@@ -854,6 +910,9 @@ export class ReplSession {
     this.registry.register(createStatusCommand());
     this.registry.register(createSettingsCommand());
 
+    // 注册 /compact 命令
+    this.registry.register(this.createCompactCommand());
+
     // 设置 autocomplete provider
     this.buildAutocompleteProvider();
   }
@@ -919,6 +978,15 @@ export class ReplSession {
 
     // 存储 facade 引用，供子 Agent 共享
     agent.llmFacade = facade;
+
+    // 应用压缩配置
+    const compactionConfig = this.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
+    agent.compactor.updateConfig(compactionConfig);
+    agent.compactor.setLlmFacade(facade);
+    agent.toolPruner.updateConfig({
+      enabled: compactionConfig.enabled,
+      protectLastMessages: 10,
+    });
 
     // 验证默认 provider 的 API Key
     const defaultModelInfo = facade.getModelInfo();
@@ -1209,5 +1277,85 @@ export class ReplSession {
   /** 更新统计中的状态字段 */
   private updateStatsState(): void {
     this.stats.state = this._state;
+  }
+
+  /**
+   * 检查并触发自动压缩（异步，不阻塞用户交互）
+   */
+  private async checkAndAutoCompact(): Promise<void> {
+    try {
+      if (!this.agent.shouldCompact()) return;
+
+      const compactionConfig = this.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
+
+      if (compactionConfig.notifyUser) {
+        this.outputArea.append(['', chalk.gray('  正在整理上下文...')]);
+        this.tui.requestRender();
+      }
+
+      const result = await this.agent.compact();
+
+      if (compactionConfig.notifyUser && result.success) {
+        const pct = (result.savingsRatio * 100).toFixed(0);
+        this.outputArea.append([
+          chalk.gray(
+            `  上下文已整理: ${result.beforeEstimatedTokens} → ${result.afterEstimatedTokens} tokens (节省 ${pct}%)`
+          ),
+          '',
+        ]);
+        this.tui.requestRender();
+      }
+    } catch (err) {
+      log.warn('自动压缩失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * 创建 /compact 手动压缩命令
+   */
+  private createCompactCommand(): import('@/cli/repl/types').CommandDefinition {
+    return {
+      name: 'compact',
+      aliases: ['cmp'],
+      description: '手动压缩对话上下文',
+      usage: '/compact [聚焦主题]',
+      handler: async (args: string[], _session: import('@/cli/repl/types').ReplSession) => {
+        const focusTopic = args.join(' ') || undefined;
+
+        this.outputArea.append(['', chalk.gray('  正在整理对话上下文...')]);
+
+        if (focusTopic) {
+          this.outputArea.append([chalk.gray(`  聚焦主题: ${focusTopic}`)]);
+        }
+
+        this.tui.requestRender();
+
+        try {
+          const result = await this.agent.compact();
+
+          if (result.success) {
+            const pct = (result.savingsRatio * 100).toFixed(0);
+            this.outputArea.append([
+              chalk.green(
+                `  整理完成! ${result.beforeMessageCount} → ${result.afterMessageCount} 条消息`
+              ),
+              chalk.green(
+                `  Token: ${result.beforeEstimatedTokens} → ${result.afterEstimatedTokens} (节省 ${pct}%)`
+              ),
+              '',
+            ]);
+          } else {
+            this.outputArea.append([chalk.red(`  整理失败: ${result.error ?? '未知错误'}`), '']);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.outputArea.append([chalk.red(`  整理异常: ${message}`), '']);
+        }
+
+        this.tui.requestRender();
+      },
+    };
   }
 }

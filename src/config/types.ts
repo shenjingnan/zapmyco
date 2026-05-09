@@ -320,6 +320,9 @@ export interface ZapmycoConfig {
 
   /** Sub-Agent 系统配置 */
   subAgent?: SubAgentConfig;
+
+  /** 上下文压缩配置 */
+  compaction?: import('@/core/context/types').CompactionConfig;
 }
 
 /** Web 工具配置 */
