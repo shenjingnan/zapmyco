@@ -69,6 +69,41 @@ const BLOCK_RULES: BlockRule[] = [
     risk: 'critical',
     reason: '禁止覆盖关键系统文件',
   },
+  // chown -R / 根目录
+  {
+    name: 'chown-root',
+    pattern: /\bchown\s+-R\s+\w+\s+\/\b/,
+    risk: 'critical',
+    reason: '禁止递归修改根目录所有者',
+  },
+  // 移动根目录到 /dev/null
+  {
+    name: 'mv-root',
+    pattern: /\bmv\s+\/\s+\/dev\/null\b/,
+    risk: 'critical',
+    reason: '禁止将根目录移入 /dev/null',
+  },
+  // Docker 强制删除所有容器
+  {
+    name: 'docker-rm-all',
+    pattern: /\bdocker\s+rm\s+-f\s+(?:\$\(|`)docker\s+ps\s+-aq/,
+    risk: 'critical',
+    reason: '禁止强制删除所有 Docker 容器',
+  },
+  // kubectl 删除所有资源
+  {
+    name: 'kubectl-delete-all',
+    pattern: /\bkubectl\s+delete\s+(?:all|pods|deployments|services)\s+--all\b/,
+    risk: 'critical',
+    reason: '禁止删除集群中所有 Kubernetes 资源',
+  },
+  // systemctl disable 关键服务
+  {
+    name: 'systemctl-disable',
+    pattern: /\bsystemctl\s+disable\s+(?:sshd|ssh|firewalld|ufw|systemd\b)/,
+    risk: 'critical',
+    reason: '禁止禁用关键系统服务',
+  },
 ];
 
 // ============ 危险命令审批规则 ============
@@ -121,6 +156,53 @@ const APPROVAL_RULES: ApprovalRule[] = [
     pattern: /\bchown\s+(?:-[a-zA-Z]*R[a-zA-Z]*\s+)/,
     risk: 'medium',
     message: '检测到递归修改文件所有者。',
+  },
+  // git 危险操作
+  {
+    name: 'git-reset-hard',
+    pattern: /\bgit\s+reset\s+--hard\b/,
+    risk: 'high',
+    message: '检测到 git reset --hard，将丢失未提交的更改。',
+  },
+  {
+    name: 'git-clean-force',
+    pattern: /\bgit\s+clean\s+(?:-[a-zA-Z]*[fd][a-zA-Z]*)+/,
+    risk: 'high',
+    message: '检测到 git clean 强制删除未跟踪文件。',
+  },
+  // 包管理危险操作
+  {
+    name: 'npm-unpublish',
+    pattern: /\bnpm\s+unpublish\b/,
+    risk: 'high',
+    message: '检测到 npm unpublish，将从注册表中移除包。',
+  },
+  // Docker 危险操作
+  {
+    name: 'docker-rm',
+    pattern: /\bdocker\s+rm\s+-f\b/,
+    risk: 'medium',
+    message: '检测到强制删除 Docker 容器。',
+  },
+  {
+    name: 'docker-prune',
+    pattern: /\bdocker\s+(?:system|container|image|volume)\s+prune\b/,
+    risk: 'high',
+    message: '检测到 Docker prune 操作，将删除 Docker 资源。',
+  },
+  // 数据库危险操作
+  {
+    name: 'sql-drop-truncate',
+    pattern: /\b(?:DROP\s+(?:TABLE|DATABASE|SCHEMA)|TRUNCATE\s+(?:TABLE\s+)?)\w+/i,
+    risk: 'high',
+    message: '检测到数据库 DROP/TRUNCATE 操作，可能造成数据丢失。',
+  },
+  // pip 批量卸载
+  {
+    name: 'pip-uninstall',
+    pattern: /\bpip\d?\s+uninstall\s+-y\b/,
+    risk: 'medium',
+    message: '检测到 pip 静默卸载操作。',
   },
 ];
 
@@ -328,6 +410,53 @@ export function truncateOutput(text: string, maxChars: number = 100_000): string
   const separator = `\n\n... [已截断 ${truncatedHead} 个字符] ...\n\n`;
 
   return head + separator + tail;
+}
+
+/**
+ * 为 Exec 工具生成 checkPermission 函数
+ *
+ * 供 ToolRegistration.checkPermission 字段使用。
+ * 当命令匹配审批规则时返回 requiresApproval=true。
+ */
+export function checkExecPermission(params: Record<string, unknown>): {
+  risk: 'low' | 'medium' | 'high' | 'critical';
+  requiresApproval: boolean;
+  reason?: string;
+} {
+  const command = typeof params.command === 'string' ? params.command : '';
+  if (!command) {
+    return { risk: 'low', requiresApproval: false };
+  }
+
+  const result = checkCommandSecurity(command);
+
+  if (result.blocked) {
+    const res: {
+      risk: 'low' | 'medium' | 'high' | 'critical';
+      requiresApproval: boolean;
+      reason?: string;
+    } = {
+      risk: result.risk ?? 'critical',
+      requiresApproval: false,
+    };
+    if (result.reason) res.reason = result.reason;
+    return res;
+  }
+
+  if (result.requiresApproval) {
+    const res: {
+      risk: 'low' | 'medium' | 'high' | 'critical';
+      requiresApproval: boolean;
+      reason?: string;
+    } = {
+      risk: result.risk ?? 'medium',
+      requiresApproval: true,
+    };
+    if (result.reason) res.reason = result.reason;
+    return res;
+  }
+
+  return { risk: 'low', requiresApproval: false };
 }
 
 /**

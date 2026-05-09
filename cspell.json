@@ -67,7 +67,9 @@
     "opencode",
     "xyznonexistent",
     "POSTAMBLE",
-    "contextlength"
+    "contextlength",
+    "TOCTOU",
+    "firewalld"
   ],
   "ignorePaths": [
     "node_modules",

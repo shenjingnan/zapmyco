@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   checkSensitivePath,
@@ -43,7 +43,9 @@ describe('file-security', () => {
       const filePath = join(tmpDir, 'test.txt');
       const result = validateFilePath(filePath, tmpDir);
       expect(result.valid).toBe(true);
-      expect(result.resolved).toBe(resolve(filePath));
+      // realpathSync 会解析符号链接（如 macOS 的 /var → /private/var）
+      // 新建文件场景下 realpathSync 会向上遍历找到存在的祖先目录
+      expect(result.resolved).toBe(realpathSync(tmpDir) + '/test.txt');
       cleanupTmpDir();
     });
 
@@ -51,7 +53,8 @@ describe('file-security', () => {
       setupTmpDir();
       const result = validateFilePath('test.txt', tmpDir);
       expect(result.valid).toBe(true);
-      expect(result.resolved).toBe(join(tmpDir, 'test.txt'));
+      // realpathSync 会解析符号链接（如 macOS 的 /var → /private/var）
+      expect(result.resolved).toBe(realpathSync(tmpDir) + '/test.txt');
       cleanupTmpDir();
     });
 

@@ -28,6 +28,7 @@ import type {
   IStreamingAgent,
 } from '@/protocol/agent';
 import type { Capability } from '@/protocol/capability';
+import { createDoomLoopDetector, type DoomLoopDetector } from '@/security/doom-loop-detector';
 import { createEventBridgeListener } from './event-bridge';
 import { type ToolRegistration, toAgentTools } from './tool-bridge';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';
@@ -114,6 +115,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** 错误恢复器 */
   readonly errorRecovery = new ContextErrorRecovery(3);
 
+  /** Doom Loop 检测器 */
+  readonly doomLoop: DoomLoopDetector;
+
   /** 上下文窗口信息（首次 execute() 时通过模型解析） */
   private _contextWindowInfo: ContextWindowInfo | null = null;
 
@@ -134,6 +138,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.inner.transformContext = async (messages) => {
       return this.toolPruner.transform(messages);
     };
+
+    // 初始化 Doom Loop 检测器
+    this.doomLoop = createDoomLoopDetector();
   }
 
   // ============ 属性访问器 ============
@@ -253,6 +260,19 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
               percent: 0,
               message: paramsStr ? `${event.toolName}(${paramsStr})` : event.toolName,
             });
+
+            // Doom Loop 检测：记录工具调用
+            const doomResult = this.doomLoop.recordCall(
+              event.toolName,
+              (event.args ?? {}) as Record<string, unknown>
+            );
+            if (doomResult.detected) {
+              this.emit(this.EVENT_PROGRESS, {
+                taskId: request.taskId,
+                percent: 0,
+                message: `⚠️ ${doomResult.reason}`,
+              });
+            }
           }
           if (event.type === 'tool_execution_end') {
             this.emit(this.EVENT_PROGRESS, {
@@ -260,6 +280,22 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
               percent: 100,
               message: `工具 ${event.toolName} 完成`,
             });
+
+            // Doom Loop 检测：记录执行结果
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const toolResult = (event as any).result;
+            const isSuccess =
+              toolResult !== undefined &&
+              !(toolResult instanceof Error) &&
+              toolResult?.error === undefined;
+            const doomResult = this.doomLoop.recordResult(isSuccess);
+            if (doomResult.detected) {
+              this.emit(this.EVENT_PROGRESS, {
+                taskId: request.taskId,
+                percent: 100,
+                message: `⚠️ ${doomResult.reason}`,
+              });
+            }
           }
           if (event.type === 'agent_end') {
             this.emit(this.EVENT_PROGRESS, {
