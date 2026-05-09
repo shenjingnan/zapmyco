@@ -161,7 +161,7 @@ describe('/settings command', () => {
       const lines = (calls[0]?.[0] as string[]) ?? [];
       const output = lines.join('\n');
 
-      expect(output).toContain('Known providers:');
+      expect(output).toContain('已知提供商:');
       expect(output).toContain('Anthropic');
       expect(output).toContain('DeepSeek');
       expect(output).toContain('OpenAI');
@@ -181,7 +181,7 @@ describe('/settings command', () => {
       expect(calls.length).toBeGreaterThan(0);
       const lines = (calls[0]?.[0] as string[]) ?? [];
       const output = lines.join('\n');
-      expect(output).toContain('Usage');
+      expect(output).toContain('用法');
     });
 
     it('提供商有模型时应列出模型', async () => {
@@ -194,7 +194,7 @@ describe('/settings command', () => {
       expect(calls.length).toBeGreaterThan(0);
       const lines = (calls[0]?.[0] as string[]) ?? [];
       const output = lines.join('\n');
-      expect(output).toContain('deepseek available models');
+      expect(output).toContain('可用模型:');
       expect(output).toContain('deepseek-v4-flash');
     });
 
@@ -208,7 +208,7 @@ describe('/settings command', () => {
       expect(calls.length).toBeGreaterThan(0);
       const lines = (calls[0]?.[0] as string[]) ?? [];
       const output = lines.join('\n');
-      expect(output).toContain('no known models');
+      expect(output).toContain('没有可用的模型列表');
     });
   });
 
@@ -223,7 +223,7 @@ describe('/settings command', () => {
       expect(calls.length).toBeGreaterThan(0);
       const lines = (calls[0]?.[0] as string[]) ?? [];
       const output = lines.join('\n');
-      expect(output).toContain('Usage:');
+      expect(output).toContain('用法:');
     });
   });
 

@@ -1,0 +1,175 @@
+{
+  "output": {
+    "welcome": "Welcome back!",
+    "error": {
+      "executionFailed": "Execution failed:",
+      "detail": "Details:"
+    },
+    "result": {
+      "title": "Execution Complete",
+      "goal": "Goal:",
+      "status": "Status:",
+      "success": "Success",
+      "partialSuccess": "Partial Success",
+      "failed": "Failed",
+      "duration": "Duration:",
+      "token": "Token:",
+      "cost": "Cost:",
+      "taskBreakdown": "Task Breakdown",
+      "subtaskCount": "subtasks",
+      "artifacts": "Artifacts:",
+      "suggestions": "Suggestions:"
+    },
+    "taskGraph": {
+      "title": "Task Breakdown Overview",
+      "total": "{{count}} subtasks, {{layers}} parallel layers",
+      "layer": "Layer {{index}} (parallel):"
+    },
+    "agents": {
+      "title": "Registered Agents",
+      "empty": "No registered agents",
+      "id": "ID",
+      "status": "Status",
+      "load": "Load",
+      "capability": "Capabilities"
+    },
+    "config": {
+      "title": "Current Configuration",
+      "llm": "LLM:",
+      "defaultModel": "Default Model:",
+      "provider": "Provider:",
+      "modelId": "Model ID:",
+      "inputType": "Input Type:",
+      "apiKey": "API Key:",
+      "apiKeyConfigured": "***Configured***",
+      "apiKeyNotConfigured": "(Not configured)",
+      "apiFormat": "API Format:",
+      "scheduler": "Scheduler:",
+      "maxConcurrency": "Max Concurrency:",
+      "maxPerAgent": "Max Per Agent:",
+      "taskTimeout": "Task Timeout:",
+      "maxRetries": "Max Retries:",
+      "cli": "CLI:",
+      "colorEnabled": "Enabled",
+      "colorDisabled": "Disabled",
+      "debugEnabled": "Enabled",
+      "debugDisabled": "Disabled",
+      "outputFormat": "Output Format:",
+      "uiLanguage": "UI Language:",
+      "agents": "Agents:",
+      "minutes": "min"
+    },
+    "history": {
+      "title": "Session History",
+      "empty": "No history yet"
+    },
+    "status": {
+      "title": "Session Status",
+      "idle": "Idle",
+      "executing": "Executing",
+      "closing": "Closing",
+      "state": "State:",
+      "totalRequests": "Total Requests:",
+      "success": "Success:",
+      "failure": "Failure:",
+      "tokenConsumption": "Token Usage:",
+      "totalCost": "Total Cost:"
+    }
+  },
+  "dialog": {
+    "footer": {
+      "search": "Type to search  ·  ↑↓ Navigate  ·  Enter Confirm  ·  Esc Cancel",
+      "normal": "k/j ↑↓ Navigate  ·  / Search  ·  Enter Select  ·  Esc/q Quit  ·  BS/h Back",
+      "searchNarrow": "Enter Confirm  ·  Esc Cancel",
+      "normalNarrow": "↑↓=k/j  /  Enter  Esc/q  BS/h",
+      "textInput": "Enter to confirm · Esc to cancel"
+    },
+    "configView": {
+      "narrow": "q/Esc Back",
+      "wide": "q/Esc Back  ·  Enter/BS/h Back to Menu"
+    }
+  },
+  "settings": {
+    "mainMenu": {
+      "defaultModel": "Default Model",
+      "manageProviders": "Manage Providers",
+      "viewConfig": "View Config",
+      "language": "Language / 语言",
+      "notConfigured": "not configured",
+      "nConfigured": "{{count}} configured",
+      "noneConfigured": "none configured",
+      "displayFullConfig": "Display full configuration details"
+    },
+    "apiKeyConfig": {
+      "useEnvVar": "Use env var",
+      "useEnvVarDesc": "Recommended — more secure",
+      "enterManually": "Enter manually",
+      "enterManuallyDesc": "Type the key directly (stored in plaintext in settings.json)",
+      "clear": "Clear",
+      "clearDesc": "Remove the configured key"
+    },
+    "providerActions": {
+      "configureApiKey": "Configure API Key",
+      "selectModel": "Select Model",
+      "baseUrl": "Base URL",
+      "setAsDefault": "Set as Default"
+    },
+    "providerEntry": {
+      "keyConfigured": "key configured",
+      "noKey": "no key",
+      "addProvider": "Add Provider",
+      "addProviderDesc": "Select from a list of known providers",
+      "apiFormat": "API format: {{format}}",
+      "openaiCompatible": "OpenAI compatible"
+    },
+    "addProvider": {
+      "yes": "Yes, configure API Key now",
+      "yesDesc": "Go to API Key settings",
+      "later": "Later",
+      "laterDesc": "Return to main menu"
+    },
+    "messages": {
+      "apiKeyCleared": "[ok] Cleared API key for {{provider}}",
+      "apiKeySetToEnv": "[ok] Set {{provider}} API key to env var ${ {{envVar}} }",
+      "envVarNote": "Make sure {{envVar}} is set in your shell",
+      "apiKeyConfigured": "[ok] Configured API key for {{provider}}",
+      "modelSelected": "[ok] Selected model: {{model}}",
+      "providerAdded": "[ok] Added provider: {{provider}}",
+      "baseUrlReset": "[ok] Reset {{provider}} Base URL to default",
+      "baseUrlSet": "[ok] Set {{provider}} Base URL: {{url}}",
+      "defaultModelSet": "[ok] Default model set to: {{model}}",
+      "languageSet": "[ok] Language set to: {{locale}}",
+      "restartRequired": "Some changes may require a session restart to take full effect.",
+      "noModels": "has no available model list",
+      "configureManually": "Configure models manually in settings.json or check the provider name",
+      "alreadyExists": "already exists, use the provider entry to configure it",
+      "configureFirst": "Configure a model first before setting it as default",
+      "checkApiKeyHelpPrefix": "  Hint: check"
+    },
+    "cliMode": {
+      "usage": "Usage:",
+      "settingsUsage": "/settings                    — Open interactive configuration menu",
+      "listProvidersUsage": "/settings list-providers     — List all known providers",
+      "listModelsUsage": "/settings list-models <name> — List available models for a provider",
+      "knownProviders": "Known providers:",
+      "noModelsAvailable": "No models available from pi-ai registry",
+      "hintConfigureFirst": "Hint: use /settings to configure this provider first",
+      "availableModels": "available models:"
+    },
+    "modelSelector": {
+      "notConfigured": "Not configured - Enter to set API Key"
+    }
+  },
+  "session": {
+    "welcome": "ZapMyco: Welcome back!",
+    "errorPrefix": "[Error]",
+    "agentErrorMessage": "Agent execution failed (no detailed error information)",
+    "noContentError": "Model returned no content, please check your API Key configuration",
+    "displayName": "Zapmyco AI Assistant",
+    "editorNotFound": "Editor not found: {{cmd}}, please set $EDITOR environment variable",
+    "editorFailed": "Failed to open editor: {{message}}",
+    "executing": "Executing...",
+    "setEnvVarHint": "Set environment variable: export {{envVar}}=<your-api-key>",
+    "useConfigHint": "Or use in REPL: /config set llm.providers.{{provider}}.apiKey <your-key>"
+  }
+}

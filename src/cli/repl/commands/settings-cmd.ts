@@ -14,6 +14,7 @@ import chalk from 'chalk';
 import { showConfigView, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
 import { _getByDotPath, _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import type { CommandDefinition, ReplSession } from '@/cli/repl/types';
+import { setLocale, t } from '@/i18n';
 
 // ============ Constants ============
 
@@ -131,7 +132,7 @@ async function handleCommandLine(
         | Record<string, unknown>
         | undefined;
       const names = providers ? Object.keys(providers) : [];
-      const lines: string[] = ['', 'Known providers:'];
+      const lines: string[] = ['', t('settings.cliMode.knownProviders')];
       for (const p of KNOWN_PROVIDERS) {
         const configured = names.includes(p.id) ? ' ✓' : '   ';
         lines.push(`  ${configured} ${p.label} (${p.id})`);
@@ -142,22 +143,26 @@ async function handleCommandLine(
 
     case 'list-models': {
       if (!args[1]) {
-        session.appendOutput(['', 'Usage: /settings list-models <provider>', '']);
+        session.appendOutput([
+          '',
+          `${t('settings.cliMode.usage')} /settings list-models <provider>`,
+          '',
+        ]);
         return;
       }
       const modelIds = getProviderModels(config, args[1]);
       if (modelIds.length === 0) {
         session.appendOutput([
           '',
-          `Provider "${args[1]}" has no known models`,
-          'Hint: use /settings to configure this provider first',
+          `Provider "${args[1]}" ${t('settings.messages.noModels')}`,
+          t('settings.cliMode.hintConfigureFirst'),
           '',
         ]);
         return;
       }
       session.appendOutput([
         '',
-        `${args[1]} available models:`,
+        `${args[1]} ${t('settings.cliMode.availableModels')}`,
         ...modelIds.map((id) => `  - ${id}`),
         '',
       ]);
@@ -167,10 +172,10 @@ async function handleCommandLine(
     default: {
       session.appendOutput([
         '',
-        'Usage:',
-        '  /settings                    — Open interactive configuration menu',
-        '  /settings list-providers     — List all known providers',
-        '  /settings list-models <name> — List available models for a provider',
+        t('settings.cliMode.usage'),
+        `  ${t('settings.cliMode.settingsUsage')}`,
+        `  ${t('settings.cliMode.listProvidersUsage')}`,
+        `  ${t('settings.cliMode.listModelsUsage')}`,
         '',
       ]);
     }
@@ -199,18 +204,18 @@ async function handleInteractiveMode(
       [
         {
           value: 'env',
-          label: `Use env var ${'${' + envVarName + '}'}`,
-          description: 'Recommended — more secure',
+          label: `${t('settings.apiKeyConfig.useEnvVar')} \${${envVarName}}`,
+          description: t('settings.apiKeyConfig.useEnvVarDesc'),
         },
         {
           value: 'manual',
-          label: 'Enter manually',
-          description: 'Type the key directly (stored in plaintext in settings.json)',
+          label: t('settings.apiKeyConfig.enterManually'),
+          description: t('settings.apiKeyConfig.enterManuallyDesc'),
         },
         {
           value: 'clear',
-          label: 'Clear',
-          description: 'Remove the configured key',
+          label: t('settings.apiKeyConfig.clear'),
+          description: t('settings.apiKeyConfig.clearDesc'),
         },
       ],
       { onExit: exitAll }
@@ -220,20 +225,28 @@ async function handleInteractiveMode(
 
     if (choice.value === 'clear') {
       setConfigValue(session, `llm.providers.${providerName}.apiKey`, '');
-      session.appendOutput(['', `  [ok] Cleared API key for ${providerName}`, '']);
+      session.appendOutput([
+        '',
+        `  ${t('settings.messages.apiKeyCleared', { provider: providerName })}`,
+        '',
+      ]);
     } else if (choice.value === 'env') {
       setConfigValue(session, `llm.providers.${providerName}.apiKey`, `\${${envVarName}}`);
       session.appendOutput([
         '',
-        `  [ok] Set ${providerName} API key to env var \${${envVarName}}`,
-        `  Make sure ${envVarName} is set in your shell`,
+        `  ${t('settings.messages.apiKeySetToEnv', { provider: providerName, envVar: envVarName })}`,
+        `  ${t('settings.messages.envVarNote', { envVar: envVarName })}`,
         '',
       ]);
     } else if (choice.value === 'manual') {
       const key = await showTextInput(tui, `Enter ${providerName} API Key`, '', 'sk-...');
       if (key && key.length > 0) {
         setConfigValue(session, `llm.providers.${providerName}.apiKey`, key);
-        session.appendOutput(['', `  [ok] Configured API key for ${providerName}`, '']);
+        session.appendOutput([
+          '',
+          `  ${t('settings.messages.apiKeyConfigured', { provider: providerName })}`,
+          '',
+        ]);
       }
     }
   };
@@ -260,10 +273,18 @@ async function handleInteractiveMode(
         >;
         if (parent) delete parent.baseUrl;
         writeSettings(settings);
-        session.appendOutput(['', `  [ok] Reset ${providerName} Base URL to default`, '']);
+        session.appendOutput([
+          '',
+          `  ${t('settings.messages.baseUrlReset', { provider: providerName })}`,
+          '',
+        ]);
       } else {
         setConfigValue(session, configPath, url);
-        session.appendOutput(['', `  [ok] Set ${providerName} Base URL: ${url}`, '']);
+        session.appendOutput([
+          '',
+          `  ${t('settings.messages.baseUrlSet', { provider: providerName, url })}`,
+          '',
+        ]);
       }
     }
   };
@@ -276,8 +297,8 @@ async function handleInteractiveMode(
     if (modelIds.length === 0) {
       session.appendOutput([
         '',
-        `  ${providerName} has no available model list`,
-        '  Configure models manually in settings.json or check the provider name',
+        `  ${providerName} ${t('settings.messages.noModels')}`,
+        `  ${t('settings.messages.configureManually')}`,
         '',
       ]);
       return;
@@ -303,7 +324,11 @@ async function handleInteractiveMode(
           | Record<string, unknown>
           | undefined) ?? {}
       );
-      session.appendOutput(['', `  [ok] Selected model: ${providerName}/${modelId}`, '']);
+      session.appendOutput([
+        '',
+        `  ${t('settings.messages.modelSelected', { model: `${providerName}/${modelId}` })}`,
+        '',
+      ]);
     }
   };
 
@@ -313,12 +338,16 @@ async function handleInteractiveMode(
   const handleSetDefault = async (providerName: string): Promise<void> => {
     const modelIds = getProviderModels(state.current, providerName);
     if (modelIds.length === 0) {
-      session.appendOutput(['', '  Configure a model first before setting it as default', '']);
+      session.appendOutput(['', `  ${t('settings.messages.configureFirst')}`, '']);
       return;
     }
     const modelKey = `${providerName}/${modelIds[0]!}`;
     setConfigValue(session, 'llm.defaultModel', modelKey);
-    session.appendOutput(['', `  [ok] Default model set to: ${modelKey}`, '']);
+    session.appendOutput([
+      '',
+      `  ${t('settings.messages.defaultModelSet', { model: modelKey })}`,
+      '',
+    ]);
   };
 
   // ============ Main Loop ============
@@ -340,22 +369,27 @@ async function handleInteractiveMode(
     const mainActions: SelectItem[] = [
       {
         value: 'default-model',
-        label: 'Default Model',
-        description: String(_getByDotPath(state.current, 'llm.defaultModel') ?? 'not configured'),
+        label: t('settings.mainMenu.defaultModel'),
+        description: String(
+          _getByDotPath(state.current, 'llm.defaultModel') ?? t('settings.mainMenu.notConfigured')
+        ),
       },
       {
         value: 'manage-providers',
-        label: 'Manage Providers',
-        description: providerCount > 0 ? `${providerCount} configured` : 'none configured',
+        label: t('settings.mainMenu.manageProviders'),
+        description:
+          providerCount > 0
+            ? t('settings.mainMenu.nConfigured', { count: providerCount })
+            : t('settings.mainMenu.noneConfigured'),
       },
       {
         value: 'view-config',
-        label: 'View Config',
-        description: 'Display full configuration details',
+        label: t('settings.mainMenu.viewConfig'),
+        description: t('settings.mainMenu.displayFullConfig'),
       },
       {
         value: 'language',
-        label: 'Language / 语言',
+        label: t('settings.mainMenu.language'),
         description: String(_getByDotPath(state.current, 'locale') ?? 'zh-CN'),
       },
     ];
@@ -396,7 +430,7 @@ async function handleInteractiveMode(
             disabledItems.push({
               value: key,
               label: chalk.gray(key),
-              description: chalk.gray('未配置 - Enter 设置 API Key'),
+              description: chalk.gray(t('settings.modelSelector.notConfigured')),
             });
           }
         }
@@ -405,7 +439,7 @@ async function handleInteractiveMode(
       const modelItems: SelectItem[] = [...enabledItems, ...disabledItems];
 
       if (modelItems.length === 0) {
-        session.appendOutput(['', '  No models available from pi-ai registry', '']);
+        session.appendOutput(['', `  ${t('settings.cliMode.noModelsAvailable')}`, '']);
         continue;
       }
 
@@ -425,7 +459,11 @@ async function handleInteractiveMode(
       if (isEnabled) {
         // Enabled provider — set as default immediately
         setConfigValue(session, 'llm.defaultModel', selectedKey);
-        session.appendOutput(['', `  [ok] Default model set to: ${selectedKey}`, '']);
+        session.appendOutput([
+          '',
+          `  ${t('settings.messages.defaultModelSet', { model: selectedKey })}`,
+          '',
+        ]);
       } else {
         // Not enabled — add provider and guide apiKey setup first
         if (!configuredProviders || !(providerName in configuredProviders)) {
@@ -452,7 +490,11 @@ async function handleInteractiveMode(
         state.current = readSettings();
         if (hasApiKey(state.current, providerName)) {
           setConfigValue(session, 'llm.defaultModel', selectedKey);
-          session.appendOutput(['', `  [ok] Default model set to: ${selectedKey}`, '']);
+          session.appendOutput([
+            '',
+            `  ${t('settings.messages.defaultModelSet', { model: selectedKey })}`,
+            '',
+          ]);
         }
       }
     } else if (value === 'manage-providers') {
@@ -463,13 +505,15 @@ async function handleInteractiveMode(
           return {
             value: `provider:${name}`,
             label: name,
-            description: hasK ? 'key configured' : 'no key',
+            description: hasK
+              ? t('settings.providerEntry.keyConfigured')
+              : t('settings.providerEntry.noKey'),
           };
         }),
         {
           value: 'add-provider',
-          label: 'Add Provider',
-          description: 'Select from a list of known providers',
+          label: t('settings.providerEntry.addProvider'),
+          description: t('settings.providerEntry.addProviderDesc'),
         },
       ];
 
@@ -483,10 +527,18 @@ async function handleInteractiveMode(
         const providerName = providerValue.slice('provider:'.length);
 
         const providerActions: SelectItem[] = [
-          { value: 'api-key', label: 'Configure API Key', description: '' },
-          { value: 'model', label: 'Select Model', description: '' },
-          { value: 'base-url', label: 'Base URL', description: '' },
-          { value: 'set-default', label: 'Set as Default', description: '' },
+          {
+            value: 'api-key',
+            label: t('settings.providerActions.configureApiKey'),
+            description: '',
+          },
+          { value: 'model', label: t('settings.providerActions.selectModel'), description: '' },
+          { value: 'base-url', label: t('settings.providerActions.baseUrl'), description: '' },
+          {
+            value: 'set-default',
+            label: t('settings.providerActions.setAsDefault'),
+            description: '',
+          },
         ];
 
         const action = await showSelectList(tui, providerActions, { onExit: exitAll });
@@ -519,7 +571,9 @@ async function handleInteractiveMode(
           KNOWN_PROVIDERS.map((p) => ({
             value: p.id,
             label: `${p.label} (${p.id})`,
-            description: p.apiFormat ? `API format: ${p.apiFormat}` : 'OpenAI compatible',
+            description: p.apiFormat
+              ? t('settings.providerEntry.apiFormat', { format: p.apiFormat })
+              : t('settings.providerEntry.openaiCompatible'),
           })),
           { maxVisible: 12, onExit: exitAll }
         );
@@ -535,7 +589,7 @@ async function handleInteractiveMode(
         if (existingProviders && providerName in existingProviders) {
           session.appendOutput([
             '',
-            `  ${providerName} already exists, use the provider entry to configure it`,
+            `  ${providerName} ${t('settings.messages.alreadyExists')}`,
             '',
           ]);
           continue;
@@ -559,7 +613,11 @@ async function handleInteractiveMode(
           newProvider
         );
 
-        session.appendOutput(['', `  [ok] Added provider: ${providerName}`, '']);
+        session.appendOutput([
+          '',
+          `  ${t('settings.messages.providerAdded', { provider: providerName })}`,
+          '',
+        ]);
 
         // Prompt to configure API key
         const shouldConfigure = await showSelectList(
@@ -567,13 +625,13 @@ async function handleInteractiveMode(
           [
             {
               value: 'yes',
-              label: 'Yes, configure API Key now',
-              description: 'Go to API Key settings',
+              label: t('settings.addProvider.yes'),
+              description: t('settings.addProvider.yesDesc'),
             },
             {
               value: 'no',
-              label: 'Later',
-              description: 'Return to main menu',
+              label: t('settings.addProvider.later'),
+              description: t('settings.addProvider.laterDesc'),
             },
           ],
           { onExit: exitAll }
@@ -598,10 +656,11 @@ async function handleInteractiveMode(
 
       if (selected.value !== currentLocale) {
         setConfigValue(session, 'locale', selected.value);
+        setLocale(selected.value);
         session.appendOutput([
           '',
-          `  [ok] Language set to: ${selected.value}`,
-          '  Some changes may require a session restart to take full effect.',
+          `  ${t('settings.messages.languageSet', { locale: selected.value })}`,
+          `  ${t('settings.messages.restartRequired')}`,
           '',
         ]);
       }

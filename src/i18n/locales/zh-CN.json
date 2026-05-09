@@ -1,0 +1,175 @@
+{
+  "output": {
+    "welcome": "欢迎回来！",
+    "error": {
+      "executionFailed": "执行失败:",
+      "detail": "详情:"
+    },
+    "result": {
+      "title": "执行完成",
+      "goal": "目标:",
+      "status": "状态:",
+      "success": "成功",
+      "partialSuccess": "部分成功",
+      "failed": "失败",
+      "duration": "耗时:",
+      "token": "Token:",
+      "cost": "成本:",
+      "taskBreakdown": "任务拆分",
+      "subtaskCount": "个子任务",
+      "artifacts": "制品:",
+      "suggestions": "建议:"
+    },
+    "taskGraph": {
+      "title": "任务拆分概览",
+      "total": "共 {{count}} 个子任务，{{layers}} 层并行",
+      "layer": "第 {{index}} 层 (可并行):"
+    },
+    "agents": {
+      "title": "已注册 Agent",
+      "empty": "暂无已注册的 Agent",
+      "id": "ID",
+      "status": "状态",
+      "load": "负载",
+      "capability": "能力"
+    },
+    "config": {
+      "title": "当前配置",
+      "llm": "LLM:",
+      "defaultModel": "默认模型:",
+      "provider": "提供商:",
+      "modelId": "模型 ID:",
+      "inputType": "输入类型:",
+      "apiKey": "API Key:",
+      "apiKeyConfigured": "***已配置***",
+      "apiKeyNotConfigured": "(未配置)",
+      "apiFormat": "API 格式:",
+      "scheduler": "调度器:",
+      "maxConcurrency": "最大并行:",
+      "maxPerAgent": "单 Agent 最大并发:",
+      "taskTimeout": "任务超时:",
+      "maxRetries": "最大重试:",
+      "cli": "CLI:",
+      "colorEnabled": "开启",
+      "colorDisabled": "关闭",
+      "debugEnabled": "开启",
+      "debugDisabled": "关闭",
+      "outputFormat": "输出格式:",
+      "uiLanguage": "UI 语言:",
+      "agents": "Agents:",
+      "minutes": "分钟"
+    },
+    "history": {
+      "title": "会话历史",
+      "empty": "暂无历史记录"
+    },
+    "status": {
+      "title": "会话状态",
+      "idle": "空闲",
+      "executing": "执行中",
+      "closing": "关闭中",
+      "state": "状态:",
+      "totalRequests": "总请求数:",
+      "success": "成功:",
+      "failure": "失败:",
+      "tokenConsumption": "Token 消耗:",
+      "totalCost": "总成本:"
+    }
+  },
+  "dialog": {
+    "footer": {
+      "search": "输入文字搜索  ·  ↑↓ 导航  ·  Enter 确认  ·  Esc 取消",
+      "normal": "k/j ↑↓ 导航  ·  / 搜索  ·  Enter 选择  ·  Esc/q 退出  ·  BS/h 返回",
+      "searchNarrow": "Enter 确认  ·  Esc 取消",
+      "normalNarrow": "↑↓=k/j  /  Enter  Esc/q  BS/h",
+      "textInput": "Enter to confirm · Esc to cancel"
+    },
+    "configView": {
+      "narrow": "q/Esc 返回",
+      "wide": "q/Esc 返回  ·  Enter/BS/h 返回菜单"
+    }
+  },
+  "settings": {
+    "mainMenu": {
+      "defaultModel": "默认模型",
+      "manageProviders": "管理提供商",
+      "viewConfig": "查看配置",
+      "language": "Language / 语言",
+      "notConfigured": "未配置",
+      "nConfigured": "已配置 {{count}} 个",
+      "noneConfigured": "未配置",
+      "displayFullConfig": "显示完整配置详情"
+    },
+    "apiKeyConfig": {
+      "useEnvVar": "使用环境变量",
+      "useEnvVarDesc": "推荐 — 更安全",
+      "enterManually": "手动输入",
+      "enterManuallyDesc": "直接输入密钥（以明文存储在 settings.json 中）",
+      "clear": "清除",
+      "clearDesc": "移除已配置的密钥"
+    },
+    "providerActions": {
+      "configureApiKey": "配置 API Key",
+      "selectModel": "选择模型",
+      "baseUrl": "Base URL",
+      "setAsDefault": "设为默认"
+    },
+    "providerEntry": {
+      "keyConfigured": "已配置密钥",
+      "noKey": "无密钥",
+      "addProvider": "添加提供商",
+      "addProviderDesc": "从已知提供商列表中选择",
+      "apiFormat": "API 格式: {{format}}",
+      "openaiCompatible": "OpenAI 兼容"
+    },
+    "addProvider": {
+      "yes": "是，立即配置 API Key",
+      "yesDesc": "前往 API Key 设置",
+      "later": "稍后",
+      "laterDesc": "返回主菜单"
+    },
+    "messages": {
+      "apiKeyCleared": "[ok] 已清除 {{provider}} 的 API Key",
+      "apiKeySetToEnv": "[ok] {{provider}} 的 API Key 已设置为环境变量 ${ {{envVar}} }",
+      "envVarNote": "请确保 {{envVar}} 已在 shell 中设置",
+      "apiKeyConfigured": "[ok] 已配置 {{provider}} 的 API Key",
+      "modelSelected": "[ok] 已选择模型: {{model}}",
+      "providerAdded": "[ok] 已添加提供商: {{provider}}",
+      "baseUrlReset": "[ok] 已重置 {{provider}} 的 Base URL 为默认值",
+      "baseUrlSet": "[ok] 已设置 {{provider}} 的 Base URL: {{url}}",
+      "defaultModelSet": "[ok] 默认模型已设置为: {{model}}",
+      "languageSet": "[ok] 语言已设置为: {{locale}}",
+      "restartRequired": "部分更改可能需要重启会话才能完全生效。",
+      "noModels": "没有可用的模型列表",
+      "configureManually": "请在 settings.json 中手动配置模型或检查提供商名称",
+      "alreadyExists": "已存在，请使用该提供商条目进行配置",
+      "configureFirst": "请先配置模型再设为默认",
+      "checkApiKeyHelpPrefix": "  提示: 请检查"
+    },
+    "cliMode": {
+      "usage": "用法:",
+      "settingsUsage": "/settings                    — 打开交互式配置菜单",
+      "listProvidersUsage": "/settings list-providers     — 列出所有已知提供商",
+      "listModelsUsage": "/settings list-models <name> — 列出提供商可用的模型",
+      "knownProviders": "已知提供商:",
+      "noModelsAvailable": "pi-ai 注册表中没有可用的模型",
+      "hintConfigureFirst": "提示: 使用 /settings 先配置此提供商",
+      "availableModels": "可用模型:"
+    },
+    "modelSelector": {
+      "notConfigured": "未配置 - Enter 设置 API Key"
+    }
+  },
+  "session": {
+    "welcome": "ZapMyco: 欢迎回来!",
+    "errorPrefix": "[错误]",
+    "agentErrorMessage": "Agent 执行失败（无详细错误信息）",
+    "noContentError": "模型未返回任何内容，请检查 API Key 配置",
+    "displayName": "Zapmyco AI 助手",
+    "editorNotFound": "未找到编辑器: {{cmd}}，请设置 $EDITOR 环境变量",
+    "editorFailed": "打开编辑器失败: {{message}}",
+    "executing": "正在执行...",
+    "setEnvVarHint": "请设置环境变量: export {{envVar}}=<your-api-key>",
+    "useConfigHint": "或在 REPL 中使用: /config set llm.providers.{{provider}}.apiKey <your-key>"
+  }
+}
