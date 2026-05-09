@@ -537,6 +537,59 @@ describe('LlmBasedAgent internal event handling', () => {
       expect(outputEvents).toHaveLength(1);
       expect(outputEvents[0]!.text).toBe('from text_delta field');
     });
+
+    it('should emit thinking for thinking_delta using delta field', async () => {
+      const { agent, outputEvents } = await setupAndCapture();
+
+      const thinkingEvents: Array<{ taskId: string; text: string }> = [];
+      agent.on('thinking', (e) => thinkingEvents.push(e));
+
+      capturedSubscriber!({
+        type: 'message_update',
+        message: {},
+        assistantMessageEvent: { type: 'thinking_delta', delta: 'hmm let me think' },
+      });
+
+      expect(outputEvents).toHaveLength(0);
+      expect(thinkingEvents).toHaveLength(1);
+      expect(thinkingEvents[0]!.text).toBe('hmm let me think');
+    });
+
+    it('should emit thinking for thinking_delta using thinking_delta field', async () => {
+      const { agent, outputEvents } = await setupAndCapture();
+
+      const thinkingEvents: Array<{ taskId: string; text: string }> = [];
+      agent.on('thinking', (e) => thinkingEvents.push(e));
+
+      capturedSubscriber!({
+        type: 'message_update',
+        message: {},
+        assistantMessageEvent: {
+          type: 'thinking_delta',
+          thinking_delta: 'from thinking_delta field',
+        },
+      });
+
+      expect(outputEvents).toHaveLength(0);
+      expect(thinkingEvents).toHaveLength(1);
+      expect(thinkingEvents[0]!.text).toBe('from thinking_delta field');
+    });
+
+    it('should not emit for unrecognized message_update type', async () => {
+      const { agent, outputEvents } = await setupAndCapture();
+
+      const thinkingEvents: Array<{ taskId: string; text: string }> = [];
+      agent.on('thinking', (e) => thinkingEvents.push(e));
+
+      capturedSubscriber!({
+        type: 'message_update',
+        message: {},
+        assistantMessageEvent: { type: 'unknown_type', delta: 'data' },
+      });
+
+      expect(outputEvents).toHaveLength(0);
+      expect(thinkingEvents).toHaveLength(0);
+    });
   });
 
   describe('tool_execution_end event', () => {
