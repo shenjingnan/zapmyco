@@ -45,6 +45,16 @@ const BLOCKED_HOSTNAMES = new Set([
 ]);
 
 /**
+ * 云元数据端点 IP（始终阻止，即使 allowPrivateNetwork=true）
+ *
+ * 这些 IP 用于访问云平台的实例元数据服务，可能泄露凭据。
+ * - 169.254.169.254: AWS EC2 / GCP / Azure / DigitalOcean 等主要云平台
+ * - 169.254.169.253: 部分云平台备用端点
+ * - 100.100.100.200: 阿里云 ECS 元数据端点
+ */
+const CLOUD_METADATA_IPS = new Set(['169.254.169.254', '169.254.169.253', '100.100.100.200']);
+
+/**
  * IPv4/IPv6 保留和特殊用途地址段 (CIDR)
  *
  * 格式: [networkAddress, prefixBits]
@@ -249,6 +259,16 @@ async function checkResolvedAddresses(
   addresses: string[],
   options: SsrfGuardOptions
 ): Promise<{ allowed: boolean; reason?: string }> {
+  // 云元数据 IP 始终阻止（即使 allowPrivateNetwork=true）
+  for (const addr of addresses) {
+    if (CLOUD_METADATA_IPS.has(addr)) {
+      return {
+        allowed: false,
+        reason: `DNS 解析到云元数据端点: ${addr}（禁止访问实例元数据服务）`,
+      };
+    }
+  }
+
   if (options.allowPrivateNetwork) {
     return { allowed: true };
   }
@@ -320,4 +340,46 @@ export async function checkUrlSafety(
   }
 
   return { allowed: true };
+}
+
+/**
+ * 检查重定向链是否安全（SSRF 防护）
+ *
+ * 在 fetch 完成（带 redirect: 'manual' 选项）后，
+ * 对每个重定向目标 URL 执行 SSRF 检查。
+ * 任一重定向目标不通过则整体不通过。
+ *
+ * @param redirectUrls - 重定向链中的 URL 列表
+ * @param options - SSRF 防护选项
+ * @returns 检查结果
+ */
+export async function checkRedirectChain(
+  redirectUrls: string[],
+  options: SsrfGuardOptions = {}
+): Promise<SsrfCheckResult> {
+  if (redirectUrls.length === 0) {
+    return { allowed: true };
+  }
+
+  for (const url of redirectUrls) {
+    const result = await checkUrlSafety(url, options);
+    if (!result.allowed) {
+      return {
+        allowed: false,
+        reason: `重定向目标被 SSRF 防护阻止: ${url} — ${result.reason}`,
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * 检查 IP 地址是否为云元数据端点
+ *
+ * 用于在 allowPrivateNetwork=true 模式下仍能阻止
+ * 对云平台实例元数据服务的访问。
+ */
+export function isCloudMetadataIp(ip: string): boolean {
+  return CLOUD_METADATA_IPS.has(ip);
 }

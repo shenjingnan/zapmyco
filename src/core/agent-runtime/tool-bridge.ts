@@ -43,7 +43,39 @@ export interface ToolRegistration {
   execute: ToolExecuteFn;
   /** 执行模式：顺序或并行 */
   executionMode?: 'sequential' | 'parallel';
+  /**
+   * 权限检查函数（可选）
+   *
+   * 在工具执行前由安全框架调用。返回风险等级和是否需要审批。
+   * 如果未提供，使用 defaultRisk 作为默认行为。
+   */
+  checkPermission?: PermissionCheckFn;
+  /** 默认风险等级（未提供 checkPermission 时使用，默认 'medium'） */
+  defaultRisk?: RiskLevel;
 }
+
+/**
+ * 权限检查函数类型
+ *
+ * @param params - 工具调用参数
+ * @returns 风险等级、是否需要审批、原因描述
+ */
+export type PermissionCheckFn = (params: Record<string, unknown>) => PermissionCheckResult;
+
+/**
+ * 权限检查结果
+ */
+export interface PermissionCheckResult {
+  /** 风险等级 */
+  risk: RiskLevel;
+  /** 是否需要用户审批 */
+  requiresApproval: boolean;
+  /** 审批或阻止的原因 */
+  reason?: string;
+}
+
+/** 风险等级 */
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
 // ============ 核心映射函数 ============
 

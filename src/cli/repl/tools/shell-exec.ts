@@ -18,6 +18,7 @@ import * as os from 'node:os';
 import { getProcessRegistry } from './process-registry';
 import {
   checkCommandSecurity,
+  checkExecPermission,
   redactSensitiveInfo,
   sanitizeEnv,
   stripAnsi,
@@ -45,6 +46,8 @@ export function createExecTool() {
       '当需要执行命令行操作时调用此工具，不要直接操作文件系统。' +
       '注意：危险命令（如 rm -rf /、shutdown 等）会被自动阻断。' +
       '长时间运行的任务请使用 background=true 在后台执行。',
+    defaultRisk: 'medium' as const,
+    checkPermission: checkExecPermission,
     parameters: {
       type: 'object',
       properties: {

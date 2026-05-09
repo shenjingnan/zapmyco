@@ -39,7 +39,9 @@ describe('file-write', () => {
 
       expect(result.content[0].text).toContain('[文件已创建]');
       expect(result.details.type).toBe('create');
-      expect(result.details.filePath).toBe(filePath);
+      // validateFilePath 使用 realpathSync 解析路径（macOS 上 /var → /private/var）
+      expect(result.details.filePath).toContain('new-file.txt');
+      expect(result.details.filePath.endsWith('/new-file.txt')).toBe(true);
       expect(result.details.contentLength).toBe(11);
 
       const fileContent = readFileContent(filePath);

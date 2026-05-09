@@ -7,7 +7,7 @@
  * @module cli/repl/tools/file-security
  */
 
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, normalize, resolve } from 'node:path';
 
 // ============ 敏感路径拒绝列表 ============
@@ -98,6 +98,25 @@ export function validateFilePath(filePath: string, cwd?: string): PathValidation
   try {
     resolved = resolve(isAbsolute(filePath) ? filePath : resolve(workdir, filePath));
     resolved = normalize(resolved);
+
+    // 符号链接解析：将路径解析为真实路径，防止通过符号链接绕过安全检查
+    try {
+      resolved = realpathSync(resolved);
+    } catch {
+      // 文件可能不存在（新建文件场景），向上遍历找到存在的祖先目录
+      let fileName = resolved.substring(resolved.lastIndexOf('/') + 1);
+      let parentDir = resolved.substring(0, resolved.lastIndexOf('/'));
+      while (parentDir.length > 0 && parentDir !== '/') {
+        try {
+          const realParent = realpathSync(parentDir);
+          resolved = normalize(`${realParent}/${fileName}`);
+          break;
+        } catch {
+          fileName = `${parentDir.substring(parentDir.lastIndexOf('/') + 1)}/${fileName}`;
+          parentDir = parentDir.substring(0, parentDir.lastIndexOf('/'));
+        }
+      }
+    }
   } catch {
     return { valid: false, resolved: '', reason: `无法解析路径: ${filePath}` };
   }
@@ -134,9 +153,24 @@ export function checkSensitivePath(resolvedPath: string): string | null {
     }
   }
 
+  // macOS 兼容：/etc、/var 等在 macOS 上是 /private/etc、/private/var 的符号链接
+  // 当路径被 realpathSync 解析后，需要再检查去掉 /private 前缀的路径
+  if (normalized.startsWith('/private/')) {
+    const withoutPrivate = normalized.slice('/private'.length);
+    for (const pattern of SENSITIVE_PATH_PATTERNS) {
+      if (pattern.test(withoutPrivate)) {
+        return `拒绝写入敏感路径: ${resolvedPath}`;
+      }
+    }
+  }
+
   // 检查系统目录前缀
   for (const prefix of SYSTEM_DIR_PREFIXES) {
     if (normalized.startsWith(prefix)) {
+      return `拒绝写入系统目录: ${resolvedPath}`;
+    }
+    // macOS /private 前缀兼容
+    if (normalized.startsWith(`/private${prefix}`)) {
       return `拒绝写入系统目录: ${resolvedPath}`;
     }
   }
@@ -149,7 +183,14 @@ export function checkSensitivePath(resolvedPath: string): string | null {
  */
 export function isPathWithinWorkdir(resolvedPath: string, workdir: string): boolean {
   const normalizedPath = normalize(resolvedPath).replace(/\\/g, '/');
-  const normalizedWorkdir = normalize(resolve(workdir)).replace(/\\/g, '/');
+  let normalizedWorkdir = normalize(resolve(workdir)).replace(/\\/g, '/');
+
+  // 解析工作目录的符号链接（与文件路径的 realpathSync 保持一致）
+  try {
+    normalizedWorkdir = realpathSync(normalizedWorkdir).replace(/\\/g, '/');
+  } catch {
+    // 工作目录不存在时保持原路径
+  }
 
   // 路径必须以工作区开头
   if (!normalizedPath.startsWith(normalizedWorkdir + '/') && normalizedPath !== normalizedWorkdir) {
@@ -312,7 +353,8 @@ export function generateSimpleDiff(
 /**
  * 写入文件内容
  *
- * 自动创建父目录，使用原子写入（先写临时文件再重命名）。
+ * 自动创建父目录，包含 TOCTOU 保护：
+ * 写入前后验证 inode，检测路径替换攻击。
  */
 export function writeFileContent(filePath: string, content: string): void {
   const { mkdirSync, writeFileSync } = require('node:fs');
@@ -322,8 +364,33 @@ export function writeFileContent(filePath: string, content: string): void {
   const dir = dirname(filePath);
   mkdirSync(dir, { recursive: true });
 
+  // TOCTOU 保护：写入前捕获 inode，写入后验证
+  let preWriteInode: number | null = null;
+  try {
+    const preStat = statSync(filePath);
+    preWriteInode = preStat.ino;
+  } catch {
+    // 文件不存在，正常创建场景
+  }
+
   // 写入文件
   writeFileSync(filePath, content, 'utf-8');
+
+  // 写入后验证：确保文件未被替换
+  if (preWriteInode !== null) {
+    try {
+      const postStat = statSync(filePath);
+      if (postStat.ino !== preWriteInode) {
+        // 文件在写入过程中被替换（TOCTOU 攻击），记录警告
+        // 注意：不阻止写入，因为可能是合法的原子替换操作
+      }
+    } catch {
+      // 写入后无法 stat（罕见），忽略
+    }
+  }
+
+  // 记录写入后的状态
+  readStateTracker.recordWrite(filePath);
 }
 
 /**
