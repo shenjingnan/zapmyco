@@ -313,6 +313,9 @@ export class ReplSession {
     // 取消正在执行的任务
     this.cancelCurrentTask();
 
+    // 停止编辑器 loading 动画（确保 setInterval 被立即清除）
+    this.editor.setExecuting(false);
+
     // 发布关闭事件
     eventBus.emit('system:shutdown', { reason });
 
@@ -330,6 +333,9 @@ export class ReplSession {
 
     // 停止 TUI
     this.tui.stop();
+
+    // 强制退出进程，确保不因残留 timer/handle 而延迟退出
+    process.exit(0);
   }
 
   /** 获取渲染器引用 */
@@ -1072,6 +1078,8 @@ export class ReplSession {
       // 空闲中：累计按键次数
       ctrlCPressCount++;
       if (ctrlCPressCount >= 2) {
+        clearTimeout(ctrlCTimer);
+        ctrlCTimer = undefined;
         void this.shutdown('用户连续按下 Ctrl+C');
         return;
       }
