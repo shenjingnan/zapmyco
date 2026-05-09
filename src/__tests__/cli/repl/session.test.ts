@@ -391,7 +391,7 @@ describe('ReplSession', () => {
     });
 
     it('应注册所有内置命令', () => {
-      expect(mockRegister).toHaveBeenCalledTimes(8);
+      expect(mockRegister).toHaveBeenCalledTimes(9);
     });
   });
 

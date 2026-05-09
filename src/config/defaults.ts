@@ -81,4 +81,13 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     maxTurns: 30,
     allowRecursiveSpawn: false,
   },
+  compaction: {
+    enabled: true,
+    autoTrigger: true,
+    thresholdPercent: 0.7,
+    protectLastMessages: 20,
+    preserveRecentTokens: 8000,
+    antiThrashEnabled: true,
+    notifyUser: true,
+  },
 };

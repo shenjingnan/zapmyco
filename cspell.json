@@ -65,7 +65,8 @@
     "moonshotai",
     "Kimi",
     "opencode",
-    "xyznonexistent"
+    "xyznonexistent",
+    "POSTAMBLE"
   ],
   "ignorePaths": [
     "node_modules",
