@@ -11,7 +11,7 @@
 import { getModels, getProviders } from '@mariozechner/pi-ai';
 import type { SelectItem, TUI } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
-import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { showConfigView, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
 import { _getByDotPath, _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import type { CommandDefinition, ReplSession } from '@/cli/repl/types';
 
@@ -345,7 +345,7 @@ async function handleInteractiveMode(
       {
         value: 'view-config',
         label: 'View Config',
-        description: 'Show current configuration in the output area',
+        description: 'Display full configuration details',
       },
     ];
 
@@ -574,8 +574,7 @@ async function handleInteractiveMode(
       }
     } else if (value === 'view-config') {
       const renderer = session.getRenderer();
-      const configLines = renderer.renderConfig(session.config);
-      session.appendOutput(configLines);
+      await showConfigView(tui, session.config, renderer);
     }
   }
 }

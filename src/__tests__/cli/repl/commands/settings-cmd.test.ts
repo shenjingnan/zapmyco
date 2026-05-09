@@ -282,12 +282,18 @@ describe('/settings command', () => {
       // Select "View Config"
       selectItem(mockTui.capturedComponents[0]!, 'view-config');
 
-      // Handler processes and shows main menu again
-      await waitForComponent(mockTui.capturedComponents, 1);
-      expect(session.appendOutput).toHaveBeenCalled();
+      // Config view overlay should appear (not appendOutput)
+      const configView = await waitForComponent(mockTui.capturedComponents, 1);
+      expect(session.appendOutput).not.toHaveBeenCalled();
+
+      // Dismiss config view (press q)
+      configView.handleInput?.('q');
+
+      // Main menu should re-appear
+      await waitForComponent(mockTui.capturedComponents, 2);
 
       // Cancel to exit
-      cancelSelection(mockTui.capturedComponents[1]!);
+      cancelSelection(mockTui.capturedComponents[2]!);
       await handlerPromise;
     });
   });

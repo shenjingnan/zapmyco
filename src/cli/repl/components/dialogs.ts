@@ -16,6 +16,8 @@ import {
   type TUI,
 } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
+import type { Renderer } from '@/cli/repl/types';
+import type { ZapmycoConfig } from '@/config/types';
 
 // ============ Constants ============
 
@@ -323,6 +325,77 @@ export function showTextInput(
       minWidth: 50,
       maxHeight: 12,
       anchor: 'top-left',
+    });
+  });
+}
+
+// ============ Config View (dismissible overlay) ============
+
+/**
+ * A simple overlay component that displays configuration text
+ * and dismisses on q/Esc/Enter/BS/h.
+ */
+class ConfigViewComponent implements Component {
+  private readonly lines: string[];
+  private onDismiss?: () => void;
+
+  constructor(config: ZapmycoConfig, renderer: Renderer) {
+    this.lines = renderer.renderConfig(config);
+  }
+
+  /** Set the dismiss callback from showConfigView */
+  setDismissCallback(cb: () => void): void {
+    this.onDismiss = cb;
+  }
+
+  handleInput(data: string): void {
+    if (
+      data === 'escape' ||
+      data === 'q' ||
+      data === 'enter' ||
+      data === 'backspace' ||
+      data === '\x7f' ||
+      data === '\b' ||
+      data === 'h'
+    ) {
+      this.onDismiss?.();
+    }
+  }
+
+  invalidate(): void {
+    // No cached state to invalidate
+  }
+
+  render(width: number): string[] {
+    if (width < 50) {
+      return [...this.lines, '', chalk.gray('  q/Esc 返回')];
+    }
+    return [
+      ...this.lines,
+      '',
+      chalk.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`),
+      chalk.gray('  q/Esc 返回  ·  Enter/BS/h 返回菜单'),
+      '',
+    ];
+  }
+}
+
+/**
+ * Show the current configuration as a dismissible overlay.
+ * Returns when the user dismisses it.
+ */
+export function showConfigView(tui: TUI, config: ZapmycoConfig, renderer: Renderer): Promise<void> {
+  return new Promise((resolve) => {
+    const component = new ConfigViewComponent(config, renderer);
+    const handle = tui.showOverlay(component, {
+      width: '100%',
+      anchor: 'top-left',
+      margin: { top: 1, bottom: 1 },
+    });
+
+    component.setDismissCallback(() => {
+      handle.hide();
+      resolve();
     });
   });
 }
