@@ -5,8 +5,9 @@
 /** 应用名称 */
 export const APP_NAME = 'zapmyco';
 
-/** 应用版本（由构建时注入，默认为 dev） */
-export const __VERSION__ = '0.0.0-dev';
+/** 应用版本（由构建时从 package.json 注入） */
+declare const __VERSION__: string;
+export const VERSION: string = __VERSION__;
 
 /** 默认最大并行任务数 */
 export const DEFAULT_MAX_PARALLELISM = 5;

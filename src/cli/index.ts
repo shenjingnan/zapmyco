@@ -16,7 +16,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { startRepl } from '@/cli/repl/index';
-import { __VERSION__, APP_NAME } from '@/infra/constants';
+import { APP_NAME, VERSION } from '@/infra/constants';
 
 // ============ 主程序 ============
 
@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name(APP_NAME)
   .description('AI 原生并行任务编排系统 -- AI 总管')
-  .version(__VERSION__, '-v, --version', '显示版本号')
+  .version(VERSION, '-v, --version', '显示版本号')
   .helpOption('-h, --help', '显示帮助信息');
 
 // 默认命令：进入 REPL 模式
