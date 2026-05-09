@@ -8,6 +8,7 @@ import type { ZapmycoConfig } from '@/config/types';
 
 /** 默认配置 */
 export const DEFAULT_CONFIG: ZapmycoConfig = {
+  locale: 'zh-CN',
   llm: {
     defaultModel: 'anthropic/claude-sonnet-4-20250514',
     providers: {
