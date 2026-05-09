@@ -227,6 +227,7 @@ export class OutputFormatter {
     lines.push(`    颜色输出: ${config.cli.color ? c.green('开启') : c.gray('关闭')}`);
     lines.push(`    调试模式: ${config.cli.debug ? c.green('开启') : c.gray('关闭')}`);
     lines.push(`    输出格式: ${config.cli.outputFormat}`);
+    lines.push(`    UI 语言: ${config.locale ?? 'zh-CN'}`);
 
     lines.push(c.bold('  Agents:'));
     for (const agent of config.agents) {

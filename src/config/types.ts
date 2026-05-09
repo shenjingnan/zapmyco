@@ -285,6 +285,9 @@ export interface CliConfig {
  * 4. 默认值（最低）
  */
 export interface ZapmycoConfig {
+  /** UI 语言设置（如 'zh-CN'、'en'） */
+  locale?: string;
+
   /** LLM 配置（新格式，基于 pi-ai 多模型） */
   llm: LlmConfig;
 

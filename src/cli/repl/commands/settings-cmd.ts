@@ -39,6 +39,12 @@ const KNOWN_PROVIDERS: { id: string; label: string; apiFormat?: string }[] = [
   { id: 'opencode', label: 'OpenCode' },
 ];
 
+/** Supported language locales */
+const SUPPORTED_LOCALES: { value: string; label: string; description: string }[] = [
+  { value: 'zh-CN', label: '简体中文', description: 'Chinese (Simplified)' },
+  { value: 'en', label: 'English', description: 'English' },
+];
+
 // ============ Config Utilities ============
 
 /** Set a dot-path value, persist to disk and hot-reload agent */
@@ -347,6 +353,11 @@ async function handleInteractiveMode(
         label: 'View Config',
         description: 'Display full configuration details',
       },
+      {
+        value: 'language',
+        label: 'Language / 语言',
+        description: String(_getByDotPath(state.current, 'locale') ?? 'zh-CN'),
+      },
     ];
 
     const choice = await showSelectList(tui, mainActions, { onExit: exitAll });
@@ -575,6 +586,25 @@ async function handleInteractiveMode(
     } else if (value === 'view-config') {
       const renderer = session.getRenderer();
       await showConfigView(tui, session.config, renderer);
+    } else if (value === 'language') {
+      const currentLocale = String(_getByDotPath(state.current, 'locale') ?? 'zh-CN');
+      const localeItems = SUPPORTED_LOCALES.map((loc) => ({
+        ...loc,
+        label: loc.value === currentLocale ? `${loc.label} ✓` : loc.label,
+      }));
+
+      const selected = await showSelectList(tui, localeItems, { onExit: exitAll });
+      if (!selected || !selected.value) continue;
+
+      if (selected.value !== currentLocale) {
+        setConfigValue(session, 'locale', selected.value);
+        session.appendOutput([
+          '',
+          `  [ok] Language set to: ${selected.value}`,
+          '  Some changes may require a session restart to take full effect.',
+          '',
+        ]);
+      }
     }
   }
 }
