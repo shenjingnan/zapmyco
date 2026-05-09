@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.7.0](https://github.com/shenjingnan/zapmyco/compare/v0.6.0...v0.7.0) (2026-05-09)
+
+### Features
+
+* API Key 缺失时交互式引导用户输入并自动重试 ([#58](https://github.com/shenjingnan/zapmyco/issues/58)) ([b00dbf5](https://github.com/shenjingnan/zapmyco/commit/b00dbf5879e34bb16bdf6df9829356d6339089c9))
+* **llm:** 实现多 AI 厂商支持与认证凭据池基础设施 ([#49](https://github.com/shenjingnan/zapmyco/issues/49)) ([f598afd](https://github.com/shenjingnan/zapmyco/commit/f598afdd13fe9442f683241de2aa7593619c1ed2))
+* **repl:** /config set 后立即生效无需重启 ([#52](https://github.com/shenjingnan/zapmyco/issues/52)) ([9dcc642](https://github.com/shenjingnan/zapmyco/commit/9dcc642cc47e2d74ebd4be7f1fd0a578bfb1aca7))
+* **repl:** 为 REPL 输出添加颜色区分并支持显示思考内容 ([#48](https://github.com/shenjingnan/zapmyco/issues/48)) ([98809da](https://github.com/shenjingnan/zapmyco/commit/98809dace3197e1c94b496769e5a63a9b5d69fdb))
+* **repl:** 支持 Ctrl+O 快捷键打开外部编辑器进行多行输入 ([#47](https://github.com/shenjingnan/zapmyco/issues/47)) ([10f1474](https://github.com/shenjingnan/zapmyco/commit/10f1474fdf6ce272aca4ea676e56636bdbae417f))
+* **repl:** 添加 /settings 交互式配置菜单 ([#53](https://github.com/shenjingnan/zapmyco/issues/53)) ([11be938](https://github.com/shenjingnan/zapmyco/commit/11be9388ba89f73605d766224310831dc526e0f4))
+* **settings:** /settings 菜单底部添加全屏操作提示 ([#56](https://github.com/shenjingnan/zapmyco/issues/56)) ([35ee0a1](https://github.com/shenjingnan/zapmyco/commit/35ee0a121f64bf4bbf1a9f34fa10188c1ac9ce15))
+* **settings:** /settings 默认模型菜单展示所有 pi-ai 模型并支持 / 搜索 ([#57](https://github.com/shenjingnan/zapmyco/issues/57)) ([c54954d](https://github.com/shenjingnan/zapmyco/commit/c54954d4d73101279863b3dd91a72e0cbf9493e7))
+* **settings:** 为 /settings 添加 h/l 键盘导航 ([#59](https://github.com/shenjingnan/zapmyco/issues/59)) ([8189404](https://github.com/shenjingnan/zapmyco/commit/8189404f674513a96c81648e9eac7f994467dbda))
+* **settings:** 调整 /settings 键盘导航 — q/esc 退出，backspace/h 返回 ([#61](https://github.com/shenjingnan/zapmyco/issues/61)) ([fe5029c](https://github.com/shenjingnan/zapmyco/commit/fe5029c708c2481eecf913ddeff74eec0af013b3))
+
+### Bug Fixes
+
+* **repl:** 修复 SelectList 中 j/k 键无法上下导航的问题 ([#54](https://github.com/shenjingnan/zapmyco/issues/54)) ([dfab74c](https://github.com/shenjingnan/zapmyco/commit/dfab74c276a2b8790729f94f1421c0b1b29df481))
+* **settings:** /settings 菜单显示位置从居中改为左上角 ([#55](https://github.com/shenjingnan/zapmyco/issues/55)) ([0eccc55](https://github.com/shenjingnan/zapmyco/commit/0eccc550efd74446ba3c6dbadd77dc64d627ff1b))
+* **settings:** View Config 改为 overlay 内展示，修复内容被菜单遮挡问题 ([#62](https://github.com/shenjingnan/zapmyco/issues/62)) ([7f91670](https://github.com/shenjingnan/zapmyco/commit/7f916701831eee83325cfb96d3c0a72b92ce2a11))
+
+### Code Refactoring
+
+* **config:** LLM 配置结构重构：将 models 嵌套到 providers 中 ([#51](https://github.com/shenjingnan/zapmyco/issues/51)) ([c99fdef](https://github.com/shenjingnan/zapmyco/commit/c99fdef6ece6e277c6db72179fd696b47614b4c7))
+* **config:** 将用户家目录配置文件从 zapmyco.json 重命名为 settings.json ([#50](https://github.com/shenjingnan/zapmyco/issues/50)) ([0eb1a68](https://github.com/shenjingnan/zapmyco/commit/0eb1a68133cb8398202026592af3a3ffb5ff5f87))
+* **settings:** 将 Provider 列表合并为 Manage Providers 子菜单 ([#60](https://github.com/shenjingnan/zapmyco/issues/60)) ([a2ae172](https://github.com/shenjingnan/zapmyco/commit/a2ae17230758e86f176266dc13ec6fbb13e628a0))
+
 ## [0.6.0](https://github.com/shenjingnan/zapmyco/compare/v0.5.0...v0.6.0) (2026-05-07)
 
 ### Features
