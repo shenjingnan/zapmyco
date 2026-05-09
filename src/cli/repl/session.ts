@@ -56,6 +56,7 @@ import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
 import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
+import { setLocale, t } from '@/i18n';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';
@@ -75,8 +76,8 @@ function getApiKeyErrorHelp(errorMessage: string): string[] {
 
   return [
     '',
-    chalk.yellow(`  请设置环境变量: export ${envVarName}=<your-api-key>`),
-    chalk.yellow(`  或在 REPL 中使用: /config set llm.providers.${providerName}.apiKey <your-key>`),
+    chalk.yellow(`  ${t('session.setEnvVarHint', { envVar: envVarName })}`),
+    chalk.yellow(`  ${t('session.useConfigHint', { provider: providerName })}`),
   ];
 }
 
@@ -288,8 +289,11 @@ export class ReplSession {
     this._state = 'idle';
     this.updateStatsState();
 
+    // 初始化 i18n 语言设置
+    setLocale(this.config.locale ?? 'zh-CN');
+
     // 渲染简化的欢迎信息
-    this.outputArea.append(['ZapMyco: 欢迎回来!', '']);
+    this.outputArea.append([t('session.welcome'), '']);
 
     // 启动 TUI
     this.tui.start();
@@ -535,8 +539,10 @@ export class ReplSession {
           this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputText));
         } else if (taskResult.status !== 'success') {
           // 无输出 + 失败状态 → 显示错误
-          const errorMsg = taskResult.error?.message ?? 'Agent 执行失败（无详细错误信息）';
-          this.outputArea.replaceLastLine(chalk.red(`ZapMyco: [错误] ${errorMsg}`));
+          const errorMsg = taskResult.error?.message ?? t('session.agentErrorMessage');
+          this.outputArea.replaceLastLine(
+            chalk.red(`ZapMyco: ${t('session.errorPrefix')} ${errorMsg}`)
+          );
           const helpLines = getApiKeyErrorHelp(errorMsg);
           if (helpLines.length > 0) {
             this.outputArea.append(helpLines);
@@ -598,17 +604,17 @@ export class ReplSession {
         } else {
           // 无输出但状态为成功 → 可能是 API Key 等配置问题
           this.outputArea.replaceLastLine(
-            chalk.red('ZapMyco: [错误] 模型未返回任何内容，请检查 API Key 配置')
+            chalk.red(`ZapMyco: ${t('session.errorPrefix')} ${t('session.noContentError')}`)
           );
         }
       }
 
       if (taskResult.status !== 'success') {
         // Agent 返回 failure：渲染详细错误信息（如果 spinner 已处理则只追加详情）
-        const errorMsg = taskResult.error?.message ?? 'Agent 执行失败（无详细错误信息）';
+        const errorMsg = taskResult.error?.message ?? t('session.agentErrorMessage');
         if (!spinnerActive || outputText) {
           // spinner 未处理此错误（已收到输出后才失败的情况）
-          this.outputArea.appendText(`[错误] ${errorMsg}`);
+          this.outputArea.appendText(`${t('session.errorPrefix')} ${errorMsg}`);
         }
         log.error('Agent 执行返回 failure', {
           taskId,
@@ -685,7 +691,9 @@ export class ReplSession {
       });
 
       // 渲染错误到输出区域（替换 spinner 行 + 追加错误详情）
-      this.outputArea.replaceLastLine(responseStyle(`${ZAPMYCO_PREFIX}[错误] ${err.message}`));
+      this.outputArea.replaceLastLine(
+        responseStyle(`${ZAPMYCO_PREFIX}${t('session.errorPrefix')} ${err.message}`)
+      );
       const helpLines = getApiKeyErrorHelp(err.message);
       if (helpLines.length > 0) {
         this.outputArea.append(helpLines);
@@ -881,7 +889,7 @@ export class ReplSession {
   private createReplAgent(): LlmBasedAgent {
     const agent = createLlmBasedAgent({
       agentId: 'repl-chat-agent',
-      displayName: 'Zapmyco AI 助手',
+      displayName: t('session.displayName'),
       capabilities: [
         {
           id: 'chat',
@@ -1146,14 +1154,14 @@ export class ReplSession {
       if (result.error) {
         const err = result.error as NodeJS.ErrnoException;
         if (err.code === 'ENOENT') {
-          this.outputArea.append(['', `未找到编辑器: ${editorCmd}，请设置 $EDITOR 环境变量`, '']);
+          this.outputArea.append(['', t('session.editorNotFound', { cmd: editorCmd }), '']);
         } else {
           this.outputArea.append(['', `编辑器启动失败: ${err.message}`, '']);
         }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.outputArea.append(['', `打开编辑器失败: ${message}`, '']);
+      this.outputArea.append(['', t('session.editorFailed', { message }), '']);
     } finally {
       if (tuiStopped) {
         this.tui.start();

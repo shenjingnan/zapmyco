@@ -10,6 +10,7 @@ import type { HistoryEntry } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
+import { t } from '@/i18n';
 import type { AgentRegistration } from '@/protocol/capability';
 
 /**
@@ -39,7 +40,7 @@ export class OutputFormatter {
       '',
       `  🍄 ${c.bold(`zapmyco@${version}`)}`,
       '',
-      '  欢迎回来！',
+      `  ${t('output.welcome')}`,
       '',
       c.gray('─'.repeat(90)),
       '',
@@ -56,10 +57,10 @@ export class OutputFormatter {
     if (zapmycoError.code) {
       lines.push(`${c.red.bold(`  ✗ [${zapmycoError.code}]`)} ${error.message}`);
       if (zapmycoError.context && Object.keys(zapmycoError.context).length > 0) {
-        lines.push(c.gray(`  详情: ${JSON.stringify(zapmycoError.context)}`));
+        lines.push(c.gray(`  ${t('output.error.detail')} ${JSON.stringify(zapmycoError.context)}`));
       }
     } else {
-      lines.push(`${c.red.bold('  ✗ 执行失败:')} ${error.message}`);
+      lines.push(`${c.red.bold(`  ✗ ${t('output.error.executionFailed')}`)} ${error.message}`);
     }
 
     lines.push('');
@@ -79,23 +80,25 @@ export class OutputFormatter {
     const lines: string[] = [
       '',
       c.gray('  ┌────────────────────────────────────────────┐'),
-      `  │  ${statusIcon}  ${c.bold('执行完成')}`,
+      `  │  ${statusIcon}  ${c.bold(t('output.result.title'))}`,
       c.gray('  ├────────────────────────────────────────────┤'),
-      `  │  ${c.gray('目标:')} ${result.summary.slice(0, 40)}`,
-      `  │  ${c.gray('状态:')} ${
+      `  │  ${c.gray(t('output.result.goal'))} ${result.summary.slice(0, 40)}`,
+      `  │  ${c.gray(t('output.result.status'))} ${
         result.overallStatus === 'success'
-          ? c.green('成功')
+          ? c.green(t('output.result.success'))
           : result.overallStatus === 'partial-failure'
-            ? c.yellow('部分成功')
-            : c.red('失败')
+            ? c.yellow(t('output.result.partialSuccess'))
+            : c.red(t('output.result.failed'))
       }`,
-      `  │  ${c.gray('耗时:')} ${(result.totalDuration / 1000).toFixed(1)}s  ·  ${c.gray('Token:')} ${result.totalTokenUsage.totalTokens.toLocaleString()}`,
-      `  │  ${c.gray('成本:')} $${result.totalTokenUsage.estimatedCostUsd.toFixed(4)}`,
+      `  │  ${c.gray(t('output.result.duration'))} ${(result.totalDuration / 1000).toFixed(1)}s  ·  ${c.gray(t('output.result.token'))} ${result.totalTokenUsage.totalTokens.toLocaleString()}`,
+      `  │  ${c.gray(t('output.result.cost'))} $${result.totalTokenUsage.estimatedCostUsd.toFixed(4)}`,
     ];
 
     if (result.taskResults.length > 0) {
       lines.push(c.gray('  ├────────────────────────────────────────────┤'));
-      lines.push(`  │  ${c.bold('任务拆分')} (${result.taskResults.length} 个子任务):`);
+      lines.push(
+        `  │  ${c.bold(t('output.result.taskBreakdown'))} (${result.taskResults.length} ${t('output.result.subtaskCount')}):`
+      );
       for (const tr of result.taskResults) {
         const icon =
           tr.status === 'success'
@@ -109,7 +112,7 @@ export class OutputFormatter {
 
     if (result.allArtifacts.length > 0) {
       lines.push(c.gray('  ├────────────────────────────────────────────┤'));
-      lines.push(`  │  ${c.bold('制品:')}`);
+      lines.push(`  │  ${c.bold(t('output.result.artifacts'))}`);
       for (const artifact of result.allArtifacts) {
         const icon = artifact.type === 'pull-request' ? '🔗' : '📄';
         lines.push(`  │    ${icon} ${artifact.description} (${artifact.reference})`);
@@ -118,7 +121,7 @@ export class OutputFormatter {
 
     if (result.nextSteps && result.nextSteps.length > 0) {
       lines.push(c.gray('  ├────────────────────────────────────────────┤'));
-      lines.push(`  │  ${c.bold('建议:')}`);
+      lines.push(`  │  ${c.bold(t('output.result.suggestions'))}`);
       for (let i = 0; i < result.nextSteps.length; i++) {
         lines.push(`  │    ${i + 1}. ${result.nextSteps[i]}`);
       }
@@ -134,15 +137,17 @@ export class OutputFormatter {
     const c = this.getColor();
     const lines: string[] = [
       '',
-      c.bold('  📋 任务拆分概览'),
-      c.gray(`  共 ${graph.nodes.size} 个子任务，${graph.layers.length} 层并行`),
+      c.bold(`  📋 ${t('output.taskGraph.title')}`),
+      c.gray(
+        `  ${t('output.taskGraph.total', { count: graph.nodes.size, layers: graph.layers.length })}`
+      ),
       '',
     ];
 
     for (let layerIdx = 0; layerIdx < graph.layers.length; layerIdx++) {
       const layer = graph.layers[layerIdx];
       if (!layer) continue;
-      lines.push(c.gray(`  第 ${layerIdx + 1} 层 (可并行):`));
+      lines.push(c.gray(`  ${t('output.taskGraph.layer', { index: layerIdx + 1 })}`));
       for (const taskId of layer) {
         const task = graph.nodes.get(taskId);
         if (task) {
@@ -159,16 +164,16 @@ export class OutputFormatter {
   /** 格式化 Agent 列表 */
   formatAgents(agents: AgentRegistration[]): string[] {
     const c = this.getColor();
-    const lines: string[] = ['', c.bold('  🤖 已注册 Agent'), ''];
+    const lines: string[] = ['', c.bold(`  🤖 ${t('output.agents.title')}`), ''];
 
     if (agents.length === 0) {
-      lines.push(c.gray('  暂无已注册的 Agent'));
+      lines.push(c.gray(`  ${t('output.agents.empty')}`));
       lines.push('');
       return lines;
     }
 
     lines.push(
-      `  ${c.bold('ID').padEnd(20)} ${c.bold('状态').padEnd(10)} ${c.bold('负载').padEnd(8)} ${c.bold('能力')}`
+      `  ${c.bold(t('output.agents.id')).padEnd(20)} ${c.bold(t('output.agents.status')).padEnd(10)} ${c.bold(t('output.agents.load')).padEnd(8)} ${c.bold(t('output.agents.capability'))}`
     );
     lines.push(c.gray(`  ${'─'.repeat(60)}`));
 
@@ -193,9 +198,14 @@ export class OutputFormatter {
   /** 格式化配置信息 */
   formatConfig(config: ZapmycoConfig): string[] {
     const c = this.getColor();
-    const lines: string[] = ['', c.bold('  ⚙️  当前配置'), '', c.bold('  LLM:')];
+    const lines: string[] = [
+      '',
+      c.bold(`  ⚙️  ${t('output.config.title')}`),
+      '',
+      c.bold(`  ${t('output.config.llm')}`),
+    ];
 
-    lines.push(`    默认模型: ${config.llm.defaultModel}`);
+    lines.push(`    ${t('output.config.defaultModel')} ${config.llm.defaultModel}`);
     // 解析 defaultModel 获取 provider 和 model 名称
     const defaultModelKey = config.llm.defaultModel;
     const slashIdx = defaultModelKey.indexOf('/');
@@ -203,33 +213,39 @@ export class OutputFormatter {
     const defaultModelName = slashIdx > 0 ? defaultModelKey.slice(slashIdx + 1) : defaultModelKey;
     const providerConfig = config.llm.providers[defaultProvider];
     const modelConfig = providerConfig?.models?.[defaultModelName];
-    lines.push(`    提供商: ${defaultProvider}`);
+    lines.push(`    ${t('output.config.provider')} ${defaultProvider}`);
     // 模型 ID：优先从配置读取，否则使用模型名（pi-ai 自动推断）
-    lines.push(`    模型 ID: ${modelConfig?.id ?? defaultModelName}`);
+    lines.push(`    ${t('output.config.modelId')} ${modelConfig?.id ?? defaultModelName}`);
     if (modelConfig?.input && modelConfig.input.length > 0) {
-      lines.push(`    输入类型: ${modelConfig.input.join(', ')}`);
+      lines.push(`    ${t('output.config.inputType')} ${modelConfig.input.join(', ')}`);
     }
     lines.push(
-      `    API Key: ${providerConfig?.apiKey ? c.gray('***已配置***') : c.red('(未配置)')}`
+      `    ${t('output.config.apiKey')} ${providerConfig?.apiKey ? c.gray(t('output.config.apiKeyConfigured')) : c.red(t('output.config.apiKeyNotConfigured'))}`
     );
     // API 格式从 pi-ai 自动推断，仅当用户显式配置时显示
     if (providerConfig?.apiFormat) {
-      lines.push(`    API 格式: ${providerConfig.apiFormat}`);
+      lines.push(`    ${t('output.config.apiFormat')} ${providerConfig.apiFormat}`);
     }
 
-    lines.push(c.bold('  调度器:'));
-    lines.push(`    最大并行: ${config.scheduler.maxConcurrency}`);
-    lines.push(`    单 Agent 最大并发: ${config.scheduler.maxPerAgent}`);
-    lines.push(`    任务超时: ${(config.scheduler.taskTimeoutMs / 1000 / 60).toFixed(0)} 分钟`);
-    lines.push(`    最大重试: ${config.scheduler.maxRetries}`);
+    lines.push(c.bold(`  ${t('output.config.scheduler')}`));
+    lines.push(`    ${t('output.config.maxConcurrency')} ${config.scheduler.maxConcurrency}`);
+    lines.push(`    ${t('output.config.maxPerAgent')} ${config.scheduler.maxPerAgent}`);
+    lines.push(
+      `    ${t('output.config.taskTimeout')} ${(config.scheduler.taskTimeoutMs / 1000 / 60).toFixed(0)} ${t('output.config.minutes')}`
+    );
+    lines.push(`    ${t('output.config.maxRetries')} ${config.scheduler.maxRetries}`);
 
-    lines.push(c.bold('  CLI:'));
-    lines.push(`    颜色输出: ${config.cli.color ? c.green('开启') : c.gray('关闭')}`);
-    lines.push(`    调试模式: ${config.cli.debug ? c.green('开启') : c.gray('关闭')}`);
-    lines.push(`    输出格式: ${config.cli.outputFormat}`);
-    lines.push(`    UI 语言: ${config.locale ?? 'zh-CN'}`);
+    lines.push(c.bold(`  ${t('output.config.cli')}`));
+    lines.push(
+      `    ${t('output.config.colorEnabled')}: ${config.cli.color ? c.green(t('output.config.colorEnabled')) : c.gray(t('output.config.colorDisabled'))}`
+    );
+    lines.push(
+      `    ${t('output.config.debugEnabled')}: ${config.cli.debug ? c.green(t('output.config.debugEnabled')) : c.gray(t('output.config.debugDisabled'))}`
+    );
+    lines.push(`    ${t('output.config.outputFormat')} ${config.cli.outputFormat}`);
+    lines.push(`    ${t('output.config.uiLanguage')} ${config.locale ?? 'zh-CN'}`);
 
-    lines.push(c.bold('  Agents:'));
+    lines.push(c.bold(`  ${t('output.config.agents')}`));
     for (const agent of config.agents) {
       const statusIcon = agent.enabled ? c.green('✓') : c.gray('✗');
       lines.push(`    ${statusIcon} ${agent.id}`);
@@ -242,10 +258,10 @@ export class OutputFormatter {
   /** 格式化历史记录 */
   formatHistory(entries: HistoryEntry[]): string[] {
     const c = this.getColor();
-    const lines: string[] = ['', c.bold('  📜 会话历史'), ''];
+    const lines: string[] = ['', c.bold(`  📜 ${t('output.history.title')}`), ''];
 
     if (entries.length === 0) {
-      lines.push(c.gray('  暂无历史记录'));
+      lines.push(c.gray(`  ${t('output.history.empty')}`));
       lines.push('');
       return lines;
     }
@@ -277,23 +293,25 @@ export class OutputFormatter {
     state: string;
   }): string[] {
     const c = this.getColor();
-    const lines: string[] = ['', c.bold('  📊 会话状态'), ''];
+    const lines: string[] = ['', c.bold(`  📊 ${t('output.status.title')}`), ''];
 
     const stateLabel =
       stats.state === 'idle'
-        ? c.green('空闲')
+        ? c.green(t('output.status.idle'))
         : stats.state === 'executing'
-          ? c.magenta('执行中')
-          : c.gray('关闭中');
+          ? c.magenta(t('output.status.executing'))
+          : c.gray(t('output.status.closing'));
 
-    lines.push(`  状态:       ${stateLabel}`);
-    lines.push(`  总请求数:   ${stats.totalRequests}`);
-    lines.push(`  成功:       ${c.green(String(stats.successCount))}`);
+    lines.push(`  ${t('output.status.state').padEnd(10)} ${stateLabel}`);
+    lines.push(`  ${t('output.status.totalRequests').padEnd(10)} ${stats.totalRequests}`);
+    lines.push(`  ${t('output.status.success').padEnd(10)} ${c.green(String(stats.successCount))}`);
     lines.push(
-      `  失败:       ${stats.failureCount > 0 ? c.red(String(stats.failureCount)) : String(stats.failureCount)}`
+      `  ${t('output.status.failure').padEnd(10)} ${stats.failureCount > 0 ? c.red(String(stats.failureCount)) : String(stats.failureCount)}`
     );
-    lines.push(`  Token 消耗: ${stats.totalTokens.toLocaleString()}`);
-    lines.push(`  总成本:     $${stats.totalCostUsd.toFixed(4)}`);
+    lines.push(
+      `  ${t('output.status.tokenConsumption').padEnd(10)} ${stats.totalTokens.toLocaleString()}`
+    );
+    lines.push(`  ${t('output.status.totalCost').padEnd(10)} $${stats.totalCostUsd.toFixed(4)}`);
     lines.push('');
     return lines;
   }

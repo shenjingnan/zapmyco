@@ -18,6 +18,7 @@ import {
 import chalk from 'chalk';
 import type { Renderer } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
+import { t } from '@/i18n';
 
 // ============ Constants ============
 
@@ -178,17 +179,15 @@ class SelectListWithFooter implements Component {
     if (width >= 50) {
       lines.push(chalk.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`));
       if (this.isFiltering) {
-        lines.push(chalk.gray('  输入文字搜索  ·  ↑↓ 导航  ·  Enter 确认  ·  Esc 取消'));
+        lines.push(chalk.gray(`  ${t('dialog.footer.search')}`));
       } else {
-        lines.push(
-          chalk.gray('  k/j ↑↓ 导航  ·  / 搜索  ·  Enter 选择  ·  Esc/q 退出  ·  BS/h 返回')
-        );
+        lines.push(chalk.gray(`  ${t('dialog.footer.normal')}`));
       }
     } else {
       if (this.isFiltering) {
-        lines.push(chalk.gray('  Enter 确认  ·  Esc 取消'));
+        lines.push(chalk.gray(`  ${t('dialog.footer.searchNarrow')}`));
       } else {
-        lines.push(chalk.gray('  ↑↓=k/j  /  Enter  Esc/q  BS/h'));
+        lines.push(chalk.gray(`  ${t('dialog.footer.normalNarrow')}`));
       }
     }
     lines.push('');
@@ -287,7 +286,7 @@ class TextInputComponent implements Component {
       `  ${this.input.render(width - 4)[0] ?? ''}`,
       c.gray(`  ${'─'.repeat(Math.min(width - 4, 50))}`),
       '',
-      c.gray('  Enter to confirm · Esc to cancel'),
+      c.gray(`  ${t('dialog.footer.textInput')}`),
       '',
     ];
   }
@@ -368,13 +367,13 @@ class ConfigViewComponent implements Component {
 
   render(width: number): string[] {
     if (width < 50) {
-      return [...this.lines, '', chalk.gray('  q/Esc 返回')];
+      return [...this.lines, '', chalk.gray(`  ${t('dialog.configView.narrow')}`)];
     }
     return [
       ...this.lines,
       '',
       chalk.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`),
-      chalk.gray('  q/Esc 返回  ·  Enter/BS/h 返回菜单'),
+      chalk.gray(`  ${t('dialog.configView.wide')}`),
       '',
     ];
   }
