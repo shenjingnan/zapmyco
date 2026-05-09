@@ -6,11 +6,9 @@
  * @packageDocumentation
  */
 
-// __VERSION__ 由 tsdown 构建时从 package.json 注入
-import { __VERSION__ } from '@/infra/constants';
+import { VERSION } from '@/infra/constants';
 
-/** 当前版本号 */
-export const VERSION: string = __VERSION__;
+export { VERSION };
 
 /** 应用名称 */
 export const APP_NAME = 'zapmyco';
