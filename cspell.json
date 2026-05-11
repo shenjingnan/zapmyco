@@ -78,7 +78,10 @@
     "xyzabcde",
     "AIza",
     "SyD",
-    "spawnable"
+    "spawnable",
+    "worktree",
+    "Worktree",
+    "Worktrees"
   ],
   "ignorePaths": [
     "node_modules",

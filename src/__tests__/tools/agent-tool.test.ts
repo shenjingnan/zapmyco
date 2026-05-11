@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentTool } from '@/cli/repl/tools/agent-tool';
 import type { SubAgentConfig } from '@/config/types';
+import {
+  getBackgroundAgentManager,
+  resetBackgroundAgentManager,
+} from '@/core/agent-team/agent-background-manager';
 import { resetAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
 import { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
 import {
@@ -56,6 +60,7 @@ describe('createAgentTool', () => {
   beforeEach(() => {
     resetAgentTypeRegistry();
     resetAgentInstanceManager();
+    resetBackgroundAgentManager();
     getAgentTypeRegistry().register(generalPurposeType);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,6 +82,7 @@ describe('createAgentTool', () => {
     ] as any;
 
     orchestrator = new AgentOrchestrator(teamConfig, flatConfig, parentAgent, mockTools);
+    getBackgroundAgentManager().setOrchestrator(orchestrator);
   });
 
   describe('tool registration', () => {
@@ -103,7 +109,7 @@ describe('createAgentTool', () => {
   });
 
   describe('execute', () => {
-    it('should reject run_in_background mode', async () => {
+    it('should launch background agent when run_in_background is true', async () => {
       const tool = createAgentTool(orchestrator);
       const result = await tool.execute('call-1', {
         subagent_type: 'general-purpose',
@@ -111,7 +117,10 @@ describe('createAgentTool', () => {
         run_in_background: true,
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('后续版本中支持');
+      expect((result.content?.[0] as any)?.text).toContain('已作为后台任务启动');
+      const details = result.details as { taskId: string; instanceId: string; status: string };
+      expect(details.status).toBe('async_launched');
+      expect(details.taskId).toBeDefined();
     });
 
     it('should spawn worker via subagent_type', async () => {
