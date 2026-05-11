@@ -199,8 +199,10 @@ describe('DoomLoopDetector', () => {
       expect(stats).toHaveProperty('consecutiveFailures');
       expect(stats).toHaveProperty('consecutiveSameCall');
       expect(stats).toHaveProperty('recentCallCount');
+      expect(stats).toHaveProperty('totalTriggers');
       expect(stats.consecutiveFailures).toBe(0);
       expect(stats.consecutiveSameCall).toBe(0);
+      expect(stats.totalTriggers).toBe(0);
     });
 
     it('调用后统计应该更新', () => {
@@ -209,6 +211,71 @@ describe('DoomLoopDetector', () => {
       const stats = detector.getStats();
       expect(stats.recentCallCount).toBe(1);
       expect(stats.consecutiveSameCall).toBe(1);
+    });
+  });
+
+  // ============ totalTriggers ============
+  describe('totalTriggers', () => {
+    it('初始化时 totalTriggers 应为 0', () => {
+      const detector = new DoomLoopDetector();
+      expect(detector.getStats().totalTriggers).toBe(0);
+    });
+
+    it('重复调用触发后 totalTriggers 应增加', () => {
+      const detector = new DoomLoopDetector({ maxRepeatedCalls: 2 });
+      detector.recordCall('Exec', { command: 'ls' });
+      // 第 2 次相同调用触发 first detection
+      detector.recordCall('Exec', { command: 'ls' });
+      expect(detector.getStats().totalTriggers).toBe(1);
+      // 第 3 次继续触发
+      detector.recordCall('Exec', { command: 'ls' });
+      expect(detector.getStats().totalTriggers).toBe(2);
+    });
+
+    it('连续失败触发后 totalTriggers 应增加', () => {
+      const detector = new DoomLoopDetector({ maxConsecutiveFailures: 2 });
+      detector.recordResult(false);
+      // 第 2 次连续失败触发
+      detector.recordResult(false);
+      expect(detector.getStats().totalTriggers).toBe(1);
+      // 第 3 次继续触发
+      detector.recordResult(false);
+      expect(detector.getStats().totalTriggers).toBe(2);
+    });
+
+    it('速率限制触发后 totalTriggers 应增加', () => {
+      const detector = new DoomLoopDetector({ maxCallsPerWindow: 3, rateWindowSec: 60 });
+      // 第 1-3 次在窗口内，未超限
+      for (let i = 0; i < 3; i++) {
+        detector.recordCall(`Tool${i}`, { index: i });
+      }
+      expect(detector.getStats().totalTriggers).toBe(0);
+      // 第 4-5 次超过 3 的上限，每次都触发
+      detector.recordCall('Tool4', { index: 4 });
+      expect(detector.getStats().totalTriggers).toBe(1);
+      detector.recordCall('Tool5', { index: 5 });
+      expect(detector.getStats().totalTriggers).toBe(2);
+    });
+
+    it('多次触发应累计 totalTriggers', () => {
+      const detector = new DoomLoopDetector({ maxRepeatedCalls: 2, maxConsecutiveFailures: 2 });
+      // 触发 1 次重复调用
+      detector.recordCall('Exec', { command: 'rm' });
+      detector.recordCall('Exec', { command: 'rm' });
+      expect(detector.getStats().totalTriggers).toBe(1);
+      // 触发 1 次连续失败
+      detector.recordResult(false);
+      detector.recordResult(false);
+      expect(detector.getStats().totalTriggers).toBe(2);
+    });
+
+    it('reset 应该将 totalTriggers 归零', () => {
+      const detector = new DoomLoopDetector({ maxRepeatedCalls: 2 });
+      detector.recordCall('Exec', { command: 'ls' });
+      detector.recordCall('Exec', { command: 'ls' });
+      expect(detector.getStats().totalTriggers).toBe(1);
+      detector.reset();
+      expect(detector.getStats().totalTriggers).toBe(0);
     });
   });
 
