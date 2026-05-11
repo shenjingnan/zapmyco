@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_AGENT_TYPES,
   coderType,
+  coordinatorType,
   generalPurposeType,
   plannerType,
   researcherType,
@@ -10,8 +11,8 @@ import {
 
 describe('builtin agent types', () => {
   describe('BUILTIN_AGENT_TYPES', () => {
-    it('should contain 5 types', () => {
-      expect(BUILTIN_AGENT_TYPES).toHaveLength(5);
+    it('should contain 6 types', () => {
+      expect(BUILTIN_AGENT_TYPES).toHaveLength(6);
     });
 
     it('should have unique typeIds', () => {
@@ -29,6 +30,59 @@ describe('builtin agent types', () => {
       for (const t of BUILTIN_AGENT_TYPES) {
         expect(t.whenToUse.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe('coordinator', () => {
+    it('should be a coordinator role', () => {
+      expect(coordinatorType.typeId).toBe('coordinator');
+      expect(coordinatorType.role).toBe('coordinator');
+    });
+
+    it('should have full tool policy (coordinator filter applied by factory)', () => {
+      expect(coordinatorType.toolPolicy).toEqual({ mode: 'full' });
+    });
+
+    it('should be able to spawn two levels', () => {
+      expect(coordinatorType.maxSpawnDepth).toBe(2);
+    });
+
+    it('should have orchestration capabilities', () => {
+      const capIds = coordinatorType.capabilities.map((c) => c.id);
+      expect(capIds).toContain('task-decomposition');
+      expect(capIds).toContain('agent-orchestration');
+      expect(capIds).toContain('result-synthesis');
+      expect(capIds).toContain('team-coordination');
+    });
+
+    it('should have inherit permission mode', () => {
+      expect(coordinatorType.permissionMode).toBe('inherit');
+    });
+
+    it('should generate system prompt with orchestration focus', () => {
+      const prompt = coordinatorType.getSystemPrompt({
+        taskDescription: 'Build a full-stack app',
+        workdir: '/project',
+      });
+      expect(prompt).toContain('协调者');
+      expect(prompt).toContain('Build a full-stack app');
+      expect(prompt).toContain('AgentTool');
+      expect(prompt).toContain('researcher');
+      expect(prompt).toContain('coder');
+      expect(prompt).toContain('不亲自执行');
+    });
+
+    it('should include context when provided', () => {
+      const prompt = coordinatorType.getSystemPrompt({
+        taskDescription: 'Orchestrate task',
+        workdir: '/tmp',
+        context: 'Project uses React + Node.js',
+      });
+      expect(prompt).toContain('Project uses React + Node.js');
+    });
+
+    it('should be the first type in BUILTIN_AGENT_TYPES', () => {
+      expect(BUILTIN_AGENT_TYPES[0]?.typeId).toBe('coordinator');
     });
   });
 

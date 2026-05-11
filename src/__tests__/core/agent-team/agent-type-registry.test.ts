@@ -44,9 +44,9 @@ describe('AgentTypeRegistry', () => {
   });
 
   describe('builtin types loading', () => {
-    it('should load 5 builtin types on construction', () => {
+    it('should load 6 builtin types on construction', () => {
       const registry = new AgentTypeRegistry();
-      expect(registry.size).toBe(5);
+      expect(registry.size).toBe(6);
     });
 
     it('should have all expected builtin typeIds', () => {
@@ -66,7 +66,7 @@ describe('AgentTypeRegistry', () => {
       registry.register(customType);
 
       expect(registry.has('custom-type')).toBe(true);
-      expect(registry.size).toBe(6);
+      expect(registry.size).toBe(7);
     });
 
     it('should override existing type with same typeId', () => {
@@ -113,7 +113,7 @@ describe('AgentTypeRegistry', () => {
       expect(registry.has('type-a')).toBe(true);
       expect(registry.has('type-b')).toBe(true);
       expect(registry.has('type-c')).toBe(true);
-      expect(registry.size).toBe(8); // 5 builtin + 3 custom
+      expect(registry.size).toBe(9); // 6 builtin + 3 custom
     });
   });
 
@@ -122,7 +122,7 @@ describe('AgentTypeRegistry', () => {
       const registry = new AgentTypeRegistry();
       expect(registry.unregister('coder')).toBe(true);
       expect(registry.has('coder')).toBe(false);
-      expect(registry.size).toBe(4);
+      expect(registry.size).toBe(5);
     });
 
     it('should return false for non-existent type', () => {
@@ -149,7 +149,7 @@ describe('AgentTypeRegistry', () => {
     it('should list all non-hidden types', () => {
       const registry = new AgentTypeRegistry();
       const types = registry.list();
-      expect(types.length).toBe(5);
+      expect(types.length).toBe(6);
     });
 
     it('should exclude hidden types', () => {
