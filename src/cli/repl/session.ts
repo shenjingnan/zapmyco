@@ -448,7 +448,7 @@ export class ReplSession {
       recentBlocks,
       stats: {
         ...auditStats,
-        doomLoopTriggers: 0, // DoomLoopDetector 未暴露统计接口
+        doomLoopTriggers: this.agent.doomLoop.getStats().totalTriggers,
       },
       recommendations,
     };

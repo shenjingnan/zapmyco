@@ -15,6 +15,7 @@
  */
 
 import {
+  checkFilePermission,
   generateSimpleDiff,
   readFileContent,
   readStateTracker,
@@ -66,6 +67,8 @@ export function createWriteFileTool() {
       },
       required: ['file_path', 'content'],
     } as const,
+
+    checkPermission: checkFilePermission,
 
     // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
     async execute(_toolCallId: string, params: WriteFileParams): Promise<any> {

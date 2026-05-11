@@ -381,10 +381,17 @@ export function writeFileContent(filePath: string, content: string): void {
     try {
       const postStat = statSync(filePath);
       if (postStat.ino !== preWriteInode) {
-        // 文件在写入过程中被替换（TOCTOU 攻击），记录警告
-        // 注意：不阻止写入，因为可能是合法的原子替换操作
+        // 文件在写入过程中被替换（TOCTOU 攻击），阻止写入
+        throw new Error(
+          `TOCTOU 安全检测：文件 "${filePath}" 在写入过程中被替换（inode 不匹配：` +
+            `${preWriteInode} → ${postStat.ino}），已阻止写入`
+        );
       }
-    } catch {
+    } catch (err) {
+      // 如果已经是我们抛出的 TOCTOU 错误，继续抛出
+      if (err instanceof Error && err.message.includes('TOCTOU')) {
+        throw err;
+      }
       // 写入后无法 stat（罕见），忽略
     }
   }
@@ -403,4 +410,41 @@ export function readFileContent(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ============ 文件写入权限检查 ============
+
+/**
+ * 为 WriteFile/EditFile 工具生成 checkPermission 函数
+ *
+ * 供 ToolRegistration.checkPermission 字段使用。
+ * 在参数级别预检查目标路径是否为敏感路径，敏感路径直接返回 critical 风险。
+ */
+export function checkFilePermission(params: Record<string, unknown>): {
+  risk: 'low' | 'medium' | 'high' | 'critical';
+  requiresApproval: boolean;
+  reason?: string;
+} {
+  const filePath = typeof params.file_path === 'string' ? params.file_path : '';
+  if (!filePath) {
+    return { risk: 'low', requiresApproval: false };
+  }
+
+  try {
+    // 解析为绝对路径（不依赖 workdir，仅做基础敏感路径检查）
+    const resolved = resolve(filePath);
+    const normalized = normalize(resolved);
+    const sensitiveCheck = checkSensitivePath(normalized);
+    if (sensitiveCheck) {
+      return {
+        risk: 'critical',
+        requiresApproval: false,
+        reason: sensitiveCheck,
+      };
+    }
+  } catch {
+    // 路径解析失败，放行到 execute 阶段处理
+  }
+
+  return { risk: 'low', requiresApproval: false };
 }

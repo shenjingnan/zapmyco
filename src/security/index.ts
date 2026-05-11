@@ -17,6 +17,13 @@ export {
   RISK_DEFAULT_ACTIONS,
   TOOL_RISK_MAP,
 } from './constants';
+// 循环检测 (Phase 0)
+export {
+  createDoomLoopDetector,
+  type DoomLoopConfig,
+  DoomLoopDetector,
+  type DoomLoopResult,
+} from './doom-loop-detector';
 export type { ResolvedPermissionConfig } from './permission-config';
 
 // 配置

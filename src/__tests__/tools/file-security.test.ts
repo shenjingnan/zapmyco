@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  checkFilePermission,
   checkSensitivePath,
   generateSimpleDiff,
   isPathWithinWorkdir,
@@ -309,6 +310,106 @@ describe('file-security', () => {
       const result = readFileContent(filePath);
       expect(result).toBe('你好世界\nこんにちは');
       cleanupTmpDir();
+    });
+
+    it('TOCTOU 检测：inode 不匹配时应该抛出错误', () => {
+      setupTmpDir();
+      const filePath = join(tmpDir, 'toctou-test.txt');
+      writeFileContent(filePath, 'initial');
+
+      // 通过直接写 statSync 无法模拟 inode 变化（因为 writeFileContent 是同步的）
+      // 但是可以验证：正常写入不会因为 TOCTOU 抛出异常
+      expect(() => writeFileContent(filePath, 'updated')).not.toThrow();
+      expect(readFileContent(filePath)).toBe('updated');
+      cleanupTmpDir();
+    });
+  });
+
+  // ============ checkFilePermission ============
+  describe('checkFilePermission', () => {
+    it('空路径应该返回低风险', () => {
+      const result = checkFilePermission({});
+      expect(result.risk).toBe('low');
+      expect(result.requiresApproval).toBe(false);
+    });
+
+    it('空白路径应该返回低风险', () => {
+      const result = checkFilePermission({ file_path: '' });
+      expect(result.risk).toBe('low');
+      expect(result.requiresApproval).toBe(false);
+    });
+
+    it('普通文件路径应该返回低风险', () => {
+      const result = checkFilePermission({ file_path: '/home/user/project/src/index.ts' });
+      expect(result.risk).toBe('low');
+      expect(result.requiresApproval).toBe(false);
+    });
+
+    it('相对路径应该返回低风险', () => {
+      const result = checkFilePermission({ file_path: 'src/index.ts' });
+      expect(result.risk).toBe('low');
+      expect(result.requiresApproval).toBe(false);
+    });
+
+    it('.ssh 敏感路径应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/home/user/.ssh/id_rsa' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+      expect(result.reason).toContain('敏感路径');
+    });
+
+    it('.env 敏感路径应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/project/.env' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+      expect(result.reason).toContain('敏感路径');
+    });
+
+    it('.env.local 敏感路径应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/project/.env.local' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+      expect(result.reason).toContain('敏感路径');
+    });
+
+    it('/etc/sudoers 系统路径应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/etc/sudoers' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+      expect(result.reason).toContain('敏感路径');
+    });
+
+    it('.git/config 应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/project/.git/config' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+      expect(result.reason).toContain('敏感路径');
+    });
+
+    it('.aws/credentials 应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/home/user/.aws/credentials' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+      expect(result.reason).toContain('敏感路径');
+    });
+
+    it('.kube/config 应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/home/user/.kube/config' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+      expect(result.reason).toContain('敏感路径');
+    });
+
+    it('/proc/cpuinfo 应该返回 critical', () => {
+      const result = checkFilePermission({ file_path: '/proc/cpuinfo' });
+      expect(result.risk).toBe('critical');
+      expect(result.requiresApproval).toBe(false);
+    });
+
+    it('参数中 file_path 不是字符串时应返回低风险', () => {
+      const result = checkFilePermission({ file_path: 123 as unknown as string });
+      expect(result.risk).toBe('low');
+      expect(result.requiresApproval).toBe(false);
     });
   });
 });

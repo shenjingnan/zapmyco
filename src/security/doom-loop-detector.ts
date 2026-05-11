@@ -69,6 +69,7 @@ export class DoomLoopDetector {
   private consecutiveFailures = 0;
   private consecutiveSameCall = 0;
   private lastCallSignature: string | null = null;
+  private totalTriggers = 0;
 
   constructor(config?: Partial<DoomLoopConfig>) {
     this.config = { ...DEFAULT_DOOM_LOOP_CONFIG, ...config };
@@ -98,6 +99,7 @@ export class DoomLoopDetector {
     if (callSignature === this.lastCallSignature) {
       this.consecutiveSameCall++;
       if (this.consecutiveSameCall >= this.config.maxRepeatedCalls) {
+        this.totalTriggers++;
         log.warn('检测到重复相同调用 (doom loop)', {
           toolId,
           consecutiveCount: this.consecutiveSameCall,
@@ -119,6 +121,7 @@ export class DoomLoopDetector {
     const windowStart = now - this.config.rateWindowSec * 1000;
     const callsInWindow = this.recentCalls.filter((c) => c.timestamp >= windowStart).length;
     if (callsInWindow > this.config.maxCallsPerWindow) {
+      this.totalTriggers++;
       log.warn('检测到工具调用速率过高', {
         callsInWindow,
         maxAllowed: this.config.maxCallsPerWindow,
@@ -153,6 +156,7 @@ export class DoomLoopDetector {
     this.consecutiveFailures++;
 
     if (this.consecutiveFailures >= this.config.maxConsecutiveFailures) {
+      this.totalTriggers++;
       log.warn('检测到连续工具执行失败', {
         consecutiveFailures: this.consecutiveFailures,
         threshold: this.config.maxConsecutiveFailures,
@@ -176,6 +180,7 @@ export class DoomLoopDetector {
     this.consecutiveSameCall = 0;
     this.lastCallSignature = null;
     this.recentCalls = [];
+    this.totalTriggers = 0;
     log.debug('DoomLoopDetector 状态已重置');
   }
 
@@ -186,12 +191,14 @@ export class DoomLoopDetector {
     consecutiveFailures: number;
     consecutiveSameCall: number;
     recentCallCount: number;
+    totalTriggers: number;
   } {
     this.pruneOldCalls(Date.now());
     return {
       consecutiveFailures: this.consecutiveFailures,
       consecutiveSameCall: this.consecutiveSameCall,
       recentCallCount: this.recentCalls.length,
+      totalTriggers: this.totalTriggers,
     };
   }
 

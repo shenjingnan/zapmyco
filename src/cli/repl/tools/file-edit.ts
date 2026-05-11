@@ -15,6 +15,7 @@
  */
 
 import {
+  checkFilePermission,
   generateSimpleDiff,
   readFileContent,
   readStateTracker,
@@ -138,6 +139,8 @@ export function createEditFileTool() {
       },
       required: ['file_path', 'old_string', 'new_string'],
     } as const,
+
+    checkPermission: checkFilePermission,
 
     // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
     async execute(_toolCallId: string, params: EditFileParams): Promise<any> {
