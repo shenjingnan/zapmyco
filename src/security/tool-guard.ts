@@ -18,6 +18,7 @@ import type { ToolExecuteFn, ToolRegistration } from '@/core/agent-runtime/tool-
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import type { ApprovalManager } from './approval-manager';
+import type { AuditLogger } from './audit-logger';
 import type { PermissionEngine, ToolInfoResolver } from './permission-engine';
 import type { PermissionStore } from './permission-store';
 
@@ -53,17 +54,20 @@ export class ToolGuard {
   private approvalManager: ApprovalManager;
   private store: PermissionStore;
   private sessionId: string;
+  private auditLogger: AuditLogger | undefined;
 
   constructor(
     engine: PermissionEngine,
     approvalManager: ApprovalManager,
     store: PermissionStore,
-    sessionId?: string
+    sessionId?: string,
+    auditLogger?: AuditLogger
   ) {
     this.engine = engine;
     this.approvalManager = approvalManager;
     this.store = store;
     this.sessionId = sessionId ?? `session-${Date.now()}`;
+    this.auditLogger = auditLogger;
   }
 
   /**
@@ -98,11 +102,28 @@ export class ToolGuard {
           params: params as Record<string, unknown>,
         });
 
+        this.auditLogger?.log({
+          action: 'BLOCK',
+          toolId,
+          risk: decision.risk,
+          reason,
+          params: params as Record<string, unknown>,
+          ...(decision.matchedRule ? { matchedRule: decision.matchedRule } : {}),
+        });
+
         throw new SecurityBlockedError(reason, toolId, decision.risk, reason);
       }
 
       // Step 3: ASK → 请求审批
       if (decision.action === 'ask') {
+        this.auditLogger?.log({
+          action: 'APPROVAL_REQUESTED',
+          toolId,
+          risk: decision.risk,
+          params: params as Record<string, unknown>,
+          ...(decision.reason ? { reason: decision.reason } : {}),
+        });
+
         const approvalResponse = await this.approvalManager.requestApproval({
           toolId,
           toolLabel,
@@ -116,6 +137,13 @@ export class ToolGuard {
           const reason = `用户拒绝了工具 ${toolId} 的执行请求`;
           log.info('用户拒绝工具执行', { toolId });
 
+          this.auditLogger?.log({
+            action: 'APPROVAL_DENIED',
+            toolId,
+            risk: decision.risk,
+            reason,
+          });
+
           throw new SecurityBlockedError(reason, toolId, decision.risk, reason);
         }
 
@@ -126,7 +154,24 @@ export class ToolGuard {
           this.store.addPersistentApproval(toolId);
         }
 
+        this.auditLogger?.log({
+          action: 'APPROVAL_GRANTED',
+          toolId,
+          risk: decision.risk,
+          ...(approvalResponse.scope ? { scope: approvalResponse.scope } : {}),
+          ...(decision.reason ? { reason: decision.reason } : {}),
+        });
+
         log.debug('审批通过，执行工具', { toolId, scope: approvalResponse.scope });
+      } else {
+        // ALLOW → 直接放行
+        this.auditLogger?.log({
+          action: 'ALLOW',
+          toolId,
+          risk: decision.risk,
+          params: params as Record<string, unknown>,
+          ...(decision.matchedRule ? { matchedRule: decision.matchedRule } : {}),
+        });
       }
 
       // Step 4: 执行原工具

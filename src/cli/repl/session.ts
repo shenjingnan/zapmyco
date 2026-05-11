@@ -30,6 +30,7 @@ import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
 import { createHelpCommand } from '@/cli/repl/commands/help';
 import { createHistoryCommand } from '@/cli/repl/commands/history';
 import { createQuitCommand } from '@/cli/repl/commands/quit';
+import { createSecurityCommand } from '@/cli/repl/commands/security-cmd';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
@@ -70,6 +71,9 @@ import {
   resolveConfig,
   ToolGuard,
 } from '@/security';
+import { AuditLogger } from '@/security/audit-logger';
+import { SecretRedactor } from '@/security/secret-redaction';
+import { SkillGuard } from '@/security/skill-guard';
 
 const log = logger.child('repl:session');
 
@@ -184,6 +188,9 @@ export class ReplSession {
   private permissionEngine!: PermissionEngine;
   private approvalManager!: ApprovalManager;
   private toolGuard!: ToolGuard;
+  private auditLogger!: AuditLogger;
+  private secretRedactor!: SecretRedactor;
+  private skillGuard!: SkillGuard;
 
   // 会话统计
   private stats: SessionStats = {
@@ -343,6 +350,11 @@ export class ReplSession {
       this.cronScheduler = null;
     }
 
+    // 关闭审计日志（flush 缓冲并清理监听器）
+    if (this.auditLogger) {
+      this.auditLogger.destroy();
+    }
+
     // 关闭 MCP 连接
     if (this.mcpManager) {
       await this.mcpManager.shutdown();
@@ -374,6 +386,114 @@ export class ReplSession {
   /** 获取会话统计 */
   getStats(): SessionStats {
     return { ...this.stats };
+  }
+
+  /**
+   * 获取安全健康报告（供 /audit 命令使用）
+   *
+   * 综合审计日志、权限配置、守卫状态等信息，生成安全评分和改进建议。
+   */
+  getSecurityHealthReport(): import('@/security/types').SecurityHealthReport {
+    const securityConfig = this.config.security ?? {};
+    const auditStats = this.auditLogger?.getStats() ?? {
+      totalDecisions: 0,
+      blockedCount: 0,
+      approvedCount: 0,
+      deniedCount: 0,
+    };
+
+    // 计算分类评分
+    const scores = {
+      permissions: this.calcPermissionsScore(),
+      shell: this.calcShellScore(),
+      filesystem: this.calcFilesystemScore(),
+      ssrf: this.calcSsrfScore(),
+      secrets: this.calcSecretsScore(),
+      sandbox: this.calcSandboxScore(),
+    };
+
+    const overallScore = Math.round(
+      scores.permissions * 0.3 +
+        scores.shell * 0.2 +
+        scores.filesystem * 0.15 +
+        scores.ssrf * 0.1 +
+        scores.secrets * 0.1 +
+        scores.sandbox * 0.15
+    );
+
+    // 近期阻止记录
+    const recentBlocks = this.auditLogger?.getRecentBlocks(5) ?? [];
+
+    // 生成改进建议
+    const recommendations: string[] = [];
+    if (securityConfig.mode === 'permissive') {
+      recommendations.push('当前权限模式为 permissive，建议切换到 normal 或 strict');
+    }
+    if (!securityConfig.denyRules?.length) {
+      recommendations.push('未配置自定义拒绝规则，建议添加针对特定工具的限制');
+    }
+    if (securityConfig.audit?.enabled === false) {
+      recommendations.push('审计日志已禁用，建议启用以跟踪安全事件');
+    }
+    if (securityConfig.secretRedaction?.enabled === false) {
+      recommendations.push('密钥脱敏已禁用，建议启用以防止密钥泄露');
+    }
+    if (scores.sandbox < 50) {
+      recommendations.push('沙箱执行未启用或配置不安全，建议启用沙箱保护');
+    }
+
+    return {
+      overallScore,
+      scores,
+      recentBlocks,
+      stats: {
+        ...auditStats,
+        doomLoopTriggers: 0, // DoomLoopDetector 未暴露统计接口
+      },
+      recommendations,
+    };
+  }
+
+  private calcPermissionsScore(): number {
+    const securityConfig = this.config.security ?? {};
+    if (!securityConfig.enabled && securityConfig.enabled !== undefined) return 30;
+    switch (securityConfig.mode) {
+      case 'strict':
+        return 90;
+      case 'normal':
+        return 70;
+      case 'permissive':
+        return 40;
+      default:
+        return 70; // 默认 normal
+    }
+  }
+
+  private calcShellScore(): number {
+    // 基于 hard-block 规则的存在性评分
+    // Phase 0 已激活 12 条 hard-block 规则
+    return 80;
+  }
+
+  private calcFilesystemScore(): number {
+    // Phase 0 已实现 symlink + TOCTOU 保护
+    return 75;
+  }
+
+  private calcSsrfScore(): number {
+    // Phase 0 已实现云元数据阻止 + 重定向检查
+    return 75;
+  }
+
+  private calcSecretsScore(): number {
+    const config = this.config.security?.secretRedaction;
+    if (config?.enabled === false) return 20;
+    return 70;
+  }
+
+  private calcSandboxScore(): number {
+    // Phase 2 仅做策略验证，Docker 延后到 Phase 3
+    return 30;
   }
 
   /** 将内容追加到输出区域 */
@@ -952,11 +1072,21 @@ export class ReplSession {
       },
     });
 
+    // Phase 2: 创建审计日志和密钥脱敏
+    this.auditLogger = new AuditLogger(securityConfig.audit ?? { enabled: true, level: 'normal' });
+    this.secretRedactor = new SecretRedactor(securityConfig.secretRedaction);
+    this.auditLogger.setRedactor(this.secretRedactor);
+
     this.toolGuard = new ToolGuard(
       this.permissionEngine,
       this.approvalManager,
-      this.permissionStore
+      this.permissionStore,
+      undefined,
+      this.auditLogger
     );
+
+    // Phase 2: 创建 Skill 守卫
+    this.skillGuard = new SkillGuard();
 
     log.debug('安全框架初始化完成', {
       mode: resolvedConfig.mode,
@@ -974,6 +1104,7 @@ export class ReplSession {
     this.registry.register(createAgentsCommand());
     this.registry.register(createStatusCommand());
     this.registry.register(createSettingsCommand());
+    this.registry.register(createSecurityCommand());
 
     // 注册 /compact 命令
     this.registry.register(this.createCompactCommand());
@@ -1151,6 +1282,24 @@ export class ReplSession {
         // 更新 autocomplete provider（包含新注册的 skill 命令）
         this.buildAutocompleteProvider();
 
+        // Phase 2: 扫描 Skill 安全威胁
+        const results = this.skillGuard.scanAll(entries);
+        const summary = this.skillGuard.getThreatSummary(results);
+        if (summary.danger > 0 || summary.warning > 0) {
+          log.warn('Skill 威胁扫描完成', summary);
+          for (const result of results) {
+            if (!result.passed) {
+              for (const v of result.violations) {
+                eventBus.emit('security:violation', {
+                  toolId: 'Skill',
+                  type: 'skill-threat',
+                  message: `[${result.skillName}] ${v.reason}`,
+                  params: { skillPath: result.skillPath, ruleId: v.ruleId },
+                });
+              }
+            }
+          }
+        }
         log.info('Skill 系统初始化完成', {
           count: snapshot.count,
           names: snapshot.names,

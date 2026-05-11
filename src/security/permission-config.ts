@@ -113,3 +113,49 @@ export function matchParamPatterns(
     return String(actualValue) === expectedValue;
   });
 }
+
+// ============ Agent 级别覆盖（Phase 2）============
+
+/**
+ * 解析 SecurityConfig 并根据 agentId 应用 per-agent 覆盖
+ *
+ * 合并顺序：mode 策略 → 用户配置 → agentOverrides（最高优先级）
+ * agentOverrides 中的 denyRules/allowRules 追加到全局规则，
+ * agent allowRules 排在全局 allowRules 之后（优先匹配）。
+ */
+export function resolveConfigWithAgent(
+  config: SecurityConfig,
+  agentId?: string
+): ResolvedPermissionConfig {
+  const base = resolveConfig(config);
+
+  if (!agentId || !config.agentOverrides?.[agentId]) {
+    return base;
+  }
+
+  const override = config.agentOverrides[agentId];
+
+  const overriddenMode = override.mode ?? base.mode;
+
+  return {
+    ...base,
+    mode: overriddenMode,
+    modeStrategy: override.mode ? MODE_STRATEGIES[override.mode] : base.modeStrategy,
+    denyRules: [...base.denyRules, ...(override.denyRules ?? [])],
+    // agent allowRules 优先级高于全局 allowRules（排在后面优先匹配）
+    allowRules: [...(override.allowRules ?? []), ...base.allowRules],
+    defaultAction: override.defaultAction ?? base.defaultAction,
+  };
+}
+
+/**
+ * 从 SecurityConfig 中提取 Agent 安全覆盖配置
+ *
+ * 返回应用于特定 agent 的合并后配置，去除了 agentOverrides 本身。
+ */
+export function extractAgentConfig(
+  config: SecurityConfig,
+  agentId: string | undefined
+): ResolvedPermissionConfig {
+  return resolveConfigWithAgent(config, agentId);
+}

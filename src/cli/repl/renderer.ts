@@ -11,6 +11,7 @@ import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
 import type { AgentRegistration } from '@/protocol/capability';
+import type { SecurityHealthReport } from '@/security/types';
 
 /**
  * 渲染器实现
@@ -67,6 +68,11 @@ export class Renderer {
   /** 渲染会话状态 → 返回格式化行 */
   renderStatus(stats: SessionStats): string[] {
     return this.formatter.formatStatus(stats);
+  }
+
+  /** 渲染安全健康报告 → 返回格式化行 */
+  renderSecurityHealth(report: SecurityHealthReport): string[] {
+    return this.formatter.formatSecurityHealth(report);
   }
 }
 
