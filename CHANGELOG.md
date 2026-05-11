@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/shenjingnan/zapmyco/compare/v0.8.0...v0.9.0) (2026-05-11)
+
+### Features
+
+* **agent-team:** Phase 1 基础设施——Agent类型系统与团队协作核心 ([#73](https://github.com/shenjingnan/zapmyco/issues/73)) ([14a5328](https://github.com/shenjingnan/zapmyco/commit/14a5328106bb3e838b060c71af057aa0559181ea))
+* **agent-team:** Phase 2 编排器升级——Coordinator模式与Agent间通信 ([#74](https://github.com/shenjingnan/zapmyco/issues/74)) ([6edaa32](https://github.com/shenjingnan/zapmyco/commit/6edaa32f15b8ae8f2c480bc51082ff4ef1a1b088))
+* **agent-team:** Phase 3 高级特性——用户自定义Agent、Agent Memory、智能生成 ([#75](https://github.com/shenjingnan/zapmyco/issues/75)) ([28c12f9](https://github.com/shenjingnan/zapmyco/commit/28c12f910c18f52884193c5cf6df0cbb62024dc8))
+* **agent-team:** Phase 4 可视化与调试——补齐 Coordinator 类型、增强 /agents 命令 ([#76](https://github.com/shenjingnan/zapmyco/issues/76)) ([00ada3e](https://github.com/shenjingnan/zapmyco/commit/00ada3ec7baa62614cc1c7978e360b555b3c7481))
+* **core:** 添加对话上下文自动压缩功能 ([#68](https://github.com/shenjingnan/zapmyco/issues/68)) ([6e698b4](https://github.com/shenjingnan/zapmyco/commit/6e698b4ee0bb72e2182e011cd5ee7abf7001071f))
+* **security:** 实施安全框架 Phase 0 — 激活运行时安全守卫 ([#69](https://github.com/shenjingnan/zapmyco/issues/69)) ([2729197](https://github.com/shenjingnan/zapmyco/commit/2729197bcfe5e1e1297f7830cc242c3f13e55e78))
+* **security:** 实施安全框架 Phase 1 — 权限系统核心 ([#70](https://github.com/shenjingnan/zapmyco/issues/70)) ([0f7e511](https://github.com/shenjingnan/zapmyco/commit/0f7e511c4cdf9a28263c71a50054b6dc83e8291a))
+* **security:** 实施安全框架 Phase 2 — 审计诊断与安全加固 ([#71](https://github.com/shenjingnan/zapmyco/issues/71)) ([ab06a02](https://github.com/shenjingnan/zapmyco/commit/ab06a0294f3a0293165f526e3893ca1b35ac347b))
+
+### Bug Fixes
+
+* **security:** 安全框架 Phase 2 收尾——修复统计断连、加固 TOCTOU 保护、补全文件权限检查 ([#72](https://github.com/shenjingnan/zapmyco/issues/72)) ([45800ac](https://github.com/shenjingnan/zapmyco/commit/45800acc76733fd6df2c7af6c8d860ff957d94d9))
+
 ## [0.8.0](https://github.com/shenjingnan/zapmyco/compare/v0.7.0...v0.8.0) (2026-05-09)
 
 ### Features
