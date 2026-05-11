@@ -5,6 +5,7 @@ import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
 import type { AgentRegistration } from '@/protocol/capability';
+import type { SecurityHealthReport } from '@/security/types';
 
 function createRenderer(color = false): Renderer {
   const opts: ReplOptions = {
@@ -197,6 +198,27 @@ describe('Renderer', () => {
     expect(text).toContain('会话状态');
     expect(text).toContain('10'); // totalRequests
     expect(text).toContain('8'); // success
+  });
+
+  it('renderSecurityHealth 应返回安全健康报告行数组', () => {
+    const r = createRenderer();
+    const report: SecurityHealthReport = {
+      overallScore: 75,
+      scores: { permissions: 70, shell: 80, filesystem: 75, ssrf: 75, secrets: 70, sandbox: 30 },
+      recentBlocks: [],
+      stats: {
+        totalDecisions: 10,
+        blockedCount: 2,
+        approvedCount: 7,
+        deniedCount: 1,
+        doomLoopTriggers: 0,
+      },
+      recommendations: [],
+    };
+    const lines = r.renderSecurityHealth(report);
+    const text = lines.join('\n');
+    expect(text).toContain('安全健康报告');
+    expect(text).toContain('75/100');
   });
 
   it('颜色关闭时不应包含 ANSI 转义序列', () => {

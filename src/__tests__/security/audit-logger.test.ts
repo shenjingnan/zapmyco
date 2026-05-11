@@ -58,7 +58,9 @@ describe('AuditLogger', () => {
       logger.destroy();
 
       const content = readFileSync(AUDIT_FILE, 'utf-8').trim();
-      const entry = JSON.parse(content.split('\n')[0]!);
+      const lines = content.split('\n');
+      expect(lines.length).toBeGreaterThan(0);
+      const entry = JSON.parse(String(lines[0]));
       expect(entry.action).toBe('ALLOW');
       expect(entry.toolId).toBe('ReadFile');
       expect(entry.risk).toBe('low');

@@ -7,7 +7,11 @@ import { describe, expect, it } from 'vitest';
 import type { SkillEntry } from '@/core/skill';
 import { ApprovalManager } from '@/security/approval-manager';
 import { AuditLogger } from '@/security/audit-logger';
-import { resolveConfig, resolveConfigWithAgent } from '@/security/permission-config';
+import {
+  extractAgentConfig,
+  resolveConfig,
+  resolveConfigWithAgent,
+} from '@/security/permission-config';
 import { PermissionEngine } from '@/security/permission-engine';
 import { PermissionStore } from '@/security/permission-store';
 import { validateSandboxPolicy } from '@/security/sandbox/policy-validator';
@@ -215,6 +219,20 @@ describe('Phase 2 集成测试', () => {
       };
       const resolved = resolveConfigWithAgent(config, undefined);
       expect(resolved.mode).toBe('normal');
+    });
+
+    it('extractAgentConfig should delegate to resolveConfigWithAgent', () => {
+      const config = {
+        mode: 'normal' as const,
+        agentOverrides: {
+          'code-reviewer': { mode: 'strict' as const },
+        },
+      };
+      const resolved = extractAgentConfig(config, 'code-reviewer');
+      expect(resolved.mode).toBe('strict');
+
+      const resolvedDefault = extractAgentConfig(config, undefined);
+      expect(resolvedDefault.mode).toBe('normal');
     });
   });
 });
