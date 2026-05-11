@@ -1,52 +1,105 @@
 /**
- * /agents 命令
+ * /agents 命令（Phase 4 增强版）
  *
- * 列出所有已注册的 Agent 及其状态。
+ * 连接到 AgentTypeRegistry + AgentInstanceManager，展示：
+ * - /agents          → 概览（类型 + 运行中实例）
+ * - /agents types    → Agent 类型列表
+ * - /agents instances → Agent 实例树
+ * - /agents team     → 团队状态统计 + 消息摘要
+ *
+ * @module cli/repl/commands
  */
 
+import {
+  formatAgentMessageSummary,
+  formatAgentStatusStats,
+} from '@/cli/repl/components/agent-status-panel';
+import {
+  formatAgentInstanceTree,
+  formatAgentOverview,
+  formatAgentTypes,
+} from '@/cli/repl/components/agent-team-view';
 import type { CommandDefinition } from '@/cli/repl/types';
-import type { AgentRegistration } from '@/protocol/capability';
+import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
+import { getAgentTypeRegistry } from '@/core/agent-team/agent-type-registry';
+import type { AgentMessage } from '@/core/agent-team/types';
 
 /**
- * 创建 agents 命令定义
+ * 创建增强版 agents 命令
  */
 export function createAgentsCommand(): CommandDefinition {
   return {
     name: 'agents',
     aliases: ['ag'],
-    description: '列出已注册 Agent 及其状态',
-    usage: '/agents',
-    handler(_args, session) {
-      const agents = buildAgentList(session.config);
-      const lines = session.getRenderer().renderAgents(agents);
-      session.appendOutput(lines);
+    description: 'Agent 团队管理：查看类型、实例、团队状态',
+    usage: '/agents [types | instances | team]',
+    handler(args, session) {
+      const registry = getAgentTypeRegistry();
+      const instanceManager = getAgentInstanceManager();
+
+      const subCommand = args[0] ?? 'overview';
+
+      switch (subCommand) {
+        case 'types':
+        case 'type':
+        case 't': {
+          const types = registry.listAll();
+          const lines = formatAgentTypes(types, { color: session.replOptions.color });
+          session.appendOutput(lines);
+          break;
+        }
+
+        case 'instances':
+        case 'instance':
+        case 'i': {
+          const instances = instanceManager.listAll();
+          const lines = formatAgentInstanceTree(instances, { color: session.replOptions.color });
+          session.appendOutput(lines);
+          break;
+        }
+
+        case 'team':
+        case 'status':
+        case 's': {
+          const instances = instanceManager.listAll();
+          const lines = [
+            ...formatAgentStatusStats(instances, { color: session.replOptions.color }),
+            ...formatAgentMessageSummary(
+              instances,
+              (instanceId) => getInboxMessages(instanceId, instanceManager),
+              { color: session.replOptions.color }
+            ),
+          ];
+          session.appendOutput(lines);
+          break;
+        }
+
+        default: {
+          // 概览：类型一览 + 实例统计
+          const types = registry.listAll();
+          const instances = instanceManager.listAll();
+          const lines = formatAgentOverview(types, instances, {
+            color: session.replOptions.color,
+          });
+          session.appendOutput(lines);
+          break;
+        }
+      }
     },
   };
 }
 
 /**
- * 从配置构建 AgentRegistration 列表
- *
- * 当前阶段：引擎尚未完全实现，从配置中的 agents 列表构造基本信息。
- * 未来：从 Agent 注册中心获取实时状态。
+ * 从 InstanceManager 获取指定实例的 inbox 消息
  */
-function buildAgentList(
-  config: import('@/cli/repl/types').ReplSession['config']
-): AgentRegistration[] {
-  return config.agents
-    .filter((agent) => agent.enabled)
-    .map((agent) => {
-      const result: AgentRegistration = {
-        agentId: agent.id,
-        displayName: agent.id,
-        capabilities: [],
-        status: 'online' as AgentRegistration['status'],
-        currentLoad: 0,
-        maxConcurrency: 3,
-      };
-      if (agent.endpoint !== undefined) {
-        result.endpoint = agent.endpoint;
-      }
-      return result;
-    });
+function getInboxMessages(
+  instanceId: string,
+  instanceManager: ReturnType<typeof getAgentInstanceManager>
+): AgentMessage[] {
+  try {
+    const instance = instanceManager.get(instanceId);
+    return (instance?.inbox as AgentMessage[]) ?? [];
+  } catch {
+    return [];
+  }
 }

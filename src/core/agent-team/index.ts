@@ -51,6 +51,7 @@ export {
 export {
   BUILTIN_AGENT_TYPES,
   coderType,
+  coordinatorType,
   generalPurposeType,
   plannerType,
   researcherType,
