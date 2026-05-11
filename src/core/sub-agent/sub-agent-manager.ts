@@ -9,6 +9,7 @@
 import type { SubAgentConfig } from '@/config/types';
 import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
+import type { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
 import { logger } from '@/infra/logger';
 import {
   buildSubAgentSystemPrompt,
@@ -28,15 +29,18 @@ export class SubAgentManager {
   private config: SubAgentConfig;
   private parentAgent: LlmBasedAgent;
   private availableTools: ToolRegistration[];
+  private orchestrator: AgentOrchestrator | undefined;
 
   constructor(
     config: SubAgentConfig,
     parentAgent: LlmBasedAgent,
-    availableTools: ToolRegistration[]
+    availableTools: ToolRegistration[],
+    orchestrator?: AgentOrchestrator
   ) {
     this.config = config;
     this.parentAgent = parentAgent;
     this.availableTools = availableTools;
+    this.orchestrator = orchestrator;
   }
 
   /**
@@ -50,6 +54,13 @@ export class SubAgentManager {
    * @returns 结构化执行结果
    */
   async spawnAndWait(specs: SubAgentSpec[], context?: string): Promise<SubAgentResults> {
+    // 如果配置了 AgentOrchestrator，委托给新编排器
+    if (this.orchestrator) {
+      log.info('委托给 AgentOrchestrator.spawnFlat()', { specCount: specs.length });
+      return this.orchestrator.spawnFlat(specs, context);
+    }
+
+    // 原有逻辑保持不变
     const startTime = Date.now();
     log.info('开始批量执行子 Agent', {
       count: specs.length,

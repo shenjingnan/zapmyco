@@ -1221,7 +1221,8 @@ export class ReplSession {
       this.config.skill,
       this.agent,
       this.config.subAgent,
-      this.cronScheduler ?? undefined
+      this.cronScheduler ?? undefined,
+      this.config.agentTeam
     );
 
     // 更新 PermissionEngine 的工具信息解析器

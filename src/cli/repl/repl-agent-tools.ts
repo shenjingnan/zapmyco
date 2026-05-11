@@ -8,6 +8,7 @@
  */
 
 import type { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
+import { createAgentTool } from '@/cli/repl/tools/agent-tool';
 import { createCronTool } from '@/cli/repl/tools/cron-tool';
 import { createEditFileTool } from '@/cli/repl/tools/file-edit';
 import { createGlobTool } from '@/cli/repl/tools/file-glob';
@@ -25,6 +26,8 @@ import { createWebSearchTool } from '@/cli/repl/tools/web-search';
 import type { SkillConfig, SubAgentConfig, WebConfig } from '@/config/types';
 import type { ToolRegistration } from '@/core/agent-runtime';
 import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
+import { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
+import type { AgentTeamConfig } from '@/core/agent-team/types';
 import { SubAgentManager } from '@/core/sub-agent';
 import type { TaskStore } from '@/core/task/task-store';
 import { TOOL_RISK_MAP } from '@/security/constants';
@@ -42,7 +45,8 @@ export function createReplBuiltinTools(
   skillConfig?: SkillConfig,
   parentAgent?: LlmBasedAgent,
   subAgentConfig?: SubAgentConfig,
-  cronScheduler?: CronScheduler
+  cronScheduler?: CronScheduler,
+  agentTeamConfig?: AgentTeamConfig
 ): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
@@ -211,9 +215,23 @@ export function createReplBuiltinTools(
 
   // Sub-Agent 派发工具（依赖父 Agent 实例）
   if (parentAgent && subAgentConfig?.enabled !== false && subAgentConfig) {
-    const manager = new SubAgentManager(subAgentConfig, parentAgent, tools);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createSpawnSubAgentsTool(manager, subAgentConfig) as any);
+    let orchestrator: AgentOrchestrator | undefined;
+
+    // 如果启用了 Agent Team 系统，创建 AgentOrchestrator
+    if (agentTeamConfig?.enabled) {
+      orchestrator = new AgentOrchestrator(agentTeamConfig, subAgentConfig, parentAgent, tools);
+      // 注册增强版 AgentTool（替代旧版 SpawnSubAgents）
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools.push(createAgentTool(orchestrator) as any);
+    }
+
+    const manager = new SubAgentManager(subAgentConfig, parentAgent, tools, orchestrator);
+
+    if (!agentTeamConfig?.enabled) {
+      // 未启用 Agent Team 时，使用旧版 SpawnSubAgents 工具
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools.push(createSpawnSubAgentsTool(manager, subAgentConfig) as any);
+    }
   }
 
   // 定时任务工具（依赖 CronScheduler 实例）
