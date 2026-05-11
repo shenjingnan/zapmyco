@@ -326,6 +326,9 @@ export interface ZapmycoConfig {
 
   /** 安全框架配置 */
   security?: import('@/security/types').SecurityConfig;
+
+  /** Agent Team 系统配置 */
+  agentTeam?: import('@/core/agent-team/types').AgentTeamConfig;
 }
 
 /** Web 工具配置 */

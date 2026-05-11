@@ -104,4 +104,12 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
       level: 'normal',
     },
   },
+  agentTeam: {
+    enabled: false,
+    defaultMode: 'flat',
+    maxGlobalDepth: 2,
+    messageTimeoutMs: 60_000,
+    maxAggregateOutputChars: 10_000,
+    agentTypes: [],
+  },
 };
