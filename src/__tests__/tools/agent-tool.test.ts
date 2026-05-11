@@ -123,6 +123,16 @@ describe('createAgentTool', () => {
       expect(details.taskId).toBeDefined();
     });
 
+    it('should return error when run_in_background is true but no subagent_type', async () => {
+      const tool = createAgentTool(orchestrator);
+      const result = await tool.execute('call-1', {
+        description: 'test',
+        run_in_background: true,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((result.content?.[0] as any)?.text).toContain('需要指定 subagent_type');
+    });
+
     it('should spawn worker via subagent_type', async () => {
       const tool = createAgentTool(orchestrator);
       const result = await tool.execute('call-1', {
