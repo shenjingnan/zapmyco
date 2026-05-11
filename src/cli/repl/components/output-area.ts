@@ -316,6 +316,63 @@ export class OutputFormatter {
     return lines;
   }
 
+  /** 格式化安全健康报告 → 返回格式化行 */
+  formatSecurityHealth(report: import('@/security/types').SecurityHealthReport): string[] {
+    const c = this.getColor();
+    const lines: string[] = ['', c.bold('  🔒 安全健康报告'), ''];
+
+    // 整体评分
+    const scoreIcon = report.overallScore >= 80 ? '🟢' : report.overallScore >= 50 ? '🟡' : '🔴';
+    lines.push(`  整体评分: ${scoreIcon} ${report.overallScore}/100`);
+    lines.push('');
+
+    // 分类评分
+    lines.push('  分类评分:');
+    const bar = (s: number) => {
+      const filled = Math.round(s / 10);
+      return c.green('█'.repeat(filled)) + c.gray('░'.repeat(10 - filled)) + ` ${s}/100`;
+    };
+    lines.push(`    permissions:  ${bar(report.scores.permissions)}`);
+    lines.push(`    shell:        ${bar(report.scores.shell)}`);
+    lines.push(`    filesystem:   ${bar(report.scores.filesystem)}`);
+    lines.push(`    ssrf:         ${bar(report.scores.ssrf)}`);
+    lines.push(`    secrets:      ${bar(report.scores.secrets)}`);
+    lines.push(`    sandbox:      ${bar(report.scores.sandbox)}`);
+    lines.push('');
+
+    // 统计
+    lines.push('  统计:');
+    lines.push(
+      `    总决策: ${report.stats.totalDecisions}  ${c.red(`阻止: ${report.stats.blockedCount}`)}  ${c.green(`批准: ${report.stats.approvedCount}`)}  拒绝: ${report.stats.deniedCount}`
+    );
+    if (report.stats.doomLoopTriggers > 0) {
+      lines.push(`    doom-loop 触发: ${c.red(String(report.stats.doomLoopTriggers))}`);
+    }
+    lines.push('');
+
+    // 近期阻止
+    if (report.recentBlocks.length > 0) {
+      lines.push('  近期阻止:');
+      for (const block of report.recentBlocks.slice(0, 5)) {
+        lines.push(
+          `    ${block.timestamp.slice(11, 19)}  ${c.red(block.toolId)} — ${block.reason}`
+        );
+      }
+      lines.push('');
+    }
+
+    // 改进建议
+    if (report.recommendations.length > 0) {
+      lines.push('  改进建议:');
+      for (const rec of report.recommendations) {
+        lines.push(`    ${c.yellow('⚠')} ${rec}`);
+      }
+      lines.push('');
+    }
+
+    return lines;
+  }
+
   private statusToIcon(status: string, c: typeof chalk): string {
     switch (status) {
       case 'succeeded':

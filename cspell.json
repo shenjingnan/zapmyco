@@ -69,7 +69,15 @@
     "POSTAMBLE",
     "contextlength",
     "TOCTOU",
-    "firewalld"
+    "firewalld",
+    "glpat",
+    "xoxb",
+    "baprs",
+    "pousr",
+    "bubblewrap",
+    "xyzabcde",
+    "AIza",
+    "SyD"
   ],
   "ignorePaths": [
     "node_modules",

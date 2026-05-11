@@ -118,6 +118,9 @@ export interface ReplSession {
   /** 获取会话统计 */
   getStats(): SessionStats;
 
+  /** 获取安全健康报告（供 /audit 命令使用，Phase 2） */
+  getSecurityHealthReport?(): import('@/security/types').SecurityHealthReport;
+
   /** 执行用户目标（预留接口） */
   executeGoal(rawInput: string): Promise<FinalResult>;
 
@@ -179,6 +182,9 @@ export interface Renderer {
 
   /** 渲染会话状态 → 返回格式化行 */
   renderStatus(stats: SessionStats): string[];
+
+  /** 渲染安全健康报告 → 返回格式化行（Phase 2） */
+  renderSecurityHealth?(report: import('@/security/types').SecurityHealthReport): string[];
 }
 
 // ============ 历史存储接口 ============
