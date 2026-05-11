@@ -2,7 +2,8 @@
  * Agent Team 系统
  *
  * 提供 Agent 类型系统、团队协作和 Agent 间通信能力。
- * Phase 1 实现：类型系统基础设施。
+ * Phase 1: 类型系统基础设施。
+ * Phase 2: 编排器升级（Coordinator 模式）。
  *
  * @module core/agent-team
  */
@@ -14,6 +15,18 @@ export {
   getAgentInstanceManager,
   resetAgentInstanceManager,
 } from './agent-instance-manager';
+export type { MessageCallback } from './agent-message-bus';
+// Agent 间通信
+export {
+  AgentMessageBus,
+  getAgentMessageBus,
+  resetAgentMessageBus,
+} from './agent-message-bus';
+export type { SpawnWorkerOptions, WorkerSpec } from './agent-orchestrator';
+// 编排器
+export { AgentOrchestrator } from './agent-orchestrator';
+// 结果聚合
+export { aggregateResults, buildTeamSummary } from './agent-result-aggregator';
 export {
   AgentTypeRegistry,
   getAgentTypeRegistry,
