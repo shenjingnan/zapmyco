@@ -19,6 +19,7 @@ import chalk from 'chalk';
 import type { Renderer } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';
 import { t } from '@/i18n';
+import type { ApprovalRequest, ApprovalResponse } from '@/security/types';
 
 // ============ Constants ============
 
@@ -395,6 +396,124 @@ export function showConfigView(tui: TUI, config: ZapmycoConfig, renderer: Render
     component.setDismissCallback(() => {
       handle.hide();
       resolve();
+    });
+  });
+}
+
+// ============ Security Approval Dialog ============
+
+/**
+ * 安全审批对话框组件
+ *
+ * 显示工具调用的风险信息，等待用户选择审批范围。
+ * 键位：
+ *   [a] 允许本次    [s] 本次会话允许
+ *   [A] 始终允许    [d] 拒绝
+ */
+class ApprovalDialogComponent implements Component {
+  private readonly request: ApprovalRequest;
+  private onResolve?: (response: ApprovalResponse) => void;
+
+  constructor(request: ApprovalRequest, onResolve: (response: ApprovalResponse) => void) {
+    this.request = request;
+    this.onResolve = onResolve;
+  }
+
+  handleInput(data: string): void {
+    switch (data) {
+      case 'a':
+        this.onResolve?.({ approved: true, scope: 'once' });
+        break;
+      case 's':
+        this.onResolve?.({ approved: true, scope: 'session' });
+        break;
+      case 'A':
+        this.onResolve?.({ approved: true, scope: 'always' });
+        break;
+      case 'd':
+      case 'escape':
+      case 'q':
+        this.onResolve?.({ approved: false });
+        break;
+    }
+  }
+
+  invalidate(): void {
+    // No cached state
+  }
+
+  render(width: number): string[] {
+    const c = chalk;
+    const risk = this.request.risk;
+    const riskColor =
+      risk === 'critical'
+        ? c.red.bold
+        : risk === 'high'
+          ? c.red
+          : risk === 'medium'
+            ? c.yellow
+            : c.green;
+
+    const lines: string[] = [
+      '',
+      c.bold('  ⚠ 安全审批'),
+      '',
+      c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`),
+      '',
+      `  工具: ${c.cyan(this.request.toolLabel)} (${c.gray(this.request.toolId)})`,
+      `  风险等级: ${riskColor(risk.toUpperCase())}`,
+      `  原因: ${c.white(this.request.reason)}`,
+      '',
+    ];
+
+    // 参数摘要（截断长参数）
+    const paramEntries = Object.entries(this.request.params);
+    if (paramEntries.length > 0) {
+      lines.push(`  参数:`);
+      for (const [key, value] of paramEntries.slice(0, 5)) {
+        const raw = typeof value === 'string' ? value : JSON.stringify(value);
+        const display = raw.length > 60 ? raw.slice(0, 57) + '...' : raw;
+        lines.push(`    ${c.gray(key)}: ${display}`);
+      }
+      if (paramEntries.length > 5) {
+        lines.push(`    ${c.gray('...')} 还有 ${paramEntries.length - 5} 个参数`);
+      }
+      lines.push('');
+    }
+
+    // 操作选项
+    lines.push(c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`));
+    lines.push('');
+    lines.push(`  ${c.bold('[a]')} 允许本次    ${c.bold('[s]')} 本次会话允许`);
+    lines.push(`  ${c.bold('[A]')} 始终允许    ${c.bold('[d]')} 拒绝`);
+    lines.push('');
+
+    return lines;
+  }
+}
+
+/**
+ * 显示安全审批对话框
+ *
+ * @param tui - TUI 实例
+ * @param request - 审批请求
+ * @returns 审批响应（用户选择）
+ */
+export function showApprovalDialog(tui: TUI, request: ApprovalRequest): Promise<ApprovalResponse> {
+  return new Promise((resolve) => {
+    let handle: OverlayHandle | null = null;
+
+    const component = new ApprovalDialogComponent(request, (response) => {
+      handle?.hide();
+      resolve(response);
+    });
+
+    handle = tui.showOverlay(component, {
+      width: '80%',
+      minWidth: 50,
+      maxHeight: 20,
+      anchor: 'top-left',
+      margin: { top: 2, bottom: 1 },
     });
   });
 }

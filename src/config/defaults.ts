@@ -90,4 +90,18 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     antiThrashEnabled: true,
     notifyUser: true,
   },
+  security: {
+    enabled: true,
+    mode: 'normal',
+    defaultAction: 'ask',
+    persistence: {
+      enabled: true,
+      maxEntries: 500,
+      expireAfterDays: 30,
+    },
+    audit: {
+      enabled: true,
+      level: 'normal',
+    },
+  },
 };

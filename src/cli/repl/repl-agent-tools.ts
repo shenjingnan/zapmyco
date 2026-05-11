@@ -27,6 +27,8 @@ import type { ToolRegistration } from '@/core/agent-runtime';
 import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import { SubAgentManager } from '@/core/sub-agent';
 import type { TaskStore } from '@/core/task/task-store';
+import { TOOL_RISK_MAP } from '@/security/constants';
+import type { RiskLevel } from '@/security/types';
 
 /**
  * 创建 REPL 基础工具集
@@ -48,6 +50,7 @@ export function createReplBuiltinTools(
       label: '获取当前时间',
       description:
         '获取当前日期和时间（含本地时间和 UTC 时间）。当用户询问时间、需要时间戳、或需要时间相关上下文时调用此工具。',
+      defaultRisk: 'low' as const,
       execute: async () => {
         const now = new Date();
         const offset = -now.getTimezoneOffset();
@@ -67,6 +70,7 @@ export function createReplBuiltinTools(
       id: 'GetWorkdirInfo',
       label: '获取工作目录信息',
       description: '获取当前工作目录路径和系统平台信息。当需要了解当前项目位置或运行环境时调用。',
+      defaultRisk: 'low' as const,
       execute: async () => ({
         content: [
           {
@@ -92,6 +96,7 @@ export function createReplBuiltinTools(
       description:
         '读取指定路径的文本文件内容。参数 file_path 为文件绝对路径。' +
         '支持 offset（起始行号）和 limit（最大行数）参数用于分页读取大文件。',
+      defaultRisk: 'low' as const,
       parameters: {
         type: 'object',
         properties: {
@@ -215,6 +220,15 @@ export function createReplBuiltinTools(
   if (cronScheduler) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools.push(createCronTool(cronScheduler) as any);
+  }
+
+  // 为未设置 defaultRisk 的工具补充默认风险等级
+  for (const tool of tools) {
+    if (!tool.defaultRisk) {
+      const mappedRisk = TOOL_RISK_MAP[tool.id];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (tool as any).defaultRisk = (mappedRisk ?? 'medium') as RiskLevel;
+    }
   }
 
   return tools;

@@ -35,6 +35,28 @@ interface EventMap {
   'agent:online': { agentId: string };
   'agent:offline': { agentId: string };
 
+  // Security
+  'security:blocked': {
+    toolId: string;
+    risk: string;
+    reason: string;
+    params: Record<string, unknown>;
+  };
+  'security:approval-requested': {
+    toolId: string;
+    toolLabel: string;
+    risk: string;
+    reason: string;
+  };
+  'security:approval-granted': { toolId: string; scope: string };
+  'security:approval-denied': { toolId: string; reason: string };
+  'security:violation': {
+    toolId: string;
+    type: string;
+    message: string;
+    params: Record<string, unknown>;
+  };
+
   // 系统
   'system:shutdown': { reason?: string };
 }
