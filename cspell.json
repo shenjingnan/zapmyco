@@ -77,7 +77,8 @@
     "bubblewrap",
     "xyzabcde",
     "AIza",
-    "SyD"
+    "SyD",
+    "spawnable"
   ],
   "ignorePaths": [
     "node_modules",

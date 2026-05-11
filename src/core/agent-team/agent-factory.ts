@@ -108,24 +108,35 @@ function resolveTools(
 
   let tools: ToolRegistration[];
 
-  if (whitelist === '*') {
-    // 继承全部工具，但排除 AgentTool（防止递归）
-    tools = availableTools.filter((t) => t.id !== 'AgentTool' && t.id !== 'SpawnSubAgents');
-  } else {
-    const whitelistSet = new Set(whitelist);
-    tools = availableTools.filter((t) => whitelistSet.has(t.id));
-  }
-
   // 递归防护：检查是否还能再 spawn
   const canSpawn = definition.maxSpawnDepth > 0 && depth < config.maxGlobalDepth;
 
+  if (whitelist === '*') {
+    // 继承全部工具
+    // Coordinator 保留 AgentTool（需要 spawn workers），其他角色排除防止递归
+    if (definition.role === 'coordinator') {
+      tools = availableTools.filter((t) => t.id !== 'SpawnSubAgents');
+    } else {
+      tools = availableTools.filter((t) => t.id !== 'AgentTool' && t.id !== 'SpawnSubAgents');
+    }
+  } else {
+    const whitelistSet = new Set(whitelist);
+    // 如果该类型可以 spawn 子 Agent，将 AgentTool 加入白名单
+    if (canSpawn) {
+      whitelistSet.add('AgentTool');
+      whitelistSet.add('SendMessage');
+    }
+    tools = availableTools.filter((t) => whitelistSet.has(t.id));
+  }
+
+  // 不可 spawn 的非 coordinator 角色：移除 spawn/通信工具
   if (!canSpawn && definition.role !== 'coordinator') {
     tools = tools.filter(
       (t) => t.id !== 'AgentTool' && t.id !== 'SpawnSubAgents' && t.id !== 'SendMessage'
     );
   }
 
-  // Coordinator 工具集裁剪
+  // Coordinator 工具集裁剪：只保留编排相关工具
   if (definition.role === 'coordinator') {
     const coordinatorToolIds = new Set(['AgentTool', 'SendMessage', 'TaskStop']);
     tools = tools.filter((t) => coordinatorToolIds.has(t.id));
