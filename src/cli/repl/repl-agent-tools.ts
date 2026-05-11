@@ -26,6 +26,7 @@ import { createWebSearchTool } from '@/cli/repl/tools/web-search';
 import type { SkillConfig, SubAgentConfig, WebConfig } from '@/config/types';
 import type { ToolRegistration } from '@/core/agent-runtime';
 import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
+import { getBackgroundAgentManager } from '@/core/agent-team/agent-background-manager';
 import { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
 import type { AgentTeamConfig } from '@/core/agent-team/types';
 import { SubAgentManager } from '@/core/sub-agent';
@@ -223,6 +224,11 @@ export function createReplBuiltinTools(
       // 注册增强版 AgentTool（替代旧版 SpawnSubAgents）
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools.push(createAgentTool(orchestrator) as any);
+
+      // 初始化后台 Agent 管理器（注入 orchestrator 以支持异步执行）
+      const bgManager = getBackgroundAgentManager();
+      bgManager.setOrchestrator(orchestrator);
+      bgManager.restore();
     }
 
     const manager = new SubAgentManager(subAgentConfig, parentAgent, tools, orchestrator);

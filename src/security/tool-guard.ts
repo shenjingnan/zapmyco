@@ -10,9 +10,17 @@
  * 代理模式：保留原 ToolRegistration 所有属性，
  * 仅替换 execute 函数为带安全检查的版本。
  *
+ * ## ToolGuardContext
+ *
+ * 通过 AsyncLocalStorage 传递运行时上下文，控制特殊场景下的行为：
+ * - isBackgroundAgent: 后台 Agent 遇 ASK 自动降级为 DENY（无用户可交互）
+ * - planMode: Plan Mode 下限制工具可用性
+ * - worktreePath: 工作树上下文
+ *
  * @module security/tool-guard
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AgentToolResult } from '@mariozechner/pi-agent-core';
 import type { ToolExecuteFn, ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import { eventBus } from '@/infra/event-bus';
@@ -23,6 +31,44 @@ import type { PermissionEngine, ToolInfoResolver } from './permission-engine';
 import type { PermissionStore } from './permission-store';
 
 const log = logger.child('tool-guard');
+
+// ============ ToolGuardContext ============
+
+/**
+ * 工具守卫运行时上下文
+ *
+ * 通过 AsyncLocalStorage 在整个工具调用链中传递。
+ * 不同场景（后台 Agent / Plan Mode / Worktree）注入不同上下文。
+ */
+export interface ToolGuardContext {
+  /** 是否为后台 Agent（后台不能弹交互式审批对话框） */
+  isBackgroundAgent?: boolean;
+  /** 是否处于计划模式（只读约束） */
+  planMode?: boolean;
+  /** 当前 worktree 路径 */
+  worktreePath?: string;
+}
+
+const toolGuardCtxStore = new AsyncLocalStorage<ToolGuardContext>();
+
+/**
+ * 获取当前 ToolGuard 上下文
+ */
+export function getToolGuardContext(): ToolGuardContext | undefined {
+  return toolGuardCtxStore.getStore();
+}
+
+/**
+ * 在指定上下文中执行回调
+ *
+ * 用于在后台 Agent / Plan Mode 等场景下包装工具执行。
+ */
+export async function runWithToolGuardContext<T>(
+  context: ToolGuardContext,
+  fn: () => T | Promise<T>
+): Promise<T> {
+  return toolGuardCtxStore.run(context, fn);
+}
 
 // ============ SecurityBlockedError ============
 
@@ -116,6 +162,30 @@ export class ToolGuard {
 
       // Step 3: ASK → 请求审批
       if (decision.action === 'ask') {
+        // 后台 Agent 不能弹交互式对话框，自动降级为 DENY
+        const guardCtx = getToolGuardContext();
+        if (guardCtx?.isBackgroundAgent) {
+          const reason = `后台 Agent 不允许交互式审批，工具 ${toolId} 被自动拒绝`;
+          log.info('后台 Agent ASK 降级为 DENY', { toolId, risk: decision.risk });
+
+          eventBus.emit('security:blocked', {
+            toolId,
+            risk: decision.risk,
+            reason,
+            params: params as Record<string, unknown>,
+          });
+
+          this.auditLogger?.log({
+            action: 'BLOCK',
+            toolId,
+            risk: decision.risk,
+            reason,
+            params: params as Record<string, unknown>,
+          });
+
+          throw new SecurityBlockedError(reason, toolId, decision.risk, reason);
+        }
+
         this.auditLogger?.log({
           action: 'APPROVAL_REQUESTED',
           toolId,

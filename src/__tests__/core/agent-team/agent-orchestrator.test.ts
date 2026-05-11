@@ -98,6 +98,20 @@ describe('AgentOrchestrator', () => {
       expect(result.status).toBe('failure');
       expect(result.error?.code).toBe('MAX_DEPTH_EXCEEDED');
     });
+
+    it('should call wrapExecute when provided', async () => {
+      orchestrator = createOrchestrator();
+      let wrappedCalled = false;
+
+      await orchestrator.spawnWorker('general-purpose', 'test task', {
+        wrapExecute: async (execute) => {
+          wrappedCalled = true;
+          return execute();
+        },
+      });
+
+      expect(wrappedCalled).toBe(true);
+    });
   });
 
   describe('spawnFlat', () => {

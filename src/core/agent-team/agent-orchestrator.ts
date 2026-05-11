@@ -29,11 +29,21 @@ export interface SpawnWorkerOptions {
   /** 超时（毫秒） */
   timeoutMs?: number;
   /** 是否继承父级上下文 */
-  inheritContext?: boolean;
+  inheritContext?: boolean | undefined;
   /** 背景上下文 */
-  context?: string;
+  context?: string | undefined;
   /** 父实例 ID（自动使用 parentAgent 的 ID 若不提供） */
-  parentInstanceId?: string;
+  parentInstanceId?: string | undefined;
+  /**
+   * 执行包装器
+   *
+   * 用于在 agent.execute() 前后注入运行时上下文（如 ToolGuardContext）。
+   * 接收原始 execute 函数，返回包装后的结果。
+   *
+   * 典型用途：后台 Agent 通过此钩子设置 isBackgroundAgent 上下文，
+   * 使 ToolGuard 自动将 ASK 降级为 DENY。
+   */
+  wrapExecute?: (execute: () => Promise<unknown>) => Promise<unknown>;
 }
 
 /** spawnTeam Worker 规格 */
@@ -377,9 +387,9 @@ export class AgentOrchestrator {
       );
       agent.systemPromptOverride = enrichedPrompt;
 
-      // 4. 执行
+      // 4. 执行（支持 wrapExecute 注入运行时上下文）
       instanceManager.transition(instanceId, 'running');
-      const result = await Promise.race([
+      const executeFn = () =>
         agent.execute({
           taskId,
           taskDescription,
@@ -388,7 +398,12 @@ export class AgentOrchestrator {
             timeout: timeoutMs,
             verbose: false,
           },
-        }),
+        });
+
+      const executePromise = options?.wrapExecute ? options.wrapExecute(executeFn) : executeFn();
+
+      const result = await Promise.race([
+        executePromise,
         this.createTimeoutPromise(taskId, timeoutMs),
       ]);
 
