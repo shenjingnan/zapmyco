@@ -33,7 +33,7 @@ import { createQuitCommand } from '@/cli/repl/commands/quit';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
-import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { showApprovalDialog, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
 import { _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { getCronStore } from '@/cli/repl/cron/cron-store';
@@ -62,6 +62,14 @@ import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type { ChatMessage } from '@/llm/types';
+import {
+  ApprovalManager,
+  createToolInfoResolver,
+  PermissionEngine,
+  PermissionStore,
+  resolveConfig,
+  ToolGuard,
+} from '@/security';
 
 const log = logger.child('repl:session');
 
@@ -171,6 +179,12 @@ export class ReplSession {
   /** 任务管理器（会话级持久化） */
   private taskStore: TaskStore;
 
+  /** 安全框架组件 */
+  private permissionStore!: PermissionStore;
+  private permissionEngine!: PermissionEngine;
+  private approvalManager!: ApprovalManager;
+  private toolGuard!: ToolGuard;
+
   // 会话统计
   private stats: SessionStats = {
     totalRequests: 0,
@@ -258,6 +272,9 @@ export class ReplSession {
     if (this.config.skill?.enabled !== false) {
       this.initSkills();
     }
+
+    // 初始化安全框架
+    this.initSecurity();
 
     // 注册所有内置命令
     this.registerBuiltinCommands();
@@ -899,6 +916,54 @@ export class ReplSession {
 
   // ============ 私有方法 ============
 
+  /**
+   * 初始化安全框架
+   *
+   * 创建 PermissionEngine → ApprovalManager → ToolGuard 管道。
+   * 必须在 registerBuiltinTools() 之前调用。
+   */
+  private initSecurity(): void {
+    const securityConfig = this.config.security ?? {};
+    const resolvedConfig = resolveConfig(securityConfig);
+
+    this.permissionStore = new PermissionStore(resolvedConfig.persistence);
+
+    // 先创建空的 ToolInfoResolver，在 registerBuiltinTools 后更新
+    const toolInfoResolver = createToolInfoResolver([]);
+    this.permissionEngine = new PermissionEngine(
+      resolvedConfig,
+      this.permissionStore,
+      toolInfoResolver
+    );
+
+    this.approvalManager = new ApprovalManager();
+
+    // 注入 TUI 审批提供者
+    this.approvalManager.setProvider({
+      requestApproval: async (request) => {
+        // TUI 可能未启动（在 constructor 阶段），需要检查
+        try {
+          return await showApprovalDialog(this.tui, request);
+        } catch {
+          // TUI 不可用时自动拒绝
+          log.warn('TUI 不可用，自动拒绝审批', { toolId: request.toolId });
+          return { approved: false };
+        }
+      },
+    });
+
+    this.toolGuard = new ToolGuard(
+      this.permissionEngine,
+      this.approvalManager,
+      this.permissionStore
+    );
+
+    log.debug('安全框架初始化完成', {
+      mode: resolvedConfig.mode,
+      enabled: resolvedConfig.enabled,
+    });
+  }
+
   /** 注册所有内置命令 */
   private registerBuiltinCommands(): void {
     this.registry.register(createHelpCommand());
@@ -1019,16 +1084,22 @@ export class ReplSession {
    */
   private registerBuiltinTools(): void {
     // 1. 注册内置工具（同步，立即可用）
-    this.agent.registerTools(
-      createReplBuiltinTools(
-        this.config.web,
-        this.taskStore,
-        this.config.skill,
-        this.agent,
-        this.config.subAgent,
-        this.cronScheduler ?? undefined
-      )
+    const rawTools = createReplBuiltinTools(
+      this.config.web,
+      this.taskStore,
+      this.config.skill,
+      this.agent,
+      this.config.subAgent,
+      this.cronScheduler ?? undefined
     );
+
+    // 更新 PermissionEngine 的工具信息解析器
+    this.permissionEngine.setToolInfoResolver(createToolInfoResolver(rawTools));
+
+    // 用 ToolGuard 包装所有工具（代理模式，添加安全管道）
+    const guardedTools = this.toolGuard.wrapAll(rawTools);
+
+    this.agent.registerTools(guardedTools);
 
     // 2. 异步初始化 MCP 工具（fire-and-forget，完成后自动注册）
     //    normalizeMcpConfig 兼容 key-value 和 servers 数组两种格式
@@ -1258,6 +1329,15 @@ export class ReplSession {
    * 并注入到运行中的 Agent 实例，使新 Key/模型立即生效。
    */
   applyConfigUpdate(key: string): void {
+    // security 配置热更新
+    if (key.startsWith('security.')) {
+      const securityConfig = this.config.security ?? {};
+      const resolvedConfig = resolveConfig(securityConfig);
+      this.permissionEngine.updateConfig(resolvedConfig);
+      log.debug('安全配置已热更新', { key });
+      return;
+    }
+
     if (!key.startsWith('llm.')) return;
 
     // 从更新后的 config 重新创建 LLM facade

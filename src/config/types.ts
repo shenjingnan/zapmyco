@@ -323,6 +323,9 @@ export interface ZapmycoConfig {
 
   /** 上下文压缩配置 */
   compaction?: import('@/core/context/types').CompactionConfig;
+
+  /** 安全框架配置 */
+  security?: import('@/security/types').SecurityConfig;
 }
 
 /** Web 工具配置 */
