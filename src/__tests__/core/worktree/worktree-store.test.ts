@@ -42,6 +42,17 @@ describe('WorktreeStore', () => {
       const s = new WorktreeStore();
       expect(s.getBaseDir()).toContain('.zapmyco');
     });
+
+    it('传入空字符串时应回退到默认目录', () => {
+      // 使用 || 确保空字符串也回退到默认值
+      const s = new WorktreeStore('');
+      expect(s.getBaseDir()).toContain('.zapmyco');
+    });
+
+    it('传入 undefined 时应回退到默认目录', () => {
+      const s = new WorktreeStore(undefined);
+      expect(s.getBaseDir()).toContain('.zapmyco');
+    });
   });
 
   describe('save and get', () => {

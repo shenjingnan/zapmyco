@@ -85,5 +85,30 @@ describe('ApprovalManager', () => {
       });
       expect(manager.hasProvider()).toBe(true);
     });
+
+    it('should auto-deny when provider throws error', async () => {
+      const manager = new ApprovalManager({
+        requestApproval: async () => {
+          throw new Error('provider crash');
+        },
+      });
+
+      const response = await manager.requestApproval({
+        toolId: 'Exec',
+        toolLabel: '执行命令',
+        params: {},
+        risk: 'medium',
+        reason: '需要审批',
+        sessionId: 'test',
+      });
+      expect(response.approved).toBe(false);
+    });
+
+    it('constructor with provider should set hasProvider to true', () => {
+      const manager = new ApprovalManager({
+        requestApproval: async () => ({ approved: true }),
+      });
+      expect(manager.hasProvider()).toBe(true);
+    });
   });
 });
