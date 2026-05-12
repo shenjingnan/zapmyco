@@ -80,6 +80,27 @@ export interface LlmConfig {
   /** 默认使用的模型标识（格式：provider/modelId，如 anthropic/claude-sonnet-4-20250514） */
   defaultModel: string;
 
+  /**
+   * 深度分析 / 复杂推理场景使用的模型
+   *
+   * 未配置时依次 fallback 到 routing.taskBasedModels['analysis'] → defaultModel
+   */
+  analysisModel?: string;
+
+  /**
+   * 轻量任务使用的模型（压缩摘要、自动提示、快速分类等）
+   *
+   * 未配置时 fallback 到 defaultModel
+   */
+  lightModel?: string;
+
+  /**
+   * 图像理解 / 多模态场景使用的模型
+   *
+   * 未配置时自动从注册模型中筛选支持 vision 的模型，再无则 fallback 到 defaultModel
+   */
+  visionModel?: string;
+
   /** 各提供商的配置（认证信息 + 模型列表） */
   providers: Record<string, LlmProviderConfig>;
 

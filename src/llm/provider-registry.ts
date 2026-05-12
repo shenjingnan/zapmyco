@@ -65,15 +65,24 @@ export class ProviderRegistry {
   private fallbackConfig: LlmFallbackConfig | undefined;
   private routingConfig: LlmRoutingConfig | undefined;
   private defaultModelKey: string;
+  private analysisModelKey: string | undefined;
+  private lightModelKey: string | undefined;
+  private visionModelKey: string | undefined;
 
   private constructor(
     credentialManager: CredentialPoolManager,
     defaultModelKey: string,
+    analysisModelKey: string | undefined,
+    lightModelKey: string | undefined,
+    visionModelKey: string | undefined,
     fallbackConfig?: LlmFallbackConfig,
     routingConfig?: LlmRoutingConfig
   ) {
     this.credentialManager = credentialManager;
     this.defaultModelKey = defaultModelKey;
+    this.analysisModelKey = analysisModelKey;
+    this.lightModelKey = lightModelKey;
+    this.visionModelKey = visionModelKey;
     this.fallbackConfig = fallbackConfig;
     this.routingConfig = routingConfig;
   }
@@ -87,6 +96,9 @@ export class ProviderRegistry {
     const registry = new ProviderRegistry(
       credentialManager,
       config.defaultModel,
+      config.analysisModel,
+      config.lightModel,
+      config.visionModel,
       config.fallback,
       config.routing
     );
@@ -164,8 +176,42 @@ export class ProviderRegistry {
       modelInfo.baseUrl = providerBaseUrl;
     }
 
+    // 自动推导能力标签
+    modelInfo.capabilities = this.deriveCapabilities(modelInfo.id, modelInfo.input);
+
     this.models.set(modelKey, modelInfo);
     this.providers.get(providerName)?.models.push(modelInfo);
+  }
+
+  /**
+   * 从模型 ID 和 input 信息自动推导能力标签
+   *
+   * 推导规则：
+   * - 所有模型自动获得 chat + streaming
+   * - input 包含 'image' → vision
+   * - 模型名含 reasoning 关键词（opus, o1, o3, pro）→ reasoning
+   * - 模型名含 lightweight 关键词（haiku, mini, flash）→ fast
+   */
+  private deriveCapabilities(modelId: string, input?: string[]): ModelCapability[] {
+    const capabilities: ModelCapability[] = ['chat', 'streaming'];
+    const lowerId = modelId.toLowerCase();
+
+    // 从 input 推导视觉能力
+    if (input?.includes('image')) {
+      capabilities.push('vision');
+    }
+
+    // 从模型名推导推理能力
+    if (/opus|o[13]|pro|reasoning/.test(lowerId)) {
+      capabilities.push('reasoning');
+    }
+
+    // 从模型名推导快速/轻量
+    if (/haiku|mini|flash|turbo|nano/.test(lowerId) && !/gemini/.test(lowerId)) {
+      capabilities.push('fast');
+    }
+
+    return capabilities;
   }
 
   /** 从 pi-ai 内置注册表自动填充模型 */
@@ -188,6 +234,9 @@ export class ProviderRegistry {
         if (providerBaseUrl) {
           modelInfo.baseUrl = providerBaseUrl;
         }
+
+        // 自动推导能力标签
+        modelInfo.capabilities = this.deriveCapabilities(modelInfo.id, modelInfo.input);
 
         this.models.set(modelKey, modelInfo);
         this.providers.get(providerName)?.models.push(modelInfo);
@@ -257,6 +306,78 @@ export class ProviderRegistry {
       throw new Error(`默认模型 ${this.defaultModelKey} 未在配置中注册`);
     }
     return model;
+  }
+
+  /**
+   * 获取深度分析模型
+   *
+   * 优先级：analysisModelKey → routing.taskBasedModels['analysis'] → defaultModelKey
+   */
+  getAnalysisModel(): ModelInfo | undefined {
+    // 1. 显式配置的 analysisModel
+    if (this.analysisModelKey) {
+      const model = this.models.get(this.analysisModelKey);
+      if (model) return model;
+    }
+    // 2. routing.taskBasedModels 中的 analysis
+    if (this.routingConfig?.taskBasedModels?.analysis) {
+      const model = this.models.get(this.routingConfig.taskBasedModels.analysis);
+      if (model) return model;
+    }
+    // 3. 回退到默认模型
+    return this.getDefaultModel();
+  }
+
+  /**
+   * 获取轻量模型
+   *
+   * 优先级：lightModelKey → defaultModelKey
+   */
+  getLightModel(): ModelInfo | undefined {
+    if (this.lightModelKey) {
+      const model = this.models.get(this.lightModelKey);
+      if (model) return model;
+    }
+    return this.getDefaultModel();
+  }
+
+  /**
+   * 获取视觉/多模态模型
+   *
+   * 优先级：visionModelKey → 自动筛选支持 vision 的模型 → defaultModelKey
+   */
+  getVisionModel(): ModelInfo | undefined {
+    // 1. 显式配置的 visionModel
+    if (this.visionModelKey) {
+      const model = this.models.get(this.visionModelKey);
+      if (model) return model;
+    }
+    // 2. 自动筛选支持 vision 的模型（优先当前默认提供商）
+    const defaultModel = this.getDefaultModel();
+    const visionModels = this.findModels(['vision']);
+    if (visionModels.length > 0) {
+      // 优先同提供商
+      const sameProvider = visionModels.find((m) => m.provider === defaultModel.provider);
+      return sameProvider ?? visionModels[0];
+    }
+    // 3. 回退到默认模型（无 vision 能力但至少不会报错）
+    return defaultModel;
+  }
+
+  /**
+   * 解析 pi-ai Model（支持语义模型名称）
+   *
+   * 支持特殊名称: 'analysis', 'light', 'vision' 映射到对应槽位
+   */
+  resolveSemanticModel(semanticName: 'analysis' | 'light' | 'vision'): ModelInfo | undefined {
+    switch (semanticName) {
+      case 'analysis':
+        return this.getAnalysisModel();
+      case 'light':
+        return this.getLightModel();
+      case 'vision':
+        return this.getVisionModel();
+    }
   }
 
   // ============ pi-ai Model 对象 ============
