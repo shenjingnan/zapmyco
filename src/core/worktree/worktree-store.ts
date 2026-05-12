@@ -33,7 +33,7 @@ export class WorktreeStore {
   private loaded = false;
 
   constructor(baseDir?: string) {
-    this.baseDir = baseDir ?? getDefaultBaseDir();
+    this.baseDir = baseDir || getDefaultBaseDir();
   }
 
   /** 获取存储目录 */
