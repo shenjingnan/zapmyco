@@ -74,6 +74,7 @@ function buildGeneratorPrompt(description: string): string {
     '# 系统提示词',
     '',
     '这里是 Agent 的系统提示词内容。',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: 模板变量文档说明
     '可以使用 ${taskDescription}、${workdir}、${context}、${memorySnapshot} 等变量。',
     '```',
     '',

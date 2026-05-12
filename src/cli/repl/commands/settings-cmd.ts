@@ -64,6 +64,7 @@ function hasApiKey(config: Record<string, unknown>, providerName: string): boole
   if (!key) return false;
   const keyStr = String(key);
   // Env var references count as configured (resolved at runtime)
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: 空环境变量占位符检查
   return keyStr.length > 0 && keyStr !== '${}';
 }
 

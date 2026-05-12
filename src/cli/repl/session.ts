@@ -43,6 +43,7 @@ import { InputParser } from '@/cli/repl/input-parser';
 import { Renderer as RendererClass } from '@/cli/repl/renderer';
 import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import { createTheme } from '@/cli/repl/theme';
+import { createLspTool } from '@/cli/repl/tools/lsp-tool';
 import { getMemoryStore } from '@/cli/repl/tools/memory-tool';
 import { getSkillCommandSpecs, setSkillEntries } from '@/cli/repl/tools/skill-tool';
 import type {
@@ -55,6 +56,9 @@ import type {
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
+import { createDiagnosticCollector, type DiagnosticCollector } from '@/core/lsp/diagnostics';
+import { resolveLspConfig } from '@/core/lsp/lsp-config';
+import { createLspServerManager, type LspServerManager } from '@/core/lsp/lsp-server-manager';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
 import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
@@ -172,6 +176,12 @@ export class ReplSession {
 
   /** MCP 连接管理器（在 registerBuiltinTools 中异步初始化） */
   private mcpManager: McpManager | null = null;
+
+  /** LSP 服务器管理器（在 registerBuiltinTools 中异步初始化） */
+  private lspManager: LspServerManager | null = null;
+
+  /** LSP 诊断收集器 */
+  private diagnosticCollector: DiagnosticCollector | null = null;
 
   /** 当前正在执行的 taskId（用于取消操作） */
   private currentTaskId: string | null = null;
@@ -367,6 +377,16 @@ export class ReplSession {
     if (this.mcpManager) {
       await this.mcpManager.shutdown();
       this.mcpManager = null;
+    }
+
+    // 关闭 LSP 服务器连接
+    if (this.lspManager) {
+      await this.lspManager.shutdown();
+      this.lspManager = null;
+    }
+    if (this.diagnosticCollector) {
+      this.diagnosticCollector.clear();
+      this.diagnosticCollector = null;
     }
 
     // 停止 TUI
@@ -1281,6 +1301,44 @@ export class ReplSession {
         .catch((err: unknown) => {
           log.error('MCP 初始化失败', { error: err instanceof Error ? err.message : String(err) });
         });
+    }
+
+    // 3. LSP 代码智能（fire-and-forget，不阻塞 Agent 使用）
+    if (this.config.lsp?.enabled !== false) {
+      const lspServers = resolveLspConfig(this.config.lsp);
+      if (lspServers.length > 0) {
+        this.lspManager = createLspServerManager();
+        this.lspManager.init(lspServers, process.cwd()).catch((err: unknown) => {
+          log.error('LSP 初始化失败', { error: err instanceof Error ? err.message : String(err) });
+        });
+
+        // 注册 LSP 工具
+        rawTools.push(createLspTool(this.lspManager));
+
+        // 初始化诊断收集器
+        this.diagnosticCollector = createDiagnosticCollector();
+        this.diagnosticCollector.init(this.lspManager);
+
+        // 4. ReadFile 文档同步钩子：文件读取成功后通知 LSP server
+        const readFileTool = rawTools.find((t) => t.id === 'ReadFile');
+        if (readFileTool && this.lspManager) {
+          const lspManagerRef = this.lspManager;
+          const originalExecute = readFileTool.execute;
+          readFileTool.execute = async (toolCallId, params, signal, onUpdate) => {
+            const result = await originalExecute(toolCallId, params, signal, onUpdate);
+            // fire-and-forget 文档同步
+            const filePath = (params as Record<string, unknown>)?.file_path;
+            if (
+              filePath &&
+              typeof filePath === 'string' &&
+              !(result.details as Record<string, unknown>)?.error
+            ) {
+              lspManagerRef.onFileOpened(filePath, '').catch(() => {});
+            }
+            return result;
+          };
+        }
+      }
     }
   }
 

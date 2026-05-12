@@ -332,6 +332,9 @@ export interface ZapmycoConfig {
 
   /** Worktree 隔离配置 */
   worktree?: import('@/core/worktree/types').WorktreeConfig;
+
+  /** LSP 代码智能配置 */
+  lsp?: import('@/core/lsp/types').LspConfig;
 }
 
 /** Web 工具配置 */
