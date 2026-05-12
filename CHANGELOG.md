@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/shenjingnan/zapmyco/compare/v0.9.0...v0.10.0) (2026-05-12)
+
+### Features
+
+* **agent-team:** 实现后台异步 Agent 执行 (run_in_background) ([#77](https://github.com/shenjingnan/zapmyco/issues/77)) ([40e08f0](https://github.com/shenjingnan/zapmyco/commit/40e08f024f5394535164d1a79dda02eabb40b132))
+* **lsp:** 实现 Phase 4 LSP 代码智能——三层架构语义级代码理解 ([#86](https://github.com/shenjingnan/zapmyco/issues/86)) ([ff66c4f](https://github.com/shenjingnan/zapmyco/commit/ff66c4fba72851a8f52655521c689a99326b8967))
+* **question:** 实现 AskUserQuestion 交互式提问工具 ([#87](https://github.com/shenjingnan/zapmyco/issues/87)) ([393e715](https://github.com/shenjingnan/zapmyco/commit/393e715ee26b2e45ef78c8940870930489edff95))
+* **worktree:** 实现 Phase 1 工作树隔离——Agent 级别 git worktree 文件系统隔离 ([#85](https://github.com/shenjingnan/zapmyco/issues/85)) ([207cd56](https://github.com/shenjingnan/zapmyco/commit/207cd561febf0ee2937913128de34918358a0436))
+
+### Bug Fixes
+
+* **commands:** 修复 increase-coverage 命令先跑单测再跑覆盖率 ([#78](https://github.com/shenjingnan/zapmyco/issues/78)) ([1093933](https://github.com/shenjingnan/zapmyco/commit/1093933386bcccef3cc1970ceafc780b5c2900fd))
+
 ## [0.9.0](https://github.com/shenjingnan/zapmyco/compare/v0.8.0...v0.9.0) (2026-05-11)
 
 ### Features
