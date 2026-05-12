@@ -14,6 +14,9 @@ import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import type { AgentTeamConfig, TeamResult, WorkerResult } from '@/core/agent-team/types';
 import type { SubAgentResultEntry, SubAgentResults, SubAgentSpec } from '@/core/sub-agent/types';
+import type { WorktreeInfo } from '@/core/worktree/types';
+import { runInWorktree } from '@/core/worktree/worktree-context';
+import { getWorktreeManager } from '@/core/worktree/worktree-manager';
 import { logger } from '@/infra/logger';
 import { createAgentFromType } from './agent-factory';
 import { getAgentInstanceManager } from './agent-instance-manager';
@@ -44,6 +47,8 @@ export interface SpawnWorkerOptions {
    * 使 ToolGuard 自动将 ASK 降级为 DENY。
    */
   wrapExecute?: (execute: () => Promise<unknown>) => Promise<unknown>;
+  /** 隔离模式（默认 undefined = 无隔离） */
+  isolation?: 'worktree' | undefined;
 }
 
 /** spawnTeam Worker 规格 */
@@ -333,6 +338,7 @@ export class AgentOrchestrator {
     const taskId = options?.taskId ?? `worker-${typeId}-${Date.now()}`;
     const instanceId = `agent-${typeId}-${Date.now()}`;
     const timeoutMs = options?.timeoutMs ?? this.flatConfig.taskTimeoutMs;
+    let worktreeInfo: WorktreeInfo | undefined;
 
     try {
       // 1. 创建 Agent 实例
@@ -387,20 +393,49 @@ export class AgentOrchestrator {
       );
       agent.systemPromptOverride = enrichedPrompt;
 
-      // 4. 执行（支持 wrapExecute 注入运行时上下文）
+      // 4. Worktree 隔离
+      let effectiveOptions = options;
+
+      if (options?.isolation === 'worktree' && getWorktreeManager()) {
+        const wm = getWorktreeManager()!;
+        worktreeInfo = await wm.create({
+          slug: `${typeId}-${instanceId}`,
+          createdBy: instanceId,
+        });
+
+        // 用包装器注入 worktree 上下文（与已有的 wrapExecute 链式组合）
+        const innerWrapExecute = options.wrapExecute;
+        effectiveOptions = { ...options };
+        effectiveOptions.wrapExecute = (execute) => {
+          const inner = innerWrapExecute ? () => innerWrapExecute(execute) : execute;
+          return runInWorktree(
+            {
+              worktreeId: worktreeInfo!.id,
+              worktreePath: worktreeInfo!.worktreePath,
+              originalPath: worktreeInfo!.originalPath,
+            },
+            inner
+          );
+        };
+      }
+
+      // 5. 执行（支持 wrapExecute 注入运行时上下文）
       instanceManager.transition(instanceId, 'running');
+      const workdir = worktreeInfo?.worktreePath ?? process.cwd();
       const executeFn = () =>
         agent.execute({
           taskId,
           taskDescription,
-          workdir: process.cwd(),
+          workdir,
           options: {
             timeout: timeoutMs,
             verbose: false,
           },
         });
 
-      const executePromise = options?.wrapExecute ? options.wrapExecute(executeFn) : executeFn();
+      const executePromise = effectiveOptions?.wrapExecute
+        ? effectiveOptions.wrapExecute(executeFn)
+        : executeFn();
 
       const result = await Promise.race([
         executePromise,
@@ -409,7 +444,7 @@ export class AgentOrchestrator {
 
       const duration = Date.now() - startTime;
 
-      // 5. 构建 WorkerResult
+      // 6. 构建 WorkerResult
       const taskResult = result as unknown as {
         status: string;
         output: unknown;
@@ -487,6 +522,27 @@ export class AgentOrchestrator {
         }
       } catch {
         // 忽略
+      }
+
+      // Worktree 自动清理
+      if (worktreeInfo) {
+        const wm = getWorktreeManager();
+        if (wm) {
+          try {
+            const cleanResult = await wm.autoCleanIfNoChanges(worktreeInfo.id);
+            if (!cleanResult.cleaned) {
+              log.info('Worktree 有变更，保留', {
+                id: worktreeInfo.id,
+                path: cleanResult.worktreePath,
+              });
+            }
+          } catch (err) {
+            log.warn('Worktree 清理失败', {
+              id: worktreeInfo.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
       }
     }
   }

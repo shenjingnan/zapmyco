@@ -14,6 +14,7 @@
 
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { resolveWorktreePath } from '@/core/worktree/worktree-context';
 
 // ============ 类型定义 ============
 
@@ -184,7 +185,7 @@ export function createGlobTool() {
     // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
     async execute(_toolCallId: string, params: GlobParams): Promise<any> {
       const startTime = Date.now();
-      const searchPath = resolve(params.path ?? process.cwd());
+      const searchPath = resolveWorktreePath(params.path ?? process.cwd());
 
       try {
         const matches = globSync(params.pattern, searchPath);

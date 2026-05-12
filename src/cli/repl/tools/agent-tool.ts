@@ -108,6 +108,12 @@ export function createAgentTool(orchestrator: AgentOrchestrator): ToolRegistrati
           type: 'string',
           description: '可选背景摘要，注入给每个子 Agent',
         },
+        isolation: {
+          type: 'string',
+          enum: ['worktree'],
+          description:
+            '隔离模式。设为 "worktree" 时 Agent 在独立 git worktree 中运行，修改不影响主工作区',
+        },
       },
       required: ['description'],
     } as unknown as import('typebox').TSchema,
@@ -125,6 +131,7 @@ export function createAgentTool(orchestrator: AgentOrchestrator): ToolRegistrati
           description: p.description,
           context: p.context,
           inheritContext: p.inherit_context,
+          ...(p.isolation ? { isolation: p.isolation } : {}),
         });
 
         const asyncMsg = [
@@ -160,6 +167,7 @@ export function createAgentTool(orchestrator: AgentOrchestrator): ToolRegistrati
         const result = await orchestrator.spawnWorker(p.subagent_type, p.description, {
           ...(p.context != null ? { context: p.context } : {}),
           ...(p.inherit_context != null ? { inheritContext: p.inherit_context } : {}),
+          ...(p.isolation ? { isolation: p.isolation } : {}),
         });
 
         const summary =

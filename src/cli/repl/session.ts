@@ -10,7 +10,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   CombinedAutocompleteProvider,
@@ -58,6 +58,8 @@ import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
 import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
+import type { WorktreeConfig } from '@/core/worktree/types';
+import { setWorktreeManager, WorktreeManager } from '@/core/worktree/worktree-manager';
 import { setLocale, t } from '@/i18n';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
@@ -183,6 +185,9 @@ export class ReplSession {
   /** 任务管理器（会话级持久化） */
   private taskStore: TaskStore;
 
+  /** Worktree 隔离管理器 */
+  private worktreeManager!: WorktreeManager;
+
   /** 安全框架组件 */
   private permissionStore!: PermissionStore;
   private permissionEngine!: PermissionEngine;
@@ -260,6 +265,9 @@ export class ReplSession {
       isIdle: () => this._state === 'idle',
     });
     void this.cronScheduler.start();
+
+    // 初始化 WorktreeManager（Agent 隔离环境）
+    this.initWorktreeManager();
 
     // 初始化 MemoryStore 并冻结记忆快照（用于系统提示注入）
     const memoryStore = getMemoryStore();
@@ -1039,6 +1047,34 @@ export class ReplSession {
   /**
    * 初始化安全框架
    *
+  /**
+   * 初始化 WorktreeManager
+   *
+   * 创建 git worktree 隔离管理器，注册为全局实例，
+   * 并启动过期 worktree 清理。
+   */
+  private initWorktreeManager(): void {
+    const rawConfig = this.config.worktree ?? {};
+    const worktreeConfig: WorktreeConfig = {
+      enabled: true,
+      autoCleanNoChanges: true,
+      expireAfterMs: 24 * 60 * 60 * 1000,
+      baseDir: join(homedir(), '.zapmyco', 'worktrees'),
+      ...rawConfig,
+    };
+
+    this.worktreeManager = new WorktreeManager(worktreeConfig);
+    setWorktreeManager(this.worktreeManager);
+
+    // fire-and-forget 清理过期 worktree
+    this.worktreeManager.cleanExpired().catch((err: unknown) => {
+      log.warn('过期 worktree 清理失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  /**
    * 创建 PermissionEngine → ApprovalManager → ToolGuard 管道。
    * 必须在 registerBuiltinTools() 之前调用。
    */
@@ -1222,7 +1258,8 @@ export class ReplSession {
       this.agent,
       this.config.subAgent,
       this.cronScheduler ?? undefined,
-      this.config.agentTeam
+      this.config.agentTeam,
+      this.worktreeManager
     );
 
     // 更新 PermissionEngine 的工具信息解析器

@@ -10,6 +10,8 @@
 import type { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { createAgentTool } from '@/cli/repl/tools/agent-tool';
 import { createCronTool } from '@/cli/repl/tools/cron-tool';
+import { createEnterWorktreeTool } from '@/cli/repl/tools/enter-worktree';
+import { createExitWorktreeTool } from '@/cli/repl/tools/exit-worktree';
 import { createEditFileTool } from '@/cli/repl/tools/file-edit';
 import { createGlobTool } from '@/cli/repl/tools/file-glob';
 import { createGrepTool } from '@/cli/repl/tools/file-grep';
@@ -31,6 +33,8 @@ import { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
 import type { AgentTeamConfig } from '@/core/agent-team/types';
 import { SubAgentManager } from '@/core/sub-agent';
 import type { TaskStore } from '@/core/task/task-store';
+import { resolveWorktreePath } from '@/core/worktree/worktree-context';
+import type { WorktreeManager } from '@/core/worktree/worktree-manager';
 import { TOOL_RISK_MAP } from '@/security/constants';
 import type { RiskLevel } from '@/security/types';
 
@@ -47,7 +51,8 @@ export function createReplBuiltinTools(
   parentAgent?: LlmBasedAgent,
   subAgentConfig?: SubAgentConfig,
   cronScheduler?: CronScheduler,
-  agentTeamConfig?: AgentTeamConfig
+  agentTeamConfig?: AgentTeamConfig,
+  worktreeManager?: WorktreeManager
 ): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
@@ -121,8 +126,7 @@ export function createReplBuiltinTools(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       execute: async (_toolCallId: string, params: any): Promise<any> => {
         const fs = await import('node:fs/promises');
-        const pathModule = await import('node:path');
-        const resolvedPath = pathModule.resolve(params.file_path);
+        const resolvedPath = resolveWorktreePath(params.file_path);
         try {
           const content = await fs.readFile(resolvedPath, 'utf-8');
           const lines = content.split('\n');
@@ -238,6 +242,14 @@ export function createReplBuiltinTools(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools.push(createSpawnSubAgentsTool(manager, subAgentConfig) as any);
     }
+  }
+
+  // Worktree 隔离工具
+  if (worktreeManager) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createEnterWorktreeTool(worktreeManager) as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools.push(createExitWorktreeTool(worktreeManager) as any);
   }
 
   // 定时任务工具（依赖 CronScheduler 实例）

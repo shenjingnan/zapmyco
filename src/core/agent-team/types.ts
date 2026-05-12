@@ -302,6 +302,8 @@ export interface AgentToolParams {
   }>;
   /** 可选的背景上下文 */
   context?: string;
+  /** 隔离模式（默认 undefined = 无隔离） */
+  isolation?: 'worktree';
 }
 
 // ============ Agent Team 配置 ============

@@ -14,7 +14,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolveWorktreePath } from '@/core/worktree/worktree-context';
 
 // ============ 类型定义 ============
 
@@ -235,7 +235,7 @@ export function createGrepTool() {
     // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
     async execute(_toolCallId: string, params: GrepParams): Promise<any> {
       const startTime = Date.now();
-      const searchPath = resolve(params.path ?? process.cwd());
+      const searchPath = resolveWorktreePath(params.path ?? process.cwd());
       const outputMode = params.output_mode ?? 'content';
       const ignoreCase = params['-i'] === true;
       const contextBefore = params['-B'] ?? params.context ?? 0;

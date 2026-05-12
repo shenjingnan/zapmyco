@@ -14,6 +14,7 @@
  * @module cli/repl/tools/file-edit
  */
 
+import { resolveWorktreePath } from '@/core/worktree/worktree-context';
 import {
   checkFilePermission,
   generateSimpleDiff,
@@ -167,8 +168,9 @@ export function createEditFileTool() {
         };
       }
 
-      // Step 2: 路径验证
-      const pathResult = validateFilePath(params.file_path);
+      // Step 2: 路径验证（先通过 worktree 上下文解析路径）
+      const worktreePath = resolveWorktreePath(params.file_path);
+      const pathResult = validateFilePath(worktreePath);
       if (!pathResult.valid) {
         const details: EditFileDetails = {
           filePath: params.file_path,

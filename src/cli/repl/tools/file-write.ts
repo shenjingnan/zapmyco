@@ -14,6 +14,7 @@
  * @module cli/repl/tools/file-write
  */
 
+import { resolveWorktreePath } from '@/core/worktree/worktree-context';
 import {
   checkFilePermission,
   generateSimpleDiff,
@@ -74,8 +75,9 @@ export function createWriteFileTool() {
     async execute(_toolCallId: string, params: WriteFileParams): Promise<any> {
       const startTime = Date.now();
 
-      // Step 1: 路径验证
-      const pathResult = validateFilePath(params.file_path);
+      // Step 1: 路径验证（先通过 worktree 上下文解析路径）
+      const worktreePath = resolveWorktreePath(params.file_path);
+      const pathResult = validateFilePath(worktreePath);
       if (!pathResult.valid) {
         const details: WriteFileDetails = {
           type: 'create',

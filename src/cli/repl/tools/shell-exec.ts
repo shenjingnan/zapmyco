@@ -15,6 +15,7 @@
 
 import { type ChildProcess, spawn } from 'node:child_process';
 import * as os from 'node:os';
+import { resolveWorkdir } from '@/core/worktree/worktree-context';
 import { getProcessRegistry } from './process-registry';
 import {
   checkCommandSecurity,
@@ -97,8 +98,9 @@ export function createExecTool() {
         };
       }
 
-      // Step 2: 工作目录验证
-      const workdirResult = validateWorkdir(params.workdir);
+      // Step 2: 工作目录验证（先通过 worktree 上下文解析路径）
+      const effectiveWorkdir = params.workdir ?? resolveWorkdir();
+      const workdirResult = validateWorkdir(effectiveWorkdir);
       if (!workdirResult.valid) {
         return {
           content: [
