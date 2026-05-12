@@ -80,6 +80,9 @@ export const TOOL_RISK_MAP: Record<string, string> = {
   // ---- LSP 代码智能（只读分析）----
   LSP: 'low',
 
+  // ---- 交互式工具 ----
+  AskUserQuestion: 'medium',
+
   // ---- 子代理（最高风险）----
   SpawnSubAgents: 'high',
 };

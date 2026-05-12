@@ -9,6 +9,7 @@
 
 import type { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { createAgentTool } from '@/cli/repl/tools/agent-tool';
+import { createAskUserQuestionTool } from '@/cli/repl/tools/ask-user-question';
 import { createCronTool } from '@/cli/repl/tools/cron-tool';
 import { createEnterWorktreeTool } from '@/cli/repl/tools/enter-worktree';
 import { createExitWorktreeTool } from '@/cli/repl/tools/exit-worktree';
@@ -257,6 +258,10 @@ export function createReplBuiltinTools(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools.push(createCronTool(cronScheduler) as any);
   }
+
+  // AskUserQuestion 交互式提问工具（始终注册）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools.push(createAskUserQuestionTool() as any);
 
   // 为未设置 defaultRisk 的工具补充默认风险等级
   for (const tool of tools) {

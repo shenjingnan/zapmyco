@@ -59,6 +59,12 @@ interface EventMap {
 
   // 系统
   'system:shutdown': { reason?: string };
+
+  // Question (交互式提问)
+  'question:asked': { requestId: string; questionCount: number };
+  'question:answered': { requestId: string; answerCount: number };
+  'question:cancelled': { requestId: string; reason: string };
+  'question:timeout': { requestId: string };
 }
 
 /**

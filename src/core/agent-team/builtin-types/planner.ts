@@ -64,6 +64,7 @@ export const plannerType: AgentTypeDefinition = {
       '- **务实优先**：选择最简单可行的方案，避免过度设计',
       '- **分阶段交付**：将方案拆解为增量可交付的阶段',
       '- **可派生子 Agent**：需要调研时 spawn researcher 并行搜索',
+      '- **交互式确认**：遇到需要用户决策的方向性问题时，使用 AskUserQuestion 工具获取用户偏好。不要自行假设用户的需求',
       '',
       `## 工作目录\n${ctx.workdir}`,
     ];

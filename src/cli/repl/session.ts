@@ -40,6 +40,7 @@ import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { getCronStore } from '@/cli/repl/cron/cron-store';
 import { HistoryStore as HistoryStoreClass } from '@/cli/repl/history-store';
 import { InputParser } from '@/cli/repl/input-parser';
+import { createTuiQuestionProvider } from '@/cli/repl/question-provider';
 import { Renderer as RendererClass } from '@/cli/repl/renderer';
 import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import { createTheme } from '@/cli/repl/theme';
@@ -60,6 +61,7 @@ import { createDiagnosticCollector, type DiagnosticCollector } from '@/core/lsp/
 import { resolveLspConfig } from '@/core/lsp/lsp-config';
 import { createLspServerManager, type LspServerManager } from '@/core/lsp/lsp-server-manager';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
+import { getQuestionManager, type QuestionManager } from '@/core/question';
 import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
 import type { WorktreeConfig } from '@/core/worktree/types';
@@ -207,6 +209,9 @@ export class ReplSession {
   private secretRedactor!: SecretRedactor;
   private skillGuard!: SkillGuard;
 
+  /** 交互式提问管理器 */
+  private questionManager!: QuestionManager;
+
   // 会话统计
   private stats: SessionStats = {
     totalRequests: 0,
@@ -301,6 +306,10 @@ export class ReplSession {
     // 初始化安全框架
     this.initSecurity();
 
+    // 初始化交互式提问管理器（注入 TUI provider）
+    this.questionManager = getQuestionManager();
+    this.questionManager.setProvider(createTuiQuestionProvider(this.tui));
+
     // 注册所有内置命令
     this.registerBuiltinCommands();
 
@@ -355,6 +364,11 @@ export class ReplSession {
 
     // 取消正在执行的任务
     this.cancelCurrentTask();
+
+    // 取消所有待处理的交互式提问
+    if (this.questionManager) {
+      this.questionManager.rejectAll(new Error('会话已关闭'));
+    }
 
     // 停止编辑器 loading 动画（确保 setInterval 被立即清除）
     this.editor.setExecuting(false);
