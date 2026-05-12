@@ -214,5 +214,39 @@ describe('CredentialPool', () => {
       const pool = new CredentialPool('test', [{ apiKey: 'key-1', enabled: false }]);
       expect(pool.getKey()).toBeUndefined();
     });
+
+    it('should filter out empty keys from env var references', () => {
+      // 环境变量引用解析为空字符串的凭据应被过滤
+      const pool = new CredentialPool('test', [
+        { apiKey: '${NONEXISTENT_VAR_FOR_POOL_TEST}', label: 'empty-env' },
+      ]);
+      // 凭据为空被过滤，池中没有可用 key
+      expect(pool.totalCount).toBe(0);
+      expect(pool.getKey()).toBeUndefined();
+    });
+
+    it('should filter out empty literal keys', () => {
+      const pool = new CredentialPool('test', [{ apiKey: '', label: 'empty' }]);
+      expect(pool.totalCount).toBe(0);
+    });
+  });
+
+  describe('totalCount and activeCount getters', () => {
+    it('totalCount should return total entries count', () => {
+      const pool = new CredentialPool('test', makeEntries(3));
+      expect(pool.totalCount).toBe(3);
+    });
+
+    it('activeCount should return active entries count', () => {
+      const pool = new CredentialPool('test', makeEntries(3));
+      expect(pool.activeCount).toBe(3);
+    });
+
+    it('activeCount should exclude disabled entries', () => {
+      const pool = new CredentialPool('test', makeEntries(2), { maxConsecutiveFailures: 1 });
+      pool.markFailed('key-1');
+      expect(pool.activeCount).toBe(1);
+      expect(pool.totalCount).toBe(2);
+    });
   });
 });

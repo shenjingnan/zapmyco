@@ -385,5 +385,195 @@ describe('event-bridge', () => {
       expect(spy).toHaveBeenCalled();
       spy.mockRestore();
     });
+
+    it('should return null for unknown event type', () => {
+      const listener = createEventBridgeListener('task-1', 'agent-1');
+      const spy = vi.spyOn(eventBus, 'emit');
+      listener({ type: 'unknown_type' as never }, {} as AbortSignal);
+      // 未知事件类型 adapt 返回 null，不会触发 dispatchToEventBus
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+  });
+
+  describe('dispatchToEventBus', () => {
+    it('should emit agent:online for agent:start', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({ type: 'agent:start', taskId: 't1', agentId: 'a1' });
+      expect(spy).toHaveBeenCalledWith('agent:online', { agentId: 'a1' });
+      spy.mockRestore();
+    });
+
+    it('should emit task:completed for agent:end', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({ type: 'agent:end', taskId: 't1', agentId: 'a1' });
+      expect(spy).toHaveBeenCalledWith('task:completed', { taskId: 't1', result: {} });
+      spy.mockRestore();
+    });
+
+    it('should emit task:started for turn:start', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({ type: 'turn:start', taskId: 't1' });
+      expect(spy).toHaveBeenCalledWith('task:started', { taskId: 't1', agentId: '' });
+      spy.mockRestore();
+    });
+
+    it('should emit task:progress for turn:end', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({ type: 'turn:end', taskId: 't1' });
+      expect(spy).toHaveBeenCalledWith('task:progress', {
+        taskId: 't1',
+        percent: 100,
+        message: 'Turn completed',
+      });
+      spy.mockRestore();
+    });
+
+    it('should emit task:output for message:start', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'message:start',
+        taskId: 't1',
+        textPreview: 'Hello',
+      });
+      expect(spy).toHaveBeenCalledWith('task:output', {
+        taskId: 't1',
+        text: '[开始生成] Hello',
+      });
+      spy.mockRestore();
+    });
+
+    it('should emit task:output for message:update', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({ type: 'message:update', taskId: 't1', delta: 'partial' });
+      expect(spy).toHaveBeenCalledWith('task:output', { taskId: 't1', text: 'partial' });
+      spy.mockRestore();
+    });
+
+    it('should emit task:output for message:end', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'message:end',
+        taskId: 't1',
+        fullMessage: 'complete msg',
+      });
+      expect(spy).toHaveBeenCalledWith('task:output', { taskId: 't1', text: 'complete msg' });
+      spy.mockRestore();
+    });
+
+    it('should emit task:progress for tool:start', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'tool:start',
+        taskId: 't1',
+        toolName: 'ReadFile',
+        toolCallId: 'call-1',
+        args: { file: 'test.ts' },
+      });
+      expect(spy).toHaveBeenCalledWith(
+        'task:progress',
+        expect.objectContaining({ taskId: 't1', percent: 0 })
+      );
+      spy.mockRestore();
+    });
+
+    it('should emit task:progress for tool:update', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({ type: 'tool:update', taskId: 't1', toolName: 'ReadFile' });
+      expect(spy).toHaveBeenCalledWith(
+        'task:progress',
+        expect.objectContaining({ taskId: 't1', message: 'ReadFile 更新中' })
+      );
+      spy.mockRestore();
+    });
+
+    it('should emit task:progress for tool:end success', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'tool:end',
+        taskId: 't1',
+        toolName: 'ReadFile',
+        toolCallId: 'call-1',
+        success: true,
+      });
+      expect(spy).toHaveBeenCalledWith(
+        'task:progress',
+        expect.objectContaining({ message: '工具 ReadFile 完成' })
+      );
+      spy.mockRestore();
+    });
+
+    it('should emit task:progress for tool:end failure', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      dispatchToEventBus({
+        type: 'tool:end',
+        taskId: 't1',
+        toolName: 'ReadFile',
+        toolCallId: 'call-1',
+        success: false,
+      });
+      expect(spy).toHaveBeenCalledWith(
+        'task:progress',
+        expect.objectContaining({ message: '工具 ReadFile 失败' })
+      );
+      spy.mockRestore();
+    });
+
+    it('should emit task:failed for error', () => {
+      const spy = vi.spyOn(eventBus, 'emit');
+      const err = new Error('test error');
+      dispatchToEventBus({
+        type: 'error',
+        taskId: 't1',
+        error: err,
+      });
+      expect(spy).toHaveBeenCalledWith('task:failed', {
+        taskId: 't1',
+        error: err,
+        retryable: false,
+      });
+      spy.mockRestore();
+    });
+  });
+
+  describe('adaptAgentEvent - additional cases', () => {
+    it('should convert message_update event with thinking_delta', () => {
+      const result = adaptAgentEvent(
+        {
+          type: 'message_update',
+          message: { role: 'assistant', content: [] } as never,
+          assistantMessageEvent: { type: 'thinking_delta', thinking_delta: 'thinking...' },
+        } as never,
+        'task-1',
+        'agent-1'
+      );
+      expect(result).toMatchObject({
+        type: 'message:update',
+        taskId: 'task-1',
+        delta: 'thinking...',
+      });
+    });
+
+    it('should convert message_end event with full content', () => {
+      const msg = {
+        role: 'assistant',
+        content: 'direct string content',
+      } as never;
+      const result = adaptAgentEvent(
+        { type: 'message_end', message: msg, toolResults: [] } as never,
+        'task-1',
+        'agent-1'
+      );
+      expect(result).toMatchObject({
+        type: 'message:end',
+        taskId: 'task-1',
+        fullMessage: 'direct string content',
+      });
+    });
+
+    it('should return null for unknown event type', () => {
+      const result = adaptAgentEvent({ type: 'unknown_type' as never }, 'task-1', 'agent-1');
+      expect(result).toBeNull();
+    });
   });
 });
