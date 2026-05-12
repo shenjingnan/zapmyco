@@ -92,6 +92,9 @@
   "settings": {
     "mainMenu": {
       "defaultModel": "Default Model",
+      "visionModel": "Vision Model",
+      "lightModel": "Lightweight Model",
+      "analysisModel": "Analysis Model",
       "manageProviders": "Manage Providers",
       "viewConfig": "View Config",
       "language": "Language / 语言",
@@ -138,6 +141,9 @@
       "baseUrlReset": "[ok] Reset {{provider}} Base URL to default",
       "baseUrlSet": "[ok] Set {{provider}} Base URL: {{url}}",
       "defaultModelSet": "[ok] Default model set to: {{model}}",
+      "visionModelSet": "[ok] Vision model set to: {{model}}",
+      "lightModelSet": "[ok] Lightweight model set to: {{model}}",
+      "analysisModelSet": "[ok] Analysis model set to: {{model}}",
       "languageSet": "[ok] Language set to: {{locale}}",
       "restartRequired": "Some changes may require a session restart to take full effect.",
       "noModels": "has no available model list",
