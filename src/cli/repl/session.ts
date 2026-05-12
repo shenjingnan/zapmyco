@@ -1096,6 +1096,10 @@ export class ReplSession {
       baseDir: join(homedir(), '.zapmyco', 'worktrees'),
       ...rawConfig,
     };
+    // 防止空字符串覆盖默认值（DEFAULT_CONFIG 中 baseDir 可能为空）
+    if (!worktreeConfig.baseDir) {
+      worktreeConfig.baseDir = join(homedir(), '.zapmyco', 'worktrees');
+    }
 
     this.worktreeManager = new WorktreeManager(worktreeConfig);
     setWorktreeManager(this.worktreeManager);

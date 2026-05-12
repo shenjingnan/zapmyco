@@ -39,7 +39,7 @@ export interface WorktreeConfig {
   /** 是否启用（默认 true） */
   enabled: boolean;
   /** worktree 存放根目录（默认 ~/.zapmyco/worktrees） */
-  baseDir: string;
+  baseDir?: string;
   /** 无变更时自动清理（默认 true） */
   autoCleanNoChanges: boolean;
   /** 过期时间（毫秒，默认 24h） */
