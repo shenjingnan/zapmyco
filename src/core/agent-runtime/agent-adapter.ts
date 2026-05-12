@@ -523,6 +523,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
     const hasSkill = this.toolRegistrations.some((t) => t.id === 'Skill');
     const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'SpawnSubAgents');
+    const hasAskUserQuestion = this.toolRegistrations.some((t) => t.id === 'AskUserQuestion');
 
     const parts: string[] = [
       `你是 ${this.displayName}，一个专业的 AI 助手。`,
@@ -603,6 +604,38 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           ''
         );
       }
+    }
+
+    // AskUserQuestion 使用引导
+    if (hasAskUserQuestion) {
+      parts.push(
+        '',
+        '## 交互式提问规范（AskUserQuestion）',
+        '',
+        '当需要用户决策时，使用 `AskUserQuestion` 工具向用户提问。',
+        '',
+        '### 何时使用',
+        '- 需要在多个可行方案之间做出选择时',
+        '- 需要技术选型、架构决策等需要用户判断的问题',
+        '- 在 Plan Mode 中完成代码分析后需要确认方向时',
+        '- 需要明确用户偏好以实现个性化功能时',
+        '',
+        '### 何时不使用',
+        '- 可以通过代码分析直接确定的结论',
+        '- 简单的确认（直接在回复中询问即可）',
+        '- 已有明确最佳实践的问题',
+        '',
+        '### 提问原则',
+        '- 每个问题提供 2-4 个具体、互斥的选项',
+        '- 选项之间应覆盖所有合理可能',
+        '- header 字段控制在 12 个字符以内',
+        '- 使用 `multiSelect: true` 允许多选',
+        '- 推荐选项放在第一位并加 "(Recommended)" 后缀',
+        '- 如果选项有代码示例/配置对比，可在 `preview` 字段中提供（markdown 格式）',
+        '- 用户始终可以选择 "Other" 输入自定义答案',
+        '- 在 Plan Mode 中用 AskUserQuestion 明确需求，用 ExitPlanMode 请求审批',
+        ''
+      );
     }
 
     if (request.upstreamResults?.length) {
