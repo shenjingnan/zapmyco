@@ -10,7 +10,10 @@ const TEST_CONFIG = {
     defaultModel: 'deepseek/deepseek-chat',
     providers: {
       deepseek: { apiKey: 'sk-test-key' },
-      anthropic: { apiKey: '${ANTHROPIC_API_KEY}' },
+      anthropic: {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: 环境变量占位符
+        apiKey: '${ANTHROPIC_API_KEY}',
+      },
     },
     defaults: { maxTokens: 8192, temperature: 0.7 },
   },
@@ -63,6 +66,7 @@ function createMockSession(tui?: MockTui): ReplSession {
             },
           },
           anthropic: {
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: 环境变量占位符
             apiKey: '${ANTHROPIC_API_KEY}',
           },
         },
