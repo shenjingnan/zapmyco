@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.11.0](https://github.com/shenjingnan/zapmyco/compare/v0.10.0...v0.11.0) (2026-05-12)
+
+### Features
+
+* **llm:** 新增多模型分层配置支持（分析/轻量/视觉） ([#89](https://github.com/shenjingnan/zapmyco/issues/89)) ([632704e](https://github.com/shenjingnan/zapmyco/commit/632704e525975bc35701bb1edf611a3d35e57e22))
+
+### Bug Fixes
+
+* **worktree:** 修复 baseDir 空字符串导致 REPL 启动失败 ([#88](https://github.com/shenjingnan/zapmyco/issues/88)) ([5ad0d4f](https://github.com/shenjingnan/zapmyco/commit/5ad0d4fc76b2b301d4daace17cf4d06408ad969c))
+
 ## [0.10.0](https://github.com/shenjingnan/zapmyco/compare/v0.9.0...v0.10.0) (2026-05-12)
 
 ### Features
