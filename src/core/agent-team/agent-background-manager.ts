@@ -34,6 +34,8 @@ export interface AsyncAgentParams {
   parentInstanceId?: string | undefined;
   /** 超时（毫秒），默认 30 分钟 */
   timeoutMs?: number;
+  /** 隔离模式 */
+  isolation?: 'worktree';
 }
 
 /** 后台任务运行时条目 */
@@ -158,6 +160,7 @@ export class BackgroundAgentManager {
         inheritContext: params.inheritContext ?? false,
         context: params.context,
         parentInstanceId: params.parentInstanceId,
+        isolation: params.isolation,
         // 注入 ToolGuardContext，使后台 Agent 遇 ASK 自动降级为 DENY
         wrapExecute: (execute) =>
           runWithToolGuardContext({ isBackgroundAgent: true }, () => execute()),

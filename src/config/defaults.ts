@@ -112,4 +112,10 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     maxAggregateOutputChars: 10_000,
     agentTypes: [],
   },
+  worktree: {
+    enabled: true,
+    baseDir: '',
+    autoCleanNoChanges: true,
+    expireAfterMs: 24 * 60 * 60 * 1000,
+  },
 };

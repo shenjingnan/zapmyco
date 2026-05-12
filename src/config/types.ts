@@ -329,6 +329,9 @@ export interface ZapmycoConfig {
 
   /** Agent Team 系统配置 */
   agentTeam?: import('@/core/agent-team/types').AgentTeamConfig;
+
+  /** Worktree 隔离配置 */
+  worktree?: import('@/core/worktree/types').WorktreeConfig;
 }
 
 /** Web 工具配置 */
