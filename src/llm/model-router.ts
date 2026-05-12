@@ -193,8 +193,26 @@ export class ModelRouter {
       logger.warn(`ModelRouter: 指定的模型 [${context.model}] 未注册，回退到默认`);
     }
 
-    // 2. 基于任务类型的路由
+    // 2. 需要视觉能力 → 使用视觉模型
+    if (context?.requireVision) {
+      const model = this.registry.getVisionModel();
+      if (model) return model;
+    }
+
+    // 3. 需要推理能力 → 使用分析模型
+    if (context?.requireReasoning) {
+      const model = this.registry.getAnalysisModel();
+      if (model) return model;
+    }
+
+    // 4. 基于任务类型的路由
     if (context?.taskType) {
+      // analysis 类型使用完整的语义模型解析链
+      if (context.taskType === 'analysis') {
+        const model = this.registry.getAnalysisModel();
+        if (model) return model;
+      }
+      // 其他任务类型使用 taskBasedModels 映射
       const routing = this.registry.getRoutingConfig();
       if (routing?.taskBasedModels) {
         const mapped = routing.taskBasedModels[context.taskType];
@@ -205,7 +223,7 @@ export class ModelRouter {
       }
     }
 
-    // 3. 默认模型
+    // 5. 默认模型
     return this.registry.getDefaultModel();
   }
 

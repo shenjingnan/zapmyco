@@ -69,6 +69,8 @@ function createMockLlmFacade(): any {
       provider: 'test-provider',
       contextWindow: 200_000,
     }),
+    getLightModel: () => undefined,
+    getModelInfo: () => ({ key: 'test-provider/test-model' }),
   };
 }
 

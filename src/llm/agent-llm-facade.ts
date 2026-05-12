@@ -101,6 +101,36 @@ export class AgentLlmFacade {
     return this.registry.getDefaultModel();
   }
 
+  /** 获取深度分析模型 */
+  getAnalysisModel(): ModelInfo | undefined {
+    return this.registry.getAnalysisModel();
+  }
+
+  /** 获取轻量模型 */
+  getLightModel(): ModelInfo | undefined {
+    return this.registry.getLightModel();
+  }
+
+  /** 获取视觉/多模态模型 */
+  getVisionModel(): ModelInfo | undefined {
+    return this.registry.getVisionModel();
+  }
+
+  /**
+   * 解析语义化模型对应的 pi-ai Model 对象
+   *
+   * 支持 'analysis' | 'light' | 'vision' 三种语义名称
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
+  resolveSemanticPiModel(semanticName: 'analysis' | 'light' | 'vision'): Model<any> {
+    const modelInfo = this.registry.resolveSemanticModel(semanticName);
+    if (!modelInfo) {
+      // 全部 fallback 失败，使用默认模型
+      return this.resolvePiModel();
+    }
+    return this.registry.resolvePiModel(modelInfo.key);
+  }
+
   /**
    * 获取默认模型的提供商名称
    *
