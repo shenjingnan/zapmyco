@@ -50,7 +50,7 @@ function truncate(text: string, maxLen: number): string {
 
 // ============ 组件 ============
 
-class AskUserQuestionComponent implements Component {
+export class AskUserQuestionComponent implements Component {
   private tui: TUI;
   private questions: QuestionDefinition[];
   private onResolve?: (result: AskUserQuestionResult) => void;

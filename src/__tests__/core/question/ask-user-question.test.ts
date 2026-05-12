@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createAskUserQuestionTool } from '@/cli/repl/tools/ask-user-question';
 import { getQuestionManager, resetQuestionManager } from '@/core/question';
 import type { QuestionProvider } from '@/core/question/types';
+import { runWithToolGuardContext, SecurityBlockedError } from '@/security/tool-guard';
 
 function makeProvider(answers: Record<string, string>): QuestionProvider {
   return {
@@ -161,5 +162,63 @@ describe('AskUserQuestion tool', () => {
     });
 
     expect(getText(result)).toContain('提问被取消');
+  });
+
+  describe('checkPermission', () => {
+    it('should return medium risk with requiresApproval false', () => {
+      const tool = createAskUserQuestionTool();
+      const result = tool.checkPermission?.({});
+      expect(result).toBeDefined();
+      expect(result?.risk).toBe('medium');
+      expect(result?.requiresApproval).toBe(false);
+      expect(result?.reason).toContain('AskUserQuestion');
+    });
+  });
+
+  describe('background agent rejection', () => {
+    it('should throw SecurityBlockedError when isBackgroundAgent is true', async () => {
+      const tool = createAskUserQuestionTool();
+      await expect(
+        runWithToolGuardContext({ isBackgroundAgent: true }, () =>
+          tool.execute('call-1', {
+            questions: [
+              {
+                question: 'Can I ask?',
+                header: 'Ask',
+                options: [
+                  { label: 'Yes', description: 'Yes' },
+                  { label: 'No', description: 'No' },
+                ],
+                multiSelect: false,
+              },
+            ],
+          })
+        )
+      ).rejects.toThrow(SecurityBlockedError);
+    });
+
+    it('should allow when not background agent', async () => {
+      resetQuestionManager();
+      const manager = getQuestionManager();
+      manager.setProvider(makeProvider({ 'Can I ask?': 'Yes' }));
+
+      const tool = createAskUserQuestionTool();
+      const result = await runWithToolGuardContext({ isBackgroundAgent: false }, () =>
+        tool.execute('call-1', {
+          questions: [
+            {
+              question: 'Can I ask?',
+              header: 'Ask',
+              options: [
+                { label: 'Yes', description: 'Yes' },
+                { label: 'No', description: 'No' },
+              ],
+              multiSelect: false,
+            },
+          ],
+        })
+      );
+      expect(getText(result)).toContain('Can I ask?');
+    });
   });
 });
