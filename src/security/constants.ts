@@ -77,6 +77,9 @@ export const TOOL_RISK_MAP: Record<string, string> = {
   TaskManage: 'medium',
   ScheduledTask: 'medium',
 
+  // ---- LSP 代码智能（只读分析）----
+  LSP: 'low',
+
   // ---- 子代理（最高风险）----
   SpawnSubAgents: 'high',
 };

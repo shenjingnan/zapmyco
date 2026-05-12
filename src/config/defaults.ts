@@ -118,4 +118,8 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     autoCleanNoChanges: true,
     expireAfterMs: 24 * 60 * 60 * 1000,
   },
+  lsp: {
+    enabled: true,
+    servers: [],
+  },
 };
