@@ -68,6 +68,9 @@ export class QuestionManager {
     const requestId = `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const deferred = createDeferred<AskUserQuestionResult>();
 
+    // 防止未处理的 Promise rejection（deferred 可能因超时/取消被 reject 但无人 await）
+    deferred.promise.catch(() => {});
+
     const entry: PendingQuestionRequest = {
       requestId,
       questions: params.questions,
