@@ -36,7 +36,10 @@ const SAMPLE_REFERENCES = [
 ];
 
 const SAMPLE_HOVER = {
-  contents: { kind: 'markdown', value: '```typescript\nconst foo: string\n```\n\nA sample variable.' },
+  contents: {
+    kind: 'markdown',
+    value: '```typescript\nconst foo: string\n```\n\nA sample variable.',
+  },
   range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
 };
 
@@ -125,7 +128,7 @@ const SAMPLE_DIAGNOSTICS = [
 
 /** @type {Record<string, (params: unknown) => unknown>} */
 const methodHandlers = {
-  initialize: (params) => ({
+  initialize: (_params) => ({
     capabilities: {
       textDocumentSync: 1,
       definitionProvider: true,
@@ -152,11 +155,11 @@ const methodHandlers = {
   shutdown: () => null,
 
   // Window 通知被服务器忽略（这些是客户端发来的通知）
-  'initialized': () => undefined,
+  initialized: () => undefined,
   'textDocument/didOpen': () => undefined,
   'textDocument/didChange': () => undefined,
   'textDocument/didClose': () => undefined,
-  'exit': () => undefined,
+  exit: () => undefined,
 };
 
 // ---- JSON-RPC 传输 ----
@@ -209,7 +212,9 @@ function parseMessages() {
 function sendResponse(id, result) {
   const response = JSON.stringify({ jsonrpc: '2.0', id, result });
   const length = Buffer.byteLength(response, 'utf-8');
-  stdout.write(`Content-Length: ${length}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n${response}`);
+  stdout.write(
+    `Content-Length: ${length}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n${response}`
+  );
 }
 
 /**
@@ -220,7 +225,9 @@ function sendResponse(id, result) {
 function sendNotification(method, params) {
   const notification = JSON.stringify({ jsonrpc: '2.0', method, params });
   const length = Buffer.byteLength(notification, 'utf-8');
-  stdout.write(`Content-Length: ${length}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n${notification}`);
+  stdout.write(
+    `Content-Length: ${length}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n${notification}`
+  );
 }
 
 /**
@@ -236,7 +243,9 @@ function sendError(id, code, message) {
     error: { code, message },
   });
   const length = Buffer.byteLength(response, 'utf-8');
-  stdout.write(`Content-Length: ${length}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n${response}`);
+  stdout.write(
+    `Content-Length: ${length}\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n${response}`
+  );
 }
 
 /**
@@ -292,7 +301,7 @@ stdin.on('data', (chunk) => {
     try {
       const parsed = JSON.parse(msg);
       handleMessage(parsed);
-    } catch (err) {
+    } catch (_err) {
       // JSON 解析错误 — 忽略
     }
   }
