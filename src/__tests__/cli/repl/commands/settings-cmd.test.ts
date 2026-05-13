@@ -25,6 +25,14 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => true),
 }));
 
+// Mock matchesKey — 测试中使用解析后的键名（如 'escape'）进行比较
+vi.mock('@mariozechner/pi-tui', async (importOriginal) => {
+  const actual = await importOriginal();
+  return Object.assign({}, actual, {
+    matchesKey: vi.fn((data: string, key: string) => data === key),
+  });
+});
+
 // ============ Mock helpers ============
 
 interface MockTui {
