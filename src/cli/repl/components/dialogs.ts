@@ -8,6 +8,7 @@
 import {
   type Component,
   Input,
+  matchesKey,
   type OverlayHandle,
   type OverlayOptions,
   type SelectItem,
@@ -107,7 +108,7 @@ class SelectListWithFooter implements Component {
         this.isFiltering = true;
         this.filterText = '';
         this.selectList.invalidate();
-      } else if (data === 'escape' || data === 'q') {
+      } else if (matchesKey(data, 'escape') || data === 'q') {
         // Exit settings entirely (same as onCancel's former role, now mapped to exit)
         this.onExit?.();
       } else if (data === 'backspace' || data === '\x7f' || data === '\b' || data === 'h') {
@@ -406,13 +407,30 @@ export function showConfigView(tui: TUI, config: ZapmycoConfig, renderer: Render
  * 安全审批对话框组件
  *
  * 显示工具调用的风险信息，等待用户选择审批范围。
- * 键位：
- *   [a] 允许本次    [s] 本次会话允许
- *   [A] 始终允许    [d] 拒绝
+ * 支持方向键导航、回车确认、数字键快捷键。
  */
 class ApprovalDialogComponent implements Component {
   private readonly request: ApprovalRequest;
   private onResolve?: (response: ApprovalResponse) => void;
+  private selectedOptionIndex = 0;
+
+  private OPTIONS = [
+    {
+      label: '允许本次',
+      description: '仅允许此次工具调用',
+      action: () => this.onResolve?.({ approved: true, scope: 'once' }),
+    },
+    {
+      label: '始终允许',
+      description: '始终允许此工具调用',
+      action: () => this.onResolve?.({ approved: true, scope: 'always' }),
+    },
+    {
+      label: '拒绝',
+      description: '拒绝此工具调用',
+      action: () => this.onResolve?.({ approved: false }),
+    },
+  ] as const;
 
   constructor(request: ApprovalRequest, onResolve: (response: ApprovalResponse) => void) {
     this.request = request;
@@ -420,22 +438,39 @@ class ApprovalDialogComponent implements Component {
   }
 
   handleInput(data: string): void {
-    switch (data) {
-      case 'a':
-        this.onResolve?.({ approved: true, scope: 'once' });
-        break;
-      case 's':
-        this.onResolve?.({ approved: true, scope: 'session' });
-        break;
-      case 'A':
-        this.onResolve?.({ approved: true, scope: 'always' });
-        break;
-      case 'd':
-      case 'escape':
-      case 'q':
-        this.onResolve?.({ approved: false });
-        break;
+    // Escape / q → 取消
+    if (matchesKey(data, 'escape') || data === 'q') {
+      this.onResolve?.({ approved: false });
+      return;
     }
+
+    // ↑/k → 上移
+    if (matchesKey(data, 'up') || data === 'k') {
+      if (this.selectedOptionIndex > 0) {
+        this.selectedOptionIndex--;
+      }
+      return;
+    }
+
+    // ↓/j → 下移
+    if (matchesKey(data, 'down') || data === 'j') {
+      if (this.selectedOptionIndex < this.OPTIONS.length - 1) {
+        this.selectedOptionIndex++;
+      }
+      return;
+    }
+
+    // Enter → 确认当前选项
+    if (matchesKey(data, 'enter')) {
+      this.OPTIONS[this.selectedOptionIndex]!.action();
+      return;
+    }
+
+    // 数字快捷键：1 → 允许本次, 2 → 始终允许, 0 → 拒绝
+    // biome-ignore lint/suspicious/noExplicitAny: 数字快捷键兼容处理
+    if (data === '1') this.OPTIONS[0]!.action();
+    else if (data === '2') this.OPTIONS[1]!.action();
+    else if (data === '0') this.OPTIONS[2]!.action();
   }
 
   invalidate(): void {
@@ -481,11 +516,32 @@ class ApprovalDialogComponent implements Component {
       lines.push('');
     }
 
-    // 操作选项
+    // 分隔线
     lines.push(c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`));
     lines.push('');
-    lines.push(`  ${c.bold('[a]')} 允许本次    ${c.bold('[s]')} 本次会话允许`);
-    lines.push(`  ${c.bold('[A]')} 始终允许    ${c.bold('[d]')} 拒绝`);
+
+    // 操作选项列表（支持方向键导航 + 数字键选择）
+    const keyLabels = ['1', '2', '0'];
+    for (let i = 0; i < this.OPTIONS.length; i++) {
+      const opt = this.OPTIONS[i]!;
+      const isFocused = this.selectedOptionIndex === i;
+      const prefix = isFocused ? c.green('❯') : ' ';
+      const keyLabel = c.gray(keyLabels[i] ?? `${i + 1}`);
+      const label = isFocused ? c.green.bold(opt.label) : c.bold(opt.label);
+      const desc = c.gray(`  ${opt.description}`);
+      lines.push(`  ${prefix} ${keyLabel} ${label}`);
+      if (isFocused) {
+        lines.push(`    ${desc}`);
+      }
+    }
+
+    lines.push('');
+
+    // 页脚提示
+    if (width >= 50) {
+      lines.push(c.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`));
+      lines.push(c.gray('  Esc 取消  ·  ↑/↓ 导航  ·  Enter 确认  ·  1/2 允许  ·  0 拒绝'));
+    }
     lines.push('');
 
     return lines;

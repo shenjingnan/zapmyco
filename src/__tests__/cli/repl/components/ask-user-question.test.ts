@@ -5,6 +5,16 @@
 import type { TUI } from '@mariozechner/pi-tui';
 import { describe, expect, it, vi } from 'vitest';
 import { AskUserQuestionComponent } from '@/cli/repl/components/ask-user-question';
+
+// Mock matchesKey — 在测试中使用解析后的键名（如 'escape', 'enter'）进行比较
+// 实际的 matchesKey 接收原始终端数据，而测试用例直接传入逻辑键名字符串
+vi.mock('@mariozechner/pi-tui', async (importOriginal) => {
+  const actual = await importOriginal();
+  return Object.assign({}, actual, {
+    matchesKey: vi.fn((data: string, key: string) => data === key),
+  });
+});
+
 import type {
   AskUserQuestionParams,
   AskUserQuestionResult,
