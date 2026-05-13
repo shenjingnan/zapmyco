@@ -101,20 +101,35 @@ export class ToolGuard {
   private store: PermissionStore;
   private sessionId: string;
   private auditLogger: AuditLogger | undefined;
+  private _agentId: string | undefined;
 
   constructor(
     engine: PermissionEngine,
     approvalManager: ApprovalManager,
     store: PermissionStore,
     sessionId?: string,
-    auditLogger?: AuditLogger
+    auditLogger?: AuditLogger,
+    agentId?: string
   ) {
     this.engine = engine;
     this.approvalManager = approvalManager;
     this.store = store;
     this.sessionId = sessionId ?? `session-${Date.now()}`;
     this.auditLogger = auditLogger;
+    this._agentId = agentId;
   }
+
+  /** 获取或设置 agentId */
+  get agentId(): string | undefined {
+    return this._agentId;
+  }
+
+  set agentId(id: string | undefined) {
+    this._agentId = id;
+  }
+
+  /** 结果摘要截断最大长度 */
+  private static readonly RESULT_SUMMARY_MAX_LENGTH = 500;
 
   /**
    * 包装单个 ToolRegistration
@@ -245,8 +260,48 @@ export class ToolGuard {
         });
       }
 
-      // Step 4: 执行原工具
-      return originalExecute(toolCallId, params, signal, onUpdate);
+      // Step 4: 执行原工具并记录 EXECUTED 审计事件
+      const execStart = Date.now();
+      try {
+        const result = await originalExecute(toolCallId, params, signal, onUpdate);
+        const durationMs = Date.now() - execStart;
+
+        // 提取结果摘要
+        const resultStr = result != null ? String(result) : '';
+        const resultSummary =
+          resultStr.length > ToolGuard.RESULT_SUMMARY_MAX_LENGTH
+            ? `${resultStr.slice(0, ToolGuard.RESULT_SUMMARY_MAX_LENGTH)}...`
+            : resultStr;
+
+        this.auditLogger?.log({
+          action: 'EXECUTED',
+          toolId,
+          toolCallId,
+          params: params as Record<string, unknown>,
+          durationMs,
+          ...(resultSummary ? { result: resultSummary } : {}),
+          success: true,
+          ...(this._agentId ? { agentId: this._agentId } : {}),
+        });
+
+        return result;
+      } catch (execError) {
+        const durationMs = Date.now() - execStart;
+        const errMsg = execError instanceof Error ? execError.message : String(execError);
+
+        this.auditLogger?.log({
+          action: 'EXECUTED',
+          toolId,
+          toolCallId,
+          params: params as Record<string, unknown>,
+          durationMs,
+          success: false,
+          reason: errMsg,
+          ...(this._agentId ? { agentId: this._agentId } : {}),
+        });
+
+        throw execError;
+      }
     };
 
     return {

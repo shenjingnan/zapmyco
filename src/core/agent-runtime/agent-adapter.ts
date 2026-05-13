@@ -19,6 +19,8 @@ import {
 } from '@/core/context';
 import type { CompactionResult, ContextWindowInfo } from '@/core/context/types';
 import type { TaskResult } from '@/core/result/types';
+import type { ConversationLogger } from '@/infra/conversation-logger';
+import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type {
@@ -100,6 +102,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    * 而不是直接复制父 Agent 的 Model + Key。
    */
   llmFacade: AgentLlmFacade | null = null;
+
+  /** 对话日志记录器（可选，注入后自动记录 LLM 对话） */
+  conversationLogger: ConversationLogger | null = null;
 
   // ============ 上下文压缩 ============
 
@@ -272,6 +277,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
                 percent: 0,
                 message: `⚠️ ${doomResult.reason}`,
               });
+              eventBus.emit('security:doom-loop', {
+                toolId: event.toolName,
+                type: doomResult.type ?? 'repeated-call',
+                reason: doomResult.reason ?? '未知循环',
+              });
             }
           }
           if (event.type === 'tool_execution_end') {
@@ -295,6 +305,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
                 percent: 100,
                 message: `⚠️ ${doomResult.reason}`,
               });
+              eventBus.emit('security:doom-loop', {
+                toolId: event.toolName,
+                type: doomResult.type ?? 'consecutive-failure',
+                reason: doomResult.reason ?? '连续执行失败',
+              });
             }
           }
           if (event.type === 'agent_end') {
@@ -315,6 +330,20 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
 
       // 提取结果
       const result = this.extractTaskResult(request.taskId, startTime);
+
+      // 记录对话日志（如已启用）
+      if (this.conversationLogger?.isEnabled && this.inner.state.model) {
+        const modelName =
+          typeof this.inner.state.model === 'object' && this.inner.state.model !== null
+            ? ((this.inner.state.model as { name?: string }).name ?? 'unknown')
+            : 'unknown';
+        this.conversationLogger.logExecution(
+          modelName,
+          this.inner.state.messages,
+          result.tokenUsage,
+          result.duration
+        );
+      }
 
       return result;
     } catch (error) {

@@ -37,6 +37,7 @@ import type { TaskStore } from '@/core/task/task-store';
 import { resolveWorktreePath } from '@/core/worktree/worktree-context';
 import type { WorktreeManager } from '@/core/worktree/worktree-manager';
 import { TOOL_RISK_MAP } from '@/security/constants';
+import type { ToolGuard } from '@/security/tool-guard';
 import type { RiskLevel } from '@/security/types';
 
 /**
@@ -53,7 +54,8 @@ export function createReplBuiltinTools(
   subAgentConfig?: SubAgentConfig,
   cronScheduler?: CronScheduler,
   agentTeamConfig?: AgentTeamConfig,
-  worktreeManager?: WorktreeManager
+  worktreeManager?: WorktreeManager,
+  toolGuard?: ToolGuard
 ): ToolRegistration[] {
   const tools: ToolRegistration[] = [
     {
@@ -236,7 +238,13 @@ export function createReplBuiltinTools(
       bgManager.restore();
     }
 
-    const manager = new SubAgentManager(subAgentConfig, parentAgent, tools, orchestrator);
+    const manager = new SubAgentManager(
+      subAgentConfig,
+      parentAgent,
+      tools,
+      orchestrator,
+      toolGuard
+    );
 
     if (!agentTeamConfig?.enabled) {
       // 未启用 Agent Team 时，使用旧版 SpawnSubAgents 工具
