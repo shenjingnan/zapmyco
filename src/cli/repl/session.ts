@@ -238,12 +238,14 @@ export class ReplSession {
     const terminal = new ProcessTerminal();
     this.tui = new TUI(terminal);
 
-    // 注册 Vim 风格 j/k 导航键（替代方向键），以及 h/l 返回/进入
+    // 注：仅保留方向键用于自动补全列表导航。此前使用了 'j'/'k'/'h'/'l'
+    // 作为导航键，但它们与命令名称字符（如 /clear 中的 'l'）冲突，
+    // 导致输入 /cl 时 'l' 被拦截为确认键而非文本输入。
     getKeybindings().setUserBindings({
-      'tui.select.up': ['up', 'k'],
-      'tui.select.down': ['down', 'j'],
-      'tui.select.cancel': ['escape', 'h'],
-      'tui.select.confirm': ['enter', 'l'],
+      'tui.select.up': ['up'],
+      'tui.select.down': ['down'],
+      'tui.select.cancel': ['escape'],
+      'tui.select.confirm': ['enter'],
     });
 
     // 创建组件
