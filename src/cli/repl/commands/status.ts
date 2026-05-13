@@ -12,7 +12,7 @@ import type { CommandDefinition } from '@/cli/repl/types';
 export function createStatusCommand(): CommandDefinition {
   return {
     name: 'status',
-    aliases: ['st'],
+    aliases: [],
     description: '查看会话状态统计',
     usage: '/status',
     handler(_args, session) {

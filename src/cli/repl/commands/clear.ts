@@ -12,7 +12,7 @@ import type { CommandDefinition } from '@/cli/repl/types';
 export function createClearCommand(): CommandDefinition {
   return {
     name: 'clear',
-    aliases: ['cl'],
+    aliases: [],
     description: '清除屏幕',
     usage: '/clear',
     handler(_args, session) {

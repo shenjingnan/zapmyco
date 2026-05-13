@@ -88,7 +88,7 @@ function updateSettingsFile(path: string, value: string): { success: boolean; me
 export function createConfigCommand(): CommandDefinition {
   return {
     name: 'config',
-    aliases: ['cfg'],
+    aliases: [],
     description: '查看或修改配置 [show | get <key> | set <key> <value>]',
     usage: '/config [show | get <key> | set <key> <value>]',
     handler(args, session) {

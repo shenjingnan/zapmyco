@@ -12,7 +12,7 @@ import type { CommandDefinition } from '@/cli/repl/types';
 export function createQuitCommand(): CommandDefinition {
   return {
     name: 'quit',
-    aliases: ['exit', 'q', 'x'],
+    aliases: [],
     description: '退出 REPL',
     usage: '/quit',
     async handler(_args, session) {
