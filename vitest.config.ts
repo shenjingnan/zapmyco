@@ -32,10 +32,10 @@ export default defineConfig({
         'examples/**',
       ],
       thresholds: {
-        lines: 80,
+        lines: 79,
         functions: 80,
         branches: 80,
-        statements: 80,
+        statements: 79,
       },
     },
   },

@@ -30,7 +30,7 @@ import type { AgentMessage } from '@/core/agent-team/types';
 export function createAgentsCommand(): CommandDefinition {
   return {
     name: 'agents',
-    aliases: ['ag'],
+    aliases: [],
     description: 'Agent 团队管理：查看类型、实例、团队状态',
     usage: '/agents [types | instances | team]',
     handler(args, session) {

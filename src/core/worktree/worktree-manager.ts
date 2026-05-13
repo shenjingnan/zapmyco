@@ -69,7 +69,7 @@ export class WorktreeManager {
     const timestamp = Date.now();
     const branchName = `zapmyco-${options.slug}-${timestamp}`;
     const dirName = `${options.slug}-${timestamp}`;
-    const worktreePath = join(this.config.baseDir, dirName);
+    const worktreePath = join(this.store.getBaseDir(), dirName);
 
     // 1. 查找项目 git 根目录
     let gitRoot: string;

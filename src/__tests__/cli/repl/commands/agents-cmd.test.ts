@@ -136,9 +136,9 @@ describe('/agents command', () => {
     expect(text).toContain('Agent 消息记录');
   });
 
-  it('应支持别名 /ag', () => {
+  it('别名已移除，aliases 应为空', () => {
     const cmd = createAgentsCommand();
-    expect(cmd.aliases).toContain('ag');
+    expect(cmd.aliases).toEqual([]);
   });
 
   it('应支持简写子命令 (t/i/s)', () => {

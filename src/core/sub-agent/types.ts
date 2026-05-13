@@ -53,6 +53,12 @@ export interface SubAgentResultEntry {
   error?: string;
   /** 执行耗时（毫秒） */
   duration: number;
+  /** Token 使用量（如果 TaskResult 包含） */
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
 }
 
 /**

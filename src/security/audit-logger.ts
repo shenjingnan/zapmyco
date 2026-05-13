@@ -45,6 +45,9 @@ export class AuditLogger {
         params: Record<string, unknown>;
       }) => void)
     | null = null;
+  private doomLoopListener:
+    | ((payload: { toolId: string; type: string; reason: string }) => void)
+    | null = null;
 
   // 内存统计计数器
   private totalDecisions = 0;
@@ -79,6 +82,19 @@ export class AuditLogger {
       }
     };
     eventBus.on('security:violation', this.violationListener);
+
+    // 监听 doom-loop 事件自动记录
+    this.doomLoopListener = (payload) => {
+      if (this.level !== 'silent') {
+        this.log({
+          action: 'DOOM_LOOP',
+          toolId: payload.toolId,
+          reason: payload.reason,
+          metadata: { type: payload.type },
+        });
+      }
+    };
+    eventBus.on('security:doom-loop', this.doomLoopListener);
 
     log.debug('审计日志初始化', { path: this.filePath, level: this.level });
   }
@@ -186,6 +202,17 @@ export class AuditLogger {
         // 忽略 mock 环境缺少 off 方法的情况
       }
       this.violationListener = null;
+    }
+    if (this.doomLoopListener) {
+      try {
+        const bus = eventBus as unknown as {
+          off?: (event: string, fn: (...args: unknown[]) => void) => void;
+        };
+        bus.off?.('security:doom-loop', this.doomLoopListener as (...args: unknown[]) => void);
+      } catch {
+        // 忽略 mock 环境缺少 off 方法的情况
+      }
+      this.doomLoopListener = null;
     }
     this.flush();
     log.debug('审计日志已关闭');

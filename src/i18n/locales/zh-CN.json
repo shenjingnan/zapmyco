@@ -92,6 +92,9 @@
   "settings": {
     "mainMenu": {
       "defaultModel": "默认模型",
+      "visionModel": "视觉模型",
+      "lightModel": "轻量模型",
+      "analysisModel": "分析模型",
       "manageProviders": "管理提供商",
       "viewConfig": "查看配置",
       "language": "Language / 语言",
@@ -138,6 +141,9 @@
       "baseUrlReset": "[ok] 已重置 {{provider}} 的 Base URL 为默认值",
       "baseUrlSet": "[ok] 已设置 {{provider}} 的 Base URL: {{url}}",
       "defaultModelSet": "[ok] 默认模型已设置为: {{model}}",
+      "visionModelSet": "[ok] 视觉模型已设置为: {{model}}",
+      "lightModelSet": "[ok] 轻量模型已设置为: {{model}}",
+      "analysisModelSet": "[ok] 分析模型已设置为: {{model}}",
       "languageSet": "[ok] 语言已设置为: {{locale}}",
       "restartRequired": "部分更改可能需要重启会话才能完全生效。",
       "noModels": "没有可用的模型列表",

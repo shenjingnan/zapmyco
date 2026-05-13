@@ -26,11 +26,16 @@ program
   .name(APP_NAME)
   .description('AI 原生并行任务编排系统 -- AI 总管')
   .version(VERSION, '-v, --version', '显示版本号')
-  .helpOption('-h, --help', '显示帮助信息');
+  .helpOption('-h, --help', '显示帮助信息')
+  .option('--verbose', '启用详细日志模式（logging.level=debug + recordConversation=true）');
 
 // 默认命令：进入 REPL 模式
-program.action(async () => {
+program.action(async (options?: { verbose?: boolean }) => {
   try {
+    // --verbose 等价于 debug 日志 + 记录对话
+    if (options?.verbose) {
+      process.env.ZAPMYCO_LOG_CONVERSATION = '1';
+    }
     await startRepl();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

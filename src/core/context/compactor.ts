@@ -7,8 +7,9 @@
  * @module core/context
  */
 
-import type { AgentMessage, Agent as PiAgent } from '@mariozechner/pi-agent-core';
 import { complete as piComplete } from '@mariozechner/pi-ai';
+import type { Agent } from '@/core/agent-runtime/agent';
+import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import { buildCompactionPrompt, buildSummaryMessage } from './compaction-prompt';
@@ -64,7 +65,7 @@ export class Compactor {
    * @param contextInfo - 上下文窗口信息
    * @returns 是否应该压缩
    */
-  shouldCompact(agent: PiAgent, contextInfo: ContextWindowInfo): boolean {
+  shouldCompact(agent: Agent, contextInfo: ContextWindowInfo): boolean {
     if (!this.config.enabled || !this.config.autoTrigger) return false;
 
     const messages = agent.state.messages;
@@ -97,7 +98,7 @@ export class Compactor {
    * @returns 压缩结果
    */
   async compact(
-    agent: PiAgent,
+    agent: Agent,
     _contextInfo: ContextWindowInfo,
     emergency = false
   ): Promise<CompactionResult> {
@@ -335,13 +336,19 @@ export class Compactor {
     const prompt = buildCompactionPrompt(existingSummary);
 
     // 解析摘要模型
-    // 优先使用配置的 summaryModel，否则使用默认模型
+    // 优先级：summaryModel → lightModel → defaultModel
     const summaryModelKey = this.config.summaryModel;
+    const lightModelInfo = this.llmFacade.getLightModel();
 
-    // 获取模型
-    const model = summaryModelKey
-      ? this.llmFacade.resolvePiModel(summaryModelKey)
-      : this.llmFacade.resolvePiModel();
+    let model: ReturnType<typeof this.llmFacade.resolvePiModel>;
+    if (summaryModelKey) {
+      model = this.llmFacade.resolvePiModel(summaryModelKey);
+    } else if (lightModelInfo && lightModelInfo.key !== this.llmFacade.getModelInfo()?.key) {
+      // 使用 lightModel（仅当与默认模型不同时）
+      model = this.llmFacade.resolvePiModel(lightModelInfo.key);
+    } else {
+      model = this.llmFacade.resolvePiModel();
+    }
 
     // 过滤消息，减少无用的内容块
     const simplifiedMessages = messages.map((m) => this.simplifyMessage(m));
@@ -390,15 +397,30 @@ export class Compactor {
       const message = error instanceof Error ? error.message : String(error);
       log.error('摘要 LLM 调用失败', { error: message });
 
-      // 如果辅助模型失败，尝试使用默认模型
-      if (summaryModelKey) {
-        log.info('摘要模型调用失败，尝试使用默认模型');
+      // 如果辅助模型失败，依次尝试 lightModel → defaultModel
+      if (summaryModelKey || lightModelInfo) {
+        log.info('摘要模型调用失败，尝试回退模型');
         const defaultModel = this.llmFacade.resolvePiModel();
-        const isSameModel = defaultModel.id === model.id;
+        let fallbackModel = defaultModel;
+
+        // 如果 lightModel 和当前模型/默认模型都不同，优先尝试 lightModel
+        if (
+          lightModelInfo &&
+          lightModelInfo.key !== model.id &&
+          lightModelInfo.key !== defaultModel.id
+        ) {
+          try {
+            fallbackModel = this.llmFacade.resolvePiModel(lightModelInfo.key);
+          } catch {
+            fallbackModel = defaultModel;
+          }
+        }
+
+        const isSameModel = fallbackModel.id === model.id;
         if (isSameModel) throw error; // 已经是同一模型，不再重试
 
         const retryResponse = await piComplete(
-          defaultModel,
+          fallbackModel,
           {
             systemPrompt: prompt,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

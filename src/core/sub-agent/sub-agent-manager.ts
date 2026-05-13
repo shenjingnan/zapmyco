@@ -11,6 +11,7 @@ import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import type { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
 import { logger } from '@/infra/logger';
+import { runWithToolGuardContext, type ToolGuard } from '@/security/tool-guard';
 import {
   buildSubAgentSystemPrompt,
   createSubAgent,
@@ -30,17 +31,20 @@ export class SubAgentManager {
   private parentAgent: LlmBasedAgent;
   private availableTools: ToolRegistration[];
   private orchestrator: AgentOrchestrator | undefined;
+  private toolGuard: ToolGuard | undefined;
 
   constructor(
     config: SubAgentConfig,
     parentAgent: LlmBasedAgent,
     availableTools: ToolRegistration[],
-    orchestrator?: AgentOrchestrator
+    orchestrator?: AgentOrchestrator,
+    toolGuard?: ToolGuard
   ) {
     this.config = config;
     this.parentAgent = parentAgent;
     this.availableTools = availableTools;
     this.orchestrator = orchestrator;
+    this.toolGuard = toolGuard;
   }
 
   /**
@@ -66,6 +70,11 @@ export class SubAgentManager {
       count: specs.length,
       maxConcurrent: this.config.maxConcurrent,
       hasContext: context != null,
+      specs: specs.map((s) => ({
+        id: s.id,
+        description: s.description.slice(0, 200),
+        allowedTools: s.allowedTools,
+      })),
     });
 
     const allResults: SubAgentResultEntry[] = [];
@@ -118,24 +127,30 @@ export class SubAgentManager {
         this.parentAgent,
         this.availableTools,
         this.config,
-        context
+        context,
+        this.toolGuard
       );
 
       // 2. 设置 isolated 系统提示词
       const systemPrompt = buildSubAgentSystemPrompt(spec, context);
       subAgentInstance.agent.systemPromptOverride = systemPrompt;
 
-      // 3. 带超时的执行
+      // 3. 在后台 Agent 上下文中执行（带超时）
+      //    后台上下文确保 ASK 动作自动降级为 DENY（无用户可交互）
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const agent = subAgentInstance!.agent;
       const result = await Promise.race([
-        subAgentInstance.agent.execute({
-          taskId: `sub-${spec.id}`,
-          taskDescription: spec.description,
-          workdir: process.cwd(),
-          options: {
-            timeout: this.config.taskTimeoutMs,
-            verbose: false,
-          },
-        }),
+        runWithToolGuardContext({ isBackgroundAgent: true }, () =>
+          agent.execute({
+            taskId: `sub-${spec.id}`,
+            taskDescription: spec.description,
+            workdir: process.cwd(),
+            options: {
+              timeout: this.config.taskTimeoutMs,
+              verbose: false,
+            },
+          })
+        ),
         this.createTimeoutPromise(spec.id, this.config.taskTimeoutMs),
       ]);
 
@@ -153,17 +168,29 @@ export class SubAgentManager {
             ? this.truncateOutput(JSON.stringify(output))
             : null;
 
-      const isSuccess =
-        typeof result === 'object' &&
-        result !== null &&
-        'status' in result &&
-        (result as { status: string }).status === 'success';
+      const taskResult = result as {
+        status: string;
+        tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+      };
+      const isSuccess = taskResult.status === 'success';
+
+      // 记录 token 使用量（如果有）
+      const tokenUsage = taskResult.tokenUsage;
+      if (tokenUsage) {
+        log.debug('子 Agent Token 使用', {
+          specId: spec.id,
+          inputTokens: tokenUsage.inputTokens,
+          outputTokens: tokenUsage.outputTokens,
+          totalTokens: tokenUsage.totalTokens,
+        });
+      }
 
       return {
         specId: spec.id,
         status: isSuccess ? 'success' : 'failure',
         output: outputText,
         duration,
+        ...(tokenUsage ? { tokenUsage } : {}),
       };
     } catch (error) {
       const duration = Date.now() - startTime;

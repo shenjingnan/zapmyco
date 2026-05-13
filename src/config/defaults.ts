@@ -114,7 +114,6 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
   },
   worktree: {
     enabled: true,
-    baseDir: '',
     autoCleanNoChanges: true,
     expireAfterMs: 24 * 60 * 60 * 1000,
   },

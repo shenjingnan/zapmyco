@@ -113,6 +113,8 @@ export interface ApprovalRequest {
   reason: string;
   /** 会话 ID */
   sessionId: string;
+  /** 工具/技能的详细描述（用于在审批对话框中展示给用户） */
+  description?: string;
 }
 
 /** 审批范围 */
@@ -167,6 +169,16 @@ export interface AuditEntry {
   params?: Record<string, unknown>;
   scope?: string;
   metadata?: Record<string, unknown>;
+  /** 关联 LLM 工具调用 ID */
+  toolCallId?: string;
+  /** 执行耗时（毫秒） */
+  durationMs?: number;
+  /** 结果摘要（截断至 500 字符） */
+  result?: string;
+  /** 是否执行成功 */
+  success?: boolean;
+  /** 执行操作的 agentId */
+  agentId?: string;
 }
 
 // ============ 密钥脱敏（Phase 2）============

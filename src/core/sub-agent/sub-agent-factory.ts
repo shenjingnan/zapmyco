@@ -9,6 +9,7 @@
 import type { SubAgentConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
+import type { ToolGuard } from '@/security/tool-guard';
 import type { SubAgentSpec } from './types';
 
 // ============ 默认安全工具白名单 ============
@@ -71,7 +72,8 @@ export function createSubAgent(
   parentAgent: LlmBasedAgent,
   availableTools: ToolRegistration[],
   config: SubAgentConfig,
-  _context?: string
+  _context?: string,
+  toolGuard?: ToolGuard
 ): SubAgentInstance {
   // 1. 创建隔离的 LlmBasedAgent
   const subAgent = createLlmBasedAgent({
@@ -95,10 +97,11 @@ export function createSubAgent(
   // 2. 共享父 Agent 的 Model 和 API Key
   shareParentResources(subAgent, parentAgent);
 
-  // 3. 解析工具白名单并注册工具
+  // 3. 解析工具白名单并注册工具（如有 ToolGuard 则包装）
   const whitelist = resolveToolWhitelist(spec, config);
   const filteredTools = filterTools(availableTools, whitelist);
-  subAgent.registerTools(filteredTools);
+  const guardedTools = toolGuard ? filteredTools.map((t) => toolGuard.wrap(t)) : filteredTools;
+  subAgent.registerTools(guardedTools);
 
   // 4. 注入 isolated 系统提示词（在 execute 时通过 buildSystemPrompt 生效）
   //    注意：LlmBasedAgent.buildSystemPrompt 是 private，我们通过设置内存快照来注入

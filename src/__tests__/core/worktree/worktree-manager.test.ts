@@ -116,6 +116,46 @@ describe('WorktreeManager', () => {
       );
     });
 
+    it('config 中 baseDir 为空字符串时应使用 store 的默认 baseDir', async () => {
+      // 模拟 baseDir 为空字符串的场景（修复前会导致 mkdir '' 报错）
+      // 直接构造 config，绕过 createManager 的 baseDir 强制覆盖
+      const config: WorktreeConfig = {
+        enabled: true,
+        baseDir: '',
+        autoCleanNoChanges: true,
+        expireAfterMs: 24 * 60 * 60 * 1000,
+      };
+      const manager = new WorktreeManager(config);
+      // git rev-parse
+      mockExecFile.mockResolvedValueOnce({ stdout: '/projects/myapp\n', stderr: '' });
+      // git worktree add
+      mockExecFile.mockResolvedValueOnce({ stdout: '', stderr: '' });
+      // git checkout -b
+      mockExecFile.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      const info = await manager.create({ slug: 'test-bc', createdBy: 'agent-coder' });
+      expect(info).toBeDefined();
+      // worktreePath 应包含 store 解析后的默认 baseDir（而非空字符串）
+      expect(info.worktreePath).toContain('.zapmyco');
+      expect(info.worktreePath).toContain('test-bc');
+    });
+
+    it('config 中不设置 baseDir 时应使用 store 的默认 baseDir', async () => {
+      const config: WorktreeConfig = {
+        enabled: true,
+        autoCleanNoChanges: true,
+        expireAfterMs: 24 * 60 * 60 * 1000,
+      };
+      const manager = new WorktreeManager(config);
+      mockExecFile.mockResolvedValueOnce({ stdout: '/projects/myapp\n', stderr: '' });
+      mockExecFile.mockResolvedValueOnce({ stdout: '', stderr: '' });
+      mockExecFile.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      const info = await manager.create({ slug: 'test-ud', createdBy: 'agent-coder' });
+      expect(info).toBeDefined();
+      expect(info.worktreePath).toContain('.zapmyco');
+    });
+
     it('不在 git 仓库中应抛出 WorktreeError', async () => {
       const manager = createManager({}, tmpDir);
       // git rev-parse 失败

@@ -7,9 +7,9 @@
  * @module core/mcp/tool-adapter
  */
 
-import type { AgentToolResult } from '@mariozechner/pi-agent-core';
 import type { Client } from '@modelcontextprotocol/sdk/client';
 import type { Tool } from '@modelcontextprotocol/sdk/spec.types';
+import type { AgentToolResult } from '@/core/agent-runtime/agent-types';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 
 /**

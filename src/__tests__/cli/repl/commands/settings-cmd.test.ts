@@ -147,7 +147,7 @@ describe('/settings command', () => {
     it('应返回正确的命令定义', () => {
       const cmd = createSettingsCommand();
       expect(cmd.name).toBe('settings');
-      expect(cmd.aliases).toContain('set');
+      expect(cmd.aliases).toEqual([]);
       expect(cmd.description).toContain('configuration menu');
       expect(cmd.usage).toContain('list-providers');
     });
@@ -638,6 +638,131 @@ describe('/settings command', () => {
       // Cancel main menu to exit
       await waitForComponent(mockTui.capturedComponents, 2);
       cancelSelection(mockTui.capturedComponents[2]!);
+      await handlerPromise;
+    });
+
+    it('选择视觉模型后应写入 llm.visionModel', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      // Select "视觉模型"
+      selectItem(mockTui.capturedComponents[0]!, 'vision-model');
+
+      // Wait for model list to appear
+      await waitForComponent(mockTui.capturedComponents, 1);
+
+      // Select a model
+      selectItem(mockTui.capturedComponents[1]!, 'deepseek/deepseek-chat');
+
+      // Wait for main menu to re-render
+      await waitForComponent(mockTui.capturedComponents, 2);
+
+      // Verify llm.visionModel was written
+      const finalConfig = session.config as Record<string, unknown>;
+      const llm = finalConfig.llm as Record<string, unknown>;
+      expect(llm.visionModel).toBe('deepseek/deepseek-chat');
+
+      cancelSelection(mockTui.capturedComponents[2]!);
+      await handlerPromise;
+    });
+
+    it('选择轻量模型后应写入 llm.lightModel', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      // Select "轻量模型"
+      selectItem(mockTui.capturedComponents[0]!, 'light-model');
+
+      // Wait for model list to appear
+      await waitForComponent(mockTui.capturedComponents, 1);
+
+      // Select a model
+      selectItem(mockTui.capturedComponents[1]!, 'deepseek/deepseek-chat');
+
+      // Wait for main menu to re-render
+      await waitForComponent(mockTui.capturedComponents, 2);
+
+      // Verify llm.lightModel was written
+      const finalConfig = session.config as Record<string, unknown>;
+      const llm = finalConfig.llm as Record<string, unknown>;
+      expect(llm.lightModel).toBe('deepseek/deepseek-chat');
+
+      cancelSelection(mockTui.capturedComponents[2]!);
+      await handlerPromise;
+    });
+
+    it('选择分析模型后应写入 llm.analysisModel', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      // Select "分析模型"
+      selectItem(mockTui.capturedComponents[0]!, 'analysis-model');
+
+      // Wait for model list to appear
+      await waitForComponent(mockTui.capturedComponents, 1);
+
+      // Select a model
+      selectItem(mockTui.capturedComponents[1]!, 'deepseek/deepseek-chat');
+
+      // Wait for main menu to re-render
+      await waitForComponent(mockTui.capturedComponents, 2);
+
+      // Verify llm.analysisModel was written
+      const finalConfig = session.config as Record<string, unknown>;
+      const llm = finalConfig.llm as Record<string, unknown>;
+      expect(llm.analysisModel).toBe('deepseek/deepseek-chat');
+
+      cancelSelection(mockTui.capturedComponents[2]!);
+      await handlerPromise;
+    });
+
+    it('vision-model / light-model / analysis-model 入口显示在菜单中', async () => {
+      const mockTui = createMockTui();
+      const session = createMockSession(mockTui);
+      const cmd = createSettingsCommand();
+
+      const handlerPromise = cmd.handler([], session);
+      await waitForComponent(mockTui.capturedComponents, 0);
+
+      // Extract the main menu items
+      const mainMenuComponent = mockTui.capturedComponents[0] as unknown as {
+        selectList: {
+          items: Array<{ value: string }>;
+        };
+      };
+      const values = mainMenuComponent.selectList.items.map((item) => item.value);
+
+      // All four model slots should be present
+      expect(values).toContain('default-model');
+      expect(values).toContain('vision-model');
+      expect(values).toContain('light-model');
+      expect(values).toContain('analysis-model');
+
+      // Order: model slots should come before manage-providers
+      const defaultIdx = values.indexOf('default-model');
+      const visionIdx = values.indexOf('vision-model');
+      const lightIdx = values.indexOf('light-model');
+      const analysisIdx = values.indexOf('analysis-model');
+      const manageIdx = values.indexOf('manage-providers');
+
+      expect(defaultIdx).toBeLessThan(manageIdx);
+      expect(visionIdx).toBeLessThan(manageIdx);
+      expect(lightIdx).toBeLessThan(manageIdx);
+      expect(analysisIdx).toBeLessThan(manageIdx);
+
+      cancelSelection(mockTui.capturedComponents[0]!);
       await handlerPromise;
     });
   });

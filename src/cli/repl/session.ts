@@ -222,7 +222,10 @@ export class ReplSession {
     state: 'idle',
   };
 
-  constructor(readonly config: ZapmycoConfig) {
+  constructor(
+    readonly config: ZapmycoConfig,
+    private readonly conversationLogger?: import('@/infra/conversation-logger').ConversationLogger
+  ) {
     this.options = {
       color: config.cli.color,
       debug: config.cli.debug,
@@ -238,12 +241,14 @@ export class ReplSession {
     const terminal = new ProcessTerminal();
     this.tui = new TUI(terminal);
 
-    // 注册 Vim 风格 j/k 导航键（替代方向键），以及 h/l 返回/进入
+    // 注：仅保留方向键用于自动补全列表导航。此前使用了 'j'/'k'/'h'/'l'
+    // 作为导航键，但它们与命令名称字符（如 /clear 中的 'l'）冲突，
+    // 导致输入 /cl 时 'l' 被拦截为确认键而非文本输入。
     getKeybindings().setUserBindings({
-      'tui.select.up': ['up', 'k'],
-      'tui.select.down': ['down', 'j'],
-      'tui.select.cancel': ['escape', 'h'],
-      'tui.select.confirm': ['enter', 'l'],
+      'tui.select.up': ['up'],
+      'tui.select.down': ['down'],
+      'tui.select.cancel': ['escape'],
+      'tui.select.confirm': ['enter'],
     });
 
     // 创建组件
@@ -1096,6 +1101,10 @@ export class ReplSession {
       baseDir: join(homedir(), '.zapmyco', 'worktrees'),
       ...rawConfig,
     };
+    // 防止空字符串覆盖默认值（DEFAULT_CONFIG 中 baseDir 可能为空）
+    if (!worktreeConfig.baseDir) {
+      worktreeConfig.baseDir = join(homedir(), '.zapmyco', 'worktrees');
+    }
 
     this.worktreeManager = new WorktreeManager(worktreeConfig);
     setWorktreeManager(this.worktreeManager);
@@ -1152,7 +1161,8 @@ export class ReplSession {
       this.approvalManager,
       this.permissionStore,
       undefined,
-      this.auditLogger
+      this.auditLogger,
+      'repl-chat-agent'
     );
 
     // Phase 2: 创建 Skill 守卫
@@ -1273,6 +1283,11 @@ export class ReplSession {
       }
     }
 
+    // 注入对话日志记录器（如已启用）
+    if (this.conversationLogger?.isEnabled) {
+      agent.conversationLogger = this.conversationLogger;
+    }
+
     return agent;
   }
 
@@ -1293,7 +1308,8 @@ export class ReplSession {
       this.config.subAgent,
       this.cronScheduler ?? undefined,
       this.config.agentTeam,
-      this.worktreeManager
+      this.worktreeManager,
+      this.toolGuard
     );
 
     // 更新 PermissionEngine 的工具信息解析器
@@ -1657,7 +1673,7 @@ export class ReplSession {
   private createCompactCommand(): import('@/cli/repl/types').CommandDefinition {
     return {
       name: 'compact',
-      aliases: ['cmp'],
+      aliases: [],
       description: '手动压缩对话上下文',
       usage: '/compact [聚焦主题]',
       handler: async (args: string[], _session: import('@/cli/repl/types').ReplSession) => {

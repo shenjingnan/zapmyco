@@ -56,6 +56,11 @@ interface EventMap {
     message: string;
     params: Record<string, unknown>;
   };
+  'security:doom-loop': {
+    toolId: string;
+    type: string;
+    reason: string;
+  };
 
   // 系统
   'system:shutdown': { reason?: string };

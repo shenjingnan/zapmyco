@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.12.0](https://github.com/shenjingnan/zapmyco/compare/v0.11.0...v0.12.0) (2026-05-13)
+
+### Features
+
+* **cli:** 移除所有 '/' 命令的别名 ([#91](https://github.com/shenjingnan/zapmyco/issues/91)) ([ae87748](https://github.com/shenjingnan/zapmyco/commit/ae877483bbb32942797dd475805620fa07ce7559))
+* **settings:** 支持在 /settings 中配置视觉模型、轻量模型和分析模型 ([#90](https://github.com/shenjingnan/zapmyco/issues/90)) ([560c275](https://github.com/shenjingnan/zapmyco/commit/560c2755926b21b00d7d0720ccf805e4598304d1))
+* **skill:** 支持从 .agents/skills/ 路径加载项目级技能 ([#92](https://github.com/shenjingnan/zapmyco/issues/92)) ([ac4a6e4](https://github.com/shenjingnan/zapmyco/commit/ac4a6e45bde4932869272f163348512278fa9426))
+
+### Documentation
+
+* 更新 commit-push-pr 技能中的 Attribution 品牌引用 ([#93](https://github.com/shenjingnan/zapmyco/issues/93)) ([4c1f487](https://github.com/shenjingnan/zapmyco/commit/4c1f48728c1da3f62253b47def020d2be47868d1))
+
+## [0.11.0](https://github.com/shenjingnan/zapmyco/compare/v0.10.0...v0.11.0) (2026-05-12)
+
+### Features
+
+* **llm:** 新增多模型分层配置支持（分析/轻量/视觉） ([#89](https://github.com/shenjingnan/zapmyco/issues/89)) ([632704e](https://github.com/shenjingnan/zapmyco/commit/632704e525975bc35701bb1edf611a3d35e57e22))
+
+### Bug Fixes
+
+* **worktree:** 修复 baseDir 空字符串导致 REPL 启动失败 ([#88](https://github.com/shenjingnan/zapmyco/issues/88)) ([5ad0d4f](https://github.com/shenjingnan/zapmyco/commit/5ad0d4fc76b2b301d4daace17cf4d06408ad969c))
+
+## [0.10.0](https://github.com/shenjingnan/zapmyco/compare/v0.9.0...v0.10.0) (2026-05-12)
+
+### Features
+
+* **agent-team:** 实现后台异步 Agent 执行 (run_in_background) ([#77](https://github.com/shenjingnan/zapmyco/issues/77)) ([40e08f0](https://github.com/shenjingnan/zapmyco/commit/40e08f024f5394535164d1a79dda02eabb40b132))
+* **lsp:** 实现 Phase 4 LSP 代码智能——三层架构语义级代码理解 ([#86](https://github.com/shenjingnan/zapmyco/issues/86)) ([ff66c4f](https://github.com/shenjingnan/zapmyco/commit/ff66c4fba72851a8f52655521c689a99326b8967))
+* **question:** 实现 AskUserQuestion 交互式提问工具 ([#87](https://github.com/shenjingnan/zapmyco/issues/87)) ([393e715](https://github.com/shenjingnan/zapmyco/commit/393e715ee26b2e45ef78c8940870930489edff95))
+* **worktree:** 实现 Phase 1 工作树隔离——Agent 级别 git worktree 文件系统隔离 ([#85](https://github.com/shenjingnan/zapmyco/issues/85)) ([207cd56](https://github.com/shenjingnan/zapmyco/commit/207cd561febf0ee2937913128de34918358a0436))
+
+### Bug Fixes
+
+* **commands:** 修复 increase-coverage 命令先跑单测再跑覆盖率 ([#78](https://github.com/shenjingnan/zapmyco/issues/78)) ([1093933](https://github.com/shenjingnan/zapmyco/commit/1093933386bcccef3cc1970ceafc780b5c2900fd))
+
 ## [0.9.0](https://github.com/shenjingnan/zapmyco/compare/v0.8.0...v0.9.0) (2026-05-11)
 
 ### Features

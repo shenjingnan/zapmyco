@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ReplSession } from '@/cli/repl/session';
 import { loadConfig } from '@/config/loader';
+import { ConversationLogger } from '@/infra/conversation-logger';
 import { configureLogger } from '@/infra/logger';
 
 /**
@@ -33,6 +34,19 @@ export async function startRepl(): Promise<void> {
     configureLogger({ logFilePath: config.logging.file });
   }
 
-  const session = new ReplSession(config);
+  // --verbose 标志或环境变量：启用 debug 级别 + 对话记录
+  const isVerbose = process.env.ZAPMYCO_LOG_CONVERSATION === '1';
+  if (isVerbose && !config.logging?.level) {
+    configureLogger({ level: 'debug' });
+  }
+
+  // 初始化对话日志（默认关闭，通过 config 或环境变量开启）
+  const recordConversation = config.logging?.recordConversation ?? isVerbose;
+  const convLogger = new ConversationLogger({
+    sessionId: `session-${Date.now()}`,
+    enabled: recordConversation,
+  });
+
+  const session = new ReplSession(config, convLogger);
   await session.start();
 }

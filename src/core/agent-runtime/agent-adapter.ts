@@ -1,14 +1,14 @@
 /**
- * Agent Adapter — IAgent → pi-agent-core.Agent 适配器
+ * Agent Adapter — IAgent → Agent 适配器
  *
- * 将 pi-agent-core 的有状态 Agent 封装为 zapmyco 的 IAgent 接口实现。
+ * 将自有 Agent 运行时封装为 zapmyco 的 IAgent 接口实现。
  * 这是 agent-runtime 层的核心集成点。
  *
  * @module core/agent-runtime/agent-adapter
  */
 
 import { EventEmitter } from 'node:events';
-import { Agent as PiAgent } from '@mariozechner/pi-agent-core';
+import { Agent } from '@/core/agent-runtime/agent';
 import {
   Compactor,
   ContextErrorRecovery,
@@ -19,6 +19,8 @@ import {
 } from '@/core/context';
 import type { CompactionResult, ContextWindowInfo } from '@/core/context/types';
 import type { TaskResult } from '@/core/result/types';
+import type { ConversationLogger } from '@/infra/conversation-logger';
+import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type {
@@ -47,7 +49,7 @@ const DEFAULT_RUNTIME_CONFIG: Required<AgentRuntimeConfig> = {
 // ============ LlmBasedAgent 实现 ============
 
 /**
- * 基于 pi-agent-core 的 LLM 驱动 Agent 实现
+ * 基于自有 Agent 运行时的 LLM 驱动 Agent 实现
  *
  * 将 zapmyco 的 IAgent 接口适配到 pi-agent-core 的 Agent 类，
  * 实现完整的 Agent 生命周期管理：
@@ -70,7 +72,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
 
   // ============ 内部状态 ============
 
-  private inner: PiAgent;
+  private inner: Agent;
   private config: Required<AgentRuntimeConfig>;
   private toolRegistrations: ToolRegistration[] = [];
   private _currentLoad = 0;
@@ -101,6 +103,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    */
   llmFacade: AgentLlmFacade | null = null;
 
+  /** 对话日志记录器（可选，注入后自动记录 LLM 对话） */
+  conversationLogger: ConversationLogger | null = null;
+
   // ============ 上下文压缩 ============
 
   /** Token 追踪器 */
@@ -129,8 +134,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.capabilities = options.capabilities;
     this.config = { ...DEFAULT_RUNTIME_CONFIG, ...options.runtimeConfig };
 
-    // 创建 pi-agent-core Agent 实例
-    this.inner = new PiAgent({
+    // 创建 Agent 实例
+    this.inner = new Agent({
       toolExecution: this.config.toolExecution,
     });
 
@@ -156,11 +161,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   }
 
   /**
-   * 访问内部 pi-agent-core Agent 实例（仅限高级用法）
+   * 访问内部 Agent 实例（仅限高级用法）
    *
    * @internal 仅供测试和高级集成使用
    */
-  get innerAgent(): PiAgent {
+  get innerAgent(): Agent {
     return this.inner;
   }
 
@@ -272,6 +277,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
                 percent: 0,
                 message: `⚠️ ${doomResult.reason}`,
               });
+              eventBus.emit('security:doom-loop', {
+                toolId: event.toolName,
+                type: doomResult.type ?? 'repeated-call',
+                reason: doomResult.reason ?? '未知循环',
+              });
             }
           }
           if (event.type === 'tool_execution_end') {
@@ -295,6 +305,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
                 percent: 100,
                 message: `⚠️ ${doomResult.reason}`,
               });
+              eventBus.emit('security:doom-loop', {
+                toolId: event.toolName,
+                type: doomResult.type ?? 'consecutive-failure',
+                reason: doomResult.reason ?? '连续执行失败',
+              });
             }
           }
           if (event.type === 'agent_end') {
@@ -315,6 +330,20 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
 
       // 提取结果
       const result = this.extractTaskResult(request.taskId, startTime);
+
+      // 记录对话日志（如已启用）
+      if (this.conversationLogger?.isEnabled && this.inner.state.model) {
+        const modelName =
+          typeof this.inner.state.model === 'object' && this.inner.state.model !== null
+            ? ((this.inner.state.model as { name?: string }).name ?? 'unknown')
+            : 'unknown';
+        this.conversationLogger.logExecution(
+          modelName,
+          this.inner.state.messages,
+          result.tokenUsage,
+          result.duration
+        );
+      }
 
       return result;
     } catch (error) {
@@ -667,7 +696,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     // 检测真正的错误状态（pi-agent-core 内部 catch 不会向外抛异常）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stateError = (state as any).errorMessage as string | undefined;
-    const hasStreamError = lastAssistantMessage?.stopReason === 'error';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasStreamError = (lastAssistantMessage as any)?.stopReason === 'error';
     const hasErrorMessage =
       hasStreamError &&
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -715,12 +745,12 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   }
 
   /**
-   * 获取 pi-agent-core 包版本号
+   * 获取 Agent 运行时版本号
    */
   private getPkgVersion(): string {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pkg = require('@mariozechner/pi-agent-core/package.json');
+      const pkg = require('@mariozechner/pi-ai/package.json');
       return pkg.version ?? 'unknown';
     } catch {
       return 'unknown';

@@ -7,7 +7,7 @@ import {
 import { getAgentMessageBus, resetAgentMessageBus } from '@/core/agent-team/agent-message-bus';
 import type { AgentTypeDefinition } from '@/core/agent-team/types';
 
-vi.mock('@mariozechner/pi-agent-core', () => ({
+vi.mock('@/core/agent-runtime/agent', () => ({
   Agent: vi.fn().mockImplementation(() => ({
     state: {
       systemPrompt: '',
