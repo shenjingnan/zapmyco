@@ -14,7 +14,7 @@ description: 提交、推送并创建 PR
 每次 commit 的 body 和 PR 描述中必须附加以下 attribution 信息（使用上方上下文中的"当前模型"和"模型公司域名"）：
 
 ```
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with ZapMyco
 
 Co-Authored-By: <当前模型>
 ```
@@ -38,7 +38,7 @@ Commit message **必须**以以下格式结尾：
 ```
 <commit subject 和 body>
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with ZapMyco
 
 Co-Authored-By: <模型名称> <noreply@<对应主域名>>
 ```
@@ -59,5 +59,5 @@ Co-Authored-By: <模型名称> <noreply@<对应主域名>>
 
 ### 如何获取模型名称
 ```bash
-jq -r '.env.ANTHROPIC_MODEL' ~/.claude/settings.json
+jq -r '.llm.defaultModel' ~/.zapmyco/settings.json
 ```
