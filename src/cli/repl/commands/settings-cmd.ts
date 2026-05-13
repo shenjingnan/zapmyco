@@ -351,6 +351,110 @@ async function handleInteractiveMode(
     ]);
   };
 
+  /**
+   * Generic handler for selecting a model from all providers and writing it to
+   * a specific config slot (defaultModel / visionModel / lightModel / analysisModel).
+   *
+   * Reuses the same "show all models → select → save" flow that 'default-model'
+   * uses, only the target config key and success message differ.
+   */
+  const handleModelSlotSelect = async (
+    configKey: string,
+    successMsgKey: 'defaultModelSet' | 'visionModelSet' | 'lightModelSet' | 'analysisModelSet'
+  ): Promise<void> => {
+    const configuredProviders = _getByDotPath(state.current, 'llm.providers') as
+      | Record<string, unknown>
+      | undefined;
+    const allProviders = getProviders();
+
+    const enabledItems: SelectItem[] = [];
+    const disabledItems: SelectItem[] = [];
+    for (const providerName of allProviders) {
+      const models = getProviderModels(state.current, providerName);
+      if (models.length === 0) continue;
+
+      const isEnabled =
+        configuredProviders !== undefined &&
+        providerName in configuredProviders &&
+        hasApiKey(state.current, providerName);
+
+      for (const modelId of models) {
+        const key = `${providerName}/${modelId}`;
+        if (isEnabled) {
+          enabledItems.push({ value: key, label: key, description: '' });
+        } else {
+          disabledItems.push({
+            value: key,
+            label: chalk.gray(key),
+            description: chalk.gray(t('settings.modelSelector.notConfigured')),
+          });
+        }
+      }
+    }
+    // Enabled models first, then disabled
+    const modelItems: SelectItem[] = [...enabledItems, ...disabledItems];
+
+    if (modelItems.length === 0) {
+      session.appendOutput(['', `  ${t('settings.cliMode.noModelsAvailable')}`, '']);
+      return;
+    }
+
+    const selected = await showSelectList(tui, modelItems, { onExit: exitAll });
+    if (!selected || !selected.value) return;
+
+    const selectedKey = selected.value;
+    const slashIndex = selectedKey.indexOf('/');
+    const providerName = selectedKey.slice(0, slashIndex);
+
+    // Check if provider is enabled
+    const isEnabled =
+      configuredProviders !== undefined &&
+      providerName in configuredProviders &&
+      hasApiKey(state.current, providerName);
+
+    if (isEnabled) {
+      // Enabled provider — set the model immediately
+      setConfigValue(session, configKey, selectedKey);
+      session.appendOutput([
+        '',
+        `  ${t(`settings.messages.${successMsgKey}`, { model: selectedKey })}`,
+        '',
+      ]);
+    } else {
+      // Not enabled — add provider and guide apiKey setup first
+      if (!configuredProviders || !(providerName in configuredProviders)) {
+        const known = KNOWN_PROVIDERS.find((p) => p.id === providerName);
+        const newProvider: Record<string, unknown> = { apiKey: '' };
+        if (known?.apiFormat) {
+          newProvider.apiFormat = known.apiFormat;
+        }
+        const settings = readSettings();
+        _setByDotPath(settings, `llm.providers.${providerName}`, newProvider);
+        writeSettings(settings);
+        _setByDotPath(
+          session.config as unknown as Record<string, unknown>,
+          `llm.providers.${providerName}`,
+          newProvider
+        );
+        state.current = readSettings();
+      }
+
+      // Prompt for apiKey
+      await handleApiKeyConfig(providerName, '');
+
+      // If apiKey was configured, set the model
+      state.current = readSettings();
+      if (hasApiKey(state.current, providerName)) {
+        setConfigValue(session, configKey, selectedKey);
+        session.appendOutput([
+          '',
+          `  ${t(`settings.messages.${successMsgKey}`, { model: selectedKey })}`,
+          '',
+        ]);
+      }
+    }
+  };
+
   // ============ Main Loop ============
 
   let running = true;
@@ -373,6 +477,27 @@ async function handleInteractiveMode(
         label: t('settings.mainMenu.defaultModel'),
         description: String(
           _getByDotPath(state.current, 'llm.defaultModel') ?? t('settings.mainMenu.notConfigured')
+        ),
+      },
+      {
+        value: 'vision-model',
+        label: t('settings.mainMenu.visionModel'),
+        description: String(
+          _getByDotPath(state.current, 'llm.visionModel') ?? t('settings.mainMenu.notConfigured')
+        ),
+      },
+      {
+        value: 'light-model',
+        label: t('settings.mainMenu.lightModel'),
+        description: String(
+          _getByDotPath(state.current, 'llm.lightModel') ?? t('settings.mainMenu.notConfigured')
+        ),
+      },
+      {
+        value: 'analysis-model',
+        label: t('settings.mainMenu.analysisModel'),
+        description: String(
+          _getByDotPath(state.current, 'llm.analysisModel') ?? t('settings.mainMenu.notConfigured')
         ),
       },
       {
@@ -406,98 +531,13 @@ async function handleInteractiveMode(
     const value = choice.value;
 
     if (value === 'default-model') {
-      // Model selector — show all models from all pi-ai providers
-      const configuredProviders = _getByDotPath(state.current, 'llm.providers') as
-        | Record<string, unknown>
-        | undefined;
-      const allProviders = getProviders();
-
-      const enabledItems: SelectItem[] = [];
-      const disabledItems: SelectItem[] = [];
-      for (const providerName of allProviders) {
-        const models = getProviderModels(state.current, providerName);
-        if (models.length === 0) continue;
-
-        const isEnabled =
-          configuredProviders !== undefined &&
-          providerName in configuredProviders &&
-          hasApiKey(state.current, providerName);
-
-        for (const modelId of models) {
-          const key = `${providerName}/${modelId}`;
-          if (isEnabled) {
-            enabledItems.push({ value: key, label: key, description: '' });
-          } else {
-            disabledItems.push({
-              value: key,
-              label: chalk.gray(key),
-              description: chalk.gray(t('settings.modelSelector.notConfigured')),
-            });
-          }
-        }
-      }
-      // Enabled models first, then disabled
-      const modelItems: SelectItem[] = [...enabledItems, ...disabledItems];
-
-      if (modelItems.length === 0) {
-        session.appendOutput(['', `  ${t('settings.cliMode.noModelsAvailable')}`, '']);
-        continue;
-      }
-
-      const selected = await showSelectList(tui, modelItems, { onExit: exitAll });
-      if (!selected || !selected.value) continue;
-
-      const selectedKey = selected.value;
-      const slashIndex = selectedKey.indexOf('/');
-      const providerName = selectedKey.slice(0, slashIndex);
-
-      // Check if provider is enabled
-      const isEnabled =
-        configuredProviders !== undefined &&
-        providerName in configuredProviders &&
-        hasApiKey(state.current, providerName);
-
-      if (isEnabled) {
-        // Enabled provider — set as default immediately
-        setConfigValue(session, 'llm.defaultModel', selectedKey);
-        session.appendOutput([
-          '',
-          `  ${t('settings.messages.defaultModelSet', { model: selectedKey })}`,
-          '',
-        ]);
-      } else {
-        // Not enabled — add provider and guide apiKey setup first
-        if (!configuredProviders || !(providerName in configuredProviders)) {
-          const known = KNOWN_PROVIDERS.find((p) => p.id === providerName);
-          const newProvider: Record<string, unknown> = { apiKey: '' };
-          if (known?.apiFormat) {
-            newProvider.apiFormat = known.apiFormat;
-          }
-          const settings = readSettings();
-          _setByDotPath(settings, `llm.providers.${providerName}`, newProvider);
-          writeSettings(settings);
-          _setByDotPath(
-            session.config as unknown as Record<string, unknown>,
-            `llm.providers.${providerName}`,
-            newProvider
-          );
-          state.current = readSettings();
-        }
-
-        // Prompt for apiKey
-        await handleApiKeyConfig(providerName, '');
-
-        // If apiKey was configured, set as default
-        state.current = readSettings();
-        if (hasApiKey(state.current, providerName)) {
-          setConfigValue(session, 'llm.defaultModel', selectedKey);
-          session.appendOutput([
-            '',
-            `  ${t('settings.messages.defaultModelSet', { model: selectedKey })}`,
-            '',
-          ]);
-        }
-      }
+      await handleModelSlotSelect('llm.defaultModel', 'defaultModelSet');
+    } else if (value === 'vision-model') {
+      await handleModelSlotSelect('llm.visionModel', 'visionModelSet');
+    } else if (value === 'light-model') {
+      await handleModelSlotSelect('llm.lightModel', 'lightModelSet');
+    } else if (value === 'analysis-model') {
+      await handleModelSlotSelect('llm.analysisModel', 'analysisModelSet');
     } else if (value === 'manage-providers') {
       // Manage Providers submenu — shows configured providers + Add Provider
       const providerEntries: SelectItem[] = [
