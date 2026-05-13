@@ -284,6 +284,12 @@ export interface LoggingConfig {
   file?: string;
   /** 日志级别（默认 'info'） */
   level?: LogLevel;
+  /** 是否记录 LLM 对话内容到独立文件（默认 false，敏感信息注意保密） */
+  recordConversation?: boolean;
+  /** 主日志文件轮转大小（字节，默认 50MB） */
+  maxFileSize?: number;
+  /** 日志保留天数（默认 7） */
+  retentionDays?: number;
 }
 
 /** CLI 配置 */

@@ -222,7 +222,10 @@ export class ReplSession {
     state: 'idle',
   };
 
-  constructor(readonly config: ZapmycoConfig) {
+  constructor(
+    readonly config: ZapmycoConfig,
+    private readonly conversationLogger?: import('@/infra/conversation-logger').ConversationLogger
+  ) {
     this.options = {
       color: config.cli.color,
       debug: config.cli.debug,
@@ -1158,7 +1161,8 @@ export class ReplSession {
       this.approvalManager,
       this.permissionStore,
       undefined,
-      this.auditLogger
+      this.auditLogger,
+      'repl-chat-agent'
     );
 
     // Phase 2: 创建 Skill 守卫
@@ -1279,6 +1283,11 @@ export class ReplSession {
       }
     }
 
+    // 注入对话日志记录器（如已启用）
+    if (this.conversationLogger?.isEnabled) {
+      agent.conversationLogger = this.conversationLogger;
+    }
+
     return agent;
   }
 
@@ -1299,7 +1308,8 @@ export class ReplSession {
       this.config.subAgent,
       this.cronScheduler ?? undefined,
       this.config.agentTeam,
-      this.worktreeManager
+      this.worktreeManager,
+      this.toolGuard
     );
 
     // 更新 PermissionEngine 的工具信息解析器

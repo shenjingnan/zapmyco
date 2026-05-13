@@ -81,7 +81,8 @@
     "spawnable",
     "worktree",
     "Worktree",
-    "Worktrees"
+    "Worktrees",
+    "conv"
   ],
   "ignorePaths": [
     "node_modules",
