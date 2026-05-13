@@ -307,8 +307,7 @@ describe('/audit command', () => {
     it('should have correct command metadata', () => {
       const cmd = createSecurityCommand();
       expect(cmd.name).toBe('audit');
-      expect(cmd.aliases).toContain('sec');
-      expect(cmd.aliases).toContain('security');
+      expect(cmd.aliases).toEqual([]);
       expect(cmd.description).toBeTruthy();
     });
   });

@@ -147,7 +147,7 @@ describe('/settings command', () => {
     it('应返回正确的命令定义', () => {
       const cmd = createSettingsCommand();
       expect(cmd.name).toBe('settings');
-      expect(cmd.aliases).toContain('set');
+      expect(cmd.aliases).toEqual([]);
       expect(cmd.description).toContain('configuration menu');
       expect(cmd.usage).toContain('list-providers');
     });
