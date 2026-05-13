@@ -1,29 +1,35 @@
 /**
  * Agent Runtime 适配层类型定义
  *
- * 本层作为 zapmyco 核心抽象与 pi-agent-core 之间的隔离边界。
- * 所有 pi-agent-core 的类型依赖都限制在此文件内，不向外暴露。
+ * 本层作为 zapmyco 核心抽象与底层 Agent 循环之间的隔离边界。
  *
  * @module core/agent-runtime
  */
 
-import type { Static, TSchema } from 'typebox';
 import type { SubTask } from '@/core/task/types';
 import type { AgentExecuteRequest } from '@/protocol/agent';
 import type { Capability } from '@/protocol/capability';
+import type { AgentTool } from './agent-types';
 
-// ============ pi-agent-core 类型导入（仅限本文件使用） ============
+// ============ 重新导出内部 Agent 类型的别名 ============
 
-import type {
+/**
+ * 重新导出内部 Agent 循环的类型供适配层其他文件使用。
+ * 这些类型不通过 index.ts 暴露给外部。
+ */
+
+// Agent 运行相关
+export type { Agent } from './agent';
+// Tool 相关
+// Event 相关
+export type {
   AgentEvent,
-  AgentOptions,
+  AgentMessage,
   AgentState,
   AgentTool,
-  Agent as PiAgent,
-} from '@mariozechner/pi-agent-core';
-
-/** 重新导出供适配层内部使用（不通过 index.ts 暴露） */
-export type { AgentEvent, AgentOptions, AgentState, AgentTool, PiAgent, Static, TSchema };
+  AgentToolResult,
+  StreamFn,
+} from './agent-types';
 
 // ============ 适配层自有类型 ============
 
@@ -32,8 +38,6 @@ export type ToolExecutionMode = 'sequential' | 'parallel';
 
 /**
  * Agent Runtime 配置
- *
- * 控制基于 pi-agent-core 的 Agent 运行时行为。
  */
 export interface AgentRuntimeConfig {
   /** 是否启用 Agent 运行时 */
@@ -48,8 +52,6 @@ export interface AgentRuntimeConfig {
 
 /**
  * Agent 适配器选项
- *
- * 创建 LlmBasedAgent 实例时的配置。
  */
 export interface AgentAdapterOptions {
   /** Agent 唯一标识 */
@@ -62,17 +64,12 @@ export interface AgentAdapterOptions {
   runtimeConfig?: Partial<AgentRuntimeConfig>;
   /**
    * 将 Capability 转换为 AgentTool 的工厂函数
-   *
-   * 每个 Capability 可以映射为一个或多个可执行工具。
    */
   toolFactory?: (capability: Capability) => AgentTool[];
 }
 
 /**
  * 子任务执行上下文
- *
- * 将 zapmyco 的 SubTask + AgentExecuteRequest 转换为
- * pi-agent-core Agent 可消费的格式。
  */
 export interface SubTaskExecutionContext {
   /** 原始子任务 */
@@ -86,7 +83,7 @@ export interface SubTaskExecutionContext {
 /**
  * Agent 生命周期事件（适配层自定义）
  *
- * 桥接 pi-agent-core AgentEvent 与 zapmyco eventBus 的中间类型。
+ * 桥接 AgentEvent 与 zapmyco eventBus 的中间类型。
  */
 export type AdaptedAgentEvent =
   | { type: 'agent:start'; taskId: string; agentId: string }

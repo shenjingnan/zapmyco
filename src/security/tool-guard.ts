@@ -21,7 +21,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { AgentToolResult } from '@mariozechner/pi-agent-core';
+import type { AgentToolResult } from '@/core/agent-runtime/agent-types';
 import type { ToolExecuteFn, ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';

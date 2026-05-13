@@ -7,7 +7,7 @@
  * @module core/agent-runtime/event-bridge
  */
 
-import type { AgentEvent } from '@mariozechner/pi-agent-core';
+import type { AgentEvent } from '@/core/agent-runtime/agent-types';
 import { eventBus } from '@/infra/event-bus';
 import type { AdaptedAgentEvent } from './types';
 

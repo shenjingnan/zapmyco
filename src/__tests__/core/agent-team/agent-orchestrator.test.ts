@@ -11,7 +11,7 @@ import type { AgentTeamConfig } from '@/core/agent-team/types';
 import type { SubAgentSpec } from '@/core/sub-agent/types';
 
 // Mock pi-agent-core
-vi.mock('@mariozechner/pi-agent-core', () => ({
+vi.mock('@/core/agent-runtime/agent', () => ({
   Agent: vi.fn().mockImplementation(() => ({
     state: {
       systemPrompt: '',
