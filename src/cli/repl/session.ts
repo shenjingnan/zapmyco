@@ -1661,7 +1661,7 @@ export class ReplSession {
   private createCompactCommand(): import('@/cli/repl/types').CommandDefinition {
     return {
       name: 'compact',
-      aliases: ['cmp'],
+      aliases: [],
       description: '手动压缩对话上下文',
       usage: '/compact [聚焦主题]',
       handler: async (args: string[], _session: import('@/cli/repl/types').ReplSession) => {

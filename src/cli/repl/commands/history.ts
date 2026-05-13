@@ -15,7 +15,7 @@ const DEFAULT_COUNT = 10;
 export function createHistoryCommand(): CommandDefinition {
   return {
     name: 'history',
-    aliases: ['hi'],
+    aliases: [],
     description: '查看历史记录 [n]',
     usage: '/history [n]',
     handler(args, session) {

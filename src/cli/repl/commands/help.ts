@@ -13,7 +13,7 @@ import type { CommandDefinition, ReplSession } from '@/cli/repl/types';
 export function createHelpCommand(): CommandDefinition {
   return {
     name: 'help',
-    aliases: ['h', '?'],
+    aliases: [],
     description: '显示帮助信息',
     usage: '/help',
     handler(_args, session) {

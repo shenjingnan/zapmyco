@@ -72,7 +72,7 @@ function barChart(score: number): string {
 export function createSecurityCommand(): CommandDefinition {
   return {
     name: 'audit',
-    aliases: ['sec', 'security'],
+    aliases: [],
     description: '安全审计与健康报告',
     usage: '/audit',
     handler(_args, session) {

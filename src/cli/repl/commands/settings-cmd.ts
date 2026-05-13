@@ -99,7 +99,7 @@ function getProviderModels(config: Record<string, unknown>, providerName: string
 export function createSettingsCommand(): CommandDefinition {
   return {
     name: 'settings',
-    aliases: ['set'],
+    aliases: [],
     description: 'Interactive configuration menu — manage model providers and API keys',
     usage: '/settings [list-providers | list-models <provider>]',
     async handler(args: string[], session: ReplSession) {
