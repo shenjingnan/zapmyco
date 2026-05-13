@@ -6,6 +6,11 @@
  *
  * 来源优先级：project > user（user 已包含 synced bundled）
  *
+ * Project 级 skills 支持两种约定路径：
+ *   - .zapmyco/skills/（主路径）
+ *   - .agents/skills/（备选路径，项目特有 skills）
+ *   两者合并后均为 project 级优先级。
+ *
  * @module core/skill/loader
  */
 
@@ -628,6 +633,23 @@ export async function loadSkills(
 
   for (const { source, skills } of results) {
     skillGroups.set(source, skills);
+  }
+
+  // Step 2.5: 同时扫描 .agents/skills/（项目特定的另一种约定路径）
+  // .agents/skills 与 .zapmyco/skills 同级，都是 project 级优先级
+  const agentsSkillsDir = join(baseDir, '.agents', 'skills');
+  try {
+    const agentsStat = await stat(agentsSkillsDir);
+    if (agentsStat.isDirectory()) {
+      const agentsSkills = await loadSkillsFromSource('project', agentsSkillsDir, config);
+      if (skillGroups.has('project')) {
+        skillGroups.get('project')!.push(...agentsSkills);
+      } else {
+        skillGroups.set('project', agentsSkills);
+      }
+    }
+  } catch {
+    // .agents/skills 目录不存在，跳过
   }
 
   const merged = mergeByPriority(skillGroups);
