@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/shenjingnan/zapmyco/compare/v0.11.0...v0.12.0) (2026-05-13)
+
+### Features
+
+* **cli:** 移除所有 '/' 命令的别名 ([#91](https://github.com/shenjingnan/zapmyco/issues/91)) ([ae87748](https://github.com/shenjingnan/zapmyco/commit/ae877483bbb32942797dd475805620fa07ce7559))
+* **settings:** 支持在 /settings 中配置视觉模型、轻量模型和分析模型 ([#90](https://github.com/shenjingnan/zapmyco/issues/90)) ([560c275](https://github.com/shenjingnan/zapmyco/commit/560c2755926b21b00d7d0720ccf805e4598304d1))
+* **skill:** 支持从 .agents/skills/ 路径加载项目级技能 ([#92](https://github.com/shenjingnan/zapmyco/issues/92)) ([ac4a6e4](https://github.com/shenjingnan/zapmyco/commit/ac4a6e45bde4932869272f163348512278fa9426))
+
+### Documentation
+
+* 更新 commit-push-pr 技能中的 Attribution 品牌引用 ([#93](https://github.com/shenjingnan/zapmyco/issues/93)) ([4c1f487](https://github.com/shenjingnan/zapmyco/commit/4c1f48728c1da3f62253b47def020d2be47868d1))
+
 ## [0.11.0](https://github.com/shenjingnan/zapmyco/compare/v0.10.0...v0.11.0) (2026-05-12)
 
 ### Features
