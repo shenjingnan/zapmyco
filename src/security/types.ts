@@ -113,6 +113,8 @@ export interface ApprovalRequest {
   reason: string;
   /** 会话 ID */
   sessionId: string;
+  /** 工具/技能的详细描述（用于在审批对话框中展示给用户） */
+  description?: string;
 }
 
 /** 审批范围 */

@@ -405,14 +405,19 @@ export function showConfigView(tui: TUI, config: ZapmycoConfig, renderer: Render
 /**
  * 安全审批对话框组件
  *
- * 显示工具调用的风险信息，等待用户选择审批范围。
+ * Claude Code 风格的审批对话框，显示工具/技能信息，
+ * 支持箭头键导航 + Enter 确认，以及数字键快捷操作。
+ *
  * 键位：
- *   [a] 允许本次    [s] 本次会话允许
- *   [A] 始终允许    [d] 拒绝
+ *   ↑/k 上移   ↓/j 下移   Enter 确认
+ *   1 是   2 始终允许   0 拒绝   Esc 取消
  */
 class ApprovalDialogComponent implements Component {
   private readonly request: ApprovalRequest;
   private onResolve?: (response: ApprovalResponse) => void;
+  private selectedIndex = 0; // 0=是, 1=始终允许, 2=否
+
+  private static readonly OPTION_LABELS = ['是', '始终允许', '否'] as const;
 
   constructor(request: ApprovalRequest, onResolve: (response: ApprovalResponse) => void) {
     this.request = request;
@@ -421,16 +426,30 @@ class ApprovalDialogComponent implements Component {
 
   handleInput(data: string): void {
     switch (data) {
-      case 'a':
+      case 'up':
+      case 'k':
+        this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+        break;
+      case 'down':
+      case 'j':
+        this.selectedIndex = Math.min(2, this.selectedIndex + 1);
+        break;
+      case 'enter':
+        if (this.selectedIndex === 0) {
+          this.onResolve?.({ approved: true, scope: 'once' });
+        } else if (this.selectedIndex === 1) {
+          this.onResolve?.({ approved: true, scope: 'always' });
+        } else {
+          this.onResolve?.({ approved: false });
+        }
+        break;
+      case '1':
         this.onResolve?.({ approved: true, scope: 'once' });
         break;
-      case 's':
-        this.onResolve?.({ approved: true, scope: 'session' });
-        break;
-      case 'A':
+      case '2':
         this.onResolve?.({ approved: true, scope: 'always' });
         break;
-      case 'd':
+      case '0':
       case 'escape':
       case 'q':
         this.onResolve?.({ approved: false });
@@ -444,51 +463,99 @@ class ApprovalDialogComponent implements Component {
 
   render(width: number): string[] {
     const c = chalk;
-    const risk = this.request.risk;
-    const riskColor =
-      risk === 'critical'
-        ? c.red.bold
-        : risk === 'high'
-          ? c.red
-          : risk === 'medium'
-            ? c.yellow
-            : c.green;
+    const lines: string[] = [];
 
-    const lines: string[] = [
-      '',
-      c.bold('  ⚠ 安全审批'),
-      '',
-      c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`),
-      '',
-      `  工具: ${c.cyan(this.request.toolLabel)} (${c.gray(this.request.toolId)})`,
-      `  风险等级: ${riskColor(risk.toUpperCase())}`,
-      `  原因: ${c.white(this.request.reason)}`,
-      '',
-    ];
+    // === 标题行 ===
+    lines.push('');
+    // 如果是 Skill 工具，用技能名称；否则用工具标签
+    const isSkill = this.request.toolId === 'Skill';
+    const skillName =
+      isSkill && typeof this.request.params.skill === 'string' ? this.request.params.skill : null;
+    if (skillName) {
+      lines.push(c.bold(`  ⚠ 使用技能「${c.cyan(skillName)}」?`));
+    } else {
+      lines.push(c.bold(`  ⚠ 使用工具「${this.request.toolLabel}」?`));
+    }
+    lines.push('');
 
-    // 参数摘要（截断长参数）
-    const paramEntries = Object.entries(this.request.params);
-    if (paramEntries.length > 0) {
-      lines.push(`  参数:`);
-      for (const [key, value] of paramEntries.slice(0, 5)) {
-        const raw = typeof value === 'string' ? value : JSON.stringify(value);
-        const display = raw.length > 60 ? raw.slice(0, 57) + '...' : raw;
-        lines.push(`    ${c.gray(key)}: ${display}`);
+    // === 描述/原因区块 ===
+    if (this.request.description) {
+      // 截断长描述为最多 3 行
+      const descLines = this.wrapText(this.request.description, width - 6).slice(0, 3);
+      for (const line of descLines) {
+        lines.push(`  ${c.gray('>')} ${c.white(line)}`);
       }
-      if (paramEntries.length > 5) {
-        lines.push(`    ${c.gray('...')} 还有 ${paramEntries.length - 5} 个参数`);
+      lines.push('');
+    } else if (this.request.reason) {
+      const reasonLines = this.wrapText(this.request.reason, width - 6).slice(0, 2);
+      for (const line of reasonLines) {
+        lines.push(`  ${c.gray('>')} ${c.white(line)}`);
       }
       lines.push('');
     }
 
-    // 操作选项
+    // === 分隔线 ===
     lines.push(c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`));
     lines.push('');
-    lines.push(`  ${c.bold('[a]')} 允许本次    ${c.bold('[s]')} 本次会话允许`);
-    lines.push(`  ${c.bold('[A]')} 始终允许    ${c.bold('[d]')} 拒绝`);
+
+    // === 选项列表 ===
+    const alwaysSuffix = isSkill && skillName ? ` ${skillName}` : ` ${this.request.toolId}`;
+
+    for (let i = 0; i < 3; i++) {
+      const isSelected = this.selectedIndex === i;
+      const prefix = isSelected ? c.green('❯') : ' ';
+      const num = `${i + 1}`;
+
+      if (i === 0) {
+        // "是"
+        const label = isSelected
+          ? c.green.bold(` ${num}. ${ApprovalDialogComponent.OPTION_LABELS[i]}`)
+          : c.bold(` ${num}. ${ApprovalDialogComponent.OPTION_LABELS[i]}`);
+        lines.push(`  ${prefix}${label}`);
+      } else if (i === 1) {
+        // "始终允许"
+        const label = isSelected
+          ? c.green.bold(` ${num}. ${ApprovalDialogComponent.OPTION_LABELS[i]}`)
+          : c.bold(` ${num}. ${ApprovalDialogComponent.OPTION_LABELS[i]}`);
+        const scope = isSelected
+          ? c.green(`（不再询问${alwaysSuffix}）`)
+          : c.gray(`（不再询问${alwaysSuffix}）`);
+        lines.push(`  ${prefix}${label} ${scope}`);
+      } else {
+        // "否"
+        const label = isSelected
+          ? c.green.bold(` ${num}. ${ApprovalDialogComponent.OPTION_LABELS[i]}`)
+          : c.bold(` ${num}. ${ApprovalDialogComponent.OPTION_LABELS[i]}`);
+        lines.push(`  ${prefix}${label}`);
+      }
+    }
+
+    lines.push('');
+
+    // === 页脚 ===
+    lines.push(c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`));
+    lines.push(c.gray('  Esc 取消  ·  ↑/↓ 导航  ·  1/2/0 快捷'));
     lines.push('');
 
     return lines;
+  }
+
+  /** 将文本按宽度换行 */
+  private wrapText(text: string, maxWidth: number): string[] {
+    if (text.length <= maxWidth) return [text];
+    const result: string[] = [];
+    let remaining = text;
+    while (remaining.length > maxWidth) {
+      let breakAt = maxWidth;
+      const lastSpace = remaining.lastIndexOf(' ', maxWidth);
+      if (lastSpace > maxWidth / 2) {
+        breakAt = lastSpace;
+      }
+      result.push(remaining.slice(0, breakAt));
+      remaining = remaining.slice(breakAt).trim();
+    }
+    if (remaining) result.push(remaining);
+    return result;
   }
 }
 

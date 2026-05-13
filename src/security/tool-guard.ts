@@ -197,6 +197,7 @@ export class ToolGuard {
         const approvalResponse = await this.approvalManager.requestApproval({
           toolId,
           toolLabel,
+          description: registration.description,
           params: params as Record<string, unknown>,
           risk: decision.risk,
           reason: decision.reason ?? `工具 ${toolId} 需要审批`,
