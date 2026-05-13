@@ -14,6 +14,28 @@ import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+// ============ 工具函数 ============
+
+/**
+ * 从消息 content 中提取文本内容
+ *
+ * pi-ai 的消息 content 可能是 string（UserMessage）或 content blocks 数组（AssistantMessage），
+ * 此函数统一处理两种格式，提取所有文本块并拼接。
+ */
+function extractTextContent(content: unknown): string | null {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    const texts = content
+      .filter(
+        (block): block is { type: string; text?: string } =>
+          typeof block === 'object' && block !== null && block.type === 'text'
+      )
+      .map((block) => block.text ?? '');
+    return texts.length > 0 ? texts.join('') : null;
+  }
+  return null;
+}
+
 // ============ 类型定义 ============
 
 /** 单次 LLM 交互消息 */
@@ -35,6 +57,8 @@ export interface ConversationTurn {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
     estimatedCostUsd?: number;
   };
   messages: ConversationMessage[];
@@ -124,6 +148,8 @@ export class ConversationLogger {
       inputTokens: number;
       outputTokens: number;
       totalTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
       estimatedCostUsd?: number;
     },
     durationMs?: number
@@ -139,7 +165,7 @@ export class ConversationLogger {
     for (const msg of newMessages) {
       const entry: ConversationMessage = {
         role: msg.role,
-        content: typeof msg.content === 'string' ? msg.content : null,
+        content: extractTextContent(msg.content),
       };
 
       // 提取 toolCalls（assistant 消息）

@@ -42,6 +42,7 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
   },
   logging: {
     level: 'info',
+    recordConversation: true,
   },
   web: {
     enabled: true,

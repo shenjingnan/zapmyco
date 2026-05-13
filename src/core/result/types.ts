@@ -26,6 +26,10 @@ export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** 缓存命中的 input tokens（Cache hit，不计费） */
+  cacheReadTokens: number;
+  /** 缓存写入的 input tokens（Cache miss，首次写入） */
+  cacheWriteTokens: number;
   /** 估算成本（美元） */
   estimatedCostUsd: number;
 }

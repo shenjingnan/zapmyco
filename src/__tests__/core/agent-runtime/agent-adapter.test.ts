@@ -217,6 +217,8 @@ describe('LlmBasedAgent', () => {
               inputTokens: 10,
               outputTokens: 20,
               totalTokens: 30,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
               estimatedCostUsd: 0.001,
             },
           },

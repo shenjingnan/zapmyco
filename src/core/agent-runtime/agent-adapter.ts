@@ -406,6 +406,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
         error: {
@@ -720,12 +722,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         },
         artifacts: [],
         duration,
-        tokenUsage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCostUsd: 0,
-        },
+        tokenUsage: this.tokenTracker.getUsage(),
       };
     }
 
@@ -735,12 +732,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       output,
       artifacts: [],
       duration,
-      tokenUsage: {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        estimatedCostUsd: 0,
-      },
+      tokenUsage: this.tokenTracker.getUsage(),
     };
   }
 

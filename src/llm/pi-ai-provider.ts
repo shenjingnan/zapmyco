@@ -262,6 +262,8 @@ export class PiAiProvider implements ILlmProvider {
         inputTokens: response.usage.input,
         outputTokens: response.usage.output,
         totalTokens: response.usage.totalTokens,
+        cacheReadTokens: response.usage.cacheRead,
+        cacheWriteTokens: response.usage.cacheWrite,
       },
       model.name
     );
@@ -314,7 +316,14 @@ export class PiAiProvider implements ILlmProvider {
     const startTime = Date.now();
     const eventStream = stream(model, context, streamOptions);
 
-    let finalUsage = { input: 0, output: 0, totalTokens: 0, costTotal: 0 };
+    let finalUsage = {
+      input: 0,
+      output: 0,
+      totalTokens: 0,
+      costTotal: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
 
     for await (const event of eventStream) {
       switch (event.type) {
@@ -328,6 +337,8 @@ export class PiAiProvider implements ILlmProvider {
             output: event.message.usage.output,
             totalTokens: event.message.usage.totalTokens,
             costTotal: event.message.usage.cost.total,
+            cacheRead: event.message.usage.cacheRead,
+            cacheWrite: event.message.usage.cacheWrite,
           };
           break;
 
@@ -349,6 +360,8 @@ export class PiAiProvider implements ILlmProvider {
         inputTokens: finalUsage.input,
         outputTokens: finalUsage.output,
         totalTokens: finalUsage.totalTokens,
+        cacheReadTokens: finalUsage.cacheRead,
+        cacheWriteTokens: finalUsage.cacheWrite,
       },
       model.name
     );

@@ -881,6 +881,8 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -1016,6 +1018,8 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
