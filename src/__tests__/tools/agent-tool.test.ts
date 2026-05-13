@@ -14,7 +14,7 @@ import {
 import { generalPurposeType } from '@/core/agent-team/builtin-types/general-purpose';
 import type { AgentTeamConfig } from '@/core/agent-team/types';
 
-vi.mock('@mariozechner/pi-agent-core', () => ({
+vi.mock('@/core/agent-runtime/agent', () => ({
   Agent: vi.fn().mockImplementation(() => ({
     state: {
       systemPrompt: '',

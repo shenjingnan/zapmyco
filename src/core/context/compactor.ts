@@ -7,8 +7,9 @@
  * @module core/context
  */
 
-import type { AgentMessage, Agent as PiAgent } from '@mariozechner/pi-agent-core';
 import { complete as piComplete } from '@mariozechner/pi-ai';
+import type { Agent } from '@/core/agent-runtime/agent';
+import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import { buildCompactionPrompt, buildSummaryMessage } from './compaction-prompt';
@@ -64,7 +65,7 @@ export class Compactor {
    * @param contextInfo - 上下文窗口信息
    * @returns 是否应该压缩
    */
-  shouldCompact(agent: PiAgent, contextInfo: ContextWindowInfo): boolean {
+  shouldCompact(agent: Agent, contextInfo: ContextWindowInfo): boolean {
     if (!this.config.enabled || !this.config.autoTrigger) return false;
 
     const messages = agent.state.messages;
@@ -97,7 +98,7 @@ export class Compactor {
    * @returns 压缩结果
    */
   async compact(
-    agent: PiAgent,
+    agent: Agent,
     _contextInfo: ContextWindowInfo,
     emergency = false
   ): Promise<CompactionResult> {

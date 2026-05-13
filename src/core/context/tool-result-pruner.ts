@@ -7,7 +7,7 @@
  * @module core/context
  */
 
-import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import type { ToolPruningConfig } from './types';
 import { DEFAULT_TOOL_PRUNING_CONFIG } from './types';
 

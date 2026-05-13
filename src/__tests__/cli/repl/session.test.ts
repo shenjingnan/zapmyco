@@ -98,7 +98,7 @@ const createMockAgentState = () => ({
 
 let mockAgentState = createMockAgentState();
 
-vi.mock('@mariozechner/pi-agent-core', () => ({
+vi.mock('@/core/agent-runtime/agent', () => ({
   Agent: vi.fn().mockImplementation(() => ({
     get state() {
       return mockAgentState;

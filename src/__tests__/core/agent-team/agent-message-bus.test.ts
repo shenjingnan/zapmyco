@@ -12,7 +12,7 @@ import {
 import type { AgentMessage, AgentTypeDefinition } from '@/core/agent-team/types';
 
 // Mock pi-agent-core
-vi.mock('@mariozechner/pi-agent-core', () => ({
+vi.mock('@/core/agent-runtime/agent', () => ({
   Agent: vi.fn().mockImplementation(() => ({
     state: {
       systemPrompt: '',

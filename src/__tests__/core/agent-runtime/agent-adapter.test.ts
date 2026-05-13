@@ -5,7 +5,7 @@ import {
   LlmBasedAgent,
 } from '@/core/agent-runtime/agent-adapter';
 
-// Mock pi-agent-core
+// Mock Agent
 let capturedSubscriber: ((event: unknown) => void) | null = null;
 const mockSubscribe = vi.fn((handler: (event: unknown) => void) => {
   capturedSubscriber = handler;
@@ -15,7 +15,7 @@ const mockPrompt = vi.fn();
 const mockWaitForIdle = vi.fn().mockResolvedValue(undefined);
 const mockAbort = vi.fn();
 
-vi.mock('@mariozechner/pi-agent-core', () => ({
+vi.mock('@/core/agent-runtime/agent', () => ({
   Agent: vi.fn().mockImplementation(() => ({
     state: {
       systemPrompt: '',

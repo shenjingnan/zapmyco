@@ -118,19 +118,9 @@ export const DEFAULT_TOOL_PRUNING_CONFIG: ToolPruningConfig = {
 
 /**
  * 自定义摘要消息类型
- *
- * 通过 declaration merging 扩展 pi-agent-core 的 CustomAgentMessages
  */
 export interface SummaryMessage {
   role: 'summary';
   text: string;
   timestamp: number;
-}
-
-// ============ 模块级声明合并 ============
-
-declare module '@mariozechner/pi-agent-core' {
-  interface CustomAgentMessages {
-    summary: SummaryMessage;
-  }
 }

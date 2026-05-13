@@ -7,8 +7,8 @@
  * @module core/agent-runtime/tool-bridge
  */
 
-import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
 import type { Static, TSchema } from 'typebox';
+import type { AgentTool, AgentToolResult } from '@/core/agent-runtime/agent-types';
 import type { Capability } from '@/protocol/capability';
 
 // ============ 类型定义 ============
