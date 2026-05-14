@@ -7,6 +7,7 @@
  * @module core/agent-runtime/agent-adapter
  */
 
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { ThinkingLevel } from '@earendil-works/pi-ai';
 import { Agent } from '@/core/agent-runtime/agent';
@@ -141,7 +142,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.config = { ...DEFAULT_RUNTIME_CONFIG, ...options.runtimeConfig };
 
     // 生成会话 ID（用于 prompt cache 亲和性）
-    const sessionId = `zapmyco-${options.agentId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = `zapmyco-${options.agentId}-${randomUUID()}`;
 
     // 创建 Agent 实例
     this.inner = new Agent({
