@@ -90,6 +90,14 @@ export class TokenTracker {
   /** 原始用法记录（用于调试） */
   private _usageHistory: Usage[] = [];
 
+  /** 每次调用的缓存指标（用于计算缓存命中率） */
+  private _callMetrics: Array<{
+    inputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    timestamp: number;
+  }> = [];
+
   /** 是否已初始化 */
   private _initialized = false;
 
@@ -103,6 +111,12 @@ export class TokenTracker {
     this._cacheWriteTokens += usage.cacheWrite;
     this._totalCostUsd += usage.cost?.total ?? 0;
     this._usageHistory.push(usage);
+    this._callMetrics.push({
+      inputTokens: usage.input,
+      cacheReadTokens: usage.cacheRead,
+      cacheWriteTokens: usage.cacheWrite,
+      timestamp: Date.now(),
+    });
     this._initialized = true;
   }
 
@@ -136,6 +150,48 @@ export class TokenTracker {
   }
 
   /**
+   * 获取最近 N 次调用的缓存命中率
+   *
+   * 命中率 = cache_read_tokens / input_tokens
+   * > 80% 为优秀，< 50% 需要优化
+   */
+  getCacheHitRate(windowSize = 5): number {
+    const window = this._callMetrics.slice(-windowSize);
+    if (window.length === 0) return 0;
+    const totalInput = window.reduce((sum, m) => sum + m.inputTokens, 0);
+    const totalCacheRead = window.reduce((sum, m) => sum + m.cacheReadTokens, 0);
+    if (totalInput === 0) return 0;
+    return totalCacheRead / totalInput;
+  }
+
+  /**
+   * 检测缓存断裂
+   *
+   * 当 cache_read 骤降超过 50% 且此前有大量缓存读取时，判定为缓存断裂。
+   */
+  detectCacheBreak(): { broken: boolean; previousRead: number; currentRead: number } | null {
+    if (this._callMetrics.length < 2) return null;
+    const prev = this._callMetrics[this._callMetrics.length - 2];
+    const curr = this._callMetrics[this._callMetrics.length - 1];
+    if (prev.cacheReadTokens > 2000 && curr.cacheReadTokens < prev.cacheReadTokens * 0.5) {
+      return { broken: true, previousRead: prev.cacheReadTokens, currentRead: curr.cacheReadTokens };
+    }
+    return { broken: false, previousRead: prev.cacheReadTokens, currentRead: curr.cacheReadTokens };
+  }
+
+  /**
+   * 获取最近 N 次调用的平均缓存读取比例
+   */
+  getAverageCacheRatio(windowSize = 5): number {
+    const window = this._callMetrics.slice(-windowSize);
+    if (window.length === 0) return 0;
+    const validCalls = window.filter((m) => m.inputTokens > 0);
+    if (validCalls.length === 0) return 0;
+    const totalRatio = validCalls.reduce((sum, m) => sum + m.cacheReadTokens / m.inputTokens, 0);
+    return totalRatio / validCalls.length;
+  }
+
+  /**
    * 重置追踪器（压缩后调用）
    */
   reset(): void {
@@ -144,6 +200,7 @@ export class TokenTracker {
     this._cacheReadTokens = 0;
     this._cacheWriteTokens = 0;
     this._totalCostUsd = 0;
+    this._callMetrics = [];
   }
 
   /** 是否已初始化 */

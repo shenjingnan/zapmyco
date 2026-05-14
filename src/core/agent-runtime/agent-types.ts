@@ -207,6 +207,7 @@ export interface AgentLoopConfig {
   model: Model<any>;
   reasoning: ThinkingLevel | undefined;
   sessionId: string | undefined;
+  cacheRetention?: 'none' | 'short' | 'long';
   transformContext:
     | ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>)
     | undefined;
@@ -246,6 +247,7 @@ export interface AgentLoopConfig {
 /** Agent 构造函数选项 */
 export interface AgentOptions {
   initialState?: Partial<AgentState>;
+  cacheRetention?: 'none' | 'short' | 'long';
   convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
   transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
   streamFn?: StreamFn;

@@ -30,6 +30,7 @@ import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
 import { createHelpCommand } from '@/cli/repl/commands/help';
 import { createHistoryCommand } from '@/cli/repl/commands/history';
 import { createQuitCommand } from '@/cli/repl/commands/quit';
+import { createCacheCommand } from '@/cli/repl/commands/cache-cmd';
 import { createSecurityCommand } from '@/cli/repl/commands/security-cmd';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
@@ -1294,6 +1295,9 @@ export class ReplSession {
     // 注册 /compact 命令
     this.registry.register(this.createCompactCommand());
 
+    // 注册 /cache 命令
+    this.registry.register(createCacheCommand());
+
     // 设置 autocomplete provider
     this.buildAutocompleteProvider();
   }
@@ -1359,6 +1363,9 @@ export class ReplSession {
 
     // 存储 facade 引用，供子 Agent 共享
     agent.llmFacade = facade;
+
+    // 设置缓存保留期
+    agent.innerAgent.cacheRetention = this.config.agentRuntime?.cacheRetention;
 
     // 应用压缩配置
     const compactionConfig = this.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
@@ -1800,6 +1807,8 @@ export class ReplSession {
 
           if (result.success) {
             const pct = (result.savingsRatio * 100).toFixed(0);
+            // 清空工具 schema 缓存，避免压缩后的会话使用旧 schema
+            this.agent.toolSchemaCache.clear();
             this.outputArea.append([
               chalk.green(
                 `  整理完成! ${result.beforeMessageCount} → ${result.afterMessageCount} 条消息`

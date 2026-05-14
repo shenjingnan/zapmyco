@@ -153,6 +153,8 @@ export interface AgentRuntimeConfig {
   maxTurns?: number;
   /** 推理级别 */
   thinkingLevel?: string;
+  /** Prompt 缓存保留期（none/short/long，影响 Anthropic cache_control TTL） */
+  cacheRetention?: 'none' | 'short' | 'long';
 }
 
 /** Agent 配置 */

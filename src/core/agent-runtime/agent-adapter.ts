@@ -24,6 +24,7 @@ import type { ConversationLogger } from '@/infra/conversation-logger';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
+import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import type {
   AgentExecuteRequest,
   AgentHealthStatus,
@@ -34,6 +35,7 @@ import type { Capability } from '@/protocol/capability';
 import { createDoomLoopDetector, type DoomLoopDetector } from '@/security/doom-loop-detector';
 import { createEventBridgeListener } from './event-bridge';
 import { type ToolRegistration, toAgentTools } from './tool-bridge';
+import { ToolSchemaCache } from './tool-schema-cache';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';
 
 // ============ 默认配置 ============
@@ -124,6 +126,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** Doom Loop 检测器 */
   readonly doomLoop: DoomLoopDetector;
 
+  /** 工具 Schema 缓存（会话级，防止 mid-session schema 变化导致 cache miss） */
+  readonly toolSchemaCache = new ToolSchemaCache();
+
   /** 上下文窗口信息（首次 execute() 时通过模型解析） */
   private _contextWindowInfo: ContextWindowInfo | null = null;
 
@@ -135,10 +140,17 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.capabilities = options.capabilities;
     this.config = { ...DEFAULT_RUNTIME_CONFIG, ...options.runtimeConfig };
 
+    // 生成会话 ID（用于 prompt cache 亲和性）
+    const sessionId = `zapmyco-${options.agentId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     // 创建 Agent 实例
     this.inner = new Agent({
       toolExecution: this.config.toolExecution,
+      sessionId,
     });
+
+    // 标记 sessionId 到 inner Agent（供 createLoopConfig 传递）
+    this.inner.sessionId = sessionId;
 
     // 传递 thinkingLevel 配置到 Agent 状态（用于开启 Claude/DeepSeek 等模型的 reasoning/thinking）
     this.inner.state.thinkingLevel = this.config.thinkingLevel as ThinkingLevel;
@@ -226,8 +238,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         }
       }
 
-      // 构建系统提示词并设置到 Agent 状态
-      this.inner.state.systemPrompt = this.buildSystemPrompt(request);
+      // 构建稳定系统提示词（不含动态内容）并设置到 Agent 状态
+      this.inner.state.systemPrompt = this.buildStableSystemPrompt(request);
 
       // 绑定事件桥接（带 taskId），收集清理函数用于后续移除
       cleanupFns.push(
@@ -327,8 +339,18 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         })
       );
 
-      // 执行 prompt
-      await this.inner.prompt(request.taskDescription);
+      // 构建动态上下文消息（记忆、技能、上游结果）并注入到对话开头
+      const dynamicMessages = this.buildDynamicContextMessages(request);
+      const promptMessages: AgentMessage[] = [
+        ...dynamicMessages,
+        {
+          role: 'user',
+          content: [{ type: 'text', text: request.taskDescription }],
+          timestamp: Date.now(),
+        },
+      ];
+      // 执行 prompt（含动态上下文）
+      await this.inner.prompt(promptMessages);
 
       // 等待 Agent 进入空闲状态
       await this.inner.waitForIdle();
@@ -495,6 +517,25 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    */
   getTokenSnapshot() {
     return this.tokenTracker.getSnapshot(this.inner.state.messages.length);
+  }
+
+  /**
+   * 获取缓存性能统计
+   *
+   * 包括命中率、平均缓存读取比例、缓存断裂检测等。
+   */
+  getCacheStats(): {
+    hitRate: number;
+    averageCacheRatio: number;
+    lastBreak: { broken: boolean; previousRead: number; currentRead: number } | null;
+    totalCalls: number;
+  } {
+    return {
+      hitRate: this.tokenTracker.getCacheHitRate(),
+      averageCacheRatio: this.tokenTracker.getAverageCacheRatio(),
+      lastBreak: this.tokenTracker.detectCacheBreak(),
+      totalCalls: this.tokenTracker.turnCount,
+    };
   }
 
   /**
@@ -686,6 +727,185 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     }
 
     return parts.join('\n');
+  }
+
+  /**
+   * 构建稳定系统提示词（仅含稳定内容）
+   *
+   * 与 buildDynamicContextMessages() 配对使用。
+   * 稳定内容不变，使 Anthropic prompt cache 可命中。
+   */
+  private buildStableSystemPrompt(request: AgentExecuteRequest): string {
+    // 子 Agent 等场景使用自定义系统提示词
+    if (this.systemPromptOverride) {
+      const parts = [this.systemPromptOverride];
+      if (request.workdir) {
+        parts.push(`\n## 工作目录\n${request.workdir}`);
+      }
+      return parts.join('\n');
+    }
+
+    const parts: string[] = [
+      `你是 ${this.displayName}，一个专业的 AI 助手。`,
+      `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
+    ];
+
+    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'TaskManage');
+    const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
+    const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'SpawnSubAgents');
+    const hasAskUserQuestion = this.toolRegistrations.some((t) => t.id === 'AskUserQuestion');
+
+    // 记忆管理规范（不含记忆快照本身）
+    if (hasMemory) {
+      parts.push(
+        '',
+        '## 记忆管理规范',
+        '',
+        '你有跨会话的持久化记忆能力。记忆存储在 ~/.zapmyco/memory/ 目录中。',
+        '会话开始时已加载记忆快照到系统提示中，你可以直接使用这些信息。',
+        '',
+        '### 何时保存记忆',
+        '- 用户明确告知偏好、习惯、技术背景时 → 使用 memory add type="user"',
+        '- 项目做出重要决策或约定时 → 使用 memory add type="project"',
+        '- 用户纠正你的行为或给出反馈时 → 使用 memory add type="user"',
+        '- 会话中有值得跨会话保留的结论时 → 使用 memory add type="session"',
+        '',
+        '### 何时不保存',
+        '- 临时任务进度、会话状态（使用 TaskManage 管理）',
+        '- 代码细节（可直接从代码库获取，不需要记忆）',
+        '- 一次性查询的内容',
+        ''
+      );
+    }
+
+    // 任务管理规范
+    if (hasTaskManage) {
+      parts.push(
+        '## 任务管理规范（最高优先级）',
+        '',
+        '收到用户任务后，第一时间判断是否包含 2 个以上独立步骤。',
+        '如果是，你的**第一个工具调用必须且只能是** `TaskManage` (action="write")，先分解任务列表！',
+        '在任何搜索、读取、写入操作之前完成规划。不得先做再补！',
+        '',
+        '1. **规划优先**：第一个 tool call = TaskManage write。先规划，后执行。',
+        '2. **逐个更新**：完成一个子任务 → 立即 update 为 "completed" → 再开始下一个。绝不批量更新。',
+        '3. **保持专注**：同时只有 1 个 "in_progress"。',
+        '4. **先读后写**：不确定当前任务时先用 action="read" 查看。'
+      );
+
+      if (hasSpawnSubAgents) {
+        parts.push(
+          '',
+          '## 并行执行规范（次高优先级）',
+          '',
+          '完成 TaskManage write 分解后，识别其中**互不依赖**的独立子任务。',
+          '将这些子任务通过 `SpawnSubAgents` 工具并行派发给子 Agent 同时执行。',
+          '',
+          '### 工作流程',
+          '1. `TaskManage write` → 分解所有子任务',
+          '2. 识别可并行的独立任务（无顺序依赖、无共享状态）',
+          '3. `SpawnSubAgents(agents: [...])` → 一次性并行执行',
+          '4. 根据返回结果逐一 `TaskManage update` 更新状态',
+          '5. 将有依赖的串行任务保留给自己后续执行',
+          '',
+          '### 何时使用 SpawnSubAgents',
+          '- ✅ 多个独立的搜索/研究任务（如同时搜索三个不同技术方案）',
+          '- ✅ 多个独立的文件读取/分析任务（如同时分析多个模块）',
+          '- ✅ 互不依赖的信息收集任务',
+          '- ❌ 任务之间有严格的顺序依赖（必须先 A 后 B）',
+          '- ❌ 只有 1 个任务时（直接执行即可）',
+          '- ❌ 任务需要修改文件（子 Agent 默认只有只读工具）',
+          ''
+        );
+      }
+    }
+
+    // AskUserQuestion 使用引导
+    if (hasAskUserQuestion) {
+      parts.push(
+        '',
+        '## 交互式提问规范（AskUserQuestion）',
+        '',
+        '当需要用户决策时，使用 `AskUserQuestion` 工具向用户提问。',
+        '',
+        '### 何时使用',
+        '- 需要在多个可行方案之间做出选择时',
+        '- 需要技术选型、架构决策等需要用户判断的问题',
+        '- 在 Plan Mode 中完成代码分析后需要确认方向时',
+        '- 需要明确用户偏好以实现个性化功能时',
+        '',
+        '### 何时不使用',
+        '- 可以通过代码分析直接确定的结论',
+        '- 简单的确认（直接在回复中询问即可）',
+        '- 已有明确最佳实践的问题',
+        '',
+        '### 提问原则',
+        '- 每个问题提供 2-4 个具体、互斥的选项',
+        '- 选项之间应覆盖所有合理可能',
+        '- header 字段控制在 12 个字符以内',
+        '- 使用 `multiSelect: true` 允许多选',
+        '- 推荐选项放在第一位并加 "(Recommended)" 后缀',
+        '- 如果选项有代码示例/配置对比，可在 `preview` 字段中提供（markdown 格式）',
+        '- 用户始终可以选择 "Other" 输入自定义答案',
+        '- 在 Plan Mode 中用 AskUserQuestion 明确需求，用 ExitPlanMode 请求审批',
+        ''
+      );
+    }
+
+    // 工作目录
+    if (request.workdir) {
+      parts.push('', `## 工作目录\n${request.workdir}`);
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * 构建动态上下文消息（记忆快照、Skill、上游结果）
+   *
+   * 返回的消息在 execute() 中会被 prepend 到用户请求之前。
+   * 当 systemPromptOverride 已设置（子 Agent 模式）时返回空数组。
+   */
+  private buildDynamicContextMessages(request: AgentExecuteRequest): AgentMessage[] {
+    // 子 Agent 场景：不需要继承父 Agent 的记忆和技能
+    if (this.systemPromptOverride) {
+      return [];
+    }
+
+    const messages: AgentMessage[] = [];
+    const parts: string[] = [];
+
+    const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
+    const hasSkill = this.toolRegistrations.some((t) => t.id === 'Skill');
+
+    // 记忆快照
+    if (hasMemory && this.memorySnapshot) {
+      parts.push('## 持久化记忆（快照）', '', this.memorySnapshot);
+    }
+
+    // Skill 提示
+    if (hasSkill && this.skillPrompt) {
+      parts.push('', this.skillPrompt);
+    }
+
+    // 上游任务结果
+    if (request.upstreamResults?.length) {
+      parts.push(
+        '',
+        '## 上游任务结果',
+        ...request.upstreamResults.map((r, i) => `[上游任务 ${i + 1}] ${JSON.stringify(r.output)}`)
+      );
+    }
+
+    if (parts.length > 0) {
+      messages.push({
+        role: 'user',
+        content: [{ type: 'text', text: parts.join('\n') }],
+        timestamp: Date.now(),
+      } as AgentMessage);
+    }
+
+    return messages;
   }
 
   /**
