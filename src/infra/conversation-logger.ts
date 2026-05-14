@@ -13,6 +13,7 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { logger } from '@/infra/logger';
 
 // ============ 工具函数 ============
 
@@ -125,8 +126,10 @@ export class ConversationLogger {
       this.rotateIfNeeded();
       const line = JSON.stringify({ ...turn, turn: this.turnCount }) + '\n';
       appendFileSync(this.filePath, line, 'utf-8');
-    } catch {
-      // 写入失败不抛出异常，避免影响主流程
+    } catch (err) {
+      logger.warn('对话日志写入失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -245,8 +248,10 @@ export class ConversationLogger {
 
       // 轮转当前文件
       renameSync(this.filePath, `${this.filePath}.0`);
-    } catch {
-      // 轮转失败不影响正常写入
+    } catch (err) {
+      logger.warn('对话日志文件轮转失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

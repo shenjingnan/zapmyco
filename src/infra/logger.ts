@@ -5,8 +5,8 @@
  * 支持将日志写入文件，在 TUI 模式下可抑制终端输出。
  */
 
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { ZapmycoError } from '@/infra/errors';
 
 /** 格式化本地时间为 ISO-like 字符串（YYYY-MM-DD HH:MM:SS） */
@@ -47,6 +47,9 @@ const LEVEL_WEIGHTS: Record<LogLevel, number> = {
 class LogOutput {
   quiet: boolean = false;
   logFilePath: string | null = null;
+  maxFileSize: number = 50 * 1024 * 1024; // 50MB 默认
+  retentionDays: number = 7; // 7 天默认
+  maxRotations: number = 5;
 }
 
 /**
@@ -81,6 +84,16 @@ class Logger {
   /** 设置是否抑制终端输出（TUI 模式应设为 true） */
   setQuiet(quiet: boolean): void {
     this.output.quiet = quiet;
+  }
+
+  /** 设置日志文件轮转大小（字节） */
+  setMaxFileSize(bytes: number): void {
+    this.output.maxFileSize = bytes;
+  }
+
+  /** 设置日志保留天数 */
+  setRetentionDays(days: number): void {
+    this.output.retentionDays = days;
   }
 
   /** 创建带前缀的子 logger，共享父 Logger 的输出配置（同一引用，后续修改会反映到所有子 Logger） */
@@ -138,7 +151,13 @@ class Logger {
 
     // 写入文件（如果已配置）
     if (this.output.logFilePath) {
-      appendFileSync(this.output.logFilePath, `${output}\n`, 'utf-8');
+      try {
+        this.rotateIfNeeded();
+        this.cleanOldLogs();
+        appendFileSync(this.output.logFilePath, `${output}\n`, 'utf-8');
+      } catch {
+        // 文件写入失败不抛出，避免影响主流程
+      }
     }
 
     // 终端输出（quiet 模式下抑制）
@@ -164,6 +183,74 @@ class Logger {
     this.log('error', message, context, error);
   }
 
+  /** 基于文件大小轮转日志 */
+  private rotateIfNeeded(): void {
+    const filePath = this.output.logFilePath;
+    if (!filePath) return;
+    if (!existsSync(filePath)) return;
+
+    try {
+      const stats = statSync(filePath);
+      if (stats.size < this.output.maxFileSize) return;
+
+      const dir = dirname(filePath);
+      const baseName = filePath.split('/').pop() ?? 'zapmyco.log';
+
+      // 从最旧开始轮转：删除最旧的，其余重命名
+      for (let i = this.output.maxRotations - 1; i >= 0; i--) {
+        const oldPath = join(dir, `${baseName}.${i}`);
+        const newPath = join(dir, `${baseName}.${i + 1}`);
+        if (existsSync(oldPath)) {
+          if (i === this.output.maxRotations - 1) {
+            unlinkSync(oldPath);
+          } else {
+            renameSync(oldPath, newPath);
+          }
+        }
+      }
+
+      // 轮转当前文件
+      renameSync(filePath, join(dir, `${baseName}.0`));
+    } catch {
+      // 轮转失败不影响正常写入
+    }
+  }
+
+  /** 清理过期日志文件（基于保留天数） */
+  private cleanOldLogs(): void {
+    const filePath = this.output.logFilePath;
+    if (!filePath) return;
+
+    try {
+      const dir = dirname(filePath);
+      const baseName = filePath.split('/').pop() ?? 'zapmyco.log';
+      const now = Date.now();
+      const maxAgeMs = this.output.retentionDays * 24 * 60 * 60 * 1000;
+
+      // 检查当前文件和所有轮转文件
+      const filesToCheck = [filePath];
+      for (let i = 1; i <= this.output.maxRotations; i++) {
+        const rotatedPath = join(dir, `${baseName}.${i}`);
+        if (existsSync(rotatedPath)) {
+          filesToCheck.push(rotatedPath);
+        }
+      }
+
+      for (const f of filesToCheck) {
+        try {
+          const mtime = statSync(f).mtimeMs;
+          if (now - mtime > maxAgeMs) {
+            unlinkSync(f);
+          }
+        } catch {
+          // 单个文件清理失败不影响其他
+        }
+      }
+    } catch {
+      // 清理失败不影响主流程
+    }
+  }
+
   /** 获取所有日志条目 */
   getEntries(): LogEntry[] {
     return [...this.entries];
@@ -187,6 +274,8 @@ export function configureLogger(options: {
   logFilePath?: string;
   quiet?: boolean;
   level?: LogLevel;
+  maxFileSize?: number;
+  retentionDays?: number;
 }): void {
   if (options.level) {
     logger.setLevel(options.level);
@@ -196,6 +285,12 @@ export function configureLogger(options: {
   }
   if (options.quiet !== undefined) {
     logger.setQuiet(options.quiet);
+  }
+  if (options.maxFileSize !== undefined) {
+    logger.setMaxFileSize(options.maxFileSize);
+  }
+  if (options.retentionDays !== undefined) {
+    logger.setRetentionDays(options.retentionDays);
   }
 }
 

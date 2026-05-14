@@ -1595,8 +1595,11 @@ export class ReplSession {
       }
       try {
         unlinkSync(tmpFile);
-      } catch {
-        // 临时文件清理失败可忽略
+      } catch (err) {
+        log.warn('临时文件清理失败', {
+          path: tmpFile,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   }
