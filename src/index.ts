@@ -119,7 +119,6 @@ export { CredentialPoolManager } from '@/llm/credential-pool-manager';
 export { maskApiKey, resolveApiKey } from '@/llm/key-utils';
 export type { RoutingContext, RoutingDecision, RoutingStats } from '@/llm/model-router';
 export { ModelRouter } from '@/llm/model-router';
-export type { ILlmProvider } from '@/llm/provider';
 export type { ModelInfo, ProviderInfo, RegistryStats } from '@/llm/provider-registry';
 export { ProviderRegistry } from '@/llm/provider-registry';
 export type {

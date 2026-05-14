@@ -10,9 +10,23 @@ import { getModel, getModels } from '@earendil-works/pi-ai';
 import type { LlmConfig, LlmFallbackConfig, LlmRoutingConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
 import { CredentialPoolManager } from '@/llm/credential-pool-manager';
-import { parseModelKey } from '@/llm/pi-ai-provider';
-
 // ============ 类型定义 ============
+
+/**
+ * 解析模型标识符
+ *
+ * 支持格式：provider/modelId（如 anthropic/claude-sonnet-4-20250514）
+ */
+export function parseModelKey(key: string): { provider: string; modelId: string } | null {
+  const slashIndex = key.indexOf('/');
+  if (slashIndex <= 0 || slashIndex >= key.length - 1) {
+    return null;
+  }
+  return {
+    provider: key.slice(0, slashIndex),
+    modelId: key.slice(slashIndex + 1),
+  };
+}
 
 /** 模型能力标签 */
 export type ModelCapability = 'chat' | 'code' | 'reasoning' | 'vision' | 'fast' | 'streaming';

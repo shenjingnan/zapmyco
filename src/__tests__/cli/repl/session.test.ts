@@ -123,28 +123,6 @@ vi.mock('@earendil-works/pi-ai', () => ({
   }),
 }));
 
-// Mock PiAiProvider — 不再需要 mock chatStream（REPL 通过 Agent 执行）
-vi.mock('@/llm/pi-ai-provider', () => ({
-  PiAiProvider: class MockPiAiProvider {
-    readonly providerId = 'pi-ai';
-    chatStream = vi.fn();
-    chat = vi.fn().mockResolvedValue({
-      content: 'Mock response',
-      inputTokens: 10,
-      outputTokens: 5,
-      model: 'test-model',
-    });
-  },
-  parseModelKey: vi.fn((key: string) => {
-    const slashIndex = key.indexOf('/');
-    if (slashIndex <= 0 || slashIndex >= key.length - 1) return null;
-    return {
-      provider: key.slice(0, slashIndex),
-      modelId: key.slice(slashIndex + 1),
-    };
-  }),
-}));
-
 // Mock eventBus
 vi.mock('@/infra/event-bus', () => ({
   eventBus: {
