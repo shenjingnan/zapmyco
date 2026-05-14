@@ -7,8 +7,8 @@
  */
 
 import chalk from 'chalk';
-import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { CommandDefinition } from '@/cli/repl/types';
+import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 
 /**
  * 创建 /cache 命令
@@ -34,14 +34,8 @@ export function createCacheCommand(): CommandDefinition {
       lines.push('');
       lines.push(chalk.cyan('  Prompt 缓存状态'));
       lines.push('  ' + chalk.gray('─'.repeat(40)));
-      lines.push(
-        chalk.gray('  缓存命中率: ') +
-          formatPercent(stats.hitRate)
-      );
-      lines.push(
-        chalk.gray('  平均缓存读取比例: ') +
-          formatPercent(stats.averageCacheRatio)
-      );
+      lines.push(chalk.gray('  缓存命中率: ') + formatPercent(stats.hitRate));
+      lines.push(chalk.gray('  平均缓存读取比例: ') + formatPercent(stats.averageCacheRatio));
       lines.push(chalk.gray('  总调用次数: ') + chalk.white(String(stats.totalCalls)));
 
       if (stats.lastBreak) {
@@ -51,12 +45,10 @@ export function createCacheCommand(): CommandDefinition {
         lines.push(chalk.gray('  断裂检测: ') + breakStatus);
         if (stats.lastBreak.broken) {
           lines.push(
-            chalk.gray('    前次读取: ') +
-              chalk.white(formatTokens(stats.lastBreak.previousRead))
+            chalk.gray('    前次读取: ') + chalk.white(formatTokens(stats.lastBreak.previousRead))
           );
           lines.push(
-            chalk.gray('    当前读取: ') +
-              chalk.red(formatTokens(stats.lastBreak.currentRead))
+            chalk.gray('    当前读取: ') + chalk.red(formatTokens(stats.lastBreak.currentRead))
           );
         }
       }

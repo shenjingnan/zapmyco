@@ -51,7 +51,10 @@ export class ToolSchemaCache {
   /**
    * 检查工具 schema 是否已变化
    */
-  hasChanged(name: string, current: { description: string; parameters: Record<string, unknown> }): boolean {
+  hasChanged(
+    name: string,
+    current: { description: string; parameters: Record<string, unknown> }
+  ): boolean {
     const existing = this.cache.get(name);
     if (!existing) return true;
     return existing.hash !== this.computeHash(current.description, current.parameters);
@@ -82,7 +85,7 @@ export class ToolSchemaCache {
     let hash = 0;
     for (let i = 0; i < content.length; i++) {
       const chr = content.charCodeAt(i);
-      hash = ((hash << 5) - hash) + chr;
+      hash = (hash << 5) - hash + chr;
       hash |= 0;
     }
     return hash.toString(36);

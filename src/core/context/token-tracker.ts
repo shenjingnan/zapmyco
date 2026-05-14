@@ -174,7 +174,11 @@ export class TokenTracker {
     const prev = this._callMetrics[this._callMetrics.length - 2]!;
     const curr = this._callMetrics[this._callMetrics.length - 1]!;
     if (prev.cacheReadTokens > 2000 && curr.cacheReadTokens < prev.cacheReadTokens * 0.5) {
-      return { broken: true, previousRead: prev.cacheReadTokens, currentRead: curr.cacheReadTokens };
+      return {
+        broken: true,
+        previousRead: prev.cacheReadTokens,
+        currentRead: curr.cacheReadTokens,
+      };
     }
     return { broken: false, previousRead: prev.cacheReadTokens, currentRead: curr.cacheReadTokens };
   }

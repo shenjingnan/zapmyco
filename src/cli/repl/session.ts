@@ -24,13 +24,13 @@ import {
 import chalk from 'chalk';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
+import { createCacheCommand } from '@/cli/repl/commands/cache-cmd';
 import { createClearCommand } from '@/cli/repl/commands/clear';
 import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
 // 导入内置命令
 import { createHelpCommand } from '@/cli/repl/commands/help';
 import { createHistoryCommand } from '@/cli/repl/commands/history';
 import { createQuitCommand } from '@/cli/repl/commands/quit';
-import { createCacheCommand } from '@/cli/repl/commands/cache-cmd';
 import { createSecurityCommand } from '@/cli/repl/commands/security-cmd';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';

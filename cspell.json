@@ -92,7 +92,8 @@
     "*.min.js",
     "*.min.d.ts",
     "pnpm-lock.yaml",
-    ".git"
+    ".git",
+    "tmp"
   ],
   "enableFiletypes": true
 }

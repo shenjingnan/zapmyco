@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { ThinkingLevel } from '@earendil-works/pi-ai';
 import { Agent } from '@/core/agent-runtime/agent';
+import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import {
   Compactor,
   ContextErrorRecovery,
@@ -25,7 +26,6 @@ import type { ConversationLogger } from '@/infra/conversation-logger';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
-import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import type {
   AgentExecuteRequest,
   AgentHealthStatus,
