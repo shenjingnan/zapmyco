@@ -39,6 +39,8 @@ export const plannerType: AgentTypeDefinition = {
   source: 'builtin',
   maxTurns: 50,
   maxSpawnDepth: 1,
+  /** 方案设计、架构规划需要最强推理能力 — 使用 analysisModel（如 claude-opus） */
+  model: 'analysis',
   color: '#f39c12',
 
   getSystemPrompt(ctx: AgentSystemPromptContext): string {

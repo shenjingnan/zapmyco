@@ -7,6 +7,7 @@
  * @module core/agent-team
  */
 
+import type { Model } from '@earendil-works/pi-ai';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import type {
@@ -55,7 +56,8 @@ export function createAgentFromType(
   });
 
   // 1. 共享父 Agent 的 Model 和 API Key
-  shareParentResources(agent, parentAgent);
+  // 传入 definition 以支持 Agent 类型级别的模型路由
+  shareParentResources(agent, parentAgent, definition);
 
   // 2. 根据工具策略和深度过滤工具
   const tools = resolveTools(definition, availableTools, instance.depth, config);
@@ -168,16 +170,40 @@ function buildSystemPrompt(
 /**
  * 共享父 Agent 的 Model 和 API Key 给子 Agent
  *
+ * 如果 Agent 类型声明了偏好的模型（definition.model），则通过 AgentLlmFacade
+ * 解析对应模型（支持 'analysis'/'light'/'vision' 语义名称或 provider/modelId 具体 key），
+ * 实现"复杂任务自动切换更强模型"的能力。
+ *
+ * 未指定 model 时保持继承父 Agent 模型的向后兼容行为。
+ *
  * 优先使用 AgentLlmFacade（支持凭据池独立 Key 选择），
  * 回退到直接复制 Model + Key 闭包（向后兼容）。
  */
-function shareParentResources(subAgent: LlmBasedAgent, parentAgent: LlmBasedAgent): void {
+function shareParentResources(
+  subAgent: LlmBasedAgent,
+  parentAgent: LlmBasedAgent,
+  definition?: AgentTypeDefinition
+): void {
   const parentInner = parentAgent.innerAgent;
 
   // 方式 A：通过 AgentLlmFacade 共享（新架构）
   if (parentAgent.llmFacade) {
     subAgent.llmFacade = parentAgent.llmFacade;
-    subAgent.innerAgent.state.model = parentInner.state.model;
+
+    // 如果 Agent 类型声明了偏好模型，解析对应模型
+    if (definition?.model) {
+      const resolvedModel = resolveModelForDefinition(definition.model, parentAgent);
+      if (resolvedModel) {
+        subAgent.innerAgent.state.model = resolvedModel;
+      } else {
+        // 解析失败时回退到继承父 Agent 模型
+        subAgent.innerAgent.state.model = parentInner.state.model;
+      }
+    } else {
+      // 未指定 model → 继承父 Agent 模型
+      subAgent.innerAgent.state.model = parentInner.state.model;
+    }
+
     // biome-ignore lint/suspicious/noExplicitAny: pi-agent-core internal state does not expose getApiKey in public types
     (subAgent.innerAgent as any).getApiKey = parentAgent.llmFacade.createGetApiKeyFn();
     return;
@@ -194,5 +220,45 @@ function shareParentResources(subAgent: LlmBasedAgent, parentAgent: LlmBasedAgen
   if (parentGetApiKey) {
     // biome-ignore lint/suspicious/noExplicitAny: pi-agent-core internal state does not expose getApiKey in public types
     (subAgent.innerAgent as any).getApiKey = parentGetApiKey;
+  }
+}
+
+/**
+ * 根据 Agent 类型声明的 model 值解析对应的 pi-ai Model 对象
+ *
+ * 支持三种格式：
+ * - 语义名称: 'analysis' → 指向 analysisModel 槽位
+ * - 语义名称: 'light' → 指向 lightModel 槽位
+ * - 语义名称: 'vision' → 指向 visionModel 槽位
+ * - 具体模型 key: 'anthropic/claude-opus-4-20250514' → 直接解析
+ *
+ * @param model - Agent 类型声明的 model 值
+ * @param parentAgent - 父 Agent（用于获取 AgentLlmFacade）
+ * @returns 解析后的 pi-ai Model 对象，解析失败返回 undefined
+ */
+function resolveModelForDefinition(
+  model: string,
+  parentAgent: LlmBasedAgent
+  // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
+): Model<any> | undefined {
+  const facade = parentAgent.llmFacade;
+  if (!facade) return undefined;
+
+  try {
+    switch (model) {
+      case 'analysis':
+        return facade.resolveSemanticPiModel('analysis');
+      case 'light':
+        return facade.resolveSemanticPiModel('light');
+      case 'vision':
+        return facade.resolveSemanticPiModel('vision');
+      default:
+        // 当作具体模型 key 处理
+        return facade.resolvePiModel(model);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(`解析 Agent 类型偏好模型 [${model}] 失败`, { error: message });
+    return undefined;
   }
 }

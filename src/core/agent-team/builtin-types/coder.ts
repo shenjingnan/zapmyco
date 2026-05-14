@@ -38,6 +38,8 @@ export const coderType: AgentTypeDefinition = {
   source: 'builtin',
   maxTurns: 100,
   maxSpawnDepth: 0,
+  /** 代码生成质量直接影响结果 — 使用 analysisModel（如 claude-opus） */
+  model: 'analysis',
   color: '#2ecc71',
 
   getSystemPrompt(ctx: AgentSystemPromptContext): string {
