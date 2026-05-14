@@ -7,7 +7,7 @@
  * @module core/agent-runtime/agent
  */
 
-import type { ThinkingLevel } from '@mariozechner/pi-ai';
+import type { ThinkingLevel } from '@earendil-works/pi-ai';
 import {
   type ImageContent,
   type Message,
@@ -16,7 +16,7 @@ import {
   type TextContent,
   type ThinkingBudgets,
   type Transport,
-} from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-ai';
 import { runAgentLoop, runAgentLoopContinue } from './agent-loop';
 import type {
   AfterToolCallContext,

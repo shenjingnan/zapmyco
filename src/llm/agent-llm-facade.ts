@@ -11,7 +11,7 @@
  * - 故障转移（获取备选 Model + Key）
  */
 
-import type { Model } from '@mariozechner/pi-ai';
+import type { Model } from '@earendil-works/pi-ai';
 import type { LlmConfig } from '@/config/types';
 import type { RoutingContext } from '@/llm/model-router';
 import { ModelRouter } from '@/llm/model-router';

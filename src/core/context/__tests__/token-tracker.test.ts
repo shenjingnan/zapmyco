@@ -139,7 +139,7 @@ describe('TokenTracker', () => {
       cacheWrite: overrides?.cacheWrite ?? 0,
       totalTokens: (overrides?.input ?? 100) + (overrides?.output ?? 50),
       cost: {} as unknown as Record<string, never>,
-    }) as unknown as import('@mariozechner/pi-ai').Usage;
+    }) as unknown as import('@earendil-works/pi-ai').Usage;
 
   it('should have correct initial state', () => {
     const tracker = new TokenTracker();

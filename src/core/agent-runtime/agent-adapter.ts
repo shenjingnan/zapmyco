@@ -742,7 +742,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   private getPkgVersion(): string {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pkg = require('@mariozechner/pi-ai/package.json');
+      const pkg = require('@earendil-works/pi-ai/package.json');
       return pkg.version ?? 'unknown';
     } catch {
       return 'unknown';

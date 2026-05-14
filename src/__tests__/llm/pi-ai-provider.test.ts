@@ -35,7 +35,7 @@ const {
 });
 
 // ============ Mock pi-ai 模块 ============
-vi.mock('@mariozechner/pi-ai', () => ({
+vi.mock('@earendil-works/pi-ai', () => ({
   getModel: mockGetModel,
   complete: mockComplete,
   stream: mockStream,

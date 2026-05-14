@@ -7,7 +7,7 @@
  * @module core/context
  */
 
-import type { Model } from '@mariozechner/pi-ai';
+import type { Model } from '@earendil-works/pi-ai';
 import type { ContextWindowInfo } from './types';
 
 /** 默认上下文窗口大小（当无法从模型获取时） */

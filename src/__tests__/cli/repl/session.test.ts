@@ -114,8 +114,8 @@ vi.mock('@/core/agent-runtime/agent', () => ({
   })),
 }));
 
-// Mock @mariozechner/pi-ai（getModel 用于 Agent 初始化）
-vi.mock('@mariozechner/pi-ai', () => ({
+// Mock @earendil-works/pi-ai（getModel 用于 Agent 初始化）
+vi.mock('@earendil-works/pi-ai', () => ({
   getModel: vi.fn().mockReturnValue({
     name: 'anthropic/claude-sonnet-4-20250514',
     id: 'claude-sonnet-4-20250514',

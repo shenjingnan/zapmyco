@@ -5,7 +5,7 @@
  * 使用 mock streamFn 模拟 LLM 响应，不依赖真实 API。
  */
 
-import type { AssistantMessage, AssistantMessageEvent } from '@mariozechner/pi-ai';
+import type { AssistantMessage, AssistantMessageEvent } from '@earendil-works/pi-ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runAgentLoop, runAgentLoopContinue } from '@/core/agent-runtime/agent-loop';
 import type {
@@ -160,7 +160,7 @@ const DEFAULT_CONFIG: AgentLoopConfig = {
   transformContext: undefined,
   convertToLlm: (messages: AgentMessage[]) =>
     messages.filter(
-      (m): m is import('@mariozechner/pi-ai').Message =>
+      (m): m is import('@earendil-works/pi-ai').Message =>
         m.role === 'user' || m.role === 'assistant' || m.role === 'toolResult'
     ),
   getApiKey: undefined,

@@ -22,7 +22,7 @@ import type {
   Tool,
   ToolResultMessage,
   Transport,
-} from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-ai';
 import type { Static, TSchema } from 'typebox';
 
 // ============ 消息类型 ============
