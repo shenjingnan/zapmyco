@@ -779,7 +779,7 @@ export class ReplSession {
             spinnerActive = false;
             clearInterval(spinnerInterval);
             thinkingHeaderLineIndex = this.outputArea.replaceLastLine(
-              dimStyle(`  ${LOADING_FRAMES[0] ?? ''} Thinking...`),
+              dimStyle(`  ${LOADING_FRAMES[0] ?? ''} Thinking...`)
             );
           } else {
             // 已在输出 response，thinking 也到达
@@ -807,7 +807,7 @@ export class ReplSession {
               thinkingFrame++;
               this.outputArea.updateLine(
                 thinkingHeaderLineIndex,
-                dimStyle(`  ${frame} Thinking... (${elapsed}s)`),
+                dimStyle(`  ${frame} Thinking... (${elapsed}s)`)
               );
               this.tui.requestRender();
             }, 200);
@@ -858,7 +858,7 @@ export class ReplSession {
               const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
               this.outputArea.updateLine(
                 thinkingHeaderLineIndex,
-                dimStyle(`  \u2234 Thinking (${elapsed}s)`),
+                dimStyle(`  \u2234 Thinking (${elapsed}s)`)
               );
               this.tui.requestRender();
             }
