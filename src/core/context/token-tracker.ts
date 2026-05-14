@@ -171,8 +171,8 @@ export class TokenTracker {
    */
   detectCacheBreak(): { broken: boolean; previousRead: number; currentRead: number } | null {
     if (this._callMetrics.length < 2) return null;
-    const prev = this._callMetrics[this._callMetrics.length - 2];
-    const curr = this._callMetrics[this._callMetrics.length - 1];
+    const prev = this._callMetrics[this._callMetrics.length - 2]!;
+    const curr = this._callMetrics[this._callMetrics.length - 1]!;
     if (prev.cacheReadTokens > 2000 && curr.cacheReadTokens < prev.cacheReadTokens * 0.5) {
       return { broken: true, previousRead: prev.cacheReadTokens, currentRead: curr.cacheReadTokens };
     }
