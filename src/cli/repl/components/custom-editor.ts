@@ -14,12 +14,20 @@
  */
 
 import { Editor, Key, matchesKey, truncateToWidth } from '@mariozechner/pi-tui';
+import chalk from 'chalk';
 
 /** 输入提示符 */
 const PROMPT_PREFIX = '\u276f '; // "❯ "
 
 /** loading 动画帧 */
 export const LOADING_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/** 审批选项定义 */
+export interface ApprovalOption {
+  key: string;
+  label: string;
+  action: () => void;
+}
 
 /** ANSI 转义码正则（用于从渲染行中剥离颜色标记） */
 // biome-ignore lint/complexity/useRegexLiterals: 避免正则字面量中的控制字符
@@ -56,7 +64,42 @@ export class ZapmycoEditor extends Editor {
   /** loading 动画定时器 */
   #loadingTimer?: ReturnType<typeof setInterval> | undefined;
 
+  /** 审批模式状态 */
+  #approvalState: {
+    title: string;
+    options: ApprovalOption[];
+    selectedIndex: number;
+  } | null = null;
+
+  /** 进入审批模式，在编辑器区域显示审批选项 */
+  enterApprovalMode(title: string, options: ApprovalOption[]): void {
+    // 停止 spinner（如果有）
+    this.#executing = false;
+    if (this.#loadingTimer) {
+      clearInterval(this.#loadingTimer);
+      this.#loadingTimer = undefined;
+    }
+    this.#approvalState = { title, options, selectedIndex: 0 };
+    this.invalidate();
+  }
+
+  /** 退出审批模式，恢复编辑器正常状态 */
+  exitApprovalMode(): void {
+    this.#approvalState = null;
+    this.invalidate();
+  }
+
+  /** 是否正处于审批模式 */
+  get inApprovalMode(): boolean {
+    return this.#approvalState !== null;
+  }
+
   handleInput(data: string): void {
+    // 审批模式优先处理
+    if (this.#approvalState) {
+      this.#handleApprovalInput(data);
+      return;
+    }
     if (matchesKey(data, Key.escape) && this.onEscape) {
       this.onEscape();
       return;
@@ -76,6 +119,52 @@ export class ZapmycoEditor extends Editor {
       return;
     }
     super.handleInput(data);
+  }
+
+  /** 审批模式下的键盘处理 */
+  #handleApprovalInput(data: string): void {
+    const state = this.#approvalState;
+    if (!state) return;
+
+    // Esc / q / Ctrl+C → 取消（调用最后一个选项，通常为"拒绝"）
+    if (matchesKey(data, 'escape') || data === 'q' || matchesKey(data, Key.ctrl('c'))) {
+      const lastOpt = state.options[state.options.length - 1];
+      lastOpt?.action();
+      return;
+    }
+
+    // ↑ / k → 上移
+    if (matchesKey(data, 'up') || data === 'k') {
+      state.selectedIndex = Math.max(0, state.selectedIndex - 1);
+      this.invalidate();
+      return;
+    }
+
+    // ↓ / j → 下移
+    if (matchesKey(data, 'down') || data === 'j') {
+      state.selectedIndex = Math.min(state.options.length - 1, state.selectedIndex + 1);
+      this.invalidate();
+      return;
+    }
+
+    // Tab → 循环切换到下一个选项
+    if (matchesKey(data, 'tab')) {
+      state.selectedIndex = (state.selectedIndex + 1) % state.options.length;
+      this.invalidate();
+      return;
+    }
+
+    // Enter → 确认当前选项
+    if (matchesKey(data, 'enter')) {
+      state.options[state.selectedIndex]?.action();
+      return;
+    }
+
+    // 1-9 → 数字快捷键选择
+    if (data >= '1' && data <= '9') {
+      const idx = parseInt(data, 10) - 1;
+      state.options[idx]?.action();
+    }
   }
 
   /**
@@ -111,8 +200,15 @@ export class ZapmycoEditor extends Editor {
    *
    * 策略：调用 super.render() 获取完整的带边框输出，
    * 然后移除首尾 border 行，再在内容行前添加提示符前缀。
+   *
+   * 审批模式下渲染审批选项 UI。
    */
   override render(width: number): string[] {
+    // 审批模式：渲染审批面板
+    if (this.#approvalState) {
+      return this.#renderApproval(width);
+    }
+
     const rawLines = super.render(width);
 
     // Editor 至少有 top-border + content + bottom-border
@@ -154,5 +250,50 @@ export class ZapmycoEditor extends Editor {
     }
 
     return contentLines;
+  }
+
+  /** 渲染审批面板（替换编辑器的常规渲染） */
+  #renderApproval(width: number): string[] {
+    const state = this.#approvalState;
+    if (!state) return [];
+
+    const c = chalk;
+    const lines: string[] = [];
+
+    // 灰色分隔线，与输出区域内容分离
+    if (width >= 30) {
+      lines.push(c.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`));
+    } else {
+      lines.push('');
+    }
+
+    // 标题：是否允许工具 "xxx" 的调用？
+    lines.push(c.bold(`  ${state.title}`));
+    lines.push('');
+
+    // 选项列表
+    for (let i = 0; i < state.options.length; i++) {
+      const opt = state.options[i];
+      if (!opt) continue;
+      const isFocused = state.selectedIndex === i;
+      const prefix = isFocused ? c.green('❯') : ' ';
+      const keyLabel = c.gray(opt.key);
+      const label = isFocused ? c.green.bold(opt.label) : opt.label;
+      lines.push(`  ${prefix} ${keyLabel} ${label}`);
+    }
+
+    lines.push('');
+
+    // 页脚提示
+    if (width >= 50) {
+      lines.push(c.gray('  Esc 取消  ·  Tab 切换  ·  1/2/3 快捷选择'));
+    } else if (width >= 30) {
+      lines.push(c.gray('  Esc 取消  ·  Tab 切换'));
+    } else {
+      lines.push(c.gray('  Esc 取消'));
+    }
+
+    lines.push('');
+    return lines;
   }
 }
