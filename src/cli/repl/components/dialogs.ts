@@ -407,13 +407,12 @@ export function showConfigView(tui: TUI, config: ZapmycoConfig, renderer: Render
 /**
  * 安全审批对话框组件
  *
- * Claude Code 风格的审批对话框，显示工具调用的风险信息，
- * 等待用户选择审批范围。支持方向键导航 + Enter 确认，
- * 以及数字键快捷操作。
+ * Claude Code 风格的简洁审批对话框，一句话说清审批内容。
+ * 支持方向键 + Tab 导航、Enter 确认，以及数字键快捷操作。
  *
  * 键位：
- *   ↑/k 上移   ↓/j 下移   Enter 确认
- *   1 允许本次   2 始终允许   0 拒绝   Esc 取消
+ *   ↑/k 上移   ↓/j 下移   Tab 切换   Enter 确认
+ *   1 允许本次   2 本次会话始终允许   3 拒绝   Esc 取消
  */
 class ApprovalDialogComponent implements Component {
   private readonly request: ApprovalRequest;
@@ -426,8 +425,8 @@ class ApprovalDialogComponent implements Component {
       action: () => this.onResolve?.({ approved: true, scope: 'once' }),
     },
     {
-      label: '始终允许',
-      action: () => this.onResolve?.({ approved: true, scope: 'always' }),
+      label: '本次会话始终允许',
+      action: () => this.onResolve?.({ approved: true, scope: 'session' }),
     },
     {
       label: '拒绝',
@@ -463,17 +462,22 @@ class ApprovalDialogComponent implements Component {
       return;
     }
 
+    // Tab → 循环切换到下一个选项
+    if (matchesKey(data, 'tab')) {
+      this.selectedOptionIndex = (this.selectedOptionIndex + 1) % this.OPTIONS.length;
+      return;
+    }
+
     // Enter → 确认当前选项
     if (matchesKey(data, 'enter')) {
       this.OPTIONS[this.selectedOptionIndex]!.action();
       return;
     }
 
-    // 数字快捷键：1 → 允许本次, 2 → 始终允许, 0 → 拒绝
-    // biome-ignore lint/suspicious/noExplicitAny: 数字快捷键兼容处理
+    // 数字快捷键：1 → 允许本次, 2 → 本次会话始终允许, 3 → 拒绝
     if (data === '1') this.OPTIONS[0]!.action();
     else if (data === '2') this.OPTIONS[1]!.action();
-    else if (data === '0') this.OPTIONS[2]!.action();
+    else if (data === '3') this.OPTIONS[2]!.action();
   }
 
   invalidate(): void {
@@ -482,64 +486,41 @@ class ApprovalDialogComponent implements Component {
 
   render(width: number): string[] {
     const c = chalk;
-    const risk = this.request.risk;
-    const riskColor =
-      risk === 'critical'
-        ? c.red.bold
-        : risk === 'high'
-          ? c.red
-          : risk === 'medium'
-            ? c.yellow
-            : c.green;
+    const lines: string[] = [''];
 
-    const lines: string[] = [
-      '',
-      c.bold('  安全审批'),
-      '',
-      c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`),
-      '',
-      `  工具: ${c.cyan(this.request.toolLabel)} (${c.gray(this.request.toolId)})`,
-      `  风险等级: ${riskColor(risk.toUpperCase())}`,
-      `  原因: ${c.white(this.request.reason)}`,
-      '',
-    ];
-
-    // 参数摘要（截断长参数）
+    // 标题：是否允许工具 "ToolId(keyParam)" 的调用？
     const paramEntries = Object.entries(this.request.params);
+    let paramSuffix = '';
     if (paramEntries.length > 0) {
-      lines.push(`  参数:`);
-      for (const [key, value] of paramEntries.slice(0, 5)) {
-        const raw = typeof value === 'string' ? value : JSON.stringify(value);
-        const display = raw.length > 60 ? raw.slice(0, 57) + '...' : raw;
-        lines.push(`    ${c.gray(key)}: ${display}`);
-      }
-      if (paramEntries.length > 5) {
-        lines.push(`    ${c.gray('...')} 还有 ${paramEntries.length - 5} 个参数`);
-      }
-      lines.push('');
+      const [, value] = paramEntries[0]!;
+      const raw = typeof value === 'string' ? value : JSON.stringify(value);
+      paramSuffix = raw.length > 50 ? raw.slice(0, 47) + '...' : raw;
     }
-
-    // 分隔线
-    lines.push(c.gray(`  ${'─'.repeat(Math.min(width - 4, 60))}`));
+    lines.push(
+      c.bold(
+        `  是否允许工具 "${this.request.toolId}${paramSuffix ? `(${paramSuffix})` : ''}" 的调用？`
+      )
+    );
     lines.push('');
 
-    // 操作选项列表（支持方向键导航 + 数字键选择）
-    const keyLabels = ['1', '2', '0'];
+    // 操作选项列表（支持方向键/Tab 导航 + 数字键选择）
+    const keyLabels = ['1', '2', '3'];
     for (let i = 0; i < this.OPTIONS.length; i++) {
       const opt = this.OPTIONS[i]!;
       const isFocused = this.selectedOptionIndex === i;
       const prefix = isFocused ? c.green('❯') : ' ';
       const keyLabel = c.gray(keyLabels[i] ?? `${i + 1}`);
-      const label = isFocused ? c.green.bold(opt.label) : c.bold(opt.label);
+      const label = isFocused ? c.green.bold(opt.label) : opt.label;
       lines.push(`  ${prefix} ${keyLabel} ${label}`);
     }
 
     lines.push('');
 
-    // 页脚提示
-    if (width >= 50) {
-      lines.push(c.gray(`  ${'─'.repeat(Math.max(0, width - 4))}`));
-      lines.push(c.gray('  Esc 取消  ·  ↑/↓ 导航  ·  Enter 确认  ·  1/2 允许  ·  0 拒绝'));
+    // 页脚提示（仅保留非常规操作）
+    if (width >= 40) {
+      lines.push(c.gray('  Esc 取消  ·  Tab 切换'));
+    } else {
+      lines.push(c.gray('  Esc 取消'));
     }
     lines.push('');
 
@@ -554,6 +535,9 @@ class ApprovalDialogComponent implements Component {
  * @param request - 审批请求
  * @returns 审批响应（用户选择）
  */
+/** @internal 导出用于测试 */
+export { ApprovalDialogComponent as ApprovalDialogComponentForTesting };
+
 export function showApprovalDialog(tui: TUI, request: ApprovalRequest): Promise<ApprovalResponse> {
   return new Promise((resolve) => {
     let handle: OverlayHandle | null = null;
@@ -566,7 +550,7 @@ export function showApprovalDialog(tui: TUI, request: ApprovalRequest): Promise<
     handle = tui.showOverlay(component, {
       width: '80%',
       minWidth: 50,
-      maxHeight: 20,
+      maxHeight: 12,
       anchor: 'top-left',
       margin: { top: 2, bottom: 1 },
     });
