@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import chalk from 'chalk';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCacheCommand } from '@/cli/repl/commands/cache-cmd';
 import type { CommandDefinition } from '@/cli/repl/types';
 
@@ -49,7 +49,7 @@ describe('createCacheCommand', () => {
     await cmd.handler([], mockSession() as never);
 
     expect(appendOutput).toHaveBeenCalledTimes(1);
-    const lines = appendOutput.mock.calls[0]![0] as string[];
+    const lines = appendOutput.mock.calls[0]?.[0] as string[];
 
     expect(lines[0]).toBe('');
     expect(lines[1]).toBe('  Prompt 缓存状态');
@@ -76,7 +76,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    const lines = appendOutput.mock.calls[0]![0] as string[];
+    const lines = appendOutput.mock.calls[0]?.[0] as string[];
     const output = lines.join('\n');
 
     expect(output).toContain('缓存命中率: 100.0%');
@@ -101,7 +101,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    const lines = appendOutput.mock.calls[0]![0] as string[];
+    const lines = appendOutput.mock.calls[0]?.[0] as string[];
     const output = lines.join('\n');
 
     expect(output).toContain('断裂检测');
@@ -124,7 +124,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    const lines = appendOutput.mock.calls[0]![0] as string[];
+    const lines = appendOutput.mock.calls[0]?.[0] as string[];
     const output = lines.join('\n');
 
     expect(output).toContain('前次读取: 2.0M');
@@ -144,7 +144,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    const lines = appendOutput.mock.calls[0]![0] as string[];
+    const lines = appendOutput.mock.calls[0]?.[0] as string[];
     const output = lines.join('\n');
 
     expect(output).toContain('前次读取: 500');
@@ -165,7 +165,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    let lines = appendOutput.mock.calls[0]![0] as string[];
+    let lines = appendOutput.mock.calls[0]?.[0] as string[];
     expect(lines[3]).toContain('60.0%');
     expect(lines[4]).toContain('55.0%');
 
@@ -183,7 +183,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    lines = appendOutput.mock.calls[0]![0] as string[];
+    lines = appendOutput.mock.calls[0]?.[0] as string[];
     expect(lines[3]).toContain('20.0%');
     expect(lines[4]).toContain('10.0%');
   });
@@ -196,7 +196,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    const lines = appendOutput.mock.calls[0]![0] as string[];
+    const lines = appendOutput.mock.calls[0]?.[0] as string[];
     expect(lines.find((l: string) => l.includes('工具 Schema 缓存'))).toBeUndefined();
   });
 
@@ -208,7 +208,7 @@ describe('createCacheCommand', () => {
       }) as never
     );
 
-    const lines = appendOutput.mock.calls[0]![0] as string[];
+    const lines = appendOutput.mock.calls[0]?.[0] as string[];
     const schemaLine = lines.find((l: string) => l.includes('工具 Schema 缓存'));
     expect(schemaLine).toBeDefined();
     expect(schemaLine).toContain('3 个工具');

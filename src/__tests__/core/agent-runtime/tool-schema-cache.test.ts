@@ -70,9 +70,9 @@ describe('ToolSchemaCache', () => {
       parameters: { foo: 'bar' },
     }));
 
-    expect(cache.hasChanged('changing', { description: 'Changed', parameters: { foo: 'bar' } })).toBe(
-      true
-    );
+    expect(
+      cache.hasChanged('changing', { description: 'Changed', parameters: { foo: 'bar' } })
+    ).toBe(true);
   });
 
   it('hasChanged parameters 变化时返回 true', () => {
