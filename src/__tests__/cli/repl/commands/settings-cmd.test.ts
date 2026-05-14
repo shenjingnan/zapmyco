@@ -631,9 +631,7 @@ describe('/settings command', () => {
       const firstEnabledIdx = items.findIndex(
         (item) => !item.description || item.description === ''
       );
-      const firstDisabledIdx = items.findIndex(
-        (item) => item.description && item.description.includes('未配置')
-      );
+      const firstDisabledIdx = items.findIndex((item) => item.description?.includes('未配置'));
 
       // Enabled items should come before disabled (if both exist)
       if (firstDisabledIdx >= 0 && firstEnabledIdx >= 0) {
