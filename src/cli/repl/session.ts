@@ -139,13 +139,20 @@ class OutputArea extends Container {
     this.invalidate();
   }
 
-  /** 替换最后一行的完整内容（用于 spinner 动画和首 chunk 替换） */
-  replaceLastLine(text: string): void {
+  /** 替换最后一行的完整内容（用于 spinner 动画和首 chunk 替换），返回行索引 */
+  replaceLastLine(text: string): number {
     if (this.lines.length > 0) {
       this.lines[this.lines.length - 1] = text;
     } else {
       this.lines.push(text);
     }
+    this.invalidate();
+    return this.lines.length - 1;
+  }
+
+  /** 在指定位置插入/删除/替换行（原子操作） */
+  spliceLines(startIndex: number, deleteCount: number, insertLines: string[]): void {
+    this.lines.splice(startIndex, deleteCount, ...insertLines);
     this.invalidate();
   }
 
@@ -621,6 +628,8 @@ export class ReplSession {
     const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+    // thinking 折叠状态（需要跨 try/catch/finally 访问）
+    let thinkingElapsedInterval: ReturnType<typeof setInterval> | undefined;
 
     try {
       // 更新状态（禁用编辑器输入，但不显示编辑器 spinner）
@@ -662,9 +671,60 @@ export class ReplSession {
       let thinkingAccumulator = '';
       let streamMode: 'none' | 'response' | 'thinking' = 'response';
 
+      // Thinking 折叠/展开状态
+      const thinkingDisplayMode = this.config.cli.thinkingDisplay ?? 'collapse';
+      let thinkingHeaderLineIndex: number | null = null;
+      let thinkingContentLineCount = 0;
+      let thinkingStartTimeMs = 0;
+
       // 参考 claude-code 样式的 thinking 展示常量
       const THINKING_LABEL = '  \u2234 Thinking...';
       const THINKING_CONTINUE_PREFIX = '  \u23BF  ';
+
+      /** 将 thinking 累积文本按换行符拆分为展示行 */
+      const splitThinkingContent = (text: string): string[] => {
+        if (!text) return [''];
+        const MAX_THINKING_LINES = 200;
+        const lines = text.split('\n');
+        // 移除末尾空行
+        while (lines.length > 0 && lines[lines.length - 1] === '') {
+          lines.pop();
+        }
+        if (lines.length === 0) lines.push('');
+        if (lines.length > MAX_THINKING_LINES) {
+          lines.splice(MAX_THINKING_LINES);
+          lines.push(`  ... [thinking truncated, ${text.split('\n').length} lines total]`);
+        }
+        return lines;
+      };
+
+      /** 展开/折叠 thinking 内容 */
+      const toggleThinking = () => {
+        if (thinkingHeaderLineIndex === null) return;
+        if (thinkingDisplayMode !== 'collapse') return;
+
+        if (thinkingContentLineCount === 0) {
+          // 折叠 → 展开：在 header 行后插入内容行
+          const contentLines = splitThinkingContent(thinkingAccumulator);
+          const styledLines = contentLines.map((line) => dimStyle(THINKING_CONTINUE_PREFIX + line));
+          this.outputArea.spliceLines(thinkingHeaderLineIndex + 1, 0, styledLines);
+          thinkingContentLineCount = styledLines.length;
+          // 展开时 header 不显示耗时
+          this.outputArea.updateLine(thinkingHeaderLineIndex, dimStyle(THINKING_LABEL));
+        } else {
+          // 展开 → 折叠：删除内容行
+          this.outputArea.spliceLines(thinkingHeaderLineIndex + 1, thinkingContentLineCount, []);
+          thinkingContentLineCount = 0;
+          // 折叠时恢复显示耗时
+          const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+          const elapsedSuffix = streamMode === 'thinking' ? `... (${elapsed}s)` : ` (${elapsed}s)`;
+          this.outputArea.updateLine(
+            thinkingHeaderLineIndex,
+            dimStyle(`${THINKING_LABEL}${elapsedSuffix}`)
+          );
+        }
+        this.tui.requestRender();
+      };
 
       const outputHandler = (event: { taskId: string; text: string }) => {
         if (event.taskId !== taskId || !event.text) return;
@@ -680,6 +740,19 @@ export class ReplSession {
         } else if (streamMode !== 'response') {
           // 从 thinking 模式切换到 response：另起一行
           streamMode = 'response';
+          // 停止 thinking 耗时计时器
+          if (thinkingElapsedInterval) {
+            clearInterval(thinkingElapsedInterval);
+            thinkingElapsedInterval = undefined;
+          }
+          // 更新 thinking header 显示完成耗时
+          if (thinkingHeaderLineIndex !== null && thinkingDisplayMode === 'collapse') {
+            const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+            this.outputArea.updateLine(
+              thinkingHeaderLineIndex,
+              dimStyle(`  \u2234 Thinking (${elapsed}s)`)
+            );
+          }
           thinkingAccumulator = '';
           outputAccumulator = event.text;
           this.outputArea.append([responseStyle(outputAccumulator)]);
@@ -693,25 +766,68 @@ export class ReplSession {
       const thinkingHandler = (event: { taskId: string; text: string }) => {
         if (event.taskId !== taskId || !event.text) return;
 
+        // off 模式：完全忽略 thinking
+        if (thinkingDisplayMode === 'off') return;
+
         if (streamMode !== 'thinking') {
           streamMode = 'thinking';
+          thinkingStartTimeMs = Date.now();
 
           if (!spinnerStopped) {
-            // thinking 先到达：替换 spinner 行为「∴ Thinking...」
+            // thinking 先到达：替换 spinner 行为带 spinner 帧的 thinking header
             spinnerStopped = true;
             spinnerActive = false;
             clearInterval(spinnerInterval);
-            this.outputArea.replaceLastLine(dimStyle(THINKING_LABEL));
+            thinkingHeaderLineIndex = this.outputArea.replaceLastLine(
+              dimStyle(`  ${LOADING_FRAMES[0] ?? ''} Thinking...`)
+            );
           } else {
             // 已在输出 response，thinking 也到达
-            this.outputArea.append([dimStyle(THINKING_LABEL)]);
+            thinkingHeaderLineIndex = this.outputArea.append([
+              dimStyle(`  ${LOADING_FRAMES[0] ?? ''} Thinking...`),
+            ]);
           }
 
           thinkingAccumulator = event.text;
-          this.outputArea.append([dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator)]);
+          thinkingContentLineCount = 0;
+
+          if (thinkingDisplayMode === 'expand') {
+            // expand 模式：显示内容行（旧行为）
+            this.outputArea.append([dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator)]);
+            thinkingContentLineCount = 1;
+          } else if (thinkingDisplayMode === 'collapse') {
+            // collapse 模式：启动耗时计时器，使用 spinner 动画
+            let thinkingFrame = 0;
+            thinkingElapsedInterval = setInterval(() => {
+              if (thinkingHeaderLineIndex === null) return;
+              // 展开时不更新（header 已替换为纯文本）
+              if (thinkingContentLineCount > 0) return;
+              const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+              const frame = LOADING_FRAMES[thinkingFrame % LOADING_FRAMES.length];
+              thinkingFrame++;
+              this.outputArea.updateLine(
+                thinkingHeaderLineIndex,
+                dimStyle(`  ${frame} Thinking... (${elapsed}s)`)
+              );
+              this.tui.requestRender();
+            }, 200);
+          }
         } else {
           thinkingAccumulator += event.text;
-          this.outputArea.replaceLastLine(dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator));
+
+          if (thinkingDisplayMode === 'expand') {
+            // expand 模式：更新内容行
+            this.outputArea.replaceLastLine(
+              dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator)
+            );
+          }
+          // collapse 模式：仅累积，不更新 UI（除非已展开）
+          if (thinkingDisplayMode === 'collapse' && thinkingContentLineCount > 0) {
+            // 已展开时更新最后一行
+            const contentLines = splitThinkingContent(thinkingAccumulator);
+            const lastLine = contentLines[contentLines.length - 1] ?? '';
+            this.outputArea.replaceLastLine(dimStyle(THINKING_CONTINUE_PREFIX + lastLine));
+          }
         }
         this.tui.requestRender();
       };
@@ -734,6 +850,19 @@ export class ReplSession {
         if (event.taskId !== taskId) return;
 
         if (event.percent === 0) {
+          // 工具开始 → thinking 阶段结束，停止计时器
+          if (thinkingElapsedInterval && streamMode === 'thinking') {
+            clearInterval(thinkingElapsedInterval);
+            thinkingElapsedInterval = undefined;
+            if (thinkingHeaderLineIndex !== null && thinkingDisplayMode === 'collapse') {
+              const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+              this.outputArea.updateLine(
+                thinkingHeaderLineIndex,
+                dimStyle(`  \u2234 Thinking (${elapsed}s)`)
+              );
+              this.tui.requestRender();
+            }
+          }
           // 工具开始
           if (event.message.startsWith('Exec(')) {
             // Exec 工具：使用 ⏺ 图标和青色
@@ -763,6 +892,12 @@ export class ReplSession {
       this.agent.on(this.agent.EVENT_PROGRESS, progressHandler);
       this.currentTaskId = taskId;
 
+      // 绑定 thinking 展开/折叠快捷键
+      const originalOnToggleThinking = this.editor.onToggleThinking;
+      if (thinkingDisplayMode === 'collapse') {
+        this.editor.onToggleThinking = toggleThinking;
+      }
+
       log.debug('开始通过 Agent 执行目标', {
         taskId,
         taskDescription: rawInput.slice(0, 100),
@@ -784,6 +919,8 @@ export class ReplSession {
       this.agent.off(this.agent.EVENT_THINKING, thinkingHandler);
       this.agent.off(this.agent.EVENT_ERROR, errorHandler);
       this.agent.off(this.agent.EVENT_PROGRESS, progressHandler);
+      // 恢复 editor 快捷键回调
+      this.editor.onToggleThinking = originalOnToggleThinking;
 
       log.debug('Agent 执行完成', {
         taskId,
@@ -1003,6 +1140,11 @@ export class ReplSession {
       // 停止 spinner（如果还在运行）
       spinnerActive = false;
       clearInterval(spinnerInterval);
+      // 清理 thinking 耗时计时器
+      if (thinkingElapsedInterval) {
+        clearInterval(thinkingElapsedInterval);
+        thinkingElapsedInterval = undefined;
+      }
 
       this.stats.totalRequests++;
       this.stats.failureCount++;
@@ -1098,6 +1240,11 @@ export class ReplSession {
     } finally {
       spinnerActive = false;
       if (spinnerInterval) clearInterval(spinnerInterval);
+      // 清理 thinking 耗时计时器
+      if (thinkingElapsedInterval) {
+        clearInterval(thinkingElapsedInterval);
+        thinkingElapsedInterval = undefined;
+      }
       this._state = 'idle';
       this.updateStatsState();
       this.editor.setExecuting(false);

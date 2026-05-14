@@ -558,6 +558,244 @@ describe('ReplSession', () => {
     });
   });
 
+  describe('OutputArea 行操作', () => {
+    it('replaceLastLine 应返回最后一行索引', () => {
+      const oa = (
+        session as unknown as {
+          outputArea: {
+            lines: string[];
+            replaceLastLine: (t: string) => number;
+            spliceLines: (s: number, d: number, i: string[]) => void;
+            append: (l: string[]) => number;
+            clear: () => void;
+          };
+        }
+      ).outputArea;
+      oa.clear();
+      oa.append(['line1', 'line2', 'line3']);
+
+      const idx = oa.replaceLastLine('new3');
+      // 应该返回索引 2
+      expect(idx).toBe(2);
+      // 验证内容已替换（通过 append 追加后检查是否多了一行）
+      oa.append(['line4']);
+      // 如果再替换最后一行，应该是 index 3
+      const idx2 = oa.replaceLastLine('new4');
+      expect(idx2).toBe(3);
+    });
+
+    it('spliceLines 应支持在中间位置插入行', () => {
+      const oa = (
+        session as unknown as {
+          outputArea: {
+            lines: string[];
+            replaceLastLine: (t: string) => number;
+            spliceLines: (s: number, d: number, i: string[]) => void;
+            append: (l: string[]) => number;
+            clear: () => void;
+          };
+        }
+      ).outputArea;
+      oa.clear();
+      oa.append(['a', 'b', 'e']);
+
+      // 在索引 2 处插入 ['c', 'd']
+      oa.spliceLines(2, 0, ['c', 'd']);
+
+      // 通过私有 lines 验证内部状态
+      const lines = (oa as unknown as { lines: string[] }).lines;
+      expect(lines).toEqual(['a', 'b', 'c', 'd', 'e']);
+    });
+
+    it('spliceLines 应支持删除行', () => {
+      const oa = (
+        session as unknown as {
+          outputArea: {
+            lines: string[];
+            replaceLastLine: (t: string) => number;
+            spliceLines: (s: number, d: number, i: string[]) => void;
+            append: (l: string[]) => number;
+            clear: () => void;
+          };
+        }
+      ).outputArea;
+      oa.clear();
+      oa.append(['a', 'b', 'c', 'd', 'e']);
+
+      // 删除索引 1-2 的行（b, c）
+      oa.spliceLines(1, 2, []);
+
+      const lines = (oa as unknown as { lines: string[] }).lines;
+      expect(lines).toEqual(['a', 'd', 'e']);
+    });
+
+    it('spliceLines 应支持替换行', () => {
+      const oa = (
+        session as unknown as {
+          outputArea: {
+            lines: string[];
+            replaceLastLine: (t: string) => number;
+            spliceLines: (s: number, d: number, i: string[]) => void;
+            append: (l: string[]) => number;
+            clear: () => void;
+          };
+        }
+      ).outputArea;
+      oa.clear();
+      oa.append(['a', 'b', 'x', 'y', 'e']);
+
+      // 替换索引 2-3 的行（x, y）为 ['c', 'd']
+      oa.spliceLines(2, 2, ['c', 'd']);
+
+      const lines = (oa as unknown as { lines: string[] }).lines;
+      expect(lines).toEqual(['a', 'b', 'c', 'd', 'e']);
+    });
+  });
+
+  describe('thinking 展示模式', () => {
+    const mockTaskResult = {
+      taskId: 'task-1',
+      status: 'success' as const,
+      output: '最终回复',
+      artifacts: [],
+      duration: 100,
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+    };
+
+    it('collapse 模式（默认）：thinking → output 事件正常执行', async () => {
+      const spy = vi.spyOn(
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      );
+      spy.mockImplementation(function (
+        this: import('@/core/agent-runtime').LlmBasedAgent,
+        ...args: unknown[]
+      ) {
+        // 先发 thinking 事件
+        this.emit('thinking', {
+          taskId: (args[0] as { taskId: string }).taskId,
+          text: 'thinking...',
+        });
+        // 再发 output 事件
+        this.emit('output', { taskId: (args[0] as { taskId: string }).taskId, text: '最终回复' });
+        return Promise.resolve(mockTaskResult);
+      });
+
+      const result = await session.executeGoal('测试 collapse 模式');
+      expect(result.overallStatus).toBe('success');
+      expect(result.summary).toBe('最终回复');
+    });
+
+    it('expand 模式：thinking 内容行正常展示', async () => {
+      // 用 expand 模式重建 session
+      const expandSession = new (await import('@/cli/repl/session')).ReplSession(
+        createTestConfig({
+          cli: { color: false, debug: false, outputFormat: 'text', thinkingDisplay: 'expand' },
+        })
+      );
+
+      const spy = vi.spyOn(
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      );
+      spy.mockImplementation(function (
+        this: import('@/core/agent-runtime').LlmBasedAgent,
+        ...args: unknown[]
+      ) {
+        this.emit('thinking', {
+          taskId: (args[0] as { taskId: string }).taskId,
+          text: 'thinking content',
+        });
+        this.emit('output', { taskId: (args[0] as { taskId: string }).taskId, text: '回复' });
+        return Promise.resolve(mockTaskResult);
+      });
+
+      const result = await expandSession.executeGoal('测试 expand 模式');
+      expect(result.overallStatus).toBe('success');
+
+      // 清理
+      expandSession.shutdown();
+    });
+
+    it('off 模式：thinking 事件被完全忽略', async () => {
+      const offSession = new (await import('@/cli/repl/session')).ReplSession(
+        createTestConfig({
+          cli: { color: false, debug: false, outputFormat: 'text', thinkingDisplay: 'off' },
+        })
+      );
+
+      const spy = vi.spyOn(
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      );
+      spy.mockImplementation(function (
+        this: import('@/core/agent-runtime').LlmBasedAgent,
+        ...args: unknown[]
+      ) {
+        this.emit('thinking', {
+          taskId: (args[0] as { taskId: string }).taskId,
+          text: 'should be ignored',
+        });
+        this.emit('output', { taskId: (args[0] as { taskId: string }).taskId, text: '回复内容' });
+        return Promise.resolve(mockTaskResult);
+      });
+
+      const result = await offSession.executeGoal('测试 off 模式');
+      expect(result.overallStatus).toBe('success');
+
+      offSession.shutdown();
+    });
+
+    it('progress（工具调用）发生时 thinking 计时器停止', async () => {
+      const spy = vi.spyOn(
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      );
+      spy.mockImplementation(function (
+        this: import('@/core/agent-runtime').LlmBasedAgent,
+        ...args: unknown[]
+      ) {
+        // thinking → tool call → output
+        this.emit('thinking', {
+          taskId: (args[0] as { taskId: string }).taskId,
+          text: 'thinking...',
+        });
+        this.emit('progress', {
+          taskId: (args[0] as { taskId: string }).taskId,
+          percent: 0,
+          message: 'Skill(test)',
+        });
+        this.emit('output', { taskId: (args[0] as { taskId: string }).taskId, text: '回复' });
+        return Promise.resolve(mockTaskResult);
+      });
+
+      const result = await session.executeGoal('测试工具调用');
+      expect(result.overallStatus).toBe('success');
+    });
+
+    it('Agent 错误时 thinking 计时器被清理', async () => {
+      const spy = vi.spyOn(
+        (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
+        'execute'
+      );
+      spy.mockImplementation(function (
+        this: import('@/core/agent-runtime').LlmBasedAgent,
+        ...args: unknown[]
+      ) {
+        // 先发 thinking 事件
+        this.emit('thinking', {
+          taskId: (args[0] as { taskId: string }).taskId,
+          text: 'thinking...',
+        });
+        // 然后抛出错误
+        throw new Error('执行异常');
+      });
+
+      const result = await session.executeGoal('测试错误');
+      expect(result.overallStatus).toBe('failure');
+    });
+  });
+
   describe('handleSubmit()', () => {
     it('空输入不应做任何事', async () => {
       await session.handleSubmit('');

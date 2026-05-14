@@ -52,6 +52,9 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+O 回调（打开外部编辑器） */
   onOpenEditor?: () => void;
 
+  /** Ctrl+T / Ctrl+Y 回调（展开/折叠 thinking 内容） */
+  onToggleThinking: (() => void) | undefined;
+
   /** 是否正在执行（用于显示 loading） */
   #executing = false;
 
@@ -116,6 +119,14 @@ export class ZapmycoEditor extends Editor {
     }
     if (matchesKey(data, Key.ctrl('o')) && this.onOpenEditor) {
       this.onOpenEditor();
+      return;
+    }
+    if (matchesKey(data, Key.ctrl('t')) && this.onToggleThinking) {
+      this.onToggleThinking();
+      return;
+    }
+    if (matchesKey(data, Key.ctrl('y')) && this.onToggleThinking) {
+      this.onToggleThinking();
       return;
     }
     super.handleInput(data);

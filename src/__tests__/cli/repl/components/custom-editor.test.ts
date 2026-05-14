@@ -4,13 +4,27 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@mariozechner/pi-tui', () => ({
   Editor: class MockEditor {
     getText = vi.fn().mockReturnValue('');
-    handleInput = vi.fn();
+    // 注意：handleInput 必须是原型方法而非实例属性
+    // 否则会遮蔽 ZapmycoEditor 的 prototype override
+    handleInput(_data: string): void {
+      // no-op
+    }
   },
   Key: {
     escape: '\u001b',
     ctrl: (key: string) => ({ name: key, ctrl: true }),
   },
-  matchesKey: () => false,
+  matchesKey: (_data: string, key: unknown) => {
+    // 对 escape 键永远返回 false（让测试走常规路径）
+    if (key === '\u001b') return false;
+    // 只对 Ctrl+T / Ctrl+Y 返回 true（避免 Ctrl+D 等 Handler 截断流程）
+    if (key && typeof key === 'object' && 'ctrl' in key) {
+      const k = key as { name: string; ctrl: boolean };
+      if (k.name === 't' || k.name === 'y') return true;
+      return false;
+    }
+    return false;
+  },
 }));
 
 import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
@@ -31,6 +45,7 @@ describe('ZapmycoEditor', () => {
       expect(editor.onEscape).toBeUndefined();
       expect(editor.onCtrlC).toBeUndefined();
       expect(editor.onCtrlD).toBeUndefined();
+      expect(editor.onToggleThinking).toBeUndefined();
     });
 
     it('应可设置和读取回调', () => {
@@ -51,6 +66,18 @@ describe('ZapmycoEditor', () => {
       const editor = createEditor();
       expect(typeof editor.getText).toBe('function');
       expect(typeof editor.handleInput).toBe('function');
+    });
+
+    it('onToggleThinking 初始值应为 undefined', () => {
+      const editor = createEditor();
+      expect(editor.onToggleThinking).toBeUndefined();
+    });
+
+    it('应可设置和读取 onToggleThinking', () => {
+      const editor = createEditor();
+      const cb = vi.fn();
+      editor.onToggleThinking = cb;
+      expect(editor.onToggleThinking).toBe(cb);
     });
   });
 
@@ -75,6 +102,46 @@ describe('ZapmycoEditor', () => {
       expect(() => editor.handleInput('\u001b')).not.toThrow();
       expect(() => editor.handleInput('\x03')).not.toThrow();
       expect(() => editor.handleInput('\x04')).not.toThrow();
+    });
+
+    it('onToggleThinking 未设置时 Ctrl+T/Ctrl+Y 不应抛出', () => {
+      const editor = createEditor();
+      expect(() => editor.handleInput('\x14')).not.toThrow(); // Ctrl+T
+      expect(() => editor.handleInput('\x19')).not.toThrow(); // Ctrl+Y
+    });
+  });
+
+  describe('handleInput — Ctrl+T / Ctrl+Y', () => {
+    it('Ctrl+T 应触发 onToggleThinking', () => {
+      const editor = createEditor();
+      const toggleFn = vi.fn();
+      editor.onToggleThinking = toggleFn;
+
+      editor.handleInput('\x14'); // Ctrl+T
+
+      expect(toggleFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('Ctrl+Y 应触发 onToggleThinking', () => {
+      const editor = createEditor();
+      const toggleFn = vi.fn();
+      editor.onToggleThinking = toggleFn;
+
+      editor.handleInput('\x19'); // Ctrl+Y
+
+      expect(toggleFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('多次 Ctrl+T 应累加调用次数', () => {
+      const editor = createEditor();
+      const toggleFn = vi.fn();
+      editor.onToggleThinking = toggleFn;
+
+      editor.handleInput('\x14');
+      editor.handleInput('\x14');
+      editor.handleInput('\x14');
+
+      expect(toggleFn).toHaveBeenCalledTimes(3);
     });
   });
 });
