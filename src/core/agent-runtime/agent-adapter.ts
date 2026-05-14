@@ -7,9 +7,11 @@
  * @module core/agent-runtime/agent-adapter
  */
 
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { ThinkingLevel } from '@earendil-works/pi-ai';
 import { Agent } from '@/core/agent-runtime/agent';
+import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import {
   Compactor,
   ContextErrorRecovery,
@@ -34,6 +36,7 @@ import type { Capability } from '@/protocol/capability';
 import { createDoomLoopDetector, type DoomLoopDetector } from '@/security/doom-loop-detector';
 import { createEventBridgeListener } from './event-bridge';
 import { type ToolRegistration, toAgentTools } from './tool-bridge';
+import { ToolSchemaCache } from './tool-schema-cache';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';
 
 // ============ 默认配置 ============
@@ -90,7 +93,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /**
    * 系统提示词覆盖
    *
-   * 当设置时，execute() 将使用此内容替代默认的 buildSystemPrompt()。
+   * 当设置时，execute() 将使用此内容替代默认的构建系统提示词。
    * 用于子 Agent 等需要自定义系统提示词的场景。
    * 设置为 null 或空字符串时恢复默认行为。
    */
@@ -124,6 +127,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** Doom Loop 检测器 */
   readonly doomLoop: DoomLoopDetector;
 
+  /** 工具 Schema 缓存（会话级，防止 mid-session schema 变化导致 cache miss） */
+  readonly toolSchemaCache = new ToolSchemaCache();
+
   /** 上下文窗口信息（首次 execute() 时通过模型解析） */
   private _contextWindowInfo: ContextWindowInfo | null = null;
 
@@ -135,10 +141,17 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.capabilities = options.capabilities;
     this.config = { ...DEFAULT_RUNTIME_CONFIG, ...options.runtimeConfig };
 
+    // 生成会话 ID（用于 prompt cache 亲和性）
+    const sessionId = `zapmyco-${options.agentId}-${randomUUID()}`;
+
     // 创建 Agent 实例
     this.inner = new Agent({
       toolExecution: this.config.toolExecution,
+      sessionId,
     });
+
+    // 标记 sessionId 到 inner Agent（供 createLoopConfig 传递）
+    this.inner.sessionId = sessionId;
 
     // 传递 thinkingLevel 配置到 Agent 状态（用于开启 Claude/DeepSeek 等模型的 reasoning/thinking）
     this.inner.state.thinkingLevel = this.config.thinkingLevel as ThinkingLevel;
@@ -226,8 +239,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         }
       }
 
-      // 构建系统提示词并设置到 Agent 状态
-      this.inner.state.systemPrompt = this.buildSystemPrompt(request);
+      // 构建稳定系统提示词（不含动态内容）并设置到 Agent 状态
+      this.inner.state.systemPrompt = this.buildStableSystemPrompt(request);
 
       // 绑定事件桥接（带 taskId），收集清理函数用于后续移除
       cleanupFns.push(
@@ -327,8 +340,18 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         })
       );
 
-      // 执行 prompt
-      await this.inner.prompt(request.taskDescription);
+      // 构建动态上下文消息（记忆、技能、上游结果）并注入到对话开头
+      const dynamicMessages = this.buildDynamicContextMessages(request);
+      const promptMessages: AgentMessage[] = [
+        ...dynamicMessages,
+        {
+          role: 'user',
+          content: [{ type: 'text', text: request.taskDescription }],
+          timestamp: Date.now(),
+        },
+      ];
+      // 执行 prompt（含动态上下文）
+      await this.inner.prompt(promptMessages);
 
       // 等待 Agent 进入空闲状态
       await this.inner.waitForIdle();
@@ -498,6 +521,25 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   }
 
   /**
+   * 获取缓存性能统计
+   *
+   * 包括命中率、平均缓存读取比例、缓存断裂检测等。
+   */
+  getCacheStats(): {
+    hitRate: number;
+    averageCacheRatio: number;
+    lastBreak: { broken: boolean; previousRead: number; currentRead: number } | null;
+    totalCalls: number;
+  } {
+    return {
+      hitRate: this.tokenTracker.getCacheHitRate(),
+      averageCacheRatio: this.tokenTracker.getAverageCacheRatio(),
+      lastBreak: this.tokenTracker.detectCacheBreak(),
+      totalCalls: this.tokenTracker.turnCount,
+    };
+  }
+
+  /**
    * 取消正在执行的任务
    */
   async cancel(taskId: string): Promise<void> {
@@ -543,9 +585,12 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   // ============ 辅助方法 ============
 
   /**
-   * 构建系统提示词
+   * 构建稳定系统提示词（仅含稳定内容）
+   *
+   * 与 buildDynamicContextMessages() 配对使用。
+   * 稳定内容不变，使 Anthropic prompt cache 可命中。
    */
-  private buildSystemPrompt(request: AgentExecuteRequest): string {
+  private buildStableSystemPrompt(request: AgentExecuteRequest): string {
     // 子 Agent 等场景使用自定义系统提示词
     if (this.systemPromptOverride) {
       const parts = [this.systemPromptOverride];
@@ -555,23 +600,17 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       return parts.join('\n');
     }
 
-    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'TaskManage');
-    const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
-    const hasSkill = this.toolRegistrations.some((t) => t.id === 'Skill');
-    const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'SpawnSubAgents');
-    const hasAskUserQuestion = this.toolRegistrations.some((t) => t.id === 'AskUserQuestion');
-
     const parts: string[] = [
       `你是 ${this.displayName}，一个专业的 AI 助手。`,
       `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
     ];
 
-    // 记忆块 — 在系统提示最前面注入（快照在会话开始时冻结）
-    if (hasMemory && this.memorySnapshot) {
-      parts.push('', '## 持久化记忆（快照）', '', this.memorySnapshot);
-    }
+    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'TaskManage');
+    const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
+    const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'SpawnSubAgents');
+    const hasAskUserQuestion = this.toolRegistrations.some((t) => t.id === 'AskUserQuestion');
 
-    // 记忆使用引导
+    // 记忆管理规范（不含记忆快照本身）
     if (hasMemory) {
       parts.push(
         '',
@@ -594,12 +633,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       );
     }
 
-    // Skill 列表 — 在记忆后、任务管理前注入
-    if (hasSkill && this.skillPrompt) {
-      parts.push('', this.skillPrompt);
-    }
-
-    // 任务管理引导 — 必须放在最前面，确保 Agent 第一时间看到
+    // 任务管理规范
     if (hasTaskManage) {
       parts.push(
         '## 任务管理规范（最高优先级）',
@@ -614,7 +648,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         '4. **先读后写**：不确定当前任务时先用 action="read" 查看。'
       );
 
-      // SpawnSubAgents 使用引导 — 紧接任务管理规范
       if (hasSpawnSubAgents) {
         parts.push(
           '',
@@ -674,18 +707,60 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       );
     }
 
+    // 工作目录
+    if (request.workdir) {
+      parts.push('', `## 工作目录\n${request.workdir}`);
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * 构建动态上下文消息（记忆快照、Skill、上游结果）
+   *
+   * 返回的消息在 execute() 中会被 prepend 到用户请求之前。
+   * 当 systemPromptOverride 已设置（子 Agent 模式）时返回空数组。
+   */
+  private buildDynamicContextMessages(request: AgentExecuteRequest): AgentMessage[] {
+    // 子 Agent 场景：不需要继承父 Agent 的记忆和技能
+    if (this.systemPromptOverride) {
+      return [];
+    }
+
+    const messages: AgentMessage[] = [];
+    const parts: string[] = [];
+
+    const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
+    const hasSkill = this.toolRegistrations.some((t) => t.id === 'Skill');
+
+    // 记忆快照
+    if (hasMemory && this.memorySnapshot) {
+      parts.push('## 持久化记忆（快照）', '', this.memorySnapshot);
+    }
+
+    // Skill 提示
+    if (hasSkill && this.skillPrompt) {
+      parts.push('', this.skillPrompt);
+    }
+
+    // 上游任务结果
     if (request.upstreamResults?.length) {
       parts.push(
-        '\n## 上游任务结果\n',
+        '',
+        '## 上游任务结果',
         ...request.upstreamResults.map((r, i) => `[上游任务 ${i + 1}] ${JSON.stringify(r.output)}`)
       );
     }
 
-    if (request.workdir) {
-      parts.push(`\n## 工作目录\n${request.workdir}`);
+    if (parts.length > 0) {
+      messages.push({
+        role: 'user',
+        content: [{ type: 'text', text: parts.join('\n') }],
+        timestamp: Date.now(),
+      } as AgentMessage);
     }
 
-    return parts.join('\n');
+    return messages;
   }
 
   /**
