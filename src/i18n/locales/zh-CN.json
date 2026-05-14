@@ -169,7 +169,7 @@
     }
   },
   "session": {
-    "welcome": "ZapMyco: 欢迎回来!",
+    "welcome": "欢迎回来!",
     "errorPrefix": "[错误]",
     "agentErrorMessage": "Agent 执行失败（无详细错误信息）",
     "noContentError": "模型未返回任何内容，请检查 API Key 配置",

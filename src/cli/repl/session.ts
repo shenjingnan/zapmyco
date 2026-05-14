@@ -173,6 +173,9 @@ export class ReplSession {
   private readonly history: HistoryStoreClass;
   private currentTaskAbort: AbortController | null = null;
 
+  /** 欢迎语逐字输出定时器引用（用于 shutdown 时清理） */
+  private welcomeTypewriterInterval: ReturnType<typeof setInterval> | undefined;
+
   /** Agent 实例（会话级复用，替代直接 LLM 调用） */
   private agent: LlmBasedAgent;
 
@@ -349,11 +352,32 @@ export class ReplSession {
     // 初始化 i18n 语言设置
     setLocale(this.config.locale ?? 'zh-CN');
 
-    // 渲染简化的欢迎信息
-    this.outputArea.append([t('session.welcome'), '']);
-
-    // 启动 TUI
+    // 先启动 TUI，再逐字输出欢迎信息
     this.tui.start();
+    this.tui.requestRender();
+
+    // 逐字输出欢迎语（类似 LLM 流式效果）
+    this.typewriteWelcome();
+  }
+
+  /** 逐字输出欢迎语（类似 LLM 流式打字效果） */
+  private typewriteWelcome(): void {
+    const text = t('session.welcome');
+    this.outputArea.append(['']); // 预留一行
+
+    let index = 0;
+    this.welcomeTypewriterInterval = setInterval(() => {
+      index++;
+      if (index <= text.length) {
+        this.outputArea.replaceLastLine(text.slice(0, index));
+        this.tui.requestRender();
+      } else {
+        clearInterval(this.welcomeTypewriterInterval);
+        this.welcomeTypewriterInterval = undefined;
+        this.outputArea.append(['']); // 打字结束追加空行
+        this.tui.requestRender();
+      }
+    }, 40);
   }
 
   /** 优雅关闭会话 */
@@ -373,6 +397,12 @@ export class ReplSession {
     // 取消所有待处理的交互式提问
     if (this.questionManager) {
       this.questionManager.rejectAll(new Error('会话已关闭'));
+    }
+
+    // 停止欢迎语打字动画（确保 setInterval 被立即清除）
+    if (this.welcomeTypewriterInterval) {
+      clearInterval(this.welcomeTypewriterInterval);
+      this.welcomeTypewriterInterval = undefined;
     }
 
     // 停止编辑器 loading 动画（确保 setInterval 被立即清除）
@@ -569,7 +599,7 @@ export class ReplSession {
     const taskId = `task-${Date.now()}`;
 
     // 输出区 spinner 相关变量（需要跨 try/catch 访问）
-    const ZAPMYCO_PREFIX = 'ZapMyco: ';
+    const ZAPMYCO_PREFIX = '';
     const THINKING_PREFIX = '  \uD83D\uDCAD ';
     const colorEnabled = this.options.color;
     const userStyle = (s: string) => (colorEnabled ? chalk.bold.cyan(s) : s);
@@ -602,7 +632,7 @@ export class ReplSession {
 
       // 显示用户输入 + ZapMyco: 带 spinner
       this.outputArea.append([
-        userStyle(`Me: ${rawInput}`),
+        userStyle(rawInput),
         responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[0]),
       ]);
 
@@ -781,9 +811,7 @@ export class ReplSession {
         } else if (taskResult.status !== 'success') {
           // 无输出 + 失败状态 → 显示错误
           const errorMsg = taskResult.error?.message ?? t('session.agentErrorMessage');
-          this.outputArea.replaceLastLine(
-            chalk.red(`ZapMyco: ${t('session.errorPrefix')} ${errorMsg}`)
-          );
+          this.outputArea.replaceLastLine(chalk.red(`${t('session.errorPrefix')} ${errorMsg}`));
           const helpLines = getApiKeyErrorHelp(errorMsg);
           if (helpLines.length > 0) {
             this.outputArea.append(helpLines);
@@ -845,7 +873,7 @@ export class ReplSession {
         } else {
           // 无输出但状态为成功 → 可能是 API Key 等配置问题
           this.outputArea.replaceLastLine(
-            chalk.red(`ZapMyco: ${t('session.errorPrefix')} ${t('session.noContentError')}`)
+            chalk.red(`${t('session.errorPrefix')} ${t('session.noContentError')}`)
           );
         }
       }
