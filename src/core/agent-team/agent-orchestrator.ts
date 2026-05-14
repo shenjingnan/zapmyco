@@ -299,7 +299,14 @@ export class AgentOrchestrator {
         artifacts: [],
         error: { code: 'UNKNOWN_TYPE', message: `Agent 类型 '${typeId}' 未找到`, retryable: false },
         duration: 0,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
     }
 
@@ -331,7 +338,14 @@ export class AgentOrchestrator {
           retryable: false,
         },
         duration: 0,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
     }
 
@@ -453,6 +467,8 @@ export class AgentOrchestrator {
           inputTokens: number;
           outputTokens: number;
           totalTokens: number;
+          cacheReadTokens: number;
+          cacheWriteTokens: number;
           estimatedCostUsd: number;
         };
         error?: { code: string; message: string; retryable: boolean };
@@ -479,6 +495,8 @@ export class AgentOrchestrator {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -511,7 +529,14 @@ export class AgentOrchestrator {
         artifacts: [],
         error: { code: 'EXECUTION_ERROR', message, retryable: false },
         duration,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
     } finally {
       // 清理 systemPromptOverride

@@ -186,7 +186,14 @@ describe('agent-team types', () => {
         output: 'Found 3 results',
         artifacts: [],
         duration: 1000,
-        tokenUsage: { inputTokens: 100, outputTokens: 50, totalTokens: 150, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
 
       expect(result.status).toBe('success');
@@ -204,7 +211,14 @@ describe('agent-team types', () => {
         artifacts: [],
         error: { code: 'TIMEOUT', message: 'Timed out', retryable: false },
         duration: 5000,
-        tokenUsage: { inputTokens: 200, outputTokens: 0, totalTokens: 200, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 200,
+          outputTokens: 0,
+          totalTokens: 200,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
 
       expect(result.status).toBe('failure');

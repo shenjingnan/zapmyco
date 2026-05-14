@@ -84,6 +84,8 @@ export class TokenTracker {
   private _cacheReadTokens = 0;
   /** 累积的 cache write tokens */
   private _cacheWriteTokens = 0;
+  /** 累积的预估费用（美元） */
+  private _totalCostUsd = 0;
 
   /** 原始用法记录（用于调试） */
   private _usageHistory: Usage[] = [];
@@ -99,6 +101,7 @@ export class TokenTracker {
     this._outputTokens += usage.output;
     this._cacheReadTokens += usage.cacheRead;
     this._cacheWriteTokens += usage.cacheWrite;
+    this._totalCostUsd += usage.cost?.total ?? 0;
     this._usageHistory.push(usage);
     this._initialized = true;
   }
@@ -119,6 +122,20 @@ export class TokenTracker {
   }
 
   /**
+   * 获取累积的 TokenUsage（用于 TaskResult.tokenUsage）
+   */
+  getUsage(): import('@/core/result/types').TokenUsage {
+    return {
+      inputTokens: this._inputTokens,
+      outputTokens: this._outputTokens,
+      totalTokens: this._inputTokens + this._outputTokens,
+      cacheReadTokens: this._cacheReadTokens,
+      cacheWriteTokens: this._cacheWriteTokens,
+      estimatedCostUsd: this._totalCostUsd,
+    };
+  }
+
+  /**
    * 重置追踪器（压缩后调用）
    */
   reset(): void {
@@ -126,6 +143,7 @@ export class TokenTracker {
     this._outputTokens = 0;
     this._cacheReadTokens = 0;
     this._cacheWriteTokens = 0;
+    this._totalCostUsd = 0;
   }
 
   /** 是否已初始化 */

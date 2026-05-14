@@ -17,6 +17,8 @@ const ZERO_TOKEN: TokenUsage = {
   inputTokens: 0,
   outputTokens: 0,
   totalTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
   estimatedCostUsd: 0,
 };
 
@@ -40,6 +42,8 @@ export function aggregateResults(teamId: string, workerResults: WorkerResult[]):
       inputTokens: sum.inputTokens + (r.tokenUsage?.inputTokens ?? 0),
       outputTokens: sum.outputTokens + (r.tokenUsage?.outputTokens ?? 0),
       totalTokens: sum.totalTokens + (r.tokenUsage?.totalTokens ?? 0),
+      cacheReadTokens: sum.cacheReadTokens + (r.tokenUsage?.cacheReadTokens ?? 0),
+      cacheWriteTokens: sum.cacheWriteTokens + (r.tokenUsage?.cacheWriteTokens ?? 0),
       estimatedCostUsd: sum.estimatedCostUsd + (r.tokenUsage?.estimatedCostUsd ?? 0),
     }),
     { ...ZERO_TOKEN }
