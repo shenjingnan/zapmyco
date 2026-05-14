@@ -33,8 +33,9 @@ import { createQuitCommand } from '@/cli/repl/commands/quit';
 import { createSecurityCommand } from '@/cli/repl/commands/security-cmd';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
+import type { ApprovalOption } from '@/cli/repl/components/custom-editor';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
-import { showApprovalDialog, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
 import { _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { getCronStore } from '@/cli/repl/cron/cron-store';
@@ -1174,16 +1175,46 @@ export class ReplSession {
 
     this.approvalManager = new ApprovalManager();
 
-    // 注入 TUI 审批提供者
+    // 注入编辑器审批提供者（替代 overlay 方案，审批面板融入编辑器区域）
     this.approvalManager.setProvider({
       requestApproval: async (request) => {
-        // TUI 可能未启动（在 constructor 阶段），需要检查
         try {
-          return await showApprovalDialog(this.tui, request);
+          // 在编辑器区域显示审批选项（无需额外输出，审批面板已包含工具信息）
+          return await new Promise<{ approved: boolean; scope?: 'once' | 'session' }>((resolve) => {
+            const options: ApprovalOption[] = [
+              {
+                key: '1',
+                label: '允许本次',
+                action: () => resolve({ approved: true, scope: 'once' }),
+              },
+              {
+                key: '2',
+                label: '本次会话始终允许',
+                action: () => resolve({ approved: true, scope: 'session' }),
+              },
+              {
+                key: '3',
+                label: '拒绝',
+                action: () => resolve({ approved: false }),
+              },
+            ];
+
+            this.editor.enterApprovalMode(`是否允许工具 "${request.toolId}" 的调用？`, options);
+            this.tui.requestRender();
+          });
         } catch {
-          // TUI 不可用时自动拒绝
-          log.warn('TUI 不可用，自动拒绝审批', { toolId: request.toolId });
+          log.warn('审批过程异常，自动拒绝', { toolId: request.toolId });
           return { approved: false };
+        } finally {
+          // 清理审批状态
+          this.editor.exitApprovalMode();
+
+          // 如果 Agent 仍在执行，恢复 spinner
+          if (this._state === 'executing') {
+            this.editor.setExecuting(true, true);
+          }
+
+          this.tui.requestRender();
         }
       },
     });
@@ -1307,7 +1338,7 @@ export class ReplSession {
       const key = facade.getApiKey(defaultModelInfo.provider);
       if (!key) {
         const providerName = defaultModelInfo.provider;
-        const envVar = providerName.toUpperCase() + '_API_KEY';
+        const envVar = `${providerName.toUpperCase()}_API_KEY`;
         this.outputArea.append([
           chalk.red(`[!] 提供商 "${providerName}" 没有配置 API Key`),
           chalk.yellow(`    请设置环境变量: export ${envVar}=<your-key>`),
