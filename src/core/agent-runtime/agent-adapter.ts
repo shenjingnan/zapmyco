@@ -289,19 +289,20 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
             }
           }
           if (event.type === 'tool_execution_end') {
-            this.emit(this.EVENT_PROGRESS, {
-              taskId: request.taskId,
-              percent: 100,
-              message: `工具 ${event.toolName} 完成`,
-            });
-
-            // Doom Loop 检测：记录执行结果
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const toolResult = (event as any).result;
             const isSuccess =
               toolResult !== undefined &&
               !(toolResult instanceof Error) &&
               toolResult?.error === undefined;
+
+            this.emit(this.EVENT_PROGRESS, {
+              taskId: request.taskId,
+              percent: 100,
+              message: `工具 ${event.toolName} ${isSuccess ? '完成' : '失败'}`,
+            });
+
+            // Doom Loop 检测：记录执行结果
             const doomResult = this.doomLoop.recordResult(isSuccess);
             if (doomResult.detected) {
               this.emit(this.EVENT_PROGRESS, {
