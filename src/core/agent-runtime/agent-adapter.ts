@@ -8,6 +8,7 @@
  */
 
 import { EventEmitter } from 'node:events';
+import type { ThinkingLevel } from '@earendil-works/pi-ai';
 import { Agent } from '@/core/agent-runtime/agent';
 import {
   Compactor,
@@ -138,6 +139,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.inner = new Agent({
       toolExecution: this.config.toolExecution,
     });
+
+    // 传递 thinkingLevel 配置到 Agent 状态（用于开启 Claude/DeepSeek 等模型的 reasoning/thinking）
+    this.inner.state.thinkingLevel = this.config.thinkingLevel as ThinkingLevel;
 
     // 设置 transformContext hook：每次 LLM 调用前自动剪枝旧工具输出
     this.inner.transformContext = async (messages) => {
