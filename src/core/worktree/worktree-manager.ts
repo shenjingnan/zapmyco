@@ -105,8 +105,11 @@ export class WorktreeManager {
       log.warn('创建分支失败，清理 worktree', { branchName, error: msg });
       try {
         await this.removeByPath(worktreePath, branchName, true);
-      } catch {
-        // 清理失败不阻塞
+      } catch (err) {
+        log.warn('Worktree 创建失败后清理出错', {
+          worktreePath,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       throw new WorktreeError(`在 worktree 中创建分支失败: ${msg}`, 'BRANCH_FAILED');
     }
@@ -168,8 +171,11 @@ export class WorktreeManager {
     if (!existsSync(worktreePath)) {
       try {
         await execFileAsync('git', ['worktree', 'prune'], { timeout: 10000 });
-      } catch {
-        // 忽略
+      } catch (err) {
+        log.warn('Worktree prune 失败（路径不存在）', {
+          worktreePath,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       return;
     }
@@ -189,14 +195,19 @@ export class WorktreeManager {
 
     try {
       await execFileAsync('git', ['branch', '-D', branchName], { timeout: 10000 });
-    } catch {
-      // 分支可能已被删除
+    } catch (err) {
+      log.warn('删除 worktree 分支失败', {
+        branchName,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     try {
       await execFileAsync('git', ['worktree', 'prune'], { timeout: 10000 });
-    } catch {
-      // 忽略
+    } catch (err) {
+      log.warn('Worktree prune 失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -241,7 +252,11 @@ export class WorktreeManager {
         timeout: 5000,
       });
       return stdout.trim().length > 0;
-    } catch {
+    } catch (err) {
+      log.warn('检查 worktree 变更状态失败', {
+        worktreePath,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return true;
     }
   }

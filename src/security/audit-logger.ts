@@ -198,8 +198,10 @@ export class AuditLogger {
           off?: (event: string, fn: (...args: unknown[]) => void) => void;
         };
         bus.off?.('security:violation', this.violationListener as (...args: unknown[]) => void);
-      } catch {
-        // 忽略 mock 环境缺少 off 方法的情况
+      } catch (err) {
+        log.warn('移除 violation 监听器失败', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       this.violationListener = null;
     }
@@ -209,8 +211,10 @@ export class AuditLogger {
           off?: (event: string, fn: (...args: unknown[]) => void) => void;
         };
         bus.off?.('security:doom-loop', this.doomLoopListener as (...args: unknown[]) => void);
-      } catch {
-        // 忽略 mock 环境缺少 off 方法的情况
+      } catch (err) {
+        log.warn('移除 doom-loop 监听器失败', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       this.doomLoopListener = null;
     }
@@ -287,8 +291,10 @@ export class AuditLogger {
       // 轮转当前文件
       const { renameSync } = require('node:fs');
       renameSync(this.filePath, join(AUDIT_DIR, `${AUDIT_FILE}.0`));
-    } catch {
-      // 轮转失败不影响正常写入
+    } catch (err) {
+      log.warn('审计日志文件轮转失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

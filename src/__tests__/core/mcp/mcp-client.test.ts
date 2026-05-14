@@ -18,6 +18,7 @@ vi.mock('@modelcontextprotocol/sdk/client', () => ({
 vi.mock('@modelcontextprotocol/sdk/client/stdio', () => ({
   StdioClientTransport: vi.fn().mockImplementation(() => ({
     close: mockTransportClose,
+    stderr: null,
   })),
 }));
 

@@ -17,6 +17,7 @@ import {
   type ThinkingBudgets,
   type Transport,
 } from '@earendil-works/pi-ai';
+import { logger } from '@/infra/logger';
 import { runAgentLoop, runAgentLoopContinue } from './agent-loop';
 import type {
   AfterToolCallContext,
@@ -478,6 +479,13 @@ export class Agent {
   }
 
   private async handleRunFailure(error: unknown, aborted: boolean): Promise<void> {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(
+      'Agent 运行失败',
+      { aborted, model: this._state.model.id },
+      error instanceof Error ? error : undefined
+    );
+
     const failureMessage: AgentMessage = {
       role: 'assistant',
       content: [{ type: 'text', text: '' }],
@@ -486,7 +494,7 @@ export class Agent {
       model: this._state.model.id,
       usage: EMPTY_USAGE,
       stopReason: aborted ? 'aborted' : 'error',
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage,
       timestamp: Date.now(),
     } as AgentMessage;
     this._state.messages.push(failureMessage);
