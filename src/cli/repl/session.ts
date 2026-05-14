@@ -120,10 +120,12 @@ class OutputArea extends Container {
     return result;
   }
 
-  /** 追加多行内容 */
-  append(lines: string[]): void {
+  /** 追加多行内容，返回新追加行中第一行的索引 */
+  append(lines: string[]): number {
+    const index = this.lines.length;
     this.lines.push(...lines);
     this.invalidate();
+    return index;
   }
 
   /** 追加文本到当前行末尾（用于流式输出） */
@@ -144,6 +146,14 @@ class OutputArea extends Container {
       this.lines.push(text);
     }
     this.invalidate();
+  }
+
+  /** 更新指定索引行的内容 */
+  updateLine(index: number, text: string): void {
+    if (index >= 0 && index < this.lines.length) {
+      this.lines[index] = text;
+      this.invalidate();
+    }
   }
 
   /** 清空所有内容 */
@@ -604,6 +614,9 @@ export class ReplSession {
     const userStyle = (s: string) => (colorEnabled ? chalk.bold.cyan(s) : s);
     const responseStyle = (s: string) => s;
     const toolStyle = (s: string) => (colorEnabled ? chalk.yellow(s) : s);
+    const execStyle = (s: string) => (colorEnabled ? chalk.cyan(s) : s);
+    const execSuccessStyle = (s: string) => (colorEnabled ? chalk.green(s) : s);
+    const execFailStyle = (s: string) => (colorEnabled ? chalk.red(s) : s);
     const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
@@ -712,10 +725,34 @@ export class ReplSession {
       };
 
       // 工具调用展示：Agent EVENT_PROGRESS -> outputArea.append()
+      // 参考 claude-code 风格：Exec 使用 ⏺ 图标 + 状态颜色，其他工具使用 → 图标
+      let execLineIndex: number | undefined;
+      let execMessage: string | undefined;
+
       const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
-        if (event.taskId === taskId && event.percent === 0) {
-          this.outputArea.append([toolStyle(`  → ${event.message}`)]);
+        if (event.taskId !== taskId) return;
+
+        if (event.percent === 0) {
+          // 工具开始
+          if (event.message.startsWith('Exec(')) {
+            // Exec 工具：使用 ⏺ 图标和青色
+            execMessage = event.message;
+            execLineIndex = this.outputArea.append([execStyle(`  ⏺ ${event.message}`)]);
+          } else {
+            // 其他工具：保持原有 → 风格
+            this.outputArea.append([toolStyle(`  → ${event.message}`)]);
+          }
           this.tui.requestRender();
+        } else if (event.percent === 100 && execLineIndex !== undefined && execMessage) {
+          // 工具结束 — 仅处理 Exec 状态颜色更新
+          if (event.message.startsWith('工具 Exec')) {
+            const isSuccess = event.message.includes('完成');
+            const style = isSuccess ? execSuccessStyle : execFailStyle;
+            this.outputArea.updateLine(execLineIndex, style(`  ⏺ ${execMessage}`));
+            execLineIndex = undefined;
+            execMessage = undefined;
+            this.tui.requestRender();
+          }
         }
       };
 
