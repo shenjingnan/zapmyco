@@ -1,11 +1,11 @@
 /**
- * PiAiProvider — 基于 @mariozechner/pi-ai 的 LLM 提供商适配器
+ * PiAiProvider — 基于 @earendil-works/pi-ai 的 LLM 提供商适配器
  *
  * 将 pi-ai 的统一 LLM API 适配为 zapmyco 的 ILlmProvider 接口。
  * 支持多提供商、流式响应、工具调用和成本追踪。
  */
 
-import type { KnownProvider } from '@mariozechner/pi-ai';
+import type { KnownProvider } from '@earendil-works/pi-ai';
 import {
   type AssistantMessage,
   type Context,
@@ -13,7 +13,7 @@ import {
   getModel,
   type Message,
   stream,
-} from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-ai';
 import type { LlmConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
 import { costTracker } from '@/llm/cost-tracker';

@@ -7,7 +7,7 @@
  * @module core/context
  */
 
-import { complete as piComplete } from '@mariozechner/pi-ai';
+import { complete as piComplete } from '@earendil-works/pi-ai';
 import type { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import { logger } from '@/infra/logger';

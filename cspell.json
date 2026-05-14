@@ -82,7 +82,8 @@
     "worktree",
     "Worktree",
     "Worktrees",
-    "conv"
+    "conv",
+    "earendil"
   ],
   "ignorePaths": [
     "node_modules",

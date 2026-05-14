@@ -8,7 +8,7 @@
  * - All changes sync to ~/.zapmyco/settings.json in real-time
  */
 
-import { getModels, getProviders } from '@mariozechner/pi-ai';
+import { getModels, getProviders } from '@earendil-works/pi-ai';
 import type { SelectItem, TUI } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import { showConfigView, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';

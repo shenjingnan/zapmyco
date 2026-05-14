@@ -5,8 +5,8 @@
  * 依赖 pi-ai 的 getModel() 进行懒加载 Model 对象创建。
  */
 
-import type { KnownProvider, Model } from '@mariozechner/pi-ai';
-import { getModel, getModels } from '@mariozechner/pi-ai';
+import type { KnownProvider, Model } from '@earendil-works/pi-ai';
+import { getModel, getModels } from '@earendil-works/pi-ai';
 import type { LlmConfig, LlmFallbackConfig, LlmRoutingConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
 import { CredentialPoolManager } from '@/llm/credential-pool-manager';

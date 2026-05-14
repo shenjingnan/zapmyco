@@ -7,7 +7,7 @@
  * @module core/agent-team
  */
 
-import { complete as piComplete } from '@mariozechner/pi-ai';
+import { complete as piComplete } from '@earendil-works/pi-ai';
 import type { AgentTypeDefinition } from '@/core/agent-team/types';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
