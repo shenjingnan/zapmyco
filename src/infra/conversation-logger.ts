@@ -21,18 +21,23 @@ import { logger } from '@/infra/logger';
  * 从消息 content 中提取文本内容
  *
  * pi-ai 的消息 content 可能是 string（UserMessage）或 content blocks 数组（AssistantMessage），
- * 此函数统一处理两种格式，提取所有文本块并拼接。
+ * 此函数统一处理两种格式，提取所有文本块和 thinking 块并拼接。
+ *
+ * thinking 内容会被包裹在 <thinking>...</thinking> 标签中以便区分。
  */
 function extractTextContent(content: unknown): string | null {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    const texts = content
-      .filter(
-        (block): block is { type: string; text?: string } =>
-          typeof block === 'object' && block !== null && block.type === 'text'
-      )
-      .map((block) => block.text ?? '');
-    return texts.length > 0 ? texts.join('') : null;
+    const parts: string[] = [];
+    for (const block of content) {
+      if (typeof block !== 'object' || block === null) continue;
+      if (block.type === 'text' && typeof block.text === 'string') {
+        parts.push(block.text);
+      } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
+        parts.push(`<thinking>${block.thinking}</thinking>`);
+      }
+    }
+    return parts.length > 0 ? parts.join('') : null;
   }
   return null;
 }

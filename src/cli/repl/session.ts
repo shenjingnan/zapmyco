@@ -599,13 +599,11 @@ export class ReplSession {
     const taskId = `task-${Date.now()}`;
 
     // 输出区 spinner 相关变量（需要跨 try/catch 访问）
-    const ZAPMYCO_PREFIX = '';
-    const THINKING_PREFIX = '  \uD83D\uDCAD ';
     const colorEnabled = this.options.color;
     const userStyle = (s: string) => (colorEnabled ? chalk.bold.cyan(s) : s);
     const responseStyle = (s: string) => s;
     const toolStyle = (s: string) => (colorEnabled ? chalk.yellow(s) : s);
-    const thinkingStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
+    const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -630,11 +628,8 @@ export class ReplSession {
         rawInput,
       });
 
-      // 显示用户输入 + ZapMyco: 带 spinner
-      this.outputArea.append([
-        userStyle(rawInput),
-        responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[0]),
-      ]);
+      // 显示用户输入 + spinner
+      this.outputArea.append([userStyle(rawInput), LOADING_FRAMES[0] ?? '']);
 
       // 输出区 spinner 动画
       let spinnerFrame = 0;
@@ -642,37 +637,40 @@ export class ReplSession {
       spinnerInterval = setInterval(() => {
         if (!spinnerActive) return;
         spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
-        this.outputArea.replaceLastLine(
-          responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame])
-        );
+        this.outputArea.replaceLastLine(LOADING_FRAMES[spinnerFrame] ?? '');
         this.tui.requestRender();
       }, 100);
 
-      // 设置流式输出桥接：Agent EVENT_OUTPUT -> outputArea (首 chunk 替换 spinner)
-      let firstOutputReceived = false;
+      // 流式输出桥接：Agent EVENT_OUTPUT / EVENT_THINKING -> outputArea
+      let spinnerStopped = false;
       let outputAccumulator = '';
       let thinkingAccumulator = '';
       let streamMode: 'none' | 'response' | 'thinking' = 'response';
 
+      // 参考 claude-code 样式的 thinking 展示常量
+      const THINKING_LABEL = '  \u2234 Thinking...';
+      const THINKING_CONTINUE_PREFIX = '  \u23BF  ';
+
       const outputHandler = (event: { taskId: string; text: string }) => {
         if (event.taskId !== taskId || !event.text) return;
 
-        if (!firstOutputReceived) {
-          firstOutputReceived = true;
+        if (!spinnerStopped) {
+          spinnerStopped = true;
           spinnerActive = false;
           clearInterval(spinnerInterval);
           streamMode = 'response';
           thinkingAccumulator = '';
           outputAccumulator = event.text;
-          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputAccumulator));
+          this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
         } else if (streamMode !== 'response') {
+          // 从 thinking 模式切换到 response：另起一行
           streamMode = 'response';
           thinkingAccumulator = '';
           outputAccumulator = event.text;
-          this.outputArea.append([responseStyle(ZAPMYCO_PREFIX + outputAccumulator)]);
+          this.outputArea.append([responseStyle(outputAccumulator)]);
         } else {
           outputAccumulator += event.text;
-          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputAccumulator));
+          this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
         }
         this.tui.requestRender();
       };
@@ -682,12 +680,23 @@ export class ReplSession {
 
         if (streamMode !== 'thinking') {
           streamMode = 'thinking';
-          outputAccumulator = '';
+
+          if (!spinnerStopped) {
+            // thinking 先到达：替换 spinner 行为「∴ Thinking...」
+            spinnerStopped = true;
+            spinnerActive = false;
+            clearInterval(spinnerInterval);
+            this.outputArea.replaceLastLine(dimStyle(THINKING_LABEL));
+          } else {
+            // 已在输出 response，thinking 也到达
+            this.outputArea.append([dimStyle(THINKING_LABEL)]);
+          }
+
           thinkingAccumulator = event.text;
-          this.outputArea.append([thinkingStyle(THINKING_PREFIX + thinkingAccumulator)]);
+          this.outputArea.append([dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator)]);
         } else {
           thinkingAccumulator += event.text;
-          this.outputArea.replaceLastLine(thinkingStyle(THINKING_PREFIX + thinkingAccumulator));
+          this.outputArea.replaceLastLine(dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator));
         }
         this.tui.requestRender();
       };
@@ -787,9 +796,7 @@ export class ReplSession {
         spinnerInterval = setInterval(() => {
           if (!spinnerActive) return;
           spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
-          this.outputArea.replaceLastLine(
-            responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame])
-          );
+          this.outputArea.replaceLastLine(LOADING_FRAMES[spinnerFrame] ?? '');
           this.tui.requestRender();
         }, 100);
       }
@@ -807,7 +814,7 @@ export class ReplSession {
         spinnerActive = false;
         clearInterval(spinnerInterval);
         if (outputText) {
-          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputText));
+          this.outputArea.replaceLastLine(responseStyle(outputText));
         } else if (taskResult.status !== 'success') {
           // 无输出 + 失败状态 → 显示错误
           const errorMsg = taskResult.error?.message ?? t('session.agentErrorMessage');
@@ -967,9 +974,7 @@ export class ReplSession {
       });
 
       // 渲染错误到输出区域（替换 spinner 行 + 追加错误详情）
-      this.outputArea.replaceLastLine(
-        responseStyle(`${ZAPMYCO_PREFIX}${t('session.errorPrefix')} ${err.message}`)
-      );
+      this.outputArea.replaceLastLine(responseStyle(`${t('session.errorPrefix')} ${err.message}`));
       const helpLines = getApiKeyErrorHelp(err.message);
       if (helpLines.length > 0) {
         this.outputArea.append(helpLines);
