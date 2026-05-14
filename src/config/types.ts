@@ -302,7 +302,12 @@ export interface CliConfig {
   debug: boolean;
   /** 输出格式 */
   outputFormat: 'text' | 'json';
+  /** Thinking 展示模式：collapse（默认折叠）、expand（始终展开）、off（完全隐藏） */
+  thinkingDisplay?: ThinkingDisplayMode;
 }
+
+/** Thinking TUI 展示模式 */
+export type ThinkingDisplayMode = 'collapse' | 'expand' | 'off';
 
 /**
  * zapmyco 完整配置
