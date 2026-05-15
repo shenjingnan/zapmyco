@@ -58,7 +58,7 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+Y 回调（展开/折叠 thinking 内容） */
   onToggleThinking: (() => void) | undefined;
 
-  /** Ctrl+O 回调（展开/折叠 Agent 状态栏）。设置后将覆盖外部编辑器行为。 */
+  /** Ctrl+Shift+O 回调（展开/折叠 Agent 状态栏） */
   onToggleAgentBar: (() => void) | undefined;
 
   /** 是否正在执行（用于显示 loading） */
@@ -124,11 +124,13 @@ export class ZapmycoEditor extends Editor {
       return;
     }
     if (matchesKey(data, Key.ctrl('o'))) {
-      if (this.onToggleAgentBar) {
-        this.onToggleAgentBar();
-      } else if (this.onOpenEditor) {
+      if (this.onOpenEditor) {
         this.onOpenEditor();
       }
+      return;
+    }
+    if (matchesKey(data, Key.ctrlShift('o')) && this.onToggleAgentBar) {
+      this.onToggleAgentBar();
       return;
     }
     if (matchesKey(data, Key.ctrl('t'))) {
