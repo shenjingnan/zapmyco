@@ -923,7 +923,7 @@ export class ReplSession {
             const isSuccess = event.message.includes('完成');
             const style = isSuccess ? execSuccessStyle : execFailStyle;
             const displayMsg = formatExecDisplay(execMessage ?? '');
-            this.outputArea.updateLine(execLineIndex, style(`  ${displayMsg}`));
+            this.outputArea.updateLine(execLineIndex, style(`    ${displayMsg}`));
             execLineIndex = undefined;
             execMessage = undefined;
             this.tui.requestRender();
