@@ -244,6 +244,14 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
 
   let output = '';
 
+  // Top border
+  output += '┌';
+  for (let i = 0; i < columnCount; i++) {
+    const cw = colWidths[i] ?? 3;
+    output += ch.dim('─'.repeat(cw + 2)) + '┬';
+  }
+  output = output.slice(0, -1) + '┐' + EOL;
+
   // Header
   output += '│ ';
   for (let i = 0; i < columnCount; i++) {
@@ -298,6 +306,14 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
     }
     output = output.trimEnd() + EOL;
   }
+
+  // Bottom border
+  output += '└';
+  for (let i = 0; i < columnCount; i++) {
+    const cw = colWidths[i] ?? 3;
+    output += ch.dim('─'.repeat(cw + 2)) + '┴';
+  }
+  output = output.slice(0, -1) + '┘' + EOL;
 
   return output + EOL;
 }
