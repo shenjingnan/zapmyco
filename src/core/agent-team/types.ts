@@ -124,6 +124,18 @@ export type AgentInstanceState =
   | 'failed'
   | 'cancelled';
 
+/** Agent 当前活动信息（用于 UI 实时状态栏） */
+export interface AgentCurrentActivity {
+  /** 当前正在执行的工具名称 */
+  toolName: string;
+  /** 累计工具调用次数 */
+  toolUses: number;
+  /** 工具参数摘要（可选） */
+  args?: string;
+  /** 开始时间戳 */
+  startedAt: number;
+}
+
 /**
  * Agent 实例（运行时包装）
  *
@@ -151,6 +163,8 @@ export interface AgentInstance {
   task: AgentTaskSpec;
   /** 创建时间 */
   createdAt: number;
+  /** 当前活动信息（实时更新，用于 UI 状态栏） */
+  currentActivity?: AgentCurrentActivity;
 }
 
 // ============ 任务规格 ============
