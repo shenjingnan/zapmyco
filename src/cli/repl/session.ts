@@ -38,6 +38,7 @@ import { AgentStatusBar } from '@/cli/repl/components/agent-status-bar';
 import type { ApprovalOption } from '@/cli/repl/components/custom-editor';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { TaskStatusBar } from '@/cli/repl/components/task-status-bar';
 import { _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { getCronStore } from '@/cli/repl/cron/cron-store';
@@ -186,6 +187,7 @@ export class ReplSession {
   private readonly tui: TUI;
   private readonly editor: ZapmycoEditor;
   private readonly outputArea: OutputArea;
+  private readonly taskStatusBar: TaskStatusBar;
   private readonly agentStatusBar: AgentStatusBar;
   private readonly options: ReplOptions;
   private _state: SessionState = 'idle';
@@ -276,14 +278,28 @@ export class ReplSession {
       'tui.select.confirm': ['enter'],
     });
 
+    // 初始化 TaskStore（会话级内存任务列表，用于 Agent 任务跟踪）
+    // 注意：不调用 load() 从文件恢复，每次新会话从空白开始。
+    // 文件持久化仅用于会话内上下文压缩后的任务恢复（formatForInjection）。
+    this.taskStore = new TaskStore();
+
     // 创建组件
     this.outputArea = new OutputArea();
     this.agentStatusBar = new AgentStatusBar();
+    this.taskStatusBar = new TaskStatusBar(this.taskStore);
+
+    // TaskStore 变化时自动刷新 TaskStatusBar
+    this.taskStore.onChange(() => {
+      this.taskStatusBar.onTasksChanged();
+      this.tui.requestRender();
+    });
+
     this.editor = new ZapmycoEditor(this.tui, theme.editorTheme);
 
-    // 组装组件树：outputArea → agentStatusBar → editor(无边框，带提示符)
+    // 组装组件树：outputArea → taskStatusBar → agentStatusBar → editor(无边框，带提示符)
     const root = new Container();
     root.addChild(this.outputArea);
+    root.addChild(this.taskStatusBar);
     root.addChild(this.agentStatusBar);
     root.addChild(this.editor);
 
@@ -302,10 +318,6 @@ export class ReplSession {
 
     // 初始化 Agent 实例（替代直接 LLM 调用）
     this.agent = this.createReplAgent();
-
-    // 初始化 TaskStore（会话级持久化任务列表）
-    this.taskStore = new TaskStore();
-    this.taskStore.load();
 
     // 初始化 CronScheduler（定时任务调度器）
     this.cronScheduler = new CronScheduler(getCronStore(), {
@@ -1781,6 +1793,12 @@ export class ReplSession {
       this.tui.requestRender();
     };
     this.editor.onOpenEditor = () => this.openInEditor();
+
+    // Ctrl+T: 展开/折叠 TaskStatusBar
+    this.editor.onToggleTasks = () => {
+      this.taskStatusBar.toggle();
+      this.tui.requestRender();
+    };
   }
 
   /** 设置信号处理 */

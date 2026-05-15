@@ -33,10 +33,16 @@ function ensureTaskDir(): void {
   mkdirSync(dir, { recursive: true });
 }
 
+// ============ 变更通知 ============
+
+/** TaskStore 变更回调 */
+export type TaskChangeCallback = () => void;
+
 // ============ TaskStore ============
 
 export class TaskStore {
   private tasks: Map<string, TaskItem> = new Map();
+  private changeCallbacks: TaskChangeCallback[] = [];
 
   // ============ 读写操作 ============
 
@@ -94,6 +100,32 @@ export class TaskStore {
     return this.tasks.size > 0;
   }
 
+  // ============ 变更通知 ============
+
+  /**
+   * 注册任务变更监听
+   *
+   * @param callback - 任务列表变更时回调
+   * @returns unsubscribe 函数，组件销毁时调用以清理
+   */
+  onChange(callback: TaskChangeCallback): () => void {
+    this.changeCallbacks.push(callback);
+    return () => {
+      this.changeCallbacks = this.changeCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
+  /** 通知所有监听者（write/update/clear 操作后调用） */
+  private notifyChange(): void {
+    for (const cb of this.changeCallbacks) {
+      try {
+        cb();
+      } catch {
+        // 单个回调异常不中断其他回调
+      }
+    }
+  }
+
   // ============ 写操作 ============
 
   /**
@@ -109,6 +141,7 @@ export class TaskStore {
       subject: string;
       description?: string;
       status: TaskItemStatus;
+      dependencies?: string[];
     }>,
     merge = false
   ): string | null {
@@ -158,6 +191,9 @@ export class TaskStore {
       if (item.description !== undefined) {
         taskItem.description = item.description;
       }
+      if (item.dependencies !== undefined) {
+        taskItem.dependencies = item.dependencies;
+      }
 
       newTasks.set(item.id, taskItem);
     }
@@ -169,6 +205,7 @@ export class TaskStore {
 
     this.tasks = newTasks;
     this.persist();
+    this.notifyChange();
     return null;
   }
 
@@ -217,6 +254,7 @@ export class TaskStore {
 
     this.tasks.set(id, updated);
     this.persist();
+    this.notifyChange();
     return null;
   }
 
@@ -224,6 +262,7 @@ export class TaskStore {
   clear(): void {
     this.tasks.clear();
     this.persist();
+    this.notifyChange();
   }
 
   // ============ 持久化 ============
@@ -296,7 +335,7 @@ export class TaskStore {
     const lines: string[] = ['## 当前任务列表'];
     for (const task of active) {
       const marker = task.status === 'in_progress' ? '▶' : '○';
-      lines.push(`  ${marker} [${task.id}] ${task.subject}`);
+      lines.push(`  ${marker} #${task.id} ${task.subject}`);
     }
     return lines.join('\n');
   }
