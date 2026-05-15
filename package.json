@@ -83,6 +83,7 @@
     "eventemitter3": "^5.0.1",
     "gray-matter": "^4.0.3",
     "i18next": "^26.0.10",
+    "marked": "^18.0.3",
     "ora": "^9.4.0",
     "turndown": "^7.2.4"
   },

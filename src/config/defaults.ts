@@ -39,6 +39,7 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     color: true,
     debug: false,
     outputFormat: 'text',
+    markdownFormatting: true,
   },
   logging: {
     level: 'info',
