@@ -52,7 +52,10 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+O 回调（打开外部编辑器） */
   onOpenEditor?: () => void;
 
-  /** Ctrl+T / Ctrl+Y 回调（展开/折叠 thinking 内容） */
+  /** Ctrl+T 回调（展开/折叠 TaskStatusBar） */
+  onToggleTasks: (() => void) | undefined;
+
+  /** Ctrl+Y 回调（展开/折叠 thinking 内容） */
   onToggleThinking: (() => void) | undefined;
 
   /** Ctrl+O 回调（展开/折叠 Agent 状态栏）。设置后将覆盖外部编辑器行为。 */
@@ -128,9 +131,16 @@ export class ZapmycoEditor extends Editor {
       }
       return;
     }
-    if (matchesKey(data, Key.ctrl('t')) && this.onToggleThinking) {
-      this.onToggleThinking();
-      return;
+    if (matchesKey(data, Key.ctrl('t'))) {
+      if (this.onToggleTasks) {
+        this.onToggleTasks();
+        return;
+      }
+      // 回退：如果未设置 onToggleTasks，尝试 thinking
+      if (this.onToggleThinking) {
+        this.onToggleThinking();
+        return;
+      }
     }
     if (matchesKey(data, Key.ctrl('y')) && this.onToggleThinking) {
       this.onToggleThinking();

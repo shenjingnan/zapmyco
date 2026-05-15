@@ -100,6 +100,8 @@ export interface TaskManageInputItem {
   subject: string;
   description?: string;
   status: TaskItemStatus;
+  /** 依赖的任务 ID 列表 */
+  dependencies?: string[];
 }
 
 /** TaskManage 工具参数 */
