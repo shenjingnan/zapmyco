@@ -274,9 +274,9 @@ describe('TaskStore', () => {
 
       const text = store.formatForInjection();
       expect(text).toContain('当前任务列表');
-      expect(text).toContain('[1]');
-      expect(text).toContain('[2]');
-      expect(text).not.toContain('[3]'); // 已完成的不应出现
+      expect(text).toContain('#1');
+      expect(text).toContain('#2');
+      expect(text).not.toContain('#3'); // 已完成的不应出现
     });
 
     it('无活跃任务时应返回 null', () => {
@@ -308,6 +308,84 @@ describe('TaskStore', () => {
 
       expect(store.read()).toHaveLength(0);
       expect(store.hasItems()).toBe(false);
+    });
+  });
+
+  // ============ onChange 回调 ============
+  describe('onChange', () => {
+    it('write 后应触发回调', () => {
+      const callback = vi.fn();
+      store.onChange(callback);
+
+      store.write([{ id: '1', subject: '测试', status: 'pending' }]);
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('update 后应触发回调', () => {
+      store.write([{ id: '1', subject: '测试', status: 'pending' }]);
+      const callback = vi.fn();
+      store.onChange(callback);
+
+      store.update('1', { status: 'completed' });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('clear 后应触发回调', () => {
+      store.write([{ id: '1', subject: '测试', status: 'pending' }]);
+      const callback = vi.fn();
+      store.onChange(callback);
+
+      store.clear();
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('load 不应触发回调', () => {
+      const callback = vi.fn();
+      store.onChange(callback);
+
+      store.load(); // 文件不存在，load 返回 false
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('返回的 unsubscribe 应取消注册', () => {
+      const callback = vi.fn();
+      const unsubscribe = store.onChange(callback);
+
+      unsubscribe();
+
+      store.write([{ id: '1', subject: '测试', status: 'pending' }]);
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('多个回调应全部触发', () => {
+      const callback1 = vi.fn();
+      const callback2 = vi.fn();
+      store.onChange(callback1);
+      store.onChange(callback2);
+
+      store.write([{ id: '1', subject: '测试', status: 'pending' }]);
+
+      expect(callback1).toHaveBeenCalledTimes(1);
+      expect(callback2).toHaveBeenCalledTimes(1);
+    });
+
+    it('单个回调异常不应影响其他回调', () => {
+      const throwingCallback = () => {
+        throw new Error('模拟错误');
+      };
+      const normalCallback = vi.fn();
+      store.onChange(throwingCallback);
+      store.onChange(normalCallback);
+
+      expect(() => {
+        store.write([{ id: '1', subject: '测试', status: 'pending' }]);
+      }).not.toThrow();
+      expect(normalCallback).toHaveBeenCalledTimes(1);
     });
   });
 

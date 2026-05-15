@@ -15,6 +15,8 @@
       "duration": "耗时:",
       "token": "Token:",
       "cost": "成本:",
+      "cacheHit": "缓存命中:",
+      "cacheWrite": "缓存写入:",
       "taskBreakdown": "任务拆分",
       "subtaskCount": "个子任务",
       "artifacts": "制品:",
@@ -167,7 +169,7 @@
     }
   },
   "session": {
-    "welcome": "ZapMyco: 欢迎回来!",
+    "welcome": "欢迎回来!",
     "errorPrefix": "[错误]",
     "agentErrorMessage": "Agent 执行失败（无详细错误信息）",
     "noContentError": "模型未返回任何内容，请检查 API Key 配置",

@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.13.0](https://github.com/shenjingnan/zapmyco/compare/v0.12.0...v0.13.0) (2026-05-14)
+
+### Features
+
+* **agent-team:** 支持子 Agent 按类型路由模型 ([#113](https://github.com/shenjingnan/zapmyco/issues/113)) ([4cb6071](https://github.com/shenjingnan/zapmyco/commit/4cb6071b65e3382ce1d22243d67085933c648dc4))
+* **agent:** 新增 thinking/reasoning 展示与日志支持 ([#107](https://github.com/shenjingnan/zapmyco/issues/107)) ([5ac1e35](https://github.com/shenjingnan/zapmyco/commit/5ac1e359f8f79ea5fbaaaf83c93538e24d2fda3c))
+* **cli:** 优化 Exec 工具执行状态显示 ([#109](https://github.com/shenjingnan/zapmyco/issues/109)) ([8431ea6](https://github.com/shenjingnan/zapmyco/commit/8431ea6a792db192a38da07c51b7a1a450a30072))
+* **cli:** 将审批弹窗改为编辑器内联审批面板 ([#108](https://github.com/shenjingnan/zapmyco/issues/108)) ([a8d1fef](https://github.com/shenjingnan/zapmyco/commit/a8d1fef1786f471c52f8684391a23fdc7ec23d3d))
+* **cli:** 新增 thinking 内容折叠/展开/隐藏三种展示模式 ([#111](https://github.com/shenjingnan/zapmyco/issues/111)) ([0f4ea37](https://github.com/shenjingnan/zapmyco/commit/0f4ea37248f530b226d8a8263548ad6e24610c3e))
+* **cli:** 简化审批对话框并优化交互体验 ([#102](https://github.com/shenjingnan/zapmyco/issues/102)) ([998de9a](https://github.com/shenjingnan/zapmyco/commit/998de9aa040f5e7794c6180e07df73fb8c66b31e))
+* **core:** 添加 Prompt Cache 支持与优化 ([#110](https://github.com/shenjingnan/zapmyco/issues/110)) ([3a702ca](https://github.com/shenjingnan/zapmyco/commit/3a702ca04d2204db9b026f0b442a730203feb65b))
+* **infra:** 改进错误日志记录，消除静默异常捕获 ([#105](https://github.com/shenjingnan/zapmyco/issues/105)) ([017b3a3](https://github.com/shenjingnan/zapmyco/commit/017b3a30677ebac3f7c41856027b6c2b6c4b4de0))
+* 使用 matchesKey 替代字符串比较处理键盘输入 ([#99](https://github.com/shenjingnan/zapmyco/issues/99)) ([ca28ac7](https://github.com/shenjingnan/zapmyco/commit/ca28ac7e6a34fd70aa2e7012993a1b494382b84a))
+* 安全审计增强、对话日志与子Agent监控 ([#97](https://github.com/shenjingnan/zapmyco/issues/97)) ([0727774](https://github.com/shenjingnan/zapmyco/commit/0727774dc620e1ecfdf0bc8c3bb3512c09a31814))
+* 新增缓存 Token 追踪与会话日志记录功能 ([#100](https://github.com/shenjingnan/zapmyco/issues/100)) ([7fae463](https://github.com/shenjingnan/zapmyco/commit/7fae4633edde2885c44837fa01af9908b14da357))
+
+### Code Refactoring
+
+* **cli:** 移除聊天前缀并优化欢迎语显示 ([#106](https://github.com/shenjingnan/zapmyco/issues/106)) ([68a35b4](https://github.com/shenjingnan/zapmyco/commit/68a35b412e6ef1a16bb5dfe4c7d870935a28afb8))
+* **llm:** 整合 Provider 层，移除独立接口与适配器文件 ([#104](https://github.com/shenjingnan/zapmyco/issues/104)) ([00949b6](https://github.com/shenjingnan/zapmyco/commit/00949b63c791007ba34eec98c6bf745711f146a0))
+
+### Documentation
+
+* **skill:** 完善 commit-push-pr 技能的提交格式规范 ([#101](https://github.com/shenjingnan/zapmyco/issues/101)) ([e9ab8bb](https://github.com/shenjingnan/zapmyco/commit/e9ab8bb6e4b3b04dd048f23fde38bd74aa31c25b))
+
 ## [0.12.0](https://github.com/shenjingnan/zapmyco/compare/v0.11.0...v0.12.0) (2026-05-13)
 
 ### Features

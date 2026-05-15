@@ -13,6 +13,34 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { logger } from '@/infra/logger';
+
+// ============ 工具函数 ============
+
+/**
+ * 从消息 content 中提取文本内容
+ *
+ * pi-ai 的消息 content 可能是 string（UserMessage）或 content blocks 数组（AssistantMessage），
+ * 此函数统一处理两种格式，提取所有文本块和 thinking 块并拼接。
+ *
+ * thinking 内容会被包裹在 <thinking>...</thinking> 标签中以便区分。
+ */
+function extractTextContent(content: unknown): string | null {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const block of content) {
+      if (typeof block !== 'object' || block === null) continue;
+      if (block.type === 'text' && typeof block.text === 'string') {
+        parts.push(block.text);
+      } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
+        parts.push(`<thinking>${block.thinking}</thinking>`);
+      }
+    }
+    return parts.length > 0 ? parts.join('') : null;
+  }
+  return null;
+}
 
 // ============ 类型定义 ============
 
@@ -35,6 +63,8 @@ export interface ConversationTurn {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
     estimatedCostUsd?: number;
   };
   messages: ConversationMessage[];
@@ -101,8 +131,10 @@ export class ConversationLogger {
       this.rotateIfNeeded();
       const line = JSON.stringify({ ...turn, turn: this.turnCount }) + '\n';
       appendFileSync(this.filePath, line, 'utf-8');
-    } catch {
-      // 写入失败不抛出异常，避免影响主流程
+    } catch (err) {
+      logger.warn('对话日志写入失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -124,6 +156,8 @@ export class ConversationLogger {
       inputTokens: number;
       outputTokens: number;
       totalTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
       estimatedCostUsd?: number;
     },
     durationMs?: number
@@ -139,7 +173,7 @@ export class ConversationLogger {
     for (const msg of newMessages) {
       const entry: ConversationMessage = {
         role: msg.role,
-        content: typeof msg.content === 'string' ? msg.content : null,
+        content: extractTextContent(msg.content),
       };
 
       // 提取 toolCalls（assistant 消息）
@@ -219,8 +253,10 @@ export class ConversationLogger {
 
       // 轮转当前文件
       renameSync(this.filePath, `${this.filePath}.0`);
-    } catch {
-      // 轮转失败不影响正常写入
+    } catch (err) {
+      logger.warn('对话日志文件轮转失败', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

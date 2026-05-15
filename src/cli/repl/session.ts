@@ -24,6 +24,7 @@ import {
 import chalk from 'chalk';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
+import { createCacheCommand } from '@/cli/repl/commands/cache-cmd';
 import { createClearCommand } from '@/cli/repl/commands/clear';
 import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
 // 导入内置命令
@@ -33,8 +34,11 @@ import { createQuitCommand } from '@/cli/repl/commands/quit';
 import { createSecurityCommand } from '@/cli/repl/commands/security-cmd';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
+import { AgentStatusBar } from '@/cli/repl/components/agent-status-bar';
+import type { ApprovalOption } from '@/cli/repl/components/custom-editor';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
-import { showApprovalDialog, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { TaskStatusBar } from '@/cli/repl/components/task-status-bar';
 import { _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { getCronStore } from '@/cli/repl/cron/cron-store';
@@ -54,8 +58,10 @@ import type {
   SessionState,
   SessionStats,
 } from '@/cli/repl/types';
+import { formatMarkdown } from '@/cli/repl/utils/markdown-formatter';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
+import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
 import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
 import { createDiagnosticCollector, type DiagnosticCollector } from '@/core/lsp/diagnostics';
 import { resolveLspConfig } from '@/core/lsp/lsp-config';
@@ -119,10 +125,12 @@ class OutputArea extends Container {
     return result;
   }
 
-  /** 追加多行内容 */
-  append(lines: string[]): void {
+  /** 追加多行内容，返回新追加行中第一行的索引 */
+  append(lines: string[]): number {
+    const index = this.lines.length;
     this.lines.push(...lines);
     this.invalidate();
+    return index;
   }
 
   /** 追加文本到当前行末尾（用于流式输出） */
@@ -135,14 +143,29 @@ class OutputArea extends Container {
     this.invalidate();
   }
 
-  /** 替换最后一行的完整内容（用于 spinner 动画和首 chunk 替换） */
-  replaceLastLine(text: string): void {
+  /** 替换最后一行的完整内容（用于 spinner 动画和首 chunk 替换），返回行索引 */
+  replaceLastLine(text: string): number {
     if (this.lines.length > 0) {
       this.lines[this.lines.length - 1] = text;
     } else {
       this.lines.push(text);
     }
     this.invalidate();
+    return this.lines.length - 1;
+  }
+
+  /** 在指定位置插入/删除/替换行（原子操作） */
+  spliceLines(startIndex: number, deleteCount: number, insertLines: string[]): void {
+    this.lines.splice(startIndex, deleteCount, ...insertLines);
+    this.invalidate();
+  }
+
+  /** 更新指定索引行的内容 */
+  updateLine(index: number, text: string): void {
+    if (index >= 0 && index < this.lines.length) {
+      this.lines[index] = text;
+      this.invalidate();
+    }
   }
 
   /** 清空所有内容 */
@@ -165,6 +188,8 @@ export class ReplSession {
   private readonly tui: TUI;
   private readonly editor: ZapmycoEditor;
   private readonly outputArea: OutputArea;
+  private readonly taskStatusBar: TaskStatusBar;
+  private readonly agentStatusBar: AgentStatusBar;
   private readonly options: ReplOptions;
   private _state: SessionState = 'idle';
   private readonly parser: InputParser;
@@ -172,6 +197,9 @@ export class ReplSession {
   private readonly renderer: RendererClass;
   private readonly history: HistoryStoreClass;
   private currentTaskAbort: AbortController | null = null;
+
+  /** 欢迎语逐字输出定时器引用（用于 shutdown 时清理） */
+  private welcomeTypewriterInterval: ReturnType<typeof setInterval> | undefined;
 
   /** Agent 实例（会话级复用，替代直接 LLM 调用） */
   private agent: LlmBasedAgent;
@@ -251,13 +279,29 @@ export class ReplSession {
       'tui.select.confirm': ['enter'],
     });
 
+    // 初始化 TaskStore（会话级内存任务列表，用于 Agent 任务跟踪）
+    // 注意：不调用 load() 从文件恢复，每次新会话从空白开始。
+    // 文件持久化仅用于会话内上下文压缩后的任务恢复（formatForInjection）。
+    this.taskStore = new TaskStore();
+
     // 创建组件
     this.outputArea = new OutputArea();
+    this.agentStatusBar = new AgentStatusBar();
+    this.taskStatusBar = new TaskStatusBar(this.taskStore);
+
+    // TaskStore 变化时自动刷新 TaskStatusBar
+    this.taskStore.onChange(() => {
+      this.taskStatusBar.onTasksChanged();
+      this.tui.requestRender();
+    });
+
     this.editor = new ZapmycoEditor(this.tui, theme.editorTheme);
 
-    // 组装组件树：outputArea → editor(无边框，带提示符)
+    // 组装组件树：outputArea → taskStatusBar → agentStatusBar → editor(无边框，带提示符)
     const root = new Container();
     root.addChild(this.outputArea);
+    root.addChild(this.taskStatusBar);
+    root.addChild(this.agentStatusBar);
     root.addChild(this.editor);
 
     this.tui.addChild(root);
@@ -275,10 +319,6 @@ export class ReplSession {
 
     // 初始化 Agent 实例（替代直接 LLM 调用）
     this.agent = this.createReplAgent();
-
-    // 初始化 TaskStore（会话级持久化任务列表）
-    this.taskStore = new TaskStore();
-    this.taskStore.load();
 
     // 初始化 CronScheduler（定时任务调度器）
     this.cronScheduler = new CronScheduler(getCronStore(), {
@@ -349,11 +389,32 @@ export class ReplSession {
     // 初始化 i18n 语言设置
     setLocale(this.config.locale ?? 'zh-CN');
 
-    // 渲染简化的欢迎信息
-    this.outputArea.append([t('session.welcome'), '']);
-
-    // 启动 TUI
+    // 先启动 TUI，再逐字输出欢迎信息
     this.tui.start();
+    this.tui.requestRender();
+
+    // 逐字输出欢迎语（类似 LLM 流式效果）
+    this.typewriteWelcome();
+  }
+
+  /** 逐字输出欢迎语（类似 LLM 流式打字效果） */
+  private typewriteWelcome(): void {
+    const text = t('session.welcome');
+    this.outputArea.append(['']); // 预留一行
+
+    let index = 0;
+    this.welcomeTypewriterInterval = setInterval(() => {
+      index++;
+      if (index <= text.length) {
+        this.outputArea.replaceLastLine(text.slice(0, index));
+        this.tui.requestRender();
+      } else {
+        clearInterval(this.welcomeTypewriterInterval);
+        this.welcomeTypewriterInterval = undefined;
+        this.outputArea.append(['']); // 打字结束追加空行
+        this.tui.requestRender();
+      }
+    }, 40);
   }
 
   /** 优雅关闭会话 */
@@ -373,6 +434,12 @@ export class ReplSession {
     // 取消所有待处理的交互式提问
     if (this.questionManager) {
       this.questionManager.rejectAll(new Error('会话已关闭'));
+    }
+
+    // 停止欢迎语打字动画（确保 setInterval 被立即清除）
+    if (this.welcomeTypewriterInterval) {
+      clearInterval(this.welcomeTypewriterInterval);
+      this.welcomeTypewriterInterval = undefined;
     }
 
     // 停止编辑器 loading 动画（确保 setInterval 被立即清除）
@@ -569,15 +636,19 @@ export class ReplSession {
     const taskId = `task-${Date.now()}`;
 
     // 输出区 spinner 相关变量（需要跨 try/catch 访问）
-    const ZAPMYCO_PREFIX = 'ZapMyco: ';
-    const THINKING_PREFIX = '  \uD83D\uDCAD ';
     const colorEnabled = this.options.color;
     const userStyle = (s: string) => (colorEnabled ? chalk.bold.cyan(s) : s);
+    const markdownFormattingEnabled = this.config.cli.markdownFormatting !== false;
     const responseStyle = (s: string) => s;
     const toolStyle = (s: string) => (colorEnabled ? chalk.yellow(s) : s);
-    const thinkingStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
+    const execStyle = (s: string) => (colorEnabled ? chalk.cyan(s) : s);
+    const execSuccessStyle = (s: string) => (colorEnabled ? chalk.green(s) : s);
+    const execFailStyle = (s: string) => (colorEnabled ? chalk.red(s) : s);
+    const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+    // thinking 折叠状态（需要跨 try/catch/finally 访问）
+    let thinkingElapsedInterval: ReturnType<typeof setInterval> | undefined;
 
     try {
       // 更新状态（禁用编辑器输入，但不显示编辑器 spinner）
@@ -600,11 +671,8 @@ export class ReplSession {
         rawInput,
       });
 
-      // 显示用户输入 + ZapMyco: 带 spinner
-      this.outputArea.append([
-        userStyle(`Me: ${rawInput}`),
-        responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[0]),
-      ]);
+      // 显示用户输入 + spinner
+      this.outputArea.append([userStyle(rawInput), LOADING_FRAMES[0] ?? '']);
 
       // 输出区 spinner 动画
       let spinnerFrame = 0;
@@ -612,37 +680,106 @@ export class ReplSession {
       spinnerInterval = setInterval(() => {
         if (!spinnerActive) return;
         spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
-        this.outputArea.replaceLastLine(
-          responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame])
-        );
+        this.outputArea.replaceLastLine(LOADING_FRAMES[spinnerFrame] ?? '');
         this.tui.requestRender();
       }, 100);
 
-      // 设置流式输出桥接：Agent EVENT_OUTPUT -> outputArea (首 chunk 替换 spinner)
-      let firstOutputReceived = false;
+      // 流式输出桥接：Agent EVENT_OUTPUT / EVENT_THINKING -> outputArea
+      let spinnerStopped = false;
       let outputAccumulator = '';
       let thinkingAccumulator = '';
       let streamMode: 'none' | 'response' | 'thinking' = 'response';
+      // 记录响应文本在 OutputArea 中的行索引（用于最后格式化）
+      let responseLineIndex: number | null = null;
+
+      // Thinking 折叠/展开状态
+      const thinkingDisplayMode = this.config.cli.thinkingDisplay ?? 'collapse';
+      let thinkingHeaderLineIndex: number | null = null;
+      let thinkingContentLineCount = 0;
+      let thinkingStartTimeMs = 0;
+
+      // 参考 claude-code 样式的 thinking 展示常量
+      const THINKING_LABEL = '  \u2234 Thinking...';
+      const THINKING_CONTINUE_PREFIX = '  \u23BF  ';
+
+      /** 将 thinking 累积文本按换行符拆分为展示行 */
+      const splitThinkingContent = (text: string): string[] => {
+        if (!text) return [''];
+        const MAX_THINKING_LINES = 200;
+        const lines = text.split('\n');
+        // 移除末尾空行
+        while (lines.length > 0 && lines[lines.length - 1] === '') {
+          lines.pop();
+        }
+        if (lines.length === 0) lines.push('');
+        if (lines.length > MAX_THINKING_LINES) {
+          lines.splice(MAX_THINKING_LINES);
+          lines.push(`  ... [thinking truncated, ${text.split('\n').length} lines total]`);
+        }
+        return lines;
+      };
+
+      /** 展开/折叠 thinking 内容 */
+      const toggleThinking = () => {
+        if (thinkingHeaderLineIndex === null) return;
+        if (thinkingDisplayMode !== 'collapse') return;
+
+        if (thinkingContentLineCount === 0) {
+          // 折叠 → 展开：在 header 行后插入内容行
+          const contentLines = splitThinkingContent(thinkingAccumulator);
+          const styledLines = contentLines.map((line) => dimStyle(THINKING_CONTINUE_PREFIX + line));
+          this.outputArea.spliceLines(thinkingHeaderLineIndex + 1, 0, styledLines);
+          thinkingContentLineCount = styledLines.length;
+          // 展开时 header 不显示耗时
+          this.outputArea.updateLine(thinkingHeaderLineIndex, dimStyle(THINKING_LABEL));
+        } else {
+          // 展开 → 折叠：删除内容行
+          this.outputArea.spliceLines(thinkingHeaderLineIndex + 1, thinkingContentLineCount, []);
+          thinkingContentLineCount = 0;
+          // 折叠时恢复显示耗时
+          const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+          const elapsedSuffix = streamMode === 'thinking' ? `... (${elapsed}s)` : ` (${elapsed}s)`;
+          this.outputArea.updateLine(
+            thinkingHeaderLineIndex,
+            dimStyle(`${THINKING_LABEL}${elapsedSuffix}`)
+          );
+        }
+        this.tui.requestRender();
+      };
 
       const outputHandler = (event: { taskId: string; text: string }) => {
         if (event.taskId !== taskId || !event.text) return;
 
-        if (!firstOutputReceived) {
-          firstOutputReceived = true;
+        if (!spinnerStopped) {
+          spinnerStopped = true;
           spinnerActive = false;
           clearInterval(spinnerInterval);
           streamMode = 'response';
           thinkingAccumulator = '';
           outputAccumulator = event.text;
-          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputAccumulator));
+          responseLineIndex = this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
         } else if (streamMode !== 'response') {
+          // 从 thinking 模式切换到 response：另起一行
           streamMode = 'response';
+          // 停止 thinking 耗时计时器
+          if (thinkingElapsedInterval) {
+            clearInterval(thinkingElapsedInterval);
+            thinkingElapsedInterval = undefined;
+          }
+          // 更新 thinking header 显示完成耗时
+          if (thinkingHeaderLineIndex !== null && thinkingDisplayMode === 'collapse') {
+            const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+            this.outputArea.updateLine(
+              thinkingHeaderLineIndex,
+              dimStyle(`  \u2234 Thinking (${elapsed}s)`)
+            );
+          }
           thinkingAccumulator = '';
           outputAccumulator = event.text;
-          this.outputArea.append([responseStyle(ZAPMYCO_PREFIX + outputAccumulator)]);
+          responseLineIndex = this.outputArea.append([responseStyle(outputAccumulator)]);
         } else {
           outputAccumulator += event.text;
-          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputAccumulator));
+          this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
         }
         this.tui.requestRender();
       };
@@ -650,14 +787,68 @@ export class ReplSession {
       const thinkingHandler = (event: { taskId: string; text: string }) => {
         if (event.taskId !== taskId || !event.text) return;
 
+        // off 模式：完全忽略 thinking
+        if (thinkingDisplayMode === 'off') return;
+
         if (streamMode !== 'thinking') {
           streamMode = 'thinking';
-          outputAccumulator = '';
+          thinkingStartTimeMs = Date.now();
+
+          if (!spinnerStopped) {
+            // thinking 先到达：替换 spinner 行为带 spinner 帧的 thinking header
+            spinnerStopped = true;
+            spinnerActive = false;
+            clearInterval(spinnerInterval);
+            thinkingHeaderLineIndex = this.outputArea.replaceLastLine(
+              dimStyle(`  ${LOADING_FRAMES[0] ?? ''} Thinking...`)
+            );
+          } else {
+            // 已在输出 response，thinking 也到达
+            thinkingHeaderLineIndex = this.outputArea.append([
+              dimStyle(`  ${LOADING_FRAMES[0] ?? ''} Thinking...`),
+            ]);
+          }
+
           thinkingAccumulator = event.text;
-          this.outputArea.append([thinkingStyle(THINKING_PREFIX + thinkingAccumulator)]);
+          thinkingContentLineCount = 0;
+
+          if (thinkingDisplayMode === 'expand') {
+            // expand 模式：显示内容行（旧行为）
+            this.outputArea.append([dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator)]);
+            thinkingContentLineCount = 1;
+          } else if (thinkingDisplayMode === 'collapse') {
+            // collapse 模式：启动耗时计时器，使用 spinner 动画
+            let thinkingFrame = 0;
+            thinkingElapsedInterval = setInterval(() => {
+              if (thinkingHeaderLineIndex === null) return;
+              // 展开时不更新（header 已替换为纯文本）
+              if (thinkingContentLineCount > 0) return;
+              const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+              const frame = LOADING_FRAMES[thinkingFrame % LOADING_FRAMES.length];
+              thinkingFrame++;
+              this.outputArea.updateLine(
+                thinkingHeaderLineIndex,
+                dimStyle(`  ${frame} Thinking... (${elapsed}s)`)
+              );
+              this.tui.requestRender();
+            }, 200);
+          }
         } else {
           thinkingAccumulator += event.text;
-          this.outputArea.replaceLastLine(thinkingStyle(THINKING_PREFIX + thinkingAccumulator));
+
+          if (thinkingDisplayMode === 'expand') {
+            // expand 模式：更新内容行
+            this.outputArea.replaceLastLine(
+              dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator)
+            );
+          }
+          // collapse 模式：仅累积，不更新 UI（除非已展开）
+          if (thinkingDisplayMode === 'collapse' && thinkingContentLineCount > 0) {
+            // 已展开时更新最后一行
+            const contentLines = splitThinkingContent(thinkingAccumulator);
+            const lastLine = contentLines[contentLines.length - 1] ?? '';
+            this.outputArea.replaceLastLine(dimStyle(THINKING_CONTINUE_PREFIX + lastLine));
+          }
         }
         this.tui.requestRender();
       };
@@ -672,10 +863,50 @@ export class ReplSession {
       };
 
       // 工具调用展示：Agent EVENT_PROGRESS -> outputArea.append()
+      // 参考 claude-code 风格：Exec 使用 ⏺ 图标 + 状态颜色，其他工具使用 → 图标
+      let execLineIndex: number | undefined;
+      let execMessage: string | undefined;
+
       const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
-        if (event.taskId === taskId && event.percent === 0) {
-          this.outputArea.append([toolStyle(`  → ${event.message}`)]);
+        if (event.taskId !== taskId) return;
+
+        if (event.percent === 0) {
+          // 工具开始 → thinking 阶段结束，停止计时器
+          if (thinkingElapsedInterval && streamMode === 'thinking') {
+            clearInterval(thinkingElapsedInterval);
+            thinkingElapsedInterval = undefined;
+            if (thinkingHeaderLineIndex !== null && thinkingDisplayMode === 'collapse') {
+              const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+              this.outputArea.updateLine(
+                thinkingHeaderLineIndex,
+                dimStyle(`  \u2234 Thinking (${elapsed}s)`)
+              );
+              this.tui.requestRender();
+            }
+          }
+          // 工具开始
+          if (event.message.startsWith('Exec(')) {
+            // Exec 工具：使用 ⏺ 图标和青色
+            execMessage = event.message;
+            execLineIndex = this.outputArea.append([execStyle(`  ⏺ ${event.message}`)]);
+          } else if (event.message.startsWith('TaskManage(')) {
+            // TaskManage 信息已由底部 TaskStatusBar 展示，不在 OutputArea 重复显示
+            log.debug('TaskManage 工具调用已记录，跳过 TUI 展示');
+          } else {
+            // 其他工具：保持原有 → 风格
+            this.outputArea.append([toolStyle(`  → ${event.message}`)]);
+          }
           this.tui.requestRender();
+        } else if (event.percent === 100 && execLineIndex !== undefined && execMessage) {
+          // 工具结束 — 仅处理 Exec 状态颜色更新
+          if (event.message.startsWith('工具 Exec')) {
+            const isSuccess = event.message.includes('完成');
+            const style = isSuccess ? execSuccessStyle : execFailStyle;
+            this.outputArea.updateLine(execLineIndex, style(`  ⏺ ${execMessage}`));
+            execLineIndex = undefined;
+            execMessage = undefined;
+            this.tui.requestRender();
+          }
         }
       };
 
@@ -684,6 +915,12 @@ export class ReplSession {
       this.agent.on(this.agent.EVENT_ERROR, errorHandler);
       this.agent.on(this.agent.EVENT_PROGRESS, progressHandler);
       this.currentTaskId = taskId;
+
+      // 绑定 thinking 展开/折叠快捷键
+      const originalOnToggleThinking = this.editor.onToggleThinking;
+      if (thinkingDisplayMode === 'collapse') {
+        this.editor.onToggleThinking = toggleThinking;
+      }
 
       log.debug('开始通过 Agent 执行目标', {
         taskId,
@@ -706,6 +943,8 @@ export class ReplSession {
       this.agent.off(this.agent.EVENT_THINKING, thinkingHandler);
       this.agent.off(this.agent.EVENT_ERROR, errorHandler);
       this.agent.off(this.agent.EVENT_PROGRESS, progressHandler);
+      // 恢复 editor 快捷键回调
+      this.editor.onToggleThinking = originalOnToggleThinking;
 
       log.debug('Agent 执行完成', {
         taskId,
@@ -757,9 +996,7 @@ export class ReplSession {
         spinnerInterval = setInterval(() => {
           if (!spinnerActive) return;
           spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
-          this.outputArea.replaceLastLine(
-            responseStyle(ZAPMYCO_PREFIX + LOADING_FRAMES[spinnerFrame])
-          );
+          this.outputArea.replaceLastLine(LOADING_FRAMES[spinnerFrame] ?? '');
           this.tui.requestRender();
         }, 100);
       }
@@ -777,13 +1014,11 @@ export class ReplSession {
         spinnerActive = false;
         clearInterval(spinnerInterval);
         if (outputText) {
-          this.outputArea.replaceLastLine(responseStyle(ZAPMYCO_PREFIX + outputText));
+          this.outputArea.replaceLastLine(responseStyle(outputText));
         } else if (taskResult.status !== 'success') {
           // 无输出 + 失败状态 → 显示错误
           const errorMsg = taskResult.error?.message ?? t('session.agentErrorMessage');
-          this.outputArea.replaceLastLine(
-            chalk.red(`ZapMyco: ${t('session.errorPrefix')} ${errorMsg}`)
-          );
+          this.outputArea.replaceLastLine(chalk.red(`${t('session.errorPrefix')} ${errorMsg}`));
           const helpLines = getApiKeyErrorHelp(errorMsg);
           if (helpLines.length > 0) {
             this.outputArea.append(helpLines);
@@ -845,7 +1080,7 @@ export class ReplSession {
         } else {
           // 无输出但状态为成功 → 可能是 API Key 等配置问题
           this.outputArea.replaceLastLine(
-            chalk.red(`ZapMyco: ${t('session.errorPrefix')} ${t('session.noContentError')}`)
+            chalk.red(`${t('session.errorPrefix')} ${t('session.noContentError')}`)
           );
         }
       }
@@ -865,6 +1100,30 @@ export class ReplSession {
       }
       // 注意：成功时不再追加 outputText，流式事件（EVENT_OUTPUT）已经实时输出了全部内容
 
+      // Markdown 格式化：对 Agent 输出应用 ANSI 样式（标题加粗、表格对齐、代码块着色等）
+      if (markdownFormattingEnabled && taskResult.status === 'success') {
+        if (outputAccumulator && responseLineIndex !== null) {
+          // 流式输出场景：替换响应行为格式化后的多行内容
+          const formatted = formatMarkdown(outputAccumulator, colorEnabled);
+          if (formatted) {
+            const formattedLines = formatted.split('\n');
+            this.outputArea.spliceLines(responseLineIndex, 1, formattedLines);
+            this.tui.requestRender();
+          }
+        } else if (spinnerStopped === false && outputText) {
+          // 非流式输出场景（spinner 从未被替换）：替换 spinner 行并追加后续行
+          const formatted = formatMarkdown(outputText, colorEnabled);
+          if (formatted) {
+            const lines = formatted.split('\n');
+            this.outputArea.replaceLastLine(lines[0] ?? '');
+            if (lines.length > 1) {
+              this.outputArea.append(lines.slice(1));
+            }
+            this.tui.requestRender();
+          }
+        }
+      }
+
       // 追加换行分隔
       this.outputArea.append(['']);
       const duration = Date.now() - startTime;
@@ -881,6 +1140,8 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -927,6 +1188,11 @@ export class ReplSession {
       // 停止 spinner（如果还在运行）
       spinnerActive = false;
       clearInterval(spinnerInterval);
+      // 清理 thinking 耗时计时器
+      if (thinkingElapsedInterval) {
+        clearInterval(thinkingElapsedInterval);
+        thinkingElapsedInterval = undefined;
+      }
 
       this.stats.totalRequests++;
       this.stats.failureCount++;
@@ -937,9 +1203,7 @@ export class ReplSession {
       });
 
       // 渲染错误到输出区域（替换 spinner 行 + 追加错误详情）
-      this.outputArea.replaceLastLine(
-        responseStyle(`${ZAPMYCO_PREFIX}${t('session.errorPrefix')} ${err.message}`)
-      );
+      this.outputArea.replaceLastLine(responseStyle(`${t('session.errorPrefix')} ${err.message}`));
       const helpLines = getApiKeyErrorHelp(err.message);
       if (helpLines.length > 0) {
         this.outputArea.append(helpLines);
@@ -1016,12 +1280,19 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
     } finally {
       spinnerActive = false;
       if (spinnerInterval) clearInterval(spinnerInterval);
+      // 清理 thinking 耗时计时器
+      if (thinkingElapsedInterval) {
+        clearInterval(thinkingElapsedInterval);
+        thinkingElapsedInterval = undefined;
+      }
       this._state = 'idle';
       this.updateStatsState();
       this.editor.setExecuting(false);
@@ -1137,16 +1408,46 @@ export class ReplSession {
 
     this.approvalManager = new ApprovalManager();
 
-    // 注入 TUI 审批提供者
+    // 注入编辑器审批提供者（替代 overlay 方案，审批面板融入编辑器区域）
     this.approvalManager.setProvider({
       requestApproval: async (request) => {
-        // TUI 可能未启动（在 constructor 阶段），需要检查
         try {
-          return await showApprovalDialog(this.tui, request);
+          // 在编辑器区域显示审批选项（无需额外输出，审批面板已包含工具信息）
+          return await new Promise<{ approved: boolean; scope?: 'once' | 'session' }>((resolve) => {
+            const options: ApprovalOption[] = [
+              {
+                key: '1',
+                label: '允许本次',
+                action: () => resolve({ approved: true, scope: 'once' }),
+              },
+              {
+                key: '2',
+                label: '本次会话始终允许',
+                action: () => resolve({ approved: true, scope: 'session' }),
+              },
+              {
+                key: '3',
+                label: '拒绝',
+                action: () => resolve({ approved: false }),
+              },
+            ];
+
+            this.editor.enterApprovalMode(`是否允许工具 "${request.toolId}" 的调用？`, options);
+            this.tui.requestRender();
+          });
         } catch {
-          // TUI 不可用时自动拒绝
-          log.warn('TUI 不可用，自动拒绝审批', { toolId: request.toolId });
+          log.warn('审批过程异常，自动拒绝', { toolId: request.toolId });
           return { approved: false };
+        } finally {
+          // 清理审批状态
+          this.editor.exitApprovalMode();
+
+          // 如果 Agent 仍在执行，恢复 spinner
+          if (this._state === 'executing') {
+            this.editor.setExecuting(true, true);
+          }
+
+          this.tui.requestRender();
         }
       },
     });
@@ -1188,6 +1489,9 @@ export class ReplSession {
 
     // 注册 /compact 命令
     this.registry.register(this.createCompactCommand());
+
+    // 注册 /cache 命令
+    this.registry.register(createCacheCommand());
 
     // 设置 autocomplete provider
     this.buildAutocompleteProvider();
@@ -1255,6 +1559,9 @@ export class ReplSession {
     // 存储 facade 引用，供子 Agent 共享
     agent.llmFacade = facade;
 
+    // 设置缓存保留期
+    agent.innerAgent.cacheRetention = this.config.agentRuntime?.cacheRetention;
+
     // 应用压缩配置
     const compactionConfig = this.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
     agent.compactor.updateConfig(compactionConfig);
@@ -1270,7 +1577,7 @@ export class ReplSession {
       const key = facade.getApiKey(defaultModelInfo.provider);
       if (!key) {
         const providerName = defaultModelInfo.provider;
-        const envVar = providerName.toUpperCase() + '_API_KEY';
+        const envVar = `${providerName.toUpperCase()}_API_KEY`;
         this.outputArea.append([
           chalk.red(`[!] 提供商 "${providerName}" 没有配置 API Key`),
           chalk.yellow(`    请设置环境变量: export ${envVar}=<your-key>`),
@@ -1511,8 +1818,18 @@ export class ReplSession {
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
 
-    // Ctrl+O: 打开外部编辑器
+    // Ctrl+O: 展开/折叠 Agent 状态栏（优先），或打开外部编辑器
+    this.editor.onToggleAgentBar = () => {
+      this.agentStatusBar.toggle();
+      this.tui.requestRender();
+    };
     this.editor.onOpenEditor = () => this.openInEditor();
+
+    // Ctrl+T: 展开/折叠 TaskStatusBar
+    this.editor.onToggleTasks = () => {
+      this.taskStatusBar.toggle();
+      this.tui.requestRender();
+    };
   }
 
   /** 设置信号处理 */
@@ -1526,6 +1843,24 @@ export class ReplSession {
   private setupEventListeners(): void {
     eventBus.on('system:shutdown', ({ reason }) => {
       log.debug(`收到系统关闭信号: ${reason ?? '未知'}`);
+    });
+
+    // 监听 Agent 实例状态变更，驱动 UI 状态栏更新
+    const instanceManager = getAgentInstanceManager();
+    const refreshStatusBar = () => {
+      this.agentStatusBar.invalidate();
+      this.tui.requestRender();
+    };
+
+    instanceManager.on('instance:registered', refreshStatusBar);
+    instanceManager.on('instance:transitioned', refreshStatusBar);
+    instanceManager.on('instance:activity', refreshStatusBar);
+
+    // 关闭时清理监听器
+    eventBus.on('system:shutdown', () => {
+      instanceManager.off('instance:registered', refreshStatusBar);
+      instanceManager.off('instance:transitioned', refreshStatusBar);
+      instanceManager.off('instance:activity', refreshStatusBar);
     });
   }
 
@@ -1591,8 +1926,11 @@ export class ReplSession {
       }
       try {
         unlinkSync(tmpFile);
-      } catch {
-        // 临时文件清理失败可忽略
+      } catch (err) {
+        log.warn('临时文件清理失败', {
+          path: tmpFile,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   }
@@ -1692,6 +2030,8 @@ export class ReplSession {
 
           if (result.success) {
             const pct = (result.savingsRatio * 100).toFixed(0);
+            // 清空工具 schema 缓存，避免压缩后的会话使用旧 schema
+            this.agent.toolSchemaCache.clear();
             this.outputArea.append([
               chalk.green(
                 `  整理完成! ${result.beforeMessageCount} → ${result.afterMessageCount} 条消息`

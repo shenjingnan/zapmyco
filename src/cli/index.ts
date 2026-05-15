@@ -17,6 +17,19 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { startRepl } from '@/cli/repl/index';
 import { APP_NAME, VERSION } from '@/infra/constants';
+import { logger } from '@/infra/logger';
+
+// ============ 全局异常处理 ============
+
+process.on('uncaughtException', (error) => {
+  logger.error('未捕获的异常', { type: 'uncaughtException' }, error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  logger.error('未处理的 Promise 拒绝', { type: 'unhandledRejection' }, error);
+});
 
 // ============ 主程序 ============
 
@@ -38,8 +51,8 @@ program.action(async (options?: { verbose?: boolean }) => {
     }
     await startRepl();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red('REPL 启动失败:'), message);
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error('REPL 启动失败', undefined, err);
     process.exit(1);
   }
 });

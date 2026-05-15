@@ -15,6 +15,8 @@
       "duration": "Duration:",
       "token": "Token:",
       "cost": "Cost:",
+      "cacheHit": "Cache hit:",
+      "cacheWrite": "Cache write:",
       "taskBreakdown": "Task Breakdown",
       "subtaskCount": "subtasks",
       "artifacts": "Artifacts:",
@@ -167,7 +169,7 @@
     }
   },
   "session": {
-    "welcome": "ZapMyco: Welcome back!",
+    "welcome": "Welcome back!",
     "errorPrefix": "[Error]",
     "agentErrorMessage": "Agent execution failed (no detailed error information)",
     "noContentError": "Model returned no content, please check your API Key configuration",

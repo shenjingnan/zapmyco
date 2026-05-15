@@ -38,6 +38,8 @@ export const researcherType: AgentTypeDefinition = {
   source: 'builtin',
   maxTurns: 30,
   maxSpawnDepth: 0,
+  /** 信息搜集、文档查找等任务可用轻量模型降低成本 — 使用 lightModel（如 claude-haiku） */
+  model: 'light',
   color: '#3498db',
 
   getSystemPrompt(ctx: AgentSystemPromptContext): string {

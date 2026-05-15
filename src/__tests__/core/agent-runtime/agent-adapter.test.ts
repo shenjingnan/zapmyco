@@ -194,7 +194,7 @@ describe('LlmBasedAgent', () => {
       }
     });
 
-    it('should include upstream results in system prompt', async () => {
+    it('should include upstream results as dynamic context messages', async () => {
       const agent = new LlmBasedAgent({
         agentId: 'a1',
         displayName: 'A1',
@@ -217,14 +217,22 @@ describe('LlmBasedAgent', () => {
               inputTokens: 10,
               outputTokens: 20,
               totalTokens: 30,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
               estimatedCostUsd: 0.001,
             },
           },
         ],
       });
 
-      // System prompt should contain upstream info
-      expect(agent.innerAgent.state.systemPrompt).toContain('上游任务结果');
+      // Dynamic content should be passed as messages, not in system prompt
+      expect(mockPrompt).toHaveBeenCalled();
+      const callArgs = mockPrompt.mock.calls[0]?.[0];
+      expect(Array.isArray(callArgs)).toBe(true);
+      // The prepended message should contain upstream results
+      expect(JSON.stringify(callArgs)).toContain('上游任务结果');
+      // System prompt should NOT contain upstream results
+      expect(agent.innerAgent.state.systemPrompt).not.toContain('上游任务结果');
     });
   });
 

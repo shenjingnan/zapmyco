@@ -7,8 +7,10 @@
  * @module core/agent-team
  */
 
+import { EventEmitter } from 'node:events';
 import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type {
+  AgentCurrentActivity,
   AgentInstance,
   AgentInstanceState,
   AgentTaskSpec,
@@ -43,7 +45,26 @@ const TERMINAL_STATES: AgentInstanceState[] = ['completed', 'failed', 'cancelled
  * 单例模式，全局唯一。
  * 维护所有活跃和已完成的 Agent 实例的运行状态。
  */
-export class AgentInstanceManager {
+/** AgentInstanceManager 事件类型 */
+export type AgentInstanceManagerEvent = {
+  'instance:registered': { instanceId: string; typeId: string; depth: number };
+  'instance:transitioned': {
+    instanceId: string;
+    typeId: string;
+    from: AgentInstanceState;
+    to: AgentInstanceState;
+  };
+  'instance:activity': { instanceId: string; typeId: string; activity: AgentCurrentActivity };
+};
+
+/**
+ * Agent 实例管理器
+ *
+ * 单例模式，全局唯一。
+ * 维护所有活跃和已完成的 Agent 实例的运行状态。
+ * 继承 EventEmitter 以支持 UI 组件实时监听状态变更。
+ */
+export class AgentInstanceManager extends EventEmitter {
   /** 实例注册表（按 instanceId 索引） */
   private instances: Map<string, AgentInstance> = new Map();
 
@@ -96,6 +117,13 @@ export class AgentInstanceManager {
       parentInstanceId,
     });
 
+    // 发射注册事件（驱动 UI 状态栏更新）
+    this.emit('instance:registered', {
+      instanceId: instance.instanceId,
+      typeId: instance.typeId,
+      depth,
+    });
+
     return instance;
   }
 
@@ -126,15 +154,52 @@ export class AgentInstanceManager {
       return false;
     }
 
+    const oldStatus = instance.status;
     instance.status = newStatus;
     log.debug('Agent 实例状态转换', {
       instanceId,
       typeId: instance.typeId,
-      from: instance.status,
+      from: oldStatus,
+      to: newStatus,
+    });
+
+    // 发射状态变更事件（驱动 UI 状态栏更新）
+    this.emit('instance:transitioned', {
+      instanceId,
+      typeId: instance.typeId,
+      from: oldStatus,
       to: newStatus,
     });
 
     return true;
+  }
+
+  /**
+   * 更新实例当前活动信息（供 UI 状态栏实时展示）
+   *
+   * @param instanceId - 实例 ID
+   * @param activity - 活动信息（工具名称、调用次数、参数等）
+   */
+  setActivity(instanceId: string, activity: AgentCurrentActivity): void {
+    const instance = this.instances.get(instanceId);
+    if (!instance) return;
+
+    instance.currentActivity = activity;
+
+    this.emit('instance:activity', {
+      instanceId,
+      typeId: instance.typeId,
+      activity,
+    });
+  }
+
+  /**
+   * 获取实例当前活动信息
+   *
+   * @param instanceId - 实例 ID
+   */
+  getActivity(instanceId: string): AgentCurrentActivity | undefined {
+    return this.instances.get(instanceId)?.currentActivity;
   }
 
   // ============ 查询 ============

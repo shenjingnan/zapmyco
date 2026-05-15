@@ -33,6 +33,12 @@ export async function startRepl(): Promise<void> {
   if (config.logging?.file) {
     configureLogger({ logFilePath: config.logging.file });
   }
+  if (config.logging?.maxFileSize !== undefined) {
+    configureLogger({ maxFileSize: config.logging.maxFileSize });
+  }
+  if (config.logging?.retentionDays !== undefined) {
+    configureLogger({ retentionDays: config.logging.retentionDays });
+  }
 
   // --verbose 标志或环境变量：启用 debug 级别 + 对话记录
   const isVerbose = process.env.ZAPMYCO_LOG_CONVERSATION === '1';

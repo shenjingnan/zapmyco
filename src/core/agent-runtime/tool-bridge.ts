@@ -107,7 +107,7 @@ export function toAgentTool(registration: ToolRegistration): AgentTool {
  * @returns AgentTool 数组
  */
 export function toAgentTools(registrations: ToolRegistration[]): AgentTool[] {
-  return registrations.map(toAgentTool);
+  return registrations.map(toAgentTool).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**

@@ -33,7 +33,7 @@ vi.mock('../token-tracker', () => ({
   TokenTracker: vi.fn(),
 }));
 
-vi.mock('@mariozechner/pi-ai', () => ({
+vi.mock('@earendil-works/pi-ai', () => ({
   complete: mockPiComplete,
 }));
 

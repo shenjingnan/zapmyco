@@ -59,6 +59,21 @@ export async function connectMcpServer(
 
     const transport = new StdioClientTransport(transportOptions);
 
+    // 监听子进程 stderr 输出并记录到日志
+    if (transport.stderr) {
+      transport.stderr.on('data', (chunk: Buffer) => {
+        const text = chunk.toString().trim();
+        if (text) {
+          log.warn(`[${serverName} stderr] ${text}`);
+        }
+      });
+      transport.stderr.on('error', (stderrErr: Error) => {
+        log.warn(`MCP server "${serverName}" stderr 流错误`, {
+          error: stderrErr.message,
+        });
+      });
+    }
+
     // 处理 AbortSignal
     if (signal) {
       if (signal.aborted) return null;
@@ -105,13 +120,17 @@ export async function connectMcpServer(
 export async function closeMcpServer(conn: McpConnection): Promise<void> {
   try {
     await conn.transport.close();
-  } catch {
-    // 忽略 transport 关闭错误
+  } catch (err) {
+    log.warn(`MCP server "${conn.serverName}" transport 关闭失败`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
   try {
     await conn.client.close();
-  } catch {
-    // 忽略 client 关闭错误
+  } catch (err) {
+    log.warn(`MCP server "${conn.serverName}" client 关闭失败`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
   log.debug(`MCP server "${conn.serverName}" 已断开`);
 }

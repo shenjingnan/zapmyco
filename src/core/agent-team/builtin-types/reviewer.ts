@@ -38,6 +38,8 @@ export const reviewerType: AgentTypeDefinition = {
   source: 'builtin',
   maxTurns: 40,
   maxSpawnDepth: 0,
+  /** 代码审查需要深度分析能力 — 使用 analysisModel（如 claude-opus） */
+  model: 'analysis',
   color: '#e74c3c',
 
   getSystemPrompt(ctx: AgentSystemPromptContext): string {

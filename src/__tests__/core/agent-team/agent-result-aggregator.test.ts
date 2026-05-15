@@ -17,6 +17,8 @@ function makeResult(
       inputTokens: 100,
       outputTokens: 50,
       totalTokens: 150,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       estimatedCostUsd: 0,
     },
   };
@@ -99,6 +101,8 @@ describe('agent-result-aggregator', () => {
             inputTokens: 10,
             outputTokens: 20,
             totalTokens: 30,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
             estimatedCostUsd: 0.001,
           },
         }),
@@ -107,6 +111,8 @@ describe('agent-result-aggregator', () => {
             inputTokens: 40,
             outputTokens: 50,
             totalTokens: 90,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
             estimatedCostUsd: 0.002,
           },
         }),
@@ -122,7 +128,14 @@ describe('agent-result-aggregator', () => {
 
     it('should handle zero token usage', () => {
       const result = makeResult({
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       });
 
       const teamResult = aggregateResults('team-5', [result]);

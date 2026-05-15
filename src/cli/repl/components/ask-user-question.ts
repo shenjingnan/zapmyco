@@ -11,7 +11,13 @@
  * @module cli/repl/components/ask-user-question
  */
 
-import type { Component, OverlayHandle, OverlayOptions, TUI } from '@mariozechner/pi-tui';
+import {
+  type Component,
+  matchesKey,
+  type OverlayHandle,
+  type OverlayOptions,
+  type TUI,
+} from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import type {
   AskUserQuestionParams,
@@ -99,7 +105,7 @@ export class AskUserQuestionComponent implements Component {
 
   handleInput(data: string): void {
     // 全局快捷键
-    if (data === 'escape' || data === 'q') {
+    if (matchesKey(data, 'escape') || data === 'q') {
       if (this.phase === 'other_input') {
         this.phase = 'answering';
         return;
@@ -145,78 +151,86 @@ export class AskUserQuestionComponent implements Component {
       return;
     }
 
-    switch (data) {
-      case 'up':
-      case 'k':
-        if (this.selectedOptionIndex > 0) {
-          this.selectedOptionIndex--;
-        }
-        return;
+    // 方向键 / Vim 风格导航
+    if (matchesKey(data, 'up') || data === 'k') {
+      if (this.selectedOptionIndex > 0) {
+        this.selectedOptionIndex--;
+      }
+      return;
+    }
 
-      case 'down':
-      case 'j':
+    if (matchesKey(data, 'down') || data === 'j') {
+      if (this.selectedOptionIndex < optionCount) {
+        this.selectedOptionIndex++;
+      }
+      return;
+    }
+
+    // Space 切换多选
+    if (matchesKey(data, 'space')) {
+      if (q.multiSelect && this.selectedOptionIndex < optionCount) {
+        this.toggleOption(this.selectedOptionIndex);
+      }
+      return;
+    }
+
+    // Tab / Shift+Tab 问题切换
+    if (matchesKey(data, 'tab')) {
+      this.advanceQuestion();
+      return;
+    }
+
+    if (matchesKey(data, 'shift+tab')) {
+      if (this.currentQuestionIndex > 0) {
+        this.currentQuestionIndex--;
+        this.selectedOptionIndex = 0;
+      }
+      return;
+    }
+
+    // Enter 确认
+    if (matchesKey(data, 'enter')) {
+      if (q.multiSelect) {
+        // 多选：确认当前选择集，前进
+        if (state.selectedLabels.length > 0) {
+          this.advanceQuestion();
+        }
+      } else {
+        // 单选：确认当前选项
         if (this.selectedOptionIndex < optionCount) {
-          this.selectedOptionIndex++;
+          this.selectOption(this.selectedOptionIndex);
+          this.advanceQuestion();
+        } else if (this.selectedOptionIndex === optionCount) {
+          this.enterOtherInput();
         }
-        return;
+      }
+      return;
+    }
 
-      case ' ': // Space 切换多选
-        if (q.multiSelect && this.selectedOptionIndex < optionCount) {
-          this.toggleOption(this.selectedOptionIndex);
-        }
-        return;
+    // Other 输入
+    if (data === 'o') {
+      this.enterOtherInput();
+      return;
+    }
 
-      case 'tab':
-        this.advanceQuestion();
-        return;
+    // 预览切换
+    if (data === 'p') {
+      this.showPreview = !this.showPreview;
+      return;
+    }
 
-      case 'shift+tab':
-        if (this.currentQuestionIndex > 0) {
-          this.currentQuestionIndex--;
-          this.selectedOptionIndex = 0;
-        }
-        return;
-
-      case 'enter':
-        if (q.multiSelect) {
-          // 多选：确认当前选择集，前进
-          if (state.selectedLabels.length > 0) {
-            this.advanceQuestion();
-          }
-        } else {
-          // 单选：确认当前选项
-          if (this.selectedOptionIndex < optionCount) {
-            this.selectOption(this.selectedOptionIndex);
-            this.advanceQuestion();
-          } else if (this.selectedOptionIndex === optionCount) {
-            this.enterOtherInput();
-          }
-        }
-        return;
-
-      case 'o':
-        this.enterOtherInput();
-        return;
-
-      case 'p':
-        this.showPreview = !this.showPreview;
-        return;
-
-      case 'h':
-      case 'backspace':
-        if (this.currentQuestionIndex > 0) {
-          this.currentQuestionIndex--;
-          this.selectedOptionIndex = 0;
-        }
-        return;
-
-      default:
-        break;
+    // 返回上一题
+    if (data === 'h' || matchesKey(data, 'backspace')) {
+      if (this.currentQuestionIndex > 0) {
+        this.currentQuestionIndex--;
+        this.selectedOptionIndex = 0;
+      }
+      return;
     }
   }
 
   private handleOtherInput(data: string): void {
-    if (data === 'enter') {
+    if (matchesKey(data, 'enter')) {
       // 确认自定义输入
       const trimmed = this.otherInputValue.trim();
       if (trimmed) {
@@ -230,13 +244,13 @@ export class AskUserQuestionComponent implements Component {
       return;
     }
 
-    if (data === 'escape') {
+    if (matchesKey(data, 'escape')) {
       this.otherInputValue = '';
       this.phase = 'answering';
       return;
     }
 
-    if (data === 'backspace' || data === '\x7f' || data === '\b') {
+    if (matchesKey(data, 'backspace') || data === '\x7f' || data === '\b') {
       this.otherInputValue = this.otherInputValue.slice(0, -1);
       return;
     }
@@ -248,11 +262,11 @@ export class AskUserQuestionComponent implements Component {
   }
 
   private handleReviewingInput(data: string): void {
-    if (data === 'enter') {
+    if (matchesKey(data, 'enter')) {
       this.submitAnswers();
       return;
     }
-    if (data === 'escape') {
+    if (matchesKey(data, 'escape')) {
       this.phase = 'answering';
       this.currentQuestionIndex = this.questions.length - 1;
       this.selectedOptionIndex = 0;

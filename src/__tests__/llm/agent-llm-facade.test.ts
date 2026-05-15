@@ -2,7 +2,7 @@
  * AgentLlmFacade 测试
  */
 
-import type { Model } from '@mariozechner/pi-ai';
+import type { Model } from '@earendil-works/pi-ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlmConfig } from '@/config/types';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';

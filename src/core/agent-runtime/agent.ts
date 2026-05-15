@@ -7,7 +7,7 @@
  * @module core/agent-runtime/agent
  */
 
-import type { ThinkingLevel } from '@mariozechner/pi-ai';
+import type { ThinkingLevel } from '@earendil-works/pi-ai';
 import {
   type ImageContent,
   type Message,
@@ -16,7 +16,8 @@ import {
   type TextContent,
   type ThinkingBudgets,
   type Transport,
-} from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-ai';
+import { logger } from '@/infra/logger';
 import { runAgentLoop, runAgentLoopContinue } from './agent-loop';
 import type {
   AfterToolCallContext,
@@ -193,6 +194,7 @@ export class Agent {
 
   private activeRun: ActiveRun | undefined;
   public sessionId: string | undefined;
+  public cacheRetention: 'none' | 'short' | 'long' | undefined;
   public thinkingBudgets: ThinkingBudgets | undefined;
   public transport: Transport | undefined;
   public maxRetryDelayMs: number | undefined;
@@ -203,6 +205,7 @@ export class Agent {
     // 使用 as any 绕过 exactOptionalPropertyTypes 的严格限制
     // 这些属性在运行时始终正确初始化
     this.convertToLlm = (options.convertToLlm ?? defaultConvertToLlm) as never;
+    this.cacheRetention = options.cacheRetention as never;
     this.transformContext = options.transformContext as never;
     this.streamFn = (options.streamFn ?? streamSimple) as never;
     this.getApiKey = options.getApiKey as never;
@@ -422,6 +425,7 @@ export class Agent {
           : this._state.thinkingLevel,
       convertToLlm: this.convertToLlm!,
       sessionId: this.sessionId as never,
+      cacheRetention: this.cacheRetention as never,
       transformContext: this.transformContext as never,
       getApiKey: this.getApiKey as never,
       shouldStopAfterTurn: undefined as never,
@@ -478,6 +482,13 @@ export class Agent {
   }
 
   private async handleRunFailure(error: unknown, aborted: boolean): Promise<void> {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(
+      'Agent 运行失败',
+      { aborted, model: this._state.model.id },
+      error instanceof Error ? error : undefined
+    );
+
     const failureMessage: AgentMessage = {
       role: 'assistant',
       content: [{ type: 'text', text: '' }],
@@ -486,7 +497,7 @@ export class Agent {
       model: this._state.model.id,
       usage: EMPTY_USAGE,
       stopReason: aborted ? 'aborted' : 'error',
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage,
       timestamp: Date.now(),
     } as AgentMessage;
     this._state.messages.push(failureMessage);

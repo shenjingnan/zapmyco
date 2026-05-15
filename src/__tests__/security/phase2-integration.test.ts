@@ -21,7 +21,18 @@ import { createToolInfoResolver, ToolGuard } from '@/security/tool-guard';
 import type { SandboxConfig } from '@/security/types';
 
 // Mock ToolRegistration
-function mockTool(overrides: { id?: string; label?: string; risk?: string } = {}) {
+function mockTool(
+  overrides: {
+    id?: string;
+    label?: string;
+    risk?: string;
+    checkPermission?: (params: Record<string, unknown>) => {
+      risk: string;
+      requiresApproval: boolean;
+      reason?: string;
+    };
+  } = {}
+) {
   return {
     id: overrides.id ?? 'TestTool',
     label: overrides.label ?? 'Test Tool',
@@ -34,6 +45,7 @@ function mockTool(overrides: { id?: string; label?: string; risk?: string } = {}
       }),
     parameters: { type: 'object' as const, properties: {}, required: [] as string[] },
     defaultRisk: (overrides.risk ?? 'low') as 'low' | 'medium' | 'high' | 'critical',
+    checkPermission: overrides.checkPermission,
   } as import('@/core/agent-runtime/tool-bridge').ToolRegistration;
 }
 
@@ -88,9 +100,19 @@ describe('Phase 2 集成测试', () => {
 
     it('should log APPROVAL_GRANTED when approved', async () => {
       const auditLogger = new AuditLogger({ level: 'normal' }, 'integration-test');
-      const config = resolveConfig({ mode: 'normal', defaultAction: 'ask' });
+      const config = resolveConfig({ mode: 'normal' });
       const store = new PermissionStore();
-      const resolver = createToolInfoResolver([mockTool({ id: 'TestTool', risk: 'medium' })]);
+      // 使用 checkPermission 返回 requiresApproval 模拟危险 shell 命令审批场景
+      const dangerousTool = mockTool({
+        id: 'Exec',
+        risk: 'medium',
+        checkPermission: () => ({
+          risk: 'high',
+          requiresApproval: true,
+          reason: 'dangerous command',
+        }),
+      });
+      const resolver = createToolInfoResolver([dangerousTool]);
       const engine = new PermissionEngine(config, store, resolver);
       const approvalManager = new ApprovalManager();
 
@@ -100,7 +122,7 @@ describe('Phase 2 集成测试', () => {
       });
 
       const guard = new ToolGuard(engine, approvalManager, store, undefined, auditLogger);
-      const wrapped = guard.wrap(mockTool({ id: 'TestTool', risk: 'medium' }));
+      const wrapped = guard.wrap(dangerousTool);
       await wrapped.execute('call-1', {});
 
       const stats = auditLogger.getStats();

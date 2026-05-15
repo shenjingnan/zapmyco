@@ -25,6 +25,14 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => true),
 }));
 
+// Mock matchesKey — 测试中使用解析后的键名（如 'escape'）进行比较
+vi.mock('@mariozechner/pi-tui', async (importOriginal) => {
+  const actual = await importOriginal();
+  return Object.assign({}, actual, {
+    matchesKey: vi.fn((data: string, key: string) => data === key),
+  });
+});
+
 // ============ Mock helpers ============
 
 interface MockTui {
@@ -110,7 +118,7 @@ function createMockSession(tui?: MockTui): ReplSession {
 async function waitForComponent(captured: Component[], index: number): Promise<Component> {
   return vi.waitFor(() => {
     expect(captured.length).toBeGreaterThan(index);
-    return captured[index]!;
+    return captured[index] as Component;
   });
 }
 
@@ -240,7 +248,7 @@ describe('/settings command', () => {
       const handlerPromise = cmd.handler([], session);
       await waitForComponent(mockTui.capturedComponents, 0);
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
 
       // handler completed without error
@@ -255,7 +263,7 @@ describe('/settings command', () => {
       const handlerPromise = cmd.handler([], session);
       await waitForComponent(mockTui.capturedComponents, 0);
 
-      exitSelection(mockTui.capturedComponents[0]!);
+      exitSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
 
       expect(session.shutdown).not.toHaveBeenCalled();
@@ -269,7 +277,7 @@ describe('/settings command', () => {
       const handlerPromise = cmd.handler([], session);
       await waitForComponent(mockTui.capturedComponents, 0);
 
-      backSelection(mockTui.capturedComponents[0]!);
+      backSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
 
       expect(session.shutdown).not.toHaveBeenCalled();
@@ -284,7 +292,7 @@ describe('/settings command', () => {
       await waitForComponent(mockTui.capturedComponents, 0);
 
       // Select "View Config"
-      selectItem(mockTui.capturedComponents[0]!, 'view-config');
+      selectItem(mockTui.capturedComponents[0] as Component, 'view-config');
 
       // Config view overlay should appear (not appendOutput)
       const configView = await waitForComponent(mockTui.capturedComponents, 1);
@@ -297,7 +305,7 @@ describe('/settings command', () => {
       await waitForComponent(mockTui.capturedComponents, 2);
 
       // Cancel to exit
-      cancelSelection(mockTui.capturedComponents[2]!);
+      cancelSelection(mockTui.capturedComponents[2] as Component);
       await handlerPromise;
     });
   });
@@ -321,7 +329,7 @@ describe('/settings command', () => {
       menu.handleInput('/');
       expect(menu.isFiltering).toBe(true);
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -357,7 +365,7 @@ describe('/settings command', () => {
         expect(item.value.toLowerCase()).toContain('ma');
       }
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -385,7 +393,7 @@ describe('/settings command', () => {
       menu.handleInput('\x7f');
       expect(menu.filterText).toBe('a');
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -415,7 +423,7 @@ describe('/settings command', () => {
       expect(menu.isFiltering).toBe(false);
       expect(menu.filterText).toBe('');
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -447,7 +455,7 @@ describe('/settings command', () => {
       const searchBar = linesAfter.find((l) => l.includes('/test'));
       expect(searchBar).toBeDefined();
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -472,7 +480,7 @@ describe('/settings command', () => {
       menu.handleInput('enter');
       expect(menu.isFiltering).toBe(false);
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -500,7 +508,7 @@ describe('/settings command', () => {
       expect(exitCalled).toBe(true);
 
       // cleanup: onCancel still works (not overridden), resolves the promise
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -526,7 +534,7 @@ describe('/settings command', () => {
       menu.handleInput('h');
       expect(backCalled).toBe(true);
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -552,7 +560,7 @@ describe('/settings command', () => {
       menu.handleInput('backspace');
       expect(backCalled).toBe(true);
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
 
@@ -589,7 +597,7 @@ describe('/settings command', () => {
       expect(cancelCalled).toBe(false);
 
       // cleanup: onCancel chains to original, resolves the promise
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
   });
@@ -604,7 +612,7 @@ describe('/settings command', () => {
       await waitForComponent(mockTui.capturedComponents, 0);
 
       // Select "Default Model"
-      selectItem(mockTui.capturedComponents[0]!, 'default-model');
+      selectItem(mockTui.capturedComponents[0] as Component, 'default-model');
 
       // Wait for model list to appear
       await waitForComponent(mockTui.capturedComponents, 1);
@@ -623,9 +631,7 @@ describe('/settings command', () => {
       const firstEnabledIdx = items.findIndex(
         (item) => !item.description || item.description === ''
       );
-      const firstDisabledIdx = items.findIndex(
-        (item) => item.description && item.description.includes('未配置')
-      );
+      const firstDisabledIdx = items.findIndex((item) => item.description?.includes('未配置'));
 
       // Enabled items should come before disabled (if both exist)
       if (firstDisabledIdx >= 0 && firstEnabledIdx >= 0) {
@@ -633,11 +639,11 @@ describe('/settings command', () => {
       }
 
       // Cancel back to main menu
-      cancelSelection(mockTui.capturedComponents[1]!);
+      cancelSelection(mockTui.capturedComponents[1] as Component);
 
       // Cancel main menu to exit
       await waitForComponent(mockTui.capturedComponents, 2);
-      cancelSelection(mockTui.capturedComponents[2]!);
+      cancelSelection(mockTui.capturedComponents[2] as Component);
       await handlerPromise;
     });
 
@@ -650,13 +656,13 @@ describe('/settings command', () => {
       await waitForComponent(mockTui.capturedComponents, 0);
 
       // Select "视觉模型"
-      selectItem(mockTui.capturedComponents[0]!, 'vision-model');
+      selectItem(mockTui.capturedComponents[0] as Component, 'vision-model');
 
       // Wait for model list to appear
       await waitForComponent(mockTui.capturedComponents, 1);
 
       // Select a model
-      selectItem(mockTui.capturedComponents[1]!, 'deepseek/deepseek-chat');
+      selectItem(mockTui.capturedComponents[1] as Component, 'deepseek/deepseek-chat');
 
       // Wait for main menu to re-render
       await waitForComponent(mockTui.capturedComponents, 2);
@@ -666,7 +672,7 @@ describe('/settings command', () => {
       const llm = finalConfig.llm as Record<string, unknown>;
       expect(llm.visionModel).toBe('deepseek/deepseek-chat');
 
-      cancelSelection(mockTui.capturedComponents[2]!);
+      cancelSelection(mockTui.capturedComponents[2] as Component);
       await handlerPromise;
     });
 
@@ -679,13 +685,13 @@ describe('/settings command', () => {
       await waitForComponent(mockTui.capturedComponents, 0);
 
       // Select "轻量模型"
-      selectItem(mockTui.capturedComponents[0]!, 'light-model');
+      selectItem(mockTui.capturedComponents[0] as Component, 'light-model');
 
       // Wait for model list to appear
       await waitForComponent(mockTui.capturedComponents, 1);
 
       // Select a model
-      selectItem(mockTui.capturedComponents[1]!, 'deepseek/deepseek-chat');
+      selectItem(mockTui.capturedComponents[1] as Component, 'deepseek/deepseek-chat');
 
       // Wait for main menu to re-render
       await waitForComponent(mockTui.capturedComponents, 2);
@@ -695,7 +701,7 @@ describe('/settings command', () => {
       const llm = finalConfig.llm as Record<string, unknown>;
       expect(llm.lightModel).toBe('deepseek/deepseek-chat');
 
-      cancelSelection(mockTui.capturedComponents[2]!);
+      cancelSelection(mockTui.capturedComponents[2] as Component);
       await handlerPromise;
     });
 
@@ -708,13 +714,13 @@ describe('/settings command', () => {
       await waitForComponent(mockTui.capturedComponents, 0);
 
       // Select "分析模型"
-      selectItem(mockTui.capturedComponents[0]!, 'analysis-model');
+      selectItem(mockTui.capturedComponents[0] as Component, 'analysis-model');
 
       // Wait for model list to appear
       await waitForComponent(mockTui.capturedComponents, 1);
 
       // Select a model
-      selectItem(mockTui.capturedComponents[1]!, 'deepseek/deepseek-chat');
+      selectItem(mockTui.capturedComponents[1] as Component, 'deepseek/deepseek-chat');
 
       // Wait for main menu to re-render
       await waitForComponent(mockTui.capturedComponents, 2);
@@ -724,7 +730,7 @@ describe('/settings command', () => {
       const llm = finalConfig.llm as Record<string, unknown>;
       expect(llm.analysisModel).toBe('deepseek/deepseek-chat');
 
-      cancelSelection(mockTui.capturedComponents[2]!);
+      cancelSelection(mockTui.capturedComponents[2] as Component);
       await handlerPromise;
     });
 
@@ -762,7 +768,7 @@ describe('/settings command', () => {
       expect(lightIdx).toBeLessThan(manageIdx);
       expect(analysisIdx).toBeLessThan(manageIdx);
 
-      cancelSelection(mockTui.capturedComponents[0]!);
+      cancelSelection(mockTui.capturedComponents[0] as Component);
       await handlerPromise;
     });
   });

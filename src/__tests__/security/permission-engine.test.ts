@@ -36,24 +36,44 @@ describe('PermissionEngine', () => {
       expect(decision.requiresApproval).toBe(false);
     });
 
-    it('should ask for medium risk tools', () => {
+    it('should allow medium risk tools (no checkPermission)', () => {
       const config = resolveConfig({ mode: 'normal' });
       const store = new PermissionStore();
       const resolver = createResolver({ Exec: { defaultRisk: 'medium' } });
       const engine = new PermissionEngine(config, store, resolver);
 
       const decision = engine.evaluate('Exec', { command: 'ls' });
-      expect(decision.action).toBe('ask');
-      expect(decision.requiresApproval).toBe(true);
+      expect(decision.action).toBe('allow');
+      expect(decision.requiresApproval).toBe(false);
     });
 
-    it('should ask for high risk tools', () => {
+    it('should allow high risk tools (no checkPermission)', () => {
       const config = resolveConfig({ mode: 'normal' });
       const store = new PermissionStore();
       const resolver = createResolver({ SpawnSubAgents: { defaultRisk: 'high' } });
       const engine = new PermissionEngine(config, store, resolver);
 
       const decision = engine.evaluate('SpawnSubAgents', {});
+      expect(decision.action).toBe('allow');
+      expect(decision.requiresApproval).toBe(false);
+    });
+
+    it('should ask when tool checkPermission returns requiresApproval', () => {
+      const config = resolveConfig({ mode: 'normal' });
+      const store = new PermissionStore();
+      const resolver = createResolver({
+        Exec: {
+          defaultRisk: 'medium',
+          checkPermission: () => ({
+            risk: 'high',
+            requiresApproval: true,
+            reason: 'dangerous command',
+          }),
+        },
+      });
+      const engine = new PermissionEngine(config, store, resolver);
+
+      const decision = engine.evaluate('Exec', { command: 'rm -rf node_modules' });
       expect(decision.action).toBe('ask');
       expect(decision.requiresApproval).toBe(true);
     });

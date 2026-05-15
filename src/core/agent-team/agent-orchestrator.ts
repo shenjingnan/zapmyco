@@ -12,7 +12,12 @@
 import type { SubAgentConfig } from '@/config/types';
 import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
-import type { AgentTeamConfig, TeamResult, WorkerResult } from '@/core/agent-team/types';
+import type {
+  AgentCurrentActivity,
+  AgentTeamConfig,
+  TeamResult,
+  WorkerResult,
+} from '@/core/agent-team/types';
 import type { SubAgentResultEntry, SubAgentResults, SubAgentSpec } from '@/core/sub-agent/types';
 import type { WorktreeInfo } from '@/core/worktree/types';
 import { runInWorktree } from '@/core/worktree/worktree-context';
@@ -172,6 +177,7 @@ export class AgentOrchestrator {
     const depth = 1; // flat workers 在 depth=1
     const instanceId = `flat-${spec.id}-${Date.now()}`;
 
+    let stopRelay: (() => void) | undefined;
     try {
       // 1. 使用 Agent 类型系统创建隔离的子 Agent
       const agent = createAgentFromType(
@@ -207,11 +213,14 @@ export class AgentOrchestrator {
         depth
       );
 
-      // 3. 构建系统提示词（含上下文）
+      // 3. 监听子 Agent 进度事件，中继到 InstanceManager 驱动 UI 状态栏
+      stopRelay = this.#relayAgentProgress(agent, instanceId);
+
+      // 4. 构建系统提示词（含上下文）
       const systemPrompt = this.buildFlatSystemPrompt(spec, context);
       agent.systemPromptOverride = systemPrompt;
 
-      // 4. 带超时执行
+      // 5. 带超时执行
       const result = await Promise.race([
         agent.execute({
           taskId: `flat-${spec.id}`,
@@ -237,6 +246,9 @@ export class AgentOrchestrator {
 
       instanceManager.transition(instanceId, isSuccess ? 'completed' : 'failed');
 
+      // 停止进度中继
+      stopRelay();
+
       return {
         specId: spec.id,
         status: isSuccess ? 'success' : 'failure',
@@ -253,6 +265,12 @@ export class AgentOrchestrator {
         duration,
       });
 
+      // 清理进度中继（如已设置）
+      try {
+        stopRelay?.();
+      } catch {
+        /* ignore */
+      }
       // 尝试标记失败状态
       try {
         instanceManager.transition(instanceId, 'failed');
@@ -299,7 +317,14 @@ export class AgentOrchestrator {
         artifacts: [],
         error: { code: 'UNKNOWN_TYPE', message: `Agent 类型 '${typeId}' 未找到`, retryable: false },
         duration: 0,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
     }
 
@@ -331,7 +356,14 @@ export class AgentOrchestrator {
           retryable: false,
         },
         duration: 0,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
     }
 
@@ -340,6 +372,7 @@ export class AgentOrchestrator {
     const timeoutMs = options?.timeoutMs ?? this.flatConfig.taskTimeoutMs;
     let worktreeInfo: WorktreeInfo | undefined;
 
+    let stopRelay: (() => void) | undefined;
     try {
       // 1. 创建 Agent 实例
       const agent = createAgentFromType(
@@ -375,6 +408,8 @@ export class AgentOrchestrator {
         depth
       );
 
+      // 3. 监听子 Agent 进度事件，中继到 InstanceManager 驱动 UI 状态栏
+      stopRelay = this.#relayAgentProgress(agent, instanceId);
       // 3. 构建系统提示词（注入父 Agent 信息）
       const promptCtx: Parameters<typeof definition.getSystemPrompt>[0] = {
         taskDescription,
@@ -453,6 +488,8 @@ export class AgentOrchestrator {
           inputTokens: number;
           outputTokens: number;
           totalTokens: number;
+          cacheReadTokens: number;
+          cacheWriteTokens: number;
           estimatedCostUsd: number;
         };
         error?: { code: string; message: string; retryable: boolean };
@@ -479,6 +516,8 @@ export class AgentOrchestrator {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -511,9 +550,22 @@ export class AgentOrchestrator {
         artifacts: [],
         error: { code: 'EXECUTION_ERROR', message, retryable: false },
         duration,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
       };
     } finally {
+      // 停止进度中继
+      try {
+        stopRelay?.();
+      } catch {
+        /* ignore */
+      }
       // 清理 systemPromptOverride
       try {
         const instance = instanceManager.get(instanceId);
@@ -584,6 +636,54 @@ export class AgentOrchestrator {
   }
 
   // ============ 辅助方法 ============
+
+  /**
+   * 监听子 Agent 进度事件并中继到 InstanceManager
+   *
+   * 在子 Agent 执行工具调用时，更新其 AgentInstance 的 currentActivity，
+   * 驱动 UI 状态栏实时展示子 Agent 当前操作。
+   *
+   * @param agent - 子 Agent 实例
+   * @param instanceId - 对应的 InstanceManager 实例 ID
+   * @returns 清理函数，调用后移除事件监听
+   */
+  #relayAgentProgress(agent: LlmBasedAgent, instanceId: string): () => void {
+    const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
+      const instanceManager = getAgentInstanceManager();
+      const instance = instanceManager.get(instanceId);
+      if (!instance) return;
+
+      if (event.percent === 0) {
+        // 工具开始：更新当前活动信息
+        const toolName = event.message;
+        const prevUses = instance.currentActivity?.toolUses ?? 0;
+
+        // 解析工具名称和参数
+        const parenIdx = toolName.indexOf('(');
+        const namePart = parenIdx > 0 ? toolName.slice(0, parenIdx) : toolName;
+        const argsPart = parenIdx > 0 ? toolName.slice(parenIdx + 1, -1) : undefined;
+
+        const activity: AgentCurrentActivity = {
+          toolName: namePart,
+          toolUses: prevUses + 1,
+          ...(argsPart !== undefined ? { args: argsPart } : {}),
+          startedAt: Date.now(),
+        };
+
+        instanceManager.setActivity(instanceId, activity);
+      } else if (event.percent === 100 || event.percent === -1) {
+        // 工具结束或取消：不清除 activity，保留最后状态供 UI 查看
+        // 后续新工具开始时 toolUses 会继续累加
+      }
+    };
+
+    agent.on(agent.EVENT_PROGRESS, progressHandler);
+
+    // 返回清理函数
+    return () => {
+      agent.off(agent.EVENT_PROGRESS, progressHandler);
+    };
+  }
 
   /**
    * 为扁平子 Agent 构建系统提示词
