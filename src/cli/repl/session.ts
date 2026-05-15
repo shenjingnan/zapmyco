@@ -768,24 +768,25 @@ export class ReplSession {
           outputAccumulator = event.text;
           responseLineIndex = this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
         } else if (streamMode !== 'response') {
-          // 从 thinking 模式切换到 response：另起一行
+          // 从 thinking 模式切换到 response：移除 thinking 行，换为响应文本
           streamMode = 'response';
           // 停止 thinking 耗时计时器
           if (thinkingElapsedInterval) {
             clearInterval(thinkingElapsedInterval);
             thinkingElapsedInterval = undefined;
           }
-          // 更新 thinking header 显示完成耗时
-          if (thinkingHeaderLineIndex !== null && thinkingDisplayMode === 'collapse') {
-            const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
-            this.outputArea.updateLine(
-              thinkingHeaderLineIndex,
-              dimStyle(`  \u2234 Thinking (${elapsed}s)`)
-            );
-          }
           thinkingAccumulator = '';
           outputAccumulator = event.text;
-          responseLineIndex = this.outputArea.append([responseStyle(outputAccumulator)]);
+          // 移除 thinking header 行，在同一位置替换为响应文本
+          if (thinkingHeaderLineIndex !== null) {
+            this.outputArea.spliceLines(thinkingHeaderLineIndex, 1, [
+              responseStyle(outputAccumulator),
+            ]);
+            responseLineIndex = thinkingHeaderLineIndex;
+            thinkingHeaderLineIndex = null;
+          } else {
+            responseLineIndex = this.outputArea.append([responseStyle(outputAccumulator)]);
+          }
         } else {
           outputAccumulator += event.text;
           this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
@@ -880,16 +881,13 @@ export class ReplSession {
         if (event.taskId !== taskId) return;
 
         if (event.percent === 0) {
-          // 工具开始 → thinking 阶段结束，停止计时器
+          // 工具开始 → thinking 阶段结束，移除 thinking 行
           if (thinkingElapsedInterval && streamMode === 'thinking') {
             clearInterval(thinkingElapsedInterval);
             thinkingElapsedInterval = undefined;
-            if (thinkingHeaderLineIndex !== null && thinkingDisplayMode === 'collapse') {
-              const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
-              this.outputArea.updateLine(
-                thinkingHeaderLineIndex,
-                dimStyle(`  \u2234 Thinking (${elapsed}s)`)
-              );
+            if (thinkingHeaderLineIndex !== null) {
+              this.outputArea.spliceLines(thinkingHeaderLineIndex, 1, []);
+              thinkingHeaderLineIndex = null;
               this.tui.requestRender();
             }
           }
