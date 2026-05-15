@@ -7,7 +7,7 @@
  * @module cli/repl/components
  */
 
-import { Container } from '@mariozechner/pi-tui';
+import { Container, truncateToWidth } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
 import type { AgentInstance } from '@/core/agent-team/types';
@@ -148,7 +148,7 @@ export class AgentStatusBar extends Container {
       this.#lastActiveCount = 0;
       // 如果有 Token 信息，单独显示 Token 行
       if (this.hasTokenInfo) {
-        return [this.#renderTokenInfoLine().slice(0, width)];
+        return [truncateToWidth(this.#renderTokenInfoLine(), width)];
       }
       return [];
     }
@@ -172,13 +172,13 @@ export class AgentStatusBar extends Container {
       // 折叠模式：单行显示 Agent + 可选的 Token 信息行
       const lines: string[] = [];
       lines.push(
-        this.#renderCollapsed(frame, activeInstances.length, totalToolUses, totalDuration).slice(
-          0,
+        truncateToWidth(
+          this.#renderCollapsed(frame, activeInstances.length, totalToolUses, totalDuration),
           width
         )
       );
       if (this.hasTokenInfo) {
-        lines.push(this.#renderTokenInfoLine().slice(0, width));
+        lines.push(truncateToWidth(this.#renderTokenInfoLine(), width));
       }
       return lines;
     }
@@ -187,7 +187,7 @@ export class AgentStatusBar extends Container {
     const lines = this.#renderExpanded(frame, activeInstances, width);
     // 有 Token 信息时追加到末尾
     if (this.hasTokenInfo) {
-      lines.push(this.#renderTokenInfoLine().slice(0, width));
+      lines.push(truncateToWidth(this.#renderTokenInfoLine(), width));
     }
     return lines;
   }
@@ -210,7 +210,7 @@ export class AgentStatusBar extends Container {
     // 标题行
     const header = chalk.cyan(`  ${frame} Running ${count} agent${count > 1 ? 's' : ''}...`);
     const hint = chalk.dim('(ctrl+o to collapse)');
-    lines.push(`${header}  ${hint}`.slice(0, width));
+    lines.push(truncateToWidth(`${header}  ${hint}`, width));
 
     // 每个 Agent 的详情行
     for (let i = 0; i < instances.length; i++) {
@@ -229,13 +229,13 @@ export class AgentStatusBar extends Container {
       const toolUsesStr = act ? chalk.gray(`\u00B7 ${act.toolUses} tool uses`) : '';
       const durationStr = chalk.gray(`\u00B7 ${this.#formatDuration(Date.now() - inst.createdAt)}`);
       const line1 = `  ${chalk.dim(connector)}${statusColor(icon)}${chalk.reset} ${typeLabel}  ${chalk.dim(taskPreview)}  ${toolUsesStr} ${durationStr}`;
-      lines.push(line1.slice(0, width));
+      lines.push(truncateToWidth(line1, width));
 
       // 第二行：当前工具调用（如果有）
       if (act) {
         const toolDisplay = act.args ? `${act.toolName}: ${act.args.slice(0, 60)}` : act.toolName;
         const line2 = `  ${chalk.dim(childPrefix + TREE_CONT)}${chalk.cyan(toolDisplay)}`;
-        lines.push(line2.slice(0, width));
+        lines.push(truncateToWidth(line2, width));
       }
     }
 

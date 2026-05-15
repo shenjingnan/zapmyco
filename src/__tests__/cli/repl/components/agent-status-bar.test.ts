@@ -62,6 +62,13 @@ vi.mock('@mariozechner/pi-tui', () => ({
       /* prototype method for super.invalidate() */
     }
   },
+  truncateToWidth: (text: string, maxWidth: number) => {
+    if (maxWidth <= 0) return '';
+    if (text.length <= maxWidth) return text;
+    const target = maxWidth - 3;
+    if (target <= 0) return '.'.repeat(maxWidth);
+    return text.slice(0, target) + '...';
+  },
 }));
 
 // Mock agent-instance-manager
