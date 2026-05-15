@@ -203,13 +203,26 @@ export function dispatchToEventBus(event: AdaptedAgentEvent): void {
       break;
     }
 
-    case 'tool:start':
+    case 'tool:start': {
+      let message: string;
+      if (
+        event.toolName === 'Exec' &&
+        typeof event.args === 'object' &&
+        event.args !== null &&
+        'command' in event.args
+      ) {
+        const cmd = (event.args as Record<string, unknown>).command;
+        message = `$ ${typeof cmd === 'string' ? cmd : JSON.stringify(cmd)}`;
+      } else {
+        message = `${event.toolName}(${formatArgsDisplay(event.args)})`;
+      }
       eventBus.emit('task:progress', {
         taskId: event.taskId,
         percent: 0,
-        message: `${event.toolName}(${formatArgsDisplay(event.args)})`,
+        message,
       });
       break;
+    }
 
     case 'tool:update':
       eventBus.emit('task:progress', {
