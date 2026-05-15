@@ -10,7 +10,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import type { SkillEntry, SkillLoadConfig } from '@/core/skill/types';
+import type { Skill, SkillEntry, SkillLoadConfig } from '@/core/skill/types';
 
 // ============ 参数类型 ============
 
@@ -297,11 +297,47 @@ export function getSkillCommandSpecs(
 }
 
 /**
+ * 格式化 Skill 指令内容（供 Skill tool 和斜杠命令 handler 共用）
+ *
+ * 使用内存中已解析的 skill.body，无需重新读取 SKILL.md 文件。
+ *
+ * @param skill - Skill 定义（含 frontmatter、body、baseDir）
+ * @param args - 用户传递的参数（可选）
+ * @returns 格式化后的完整指令文本
+ */
+export function formatSkillContent(skill: Skill, args?: string): string {
+  // 变量替换（使用内存中的 body，无需重新读文件 + strip frontmatter）
+  const substituted = substituteVariables(skill.body, args, skill.baseDir, skill.name);
+
+  const hint = skill.frontmatter['argument-hint'] ? ` [${skill.frontmatter['argument-hint']}]` : '';
+
+  const instructionParts: string[] = [
+    `# Skill: ${skill.name}${hint}`,
+    '',
+    skill.description ? `> ${skill.description}` : '',
+    '',
+    '---',
+    '',
+    substituted,
+    '',
+    '---',
+    `Base directory: ${skill.baseDir}`,
+  ];
+
+  // 如果替换后的内容不包含原始参数字符串且参数非空，追加 ARGUMENTS 行
+  if (!substituted.includes(args ?? '') && args) {
+    instructionParts.push('', `ARGUMENTS: ${args}`);
+  }
+
+  return instructionParts.filter(Boolean).join('\n');
+}
+
+/**
  * 规范化技能命令名称
  *
  * 转换为小写，非字母数字字符替换为连字符。
  */
-function sanitizeSkillCommandName(name: string): string {
+export function sanitizeSkillCommandName(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, '-')

@@ -50,7 +50,13 @@ import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import { createTheme } from '@/cli/repl/theme';
 import { createLspTool } from '@/cli/repl/tools/lsp-tool';
 import { getMemoryStore } from '@/cli/repl/tools/memory-tool';
-import { getSkillCommandSpecs, setSkillEntries } from '@/cli/repl/tools/skill-tool';
+import {
+  formatSkillContent,
+  getSkillCommandSpecs,
+  getSkillEntries,
+  sanitizeSkillCommandName,
+  setSkillEntries,
+} from '@/cli/repl/tools/skill-tool';
 import type {
   HistoryStore,
   ParsedInput,
@@ -1767,13 +1773,25 @@ export class ReplSession {
         aliases: [],
         usage: spec.name,
         handler: async (args: string[]) => {
-          // 将 skill 调用作为 goal 发送给 Agent
           const argsStr = args.join(' ');
-          const goalInput = argsStr
-            ? `请使用 /${spec.name} 技能，参数: ${argsStr}`
-            : `请使用 /${spec.name} 技能`;
 
-          await this.executeGoal(goalInput);
+          // 直接解析技能内容，绕过 LLM 的 Skill 工具调用步骤
+          const currentEntries = getSkillEntries();
+          const entry = currentEntries.find(
+            (e) => sanitizeSkillCommandName(e.skill.name) === spec.name
+          );
+
+          if (entry) {
+            // 将格式化后的技能指令作为 goal 发送给 Agent（内容已展开，无需 LLM 再调用 Skill 工具）
+            const skillContent = formatSkillContent(entry.skill, argsStr);
+            await this.executeGoal(skillContent);
+          } else {
+            // Fallback：技能条目不存在（罕见情况），回退到通用描述
+            const goalInput = argsStr
+              ? `请使用 /${spec.name} 技能，参数: ${argsStr}`
+              : `请使用 /${spec.name} 技能`;
+            await this.executeGoal(goalInput);
+          }
         },
       });
     }
