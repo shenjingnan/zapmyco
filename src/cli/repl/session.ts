@@ -58,6 +58,7 @@ import type {
   SessionState,
   SessionStats,
 } from '@/cli/repl/types';
+import { formatMarkdown } from '@/cli/repl/utils/markdown-formatter';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
@@ -637,6 +638,7 @@ export class ReplSession {
     // 输出区 spinner 相关变量（需要跨 try/catch 访问）
     const colorEnabled = this.options.color;
     const userStyle = (s: string) => (colorEnabled ? chalk.bold.cyan(s) : s);
+    const markdownFormattingEnabled = this.config.cli.markdownFormatting !== false;
     const responseStyle = (s: string) => s;
     const toolStyle = (s: string) => (colorEnabled ? chalk.yellow(s) : s);
     const execStyle = (s: string) => (colorEnabled ? chalk.cyan(s) : s);
@@ -687,6 +689,8 @@ export class ReplSession {
       let outputAccumulator = '';
       let thinkingAccumulator = '';
       let streamMode: 'none' | 'response' | 'thinking' = 'response';
+      // 记录响应文本在 OutputArea 中的行索引（用于最后格式化）
+      let responseLineIndex: number | null = null;
 
       // Thinking 折叠/展开状态
       const thinkingDisplayMode = this.config.cli.thinkingDisplay ?? 'collapse';
@@ -753,7 +757,7 @@ export class ReplSession {
           streamMode = 'response';
           thinkingAccumulator = '';
           outputAccumulator = event.text;
-          this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
+          responseLineIndex = this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
         } else if (streamMode !== 'response') {
           // 从 thinking 模式切换到 response：另起一行
           streamMode = 'response';
@@ -772,7 +776,7 @@ export class ReplSession {
           }
           thinkingAccumulator = '';
           outputAccumulator = event.text;
-          this.outputArea.append([responseStyle(outputAccumulator)]);
+          responseLineIndex = this.outputArea.append([responseStyle(outputAccumulator)]);
         } else {
           outputAccumulator += event.text;
           this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
@@ -1095,6 +1099,30 @@ export class ReplSession {
         });
       }
       // 注意：成功时不再追加 outputText，流式事件（EVENT_OUTPUT）已经实时输出了全部内容
+
+      // Markdown 格式化：对 Agent 输出应用 ANSI 样式（标题加粗、表格对齐、代码块着色等）
+      if (markdownFormattingEnabled && taskResult.status === 'success') {
+        if (outputAccumulator && responseLineIndex !== null) {
+          // 流式输出场景：替换响应行为格式化后的多行内容
+          const formatted = formatMarkdown(outputAccumulator, colorEnabled);
+          if (formatted) {
+            const formattedLines = formatted.split('\n');
+            this.outputArea.spliceLines(responseLineIndex, 1, formattedLines);
+            this.tui.requestRender();
+          }
+        } else if (spinnerStopped === false && outputText) {
+          // 非流式输出场景（spinner 从未被替换）：替换 spinner 行并追加后续行
+          const formatted = formatMarkdown(outputText, colorEnabled);
+          if (formatted) {
+            const lines = formatted.split('\n');
+            this.outputArea.replaceLastLine(lines[0] ?? '');
+            if (lines.length > 1) {
+              this.outputArea.append(lines.slice(1));
+            }
+            this.tui.requestRender();
+          }
+        }
+      }
 
       // 追加换行分隔
       this.outputArea.append(['']);

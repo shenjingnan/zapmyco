@@ -304,6 +304,8 @@ export interface CliConfig {
   outputFormat: 'text' | 'json';
   /** Thinking 展示模式：collapse（默认折叠）、expand（始终展开）、off（完全隐藏） */
   thinkingDisplay?: ThinkingDisplayMode;
+  /** 是否启用 Markdown 格式化输出（为标题/代码/表格等应用 ANSI 样式，默认 true） */
+  markdownFormatting?: boolean;
 }
 
 /** Thinking TUI 展示模式 */

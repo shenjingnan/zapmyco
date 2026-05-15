@@ -83,7 +83,12 @@
     "Worktree",
     "Worktrees",
     "conv",
-    "earendil"
+    "earendil",
+    "Jamo",
+    "Bopomofo",
+    "Fullwidth",
+    "Letterlike",
+    "Keycap"
   ],
   "ignorePaths": [
     "node_modules",
