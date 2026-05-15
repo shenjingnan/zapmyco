@@ -885,6 +885,9 @@ export class ReplSession {
             // Exec 工具：使用 ⏺ 图标和青色
             execMessage = event.message;
             execLineIndex = this.outputArea.append([execStyle(`  ⏺ ${event.message}`)]);
+          } else if (event.message.startsWith('TaskManage(')) {
+            // TaskManage 信息已由底部 TaskStatusBar 展示，不在 OutputArea 重复显示
+            log.debug('TaskManage 工具调用已记录，跳过 TUI 展示');
           } else {
             // 其他工具：保持原有 → 风格
             this.outputArea.append([toolStyle(`  → ${event.message}`)]);
