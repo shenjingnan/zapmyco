@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.14.0](https://github.com/shenjingnan/zapmyco/compare/v0.13.0...v0.14.0) (2026-05-15)
+
+### Features
+
+* **cli:** 技能执行时显示技能名称而非展开内容 ([#126](https://github.com/shenjingnan/zapmyco/issues/126)) ([db60847](https://github.com/shenjingnan/zapmyco/commit/db60847bdd5e80a57c5da66641a2b8789bda9ddd))
+* **cli:** 新增 Agent 状态栏实时显示子代理运行状态 ([#115](https://github.com/shenjingnan/zapmyco/issues/115)) ([499f51f](https://github.com/shenjingnan/zapmyco/commit/499f51f9d02add637b15d22cbac758850762337a))
+* **cli:** 新增 Markdown 格式化的 ANSI 终端输出 ([#122](https://github.com/shenjingnan/zapmyco/issues/122)) ([824b968](https://github.com/shenjingnan/zapmyco/commit/824b968664d90837c637fdb543b65373d21933cf))
+* **security:** normal 模式默认放行工具，仅内容级安全检查触发审批 ([#117](https://github.com/shenjingnan/zapmyco/issues/117)) ([8fc8e27](https://github.com/shenjingnan/zapmyco/commit/8fc8e27abe9ca5d2d8c600e4d5cefd025422f635))
+* **tui:** 新增 TaskStatusBar 组件与 TaskStore 变更通知机制 ([#116](https://github.com/shenjingnan/zapmyco/issues/116)) ([2c239c8](https://github.com/shenjingnan/zapmyco/commit/2c239c8be90638d23d884f1615be56a3839cab8e)), closes [#N](https://github.com/shenjingnan/zapmyco/issues/N)
+
+### Bug Fixes
+
+* **cli:** 过滤 TaskManage 工具调用在 OutputArea 的重复显示 ([#118](https://github.com/shenjingnan/zapmyco/issues/118)) ([90085b5](https://github.com/shenjingnan/zapmyco/commit/90085b5cd8da99eba1a851fc6fbea60afdc4f9c4))
+
+### Performance Improvements
+
+* **repl:** 斜杠命令触发技能时内联展开内容 ([#125](https://github.com/shenjingnan/zapmyco/issues/125)) ([87982ce](https://github.com/shenjingnan/zapmyco/commit/87982ce1af28d3b4058df8658960e22ec34f16c2))
+
+### Code Refactoring
+
+* **agents:** 将 commands 转换为 skills 格式 ([#123](https://github.com/shenjingnan/zapmyco/issues/123)) ([7005ed3](https://github.com/shenjingnan/zapmyco/commit/7005ed38fc76eeaea76b6c032667ccebe476aa23))
+* **cli:** 优化 thinking 到响应模式的过渡显示 ([#127](https://github.com/shenjingnan/zapmyco/issues/127)) ([f5f7a99](https://github.com/shenjingnan/zapmyco/commit/f5f7a992f876fa28d22616e2b348ab3594a0f3ce))
+* **cli:** 将 Agent 状态栏快捷键从 Ctrl+O 改为 Ctrl+Shift+O ([#124](https://github.com/shenjingnan/zapmyco/issues/124)) ([df2fd68](https://github.com/shenjingnan/zapmyco/commit/df2fd68870cdb240606cf6c164c9737c76b1b58d))
+* **core:** 改进 Exec 工具显示为前缀格式 ([#120](https://github.com/shenjingnan/zapmyco/issues/120)) ([37add72](https://github.com/shenjingnan/zapmyco/commit/37add721d583c921d89e618301cd9d2ed4d4998c))
+
 ## [0.13.0](https://github.com/shenjingnan/zapmyco/compare/v0.12.0...v0.13.0) (2026-05-14)
 
 ### Features
