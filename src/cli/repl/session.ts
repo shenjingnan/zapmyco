@@ -643,10 +643,16 @@ export class ReplSession {
     const execSuccessStyle = (s: string) => (colorEnabled ? chalk.green(s) : s);
     const execFailStyle = (s: string) => (colorEnabled ? chalk.red(s) : s);
     const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
+    const formatExecDisplay = (msg: string): string => {
+      const match = msg.match(/^Exec\(command="(.+)"\)/);
+      return match ? `$ ${match[1]}` : msg;
+    };
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
     // thinking 折叠状态（需要跨 try/catch/finally 访问）
     let thinkingElapsedInterval: ReturnType<typeof setInterval> | undefined;
+    // exec spinner（需要跨 try/catch/finally 访问）
+    let execSpinnerInterval: ReturnType<typeof setInterval> | undefined;
 
     try {
       // 更新状态（禁用编辑器输入，但不显示编辑器 spinner）
@@ -859,7 +865,7 @@ export class ReplSession {
       };
 
       // 工具调用展示：Agent EVENT_PROGRESS -> outputArea.append()
-      // 参考 claude-code 风格：Exec 使用 ⏺ 图标 + 状态颜色，其他工具使用 → 图标
+      // 参考 claude-code 风格：Exec 使用 spinner 动画 + 状态颜色，其他工具使用 → 图标
       let execLineIndex: number | undefined;
       let execMessage: string | undefined;
 
@@ -882,9 +888,22 @@ export class ReplSession {
           }
           // 工具开始
           if (event.message.startsWith('Exec(')) {
-            // Exec 工具：使用 ⏺ 图标和青色
+            // Exec 工具：使用 spinner 动画 + 青色，去掉 ⏺
             execMessage = event.message;
-            execLineIndex = this.outputArea.append([execStyle(`  ⏺ ${event.message}`)]);
+            const displayMsg = formatExecDisplay(event.message);
+            execLineIndex = this.outputArea.append([
+              execStyle(`  ${LOADING_FRAMES[0]} ${displayMsg}`),
+            ]);
+            let frame = 0;
+            execSpinnerInterval = setInterval(() => {
+              if (execLineIndex === undefined) return;
+              frame = (frame + 1) % LOADING_FRAMES.length;
+              this.outputArea.updateLine(
+                execLineIndex,
+                execStyle(`  ${LOADING_FRAMES[frame]} ${displayMsg}`)
+              );
+              this.tui.requestRender();
+            }, 100);
           } else if (event.message.startsWith('TaskManage(')) {
             // TaskManage 信息已由底部 TaskStatusBar 展示，不在 OutputArea 重复显示
             log.debug('TaskManage 工具调用已记录，跳过 TUI 展示');
@@ -896,9 +915,15 @@ export class ReplSession {
         } else if (event.percent === 100 && execLineIndex !== undefined && execMessage) {
           // 工具结束 — 仅处理 Exec 状态颜色更新
           if (event.message.startsWith('工具 Exec')) {
+            // 停止 spinner 动画
+            if (execSpinnerInterval) {
+              clearInterval(execSpinnerInterval);
+              execSpinnerInterval = undefined;
+            }
             const isSuccess = event.message.includes('完成');
             const style = isSuccess ? execSuccessStyle : execFailStyle;
-            this.outputArea.updateLine(execLineIndex, style(`  ⏺ ${execMessage}`));
+            const displayMsg = formatExecDisplay(execMessage ?? '');
+            this.outputArea.updateLine(execLineIndex, style(`  ${displayMsg}`));
             execLineIndex = undefined;
             execMessage = undefined;
             this.tui.requestRender();
@@ -1165,6 +1190,11 @@ export class ReplSession {
         clearInterval(thinkingElapsedInterval);
         thinkingElapsedInterval = undefined;
       }
+      // 清理 exec spinner
+      if (execSpinnerInterval) {
+        clearInterval(execSpinnerInterval);
+        execSpinnerInterval = undefined;
+      }
 
       this.stats.totalRequests++;
       this.stats.failureCount++;
@@ -1264,6 +1294,11 @@ export class ReplSession {
       if (thinkingElapsedInterval) {
         clearInterval(thinkingElapsedInterval);
         thinkingElapsedInterval = undefined;
+      }
+      // 清理 exec spinner
+      if (execSpinnerInterval) {
+        clearInterval(execSpinnerInterval);
+        execSpinnerInterval = undefined;
       }
       this._state = 'idle';
       this.updateStatsState();
