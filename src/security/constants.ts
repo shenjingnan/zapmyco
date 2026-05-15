@@ -37,8 +37,8 @@ export const MODE_STRATEGIES: Record<
 > = {
   /** strict: 只允许 low risk，其余全部 deny */
   strict: { defaultAction: 'deny', maxAutoAllow: 'low' },
-  /** normal: low 直接 allow，medium+ 需要 ask，critical deny */
-  normal: { defaultAction: 'ask', maxAutoAllow: 'low' },
+  /** normal: 工具默认放行，仅内容级安全检查（shell 危险命令、敏感文件路径）触发审批 */
+  normal: { defaultAction: 'allow', maxAutoAllow: 'high' },
   /** permissive: low/medium 直接 allow，high ask，critical deny */
   permissive: { defaultAction: 'allow', maxAutoAllow: 'medium' },
 };

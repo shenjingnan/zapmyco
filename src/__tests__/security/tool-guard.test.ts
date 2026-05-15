@@ -56,10 +56,18 @@ describe('ToolGuard', () => {
       expect((result.content[0] as any).text).toBe('ok');
     });
 
-    it('should ask for medium risk tools (auto-deny without provider)', async () => {
+    it('should ask when tool checkPermission requires approval (auto-deny without provider)', async () => {
       const config = resolveConfig({ mode: 'normal' });
       const store = new PermissionStore();
-      const tool = makeTool({ id: 'Exec', defaultRisk: 'medium' });
+      const tool = makeTool({
+        id: 'Exec',
+        defaultRisk: 'medium',
+        checkPermission: () => ({
+          risk: 'high',
+          requiresApproval: true,
+          reason: 'dangerous command',
+        }),
+      });
       const resolver = createToolInfoResolver([tool]);
       const engine = new PermissionEngine(config, store, resolver);
       const approvalManager = new ApprovalManager(); // no provider
@@ -104,7 +112,15 @@ describe('ToolGuard', () => {
     it('should store session approval when scope is session', async () => {
       const config = resolveConfig({ mode: 'normal' });
       const store = new PermissionStore();
-      const tool = makeTool({ id: 'Exec', defaultRisk: 'medium' });
+      const tool = makeTool({
+        id: 'Exec',
+        defaultRisk: 'medium',
+        checkPermission: () => ({
+          risk: 'high',
+          requiresApproval: true,
+          reason: 'dangerous command',
+        }),
+      });
       const resolver = createToolInfoResolver([tool]);
       const engine = new PermissionEngine(config, store, resolver);
       const approvalManager = new ApprovalManager({
@@ -122,7 +138,15 @@ describe('ToolGuard', () => {
     it('should deny when provider rejects', async () => {
       const config = resolveConfig({ mode: 'normal' });
       const store = new PermissionStore();
-      const tool = makeTool({ id: 'Exec', defaultRisk: 'medium' });
+      const tool = makeTool({
+        id: 'Exec',
+        defaultRisk: 'medium',
+        checkPermission: () => ({
+          risk: 'high',
+          requiresApproval: true,
+          reason: 'dangerous command',
+        }),
+      });
       const resolver = createToolInfoResolver([tool]);
       const engine = new PermissionEngine(config, store, resolver);
       const approvalManager = new ApprovalManager({
@@ -131,7 +155,7 @@ describe('ToolGuard', () => {
       const guard = new ToolGuard(engine, approvalManager, store);
 
       const guarded = guard.wrap(tool);
-      await expect(guarded.execute('test-id', { command: 'rm' })).rejects.toThrow(
+      await expect(guarded.execute('test-id', { command: 'ls' })).rejects.toThrow(
         SecurityBlockedError
       );
     });
@@ -220,19 +244,25 @@ describe('ToolGuard with background agent context', () => {
   it('should downgrade ASK to DENY when isBackgroundAgent is set', async () => {
     const config = resolveConfig({ mode: 'normal' });
     const store = new PermissionStore();
-    const tool = makeTool({ id: 'Exec', defaultRisk: 'medium' });
+    const tool = makeTool({
+      id: 'Exec',
+      defaultRisk: 'medium',
+      checkPermission: () => ({
+        risk: 'high',
+        requiresApproval: true,
+        reason: 'dangerous command',
+      }),
+    });
     const resolver = createToolInfoResolver([tool]);
     const engine = new PermissionEngine(config, store, resolver);
-    // 无审批提供者 → medium 风险工具会进入 ASK 流程
+    // checkPermission 返回 requiresApproval → 进入 ASK 流程
     const approvalManager = new ApprovalManager();
     const guard = new ToolGuard(engine, approvalManager, store);
 
     const guarded = guard.wrap(tool);
 
     await expect(
-      runWithToolGuardContext({ isBackgroundAgent: true }, () =>
-        guarded.execute('test-id', { command: 'ls' })
-      )
+      runWithToolGuardContext({ isBackgroundAgent: true }, () => guarded.execute('test-id', {}))
     ).rejects.toThrow(SecurityBlockedError);
   });
 
