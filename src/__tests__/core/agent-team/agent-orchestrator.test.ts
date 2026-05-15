@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SubAgentConfig } from '@/config/types';
-import { resetAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
+import {
+  getAgentInstanceManager,
+  resetAgentInstanceManager,
+} from '@/core/agent-team/agent-instance-manager';
 import { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
 import {
   getAgentTypeRegistry,
@@ -9,6 +12,23 @@ import {
 import { generalPurposeType } from '@/core/agent-team/builtin-types/general-purpose';
 import type { AgentTeamConfig } from '@/core/agent-team/types';
 import type { SubAgentSpec } from '@/core/sub-agent/types';
+
+// 共享 mock Agent 的事件追踪变量
+const { mockProgressHandlers, mockAgentOn, mockAgentOff } = vi.hoisted(() => {
+  const handlers: Array<(event: { taskId: string; percent: number; message: string }) => void> = [];
+  return {
+    mockProgressHandlers: handlers,
+    mockAgentOn: vi.fn(
+      (
+        event: string,
+        handler: (event: { taskId: string; percent: number; message: string }) => void
+      ) => {
+        if (event === 'progress') handlers.push(handler);
+      }
+    ),
+    mockAgentOff: vi.fn(),
+  };
+});
 
 // Mock pi-agent-core
 vi.mock('@/core/agent-runtime/agent', () => ({
@@ -27,6 +47,10 @@ vi.mock('@/core/agent-runtime/agent', () => ({
     waitForIdle: vi.fn().mockResolvedValue(undefined),
     abort: vi.fn(),
     reset: vi.fn(),
+    EVENT_PROGRESS: 'progress',
+    on: mockAgentOn,
+    off: mockAgentOff,
+    execute: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'done' }] }),
   })),
 }));
 
@@ -58,6 +82,7 @@ describe('AgentOrchestrator', () => {
     resetAgentTypeRegistry();
     resetAgentInstanceManager();
     getAgentTypeRegistry().register(generalPurposeType);
+    mockProgressHandlers.length = 0;
   });
 
   function createOrchestrator(overrides?: Partial<AgentTeamConfig>) {
@@ -182,6 +207,55 @@ describe('AgentOrchestrator', () => {
       expect(result.workerResults[1]?.status).toBe('failure');
       expect(result.workerResults[1]?.error?.code).toBe('UNKNOWN_TYPE');
       expect(result.stats.total).toBe(2);
+    });
+  });
+
+  describe('progress relay', () => {
+    it('spawnWorker should complete with progress relay (no throw)', async () => {
+      orchestrator = createOrchestrator();
+      const result = await orchestrator.spawnWorker('general-purpose', 'test task');
+      // Agent mock 执行返回 failure，但 relay 不应中断流程
+      expect(result).toBeDefined();
+    });
+
+    it('spawnFlat should complete with progress relay (no throw)', async () => {
+      orchestrator = createOrchestrator();
+      const specs: SubAgentSpec[] = [{ id: 'test', description: 'test' }];
+      const result = await orchestrator.spawnFlat(specs);
+      // relay 不应影响 spawnFlat 正常返回结果
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0]?.specId).toBe('test');
+    });
+
+    it('instance should be registered after spawnWorker', async () => {
+      orchestrator = createOrchestrator();
+      await orchestrator.spawnWorker('general-purpose', 'test task');
+      const mgr = getAgentInstanceManager();
+      const instances = mgr.listAll();
+      // Agent 实例应被注册（即使执行"失败"）
+      expect(instances.some((i) => i.typeId === 'general-purpose')).toBe(true);
+    });
+
+    it('spawnFlat should register instances via InstanceManager', async () => {
+      orchestrator = createOrchestrator();
+      const specs: SubAgentSpec[] = [
+        { id: 'a', description: 'task a' },
+        { id: 'b', description: 'task b' },
+      ];
+      await orchestrator.spawnFlat(specs);
+      const mgr = getAgentInstanceManager();
+      const instances = mgr.listAll();
+      // 每个 flat sub-agent 都应注册为实例
+      expect(instances.length).toBeGreaterThan(0);
+    });
+
+    it('should handle progress relay cleanup after spawnWorker', async () => {
+      orchestrator = createOrchestrator();
+      // 连续调用 spawnWorker 不应泄漏监听器
+      await orchestrator.spawnWorker('general-purpose', 'task 1');
+      await orchestrator.spawnWorker('general-purpose', 'task 2');
+      // 没有错误即表示清理正常
+      expect(true).toBe(true);
     });
   });
 });

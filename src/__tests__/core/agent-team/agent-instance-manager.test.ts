@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import {
@@ -361,6 +362,111 @@ describe('AgentInstanceManager', () => {
       manager.transition('agent-1', 'running');
       manager.transition('agent-1', 'completed');
       expect(manager.activeCount).toBe(1);
+    });
+  });
+
+  describe('EventEmitter', () => {
+    it('should extend EventEmitter', () => {
+      const manager = getAgentInstanceManager();
+      expect(manager).toBeInstanceOf(EventEmitter);
+    });
+  });
+
+  describe('event emission', () => {
+    it('register should emit instance:registered event', () => {
+      const manager = getAgentInstanceManager();
+      const events: unknown[] = [];
+      manager.on('instance:registered', (e) => events.push(e));
+
+      manager.register(mockDef('researcher'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        instanceId: 'agent-1',
+        typeId: 'researcher',
+        depth: 1,
+      });
+    });
+
+    it('transition should emit instance:transitioned event', () => {
+      const manager = getAgentInstanceManager();
+      const events: unknown[] = [];
+      manager.on('instance:transitioned', (e) => events.push(e));
+
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+      manager.transition('agent-1', 'running');
+      manager.transition('agent-1', 'completed');
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({ instanceId: 'agent-1', from: 'idle', to: 'running' });
+      expect(events[1]).toMatchObject({ instanceId: 'agent-1', from: 'running', to: 'completed' });
+    });
+
+    it('setActivity should emit instance:activity event', () => {
+      const manager = getAgentInstanceManager();
+      const events: unknown[] = [];
+      manager.on('instance:activity', (e) => events.push(e));
+
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+
+      const activity = { toolName: 'ReadFile', toolUses: 1, startedAt: Date.now() };
+      manager.setActivity('agent-1', activity);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        instanceId: 'agent-1',
+        typeId: 'coder',
+        activity: { toolName: 'ReadFile', toolUses: 1 },
+      });
+    });
+  });
+
+  describe('setActivity / getActivity', () => {
+    it('setActivity should update currentActivity on instance', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+
+      const activity = {
+        toolName: 'ReadFile',
+        toolUses: 5,
+        args: 'path:test.txt',
+        startedAt: Date.now(),
+      };
+      manager.setActivity('agent-1', activity);
+
+      expect(manager.get('agent-1')?.currentActivity).toEqual(activity);
+    });
+
+    it('setActivity should be no-op for non-existent instance', () => {
+      const manager = getAgentInstanceManager();
+      expect(() =>
+        manager.setActivity('non-existent', {
+          toolName: 'ReadFile',
+          toolUses: 1,
+          startedAt: Date.now(),
+        })
+      ).not.toThrow();
+    });
+
+    it('getActivity should return current activity', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+
+      const activity = { toolName: 'WriteFile', toolUses: 3, startedAt: Date.now() };
+      manager.setActivity('agent-1', activity);
+
+      expect(manager.getActivity('agent-1')).toEqual(activity);
+    });
+
+    it('getActivity should return undefined for non-existent instance', () => {
+      const manager = getAgentInstanceManager();
+      expect(manager.getActivity('non-existent')).toBeUndefined();
+    });
+
+    it('getActivity should return undefined when no activity set', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+      expect(manager.getActivity('agent-1')).toBeUndefined();
     });
   });
 });

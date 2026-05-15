@@ -34,6 +34,7 @@ import { createQuitCommand } from '@/cli/repl/commands/quit';
 import { createSecurityCommand } from '@/cli/repl/commands/security-cmd';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import { createStatusCommand } from '@/cli/repl/commands/status';
+import { AgentStatusBar } from '@/cli/repl/components/agent-status-bar';
 import type { ApprovalOption } from '@/cli/repl/components/custom-editor';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
@@ -58,6 +59,7 @@ import type {
 } from '@/cli/repl/types';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
+import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
 import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
 import { createDiagnosticCollector, type DiagnosticCollector } from '@/core/lsp/diagnostics';
 import { resolveLspConfig } from '@/core/lsp/lsp-config';
@@ -184,6 +186,7 @@ export class ReplSession {
   private readonly tui: TUI;
   private readonly editor: ZapmycoEditor;
   private readonly outputArea: OutputArea;
+  private readonly agentStatusBar: AgentStatusBar;
   private readonly options: ReplOptions;
   private _state: SessionState = 'idle';
   private readonly parser: InputParser;
@@ -275,11 +278,13 @@ export class ReplSession {
 
     // 创建组件
     this.outputArea = new OutputArea();
+    this.agentStatusBar = new AgentStatusBar();
     this.editor = new ZapmycoEditor(this.tui, theme.editorTheme);
 
-    // 组装组件树：outputArea → editor(无边框，带提示符)
+    // 组装组件树：outputArea → agentStatusBar → editor(无边框，带提示符)
     const root = new Container();
     root.addChild(this.outputArea);
+    root.addChild(this.agentStatusBar);
     root.addChild(this.editor);
 
     this.tui.addChild(root);
@@ -1770,7 +1775,11 @@ export class ReplSession {
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
 
-    // Ctrl+O: 打开外部编辑器
+    // Ctrl+O: 展开/折叠 Agent 状态栏（优先），或打开外部编辑器
+    this.editor.onToggleAgentBar = () => {
+      this.agentStatusBar.toggle();
+      this.tui.requestRender();
+    };
     this.editor.onOpenEditor = () => this.openInEditor();
   }
 
@@ -1785,6 +1794,24 @@ export class ReplSession {
   private setupEventListeners(): void {
     eventBus.on('system:shutdown', ({ reason }) => {
       log.debug(`收到系统关闭信号: ${reason ?? '未知'}`);
+    });
+
+    // 监听 Agent 实例状态变更，驱动 UI 状态栏更新
+    const instanceManager = getAgentInstanceManager();
+    const refreshStatusBar = () => {
+      this.agentStatusBar.invalidate();
+      this.tui.requestRender();
+    };
+
+    instanceManager.on('instance:registered', refreshStatusBar);
+    instanceManager.on('instance:transitioned', refreshStatusBar);
+    instanceManager.on('instance:activity', refreshStatusBar);
+
+    // 关闭时清理监听器
+    eventBus.on('system:shutdown', () => {
+      instanceManager.off('instance:registered', refreshStatusBar);
+      instanceManager.off('instance:transitioned', refreshStatusBar);
+      instanceManager.off('instance:activity', refreshStatusBar);
     });
   }
 
