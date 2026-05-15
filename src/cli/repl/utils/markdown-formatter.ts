@@ -248,7 +248,7 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
   output += '┌';
   for (let i = 0; i < columnCount; i++) {
     const cw = colWidths[i] ?? 3;
-    output += ch.dim('─'.repeat(cw + 2)) + '┬';
+    output += '─'.repeat(cw + 2) + '┬';
   }
   output = output.slice(0, -1) + '┐' + EOL;
 
@@ -280,7 +280,7 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
     const left = align === 'center' || align === 'right' ? ':' : '─';
     const right = align === 'center' || align === 'left' ? ':' : '─';
     const cw = colWidths[i] ?? 3;
-    output += `${ch.dim(`${left}${'─'.repeat(cw)}${right}`)}┼`;
+    output += `${left}${'─'.repeat(cw)}${right}┼`;
   }
   output = `${output.slice(0, -1)}┤${EOL}`;
 
@@ -311,7 +311,7 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
   output += '└';
   for (let i = 0; i < columnCount; i++) {
     const cw = colWidths[i] ?? 3;
-    output += ch.dim('─'.repeat(cw + 2)) + '┴';
+    output += '─'.repeat(cw + 2) + '┴';
   }
   output = output.slice(0, -1) + '┘' + EOL;
 
@@ -330,6 +330,9 @@ function ansiCellWidth(str: string): number {
   let width = 0;
   for (const ch of plain) {
     const code = ch.codePointAt(0) ?? 0;
+    if (isZeroWidthChar(code)) {
+      continue; // 零宽字符不计入宽度
+    }
     if (isWideChar(code)) {
       width += 2;
     } else {
@@ -337,6 +340,33 @@ function ansiCellWidth(str: string): number {
     }
   }
   return width;
+}
+
+/**
+ * 判断 Unicode 码点是否为零宽字符（不可见 / 组合用字符）
+ *
+ * 这些字符在终端中不占据任何列宽，无论是 CJK 字体还是等宽字体下。
+ * 如果在宽度计算中按 1 或 2 计算，会导致表格列对齐错误。
+ */
+function isZeroWidthChar(code: number): boolean {
+  return (
+    // 零宽空格系列
+    code === 0x200b || // ZERO WIDTH SPACE
+    code === 0x200c || // ZERO WIDTH NON-JOINER
+    code === 0x200d || // ZERO WIDTH JOINER
+    code === 0x200e || // LEFT-TO-RIGHT MARK
+    code === 0x200f || // RIGHT-TO-LEFT MARK
+    code === 0x2060 || // WORD JOINER
+    (code >= 0x2061 && code <= 0x2064) || // INVISIBLE OPERATORS
+    // 变体选择符（用于切换 emoji/文字呈现形式，本身不占宽度）
+    code === 0xfe0e || // VARIATION SELECTOR-15 (text presentation)
+    code === 0xfe0f || // VARIATION SELECTOR-16 (emoji presentation)
+    // 组合用附加符号
+    (code >= 0x0300 && code <= 0x036f) || // Combining Diacritical Marks
+    (code >= 0x1dc0 && code <= 0x1dff) || // Combining Diacritical Marks Supplement
+    (code >= 0x20d0 && code <= 0x20ff) || // Combining Diacritical Marks for Symbols
+    (code >= 0xfe20 && code <= 0xfe2f) // Combining Half Marks
+  );
 }
 
 /** 判断 Unicode 码点是否为终端宽字符（CJK / 全角 / emoji） */
@@ -363,17 +393,13 @@ function isWideChar(code: number): boolean {
     code === 0x00a9 ||
     code === 0x00ae || // © ®
     (code >= 0x2000 && code <= 0x206f) || // General Punctuation (en/em dash etc)
-    (code >= 0x20d0 && code <= 0x20ff) || // Combining Diacritical Marks for Symbols
     (code >= 0x2100 && code <= 0x27bf) || // Letterlike Symbols, Arrows, Math, Misc
     (code >= 0x2b00 && code <= 0x2bff) || // Misc Symbols and Arrows
     (code >= 0x2900 && code <= 0x297f) || // Supplemental Arrows-B
-    (code >= 0xfe00 && code <= 0xfe0f) || // Variation Selectors
     code === 0x3030 || // 〰
     code === 0x303d || // 〽
     code === 0x3297 || // ㊗
     code === 0x3298 || // ㊘
-    code === 0x200d || // ZWJ (Zero Width Joiner)
-    code === 0x20e3 || // Combining Enclosing Keycap
     code === 0x231a ||
     code === 0x231b || // ⌚ ⌛
     code === 0x23e9 ||
