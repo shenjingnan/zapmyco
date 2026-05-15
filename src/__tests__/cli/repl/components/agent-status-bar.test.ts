@@ -62,6 +62,13 @@ vi.mock('@mariozechner/pi-tui', () => ({
       /* prototype method for super.invalidate() */
     }
   },
+  truncateToWidth: (text: string, maxWidth: number) => {
+    if (maxWidth <= 0) return '';
+    if (text.length <= maxWidth) return text;
+    const target = maxWidth - 3;
+    if (target <= 0) return '.'.repeat(maxWidth);
+    return text.slice(0, target) + '...';
+  },
 }));
 
 // Mock agent-instance-manager
@@ -190,7 +197,7 @@ describe('AgentStatusBar', () => {
       expect(result[0]).toContain('Running 2 agents');
     });
 
-    it('显示 tool uses 统计', () => {
+    it('显示 tool uses 统计（复数）', () => {
       mockListActive.mockReturnValue([
         makeInstance({
           currentActivity: { toolName: 'Read', toolUses: 3, startedAt: Date.now() },
@@ -200,6 +207,18 @@ describe('AgentStatusBar', () => {
       const result = bar.render(100);
 
       expect(result[0]).toContain('3 tool uses');
+    });
+
+    it('显示 tool use 统计（单数）', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          currentActivity: { toolName: 'Read', toolUses: 1, startedAt: Date.now() },
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      expect(result[0]).toContain('1 tool use');
     });
 
     it('显示展开提示', () => {
@@ -327,6 +346,18 @@ describe('AgentStatusBar', () => {
       // 所有 Agent 都显示在输出中
       expect(result.length).toBeGreaterThan(1);
     });
+
+    it('未知状态使用默认图标（不回退到 undefined）', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({ instanceId: 'a', status: 'unknown_status', typeId: 'custom-agent' }),
+      ]);
+      const bar = new AgentStatusBar();
+      bar.toggle();
+      const result = bar.render(100);
+
+      // 确保渲染不崩溃，typeId 正常显示
+      expect(result.some((l) => l.includes('custom-agent'))).toBe(true);
+    });
   });
 
   describe('duration 格式化', () => {
@@ -369,6 +400,235 @@ describe('AgentStatusBar', () => {
 
       // 最长 5s → "5.0s"
       expect(result[0]).toContain('5.0s');
+    });
+  });
+
+  describe('token info', () => {
+    beforeEach(() => {
+      mockListActive.mockReturnValue([]);
+    });
+
+    describe('hasTokenInfo', () => {
+      it('初始为 false', () => {
+        const bar = new AgentStatusBar();
+        expect(bar.hasTokenInfo).toBe(false);
+      });
+
+      it('setModelName 后为 true', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        expect(bar.hasTokenInfo).toBe(true);
+      });
+
+      it('clearTokenStats 后恢复为 false', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.clearTokenStats();
+        expect(bar.hasTokenInfo).toBe(false);
+      });
+    });
+
+    describe('方法调用 invalidate', () => {
+      it('setModelName 调用 invalidate', () => {
+        const bar = new AgentStatusBar();
+        const spy = vi.spyOn(bar, 'invalidate');
+        bar.setModelName('test-model');
+        expect(spy).toHaveBeenCalledTimes(1);
+      });
+
+      it('updateTokenStats 调用 invalidate', () => {
+        const bar = new AgentStatusBar();
+        const spy = vi.spyOn(bar, 'invalidate');
+        bar.updateTokenStats(100, 900, 200);
+        expect(spy).toHaveBeenCalledTimes(1);
+      });
+
+      it('clearTokenStats 调用 invalidate', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        const spy = vi.spyOn(bar, 'invalidate');
+        bar.clearTokenStats();
+        expect(spy).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('render - 无活跃 Agent', () => {
+      it('有 Token 信息时单独显示 Token 行', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 30000);
+        const result = bar.render(200);
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toContain('test-model');
+        expect(result[0]).toContain('IN');
+        expect(result[0]).toContain('HIT');
+        expect(result[0]).toContain('MISS');
+        expect(result[0]).toContain('OUT');
+      });
+
+      it('只设置 modelName 未设置统计值时显示默认 0', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        const result = bar.render(200);
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toContain('test-model');
+        // 所有字段都应该有值（0）
+        expect(result[0]).toMatch(/IN\s+0.+HIT\s+0.+MISS\s+0.+OUT\s+0/);
+      });
+
+      it('Token 行被截断到指定宽度', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('long-model-name');
+        bar.updateTokenStats(1000, 9000, 500, 30000);
+        const result = bar.render(10);
+
+        expect(result[0]?.length ?? 0).toBeLessThanOrEqual(13); // "..." 追加
+      });
+    });
+
+    describe('render - 数值格式', () => {
+      it('大数值使用 M 单位 (>= 1,000,000)', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(500_000, 1_500_000, 200_000, 10000);
+
+        const result = bar.render(200);
+        // totalInput = 500K + 1.5M = 2.0M
+        expect(result[0]).toContain('2.0M');
+        // missTokens = inputTokens = 500K
+        expect(result[0]).toContain('500.0K');
+      });
+
+      it('中等数值使用 K 单位 (>= 10,000)', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(5_000, 15_000, 3_000, 10000);
+
+        const result = bar.render(200);
+        // totalInput = 5K + 15K = 20K
+        expect(result[0]).toContain('20.0K');
+      });
+
+      it('小数值使用千分位格式', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 10000);
+
+        const result = bar.render(200);
+        // totalInput = 1000
+        expect(result[0]).toContain('1,000');
+      });
+    });
+
+    describe('render - 缓存命中率', () => {
+      it('高缓存率 (>=80%)', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 30000);
+
+        const result = bar.render(200);
+        // cacheRate = round(900/1000 * 100) = 90
+        expect(result[0]).toContain('(90%)');
+      });
+
+      it('低缓存率 (<80%)', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(500, 500, 200, 10000);
+
+        const result = bar.render(200);
+        // cacheRate = round(500/1000 * 100) = 50
+        expect(result[0]).toContain('(50%)');
+      });
+
+      it('总输入为 0 时缓存率为 0', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(0, 0, 0, 0);
+
+        const result = bar.render(200);
+        expect(result[0]).toContain('(0%)');
+      });
+    });
+
+    describe('duration 格式化', () => {
+      it('毫秒级 (< 1s)', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 500);
+
+        expect(bar.render(200)[0]).toContain('500ms');
+      });
+
+      it('秒级 (< 60s)', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 30000);
+
+        expect(bar.render(200)[0]).toContain('30.0s');
+      });
+
+      it('分钟级', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 90000);
+
+        expect(bar.render(200)[0]).toContain('1m30s');
+      });
+    });
+
+    describe('updateTokenStats 参数', () => {
+      it('不传 durationMs 时保留上一次的值', () => {
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 30000);
+        expect(bar.render(200)[0]).toContain('30.0s');
+
+        // 不传 durationMs
+        bar.updateTokenStats(200, 800, 300);
+        expect(bar.render(200)[0]).toContain('30.0s');
+      });
+    });
+
+    describe('render - 与 Agent 活跃实例共存', () => {
+      it('折叠模式 + Token 信息 = 显示两行', () => {
+        mockListActive.mockReturnValue([makeInstance()]);
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 30000);
+
+        const result = bar.render(100);
+        expect(result).toHaveLength(2);
+        expect(result[0]).toContain('Running');
+        expect(result[1]).toContain('test-model');
+      });
+
+      it('展开模式 + Token 信息 = Token 行在末尾', () => {
+        mockListActive.mockReturnValue([makeInstance()]);
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 30000);
+        bar.toggle();
+
+        const result = bar.render(100);
+        expect(result[result.length - 1]).toContain('test-model');
+      });
+
+      it('clearTokenStats 后不显示 Token 行', () => {
+        mockListActive.mockReturnValue([makeInstance()]);
+        const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200);
+        bar.clearTokenStats();
+
+        const result = bar.render(100);
+        // 只有 agent 行，没有 token 行
+        expect(result).toHaveLength(1);
+        expect(result[0]).not.toContain('IN');
+        expect(result[0]).not.toContain('HIT');
+      });
     });
   });
 
