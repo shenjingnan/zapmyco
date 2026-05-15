@@ -931,7 +931,8 @@ export class ReplSession {
         this.editor.onToggleThinking = toggleThinking;
       }
 
-      // 设置底部 Token 信息显示的模型名称
+      // 重置状态栏 Token 信息，然后设置当前模型名称
+      this.agentStatusBar.clearTokenStats();
       const agentModel = (this.agent as LlmBasedAgent).innerAgent.state.model;
       const modelName = typeof agentModel?.id === 'string' ? agentModel.id : 'unknown';
       this.agentStatusBar.setModelName(modelName);
@@ -942,7 +943,8 @@ export class ReplSession {
         this.agentStatusBar.updateTokenStats(
           usage.inputTokens,
           usage.cacheReadTokens,
-          usage.outputTokens
+          usage.outputTokens,
+          Date.now() - startTime
         );
         this.tui.requestRender();
       }, 2000);
@@ -1318,12 +1320,19 @@ export class ReplSession {
         clearInterval(thinkingElapsedInterval);
         thinkingElapsedInterval = undefined;
       }
-      // 清理 Token 推送定时器并清除状态栏信息
+      // 清理 Token 推送定时器
       if (tokenPushInterval) {
         clearInterval(tokenPushInterval);
         tokenPushInterval = undefined;
       }
-      this.agentStatusBar.clearTokenStats();
+      // 执行结束后更新最终 Token 统计（含总耗时），保持展示
+      const finalUsage = (this.agent as LlmBasedAgent).tokenTracker.getUsage();
+      this.agentStatusBar.updateTokenStats(
+        finalUsage.inputTokens,
+        finalUsage.cacheReadTokens,
+        finalUsage.outputTokens,
+        Date.now() - startTime
+      );
       this._state = 'idle';
       this.updateStatsState();
       this.editor.setExecuting(false);

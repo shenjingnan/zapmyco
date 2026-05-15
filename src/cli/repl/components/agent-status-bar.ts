@@ -65,12 +65,14 @@ export class AgentStatusBar extends Container {
   // === Token 信息 ===
   /** 当前模型名称 */
   #modelName: string | null = null;
-  /** 累积 input tokens */
+  /** 累积非缓存 input tokens（usage.input = totalInput - cacheRead） */
   #inputTokens = 0;
   /** 累积 cache read tokens（缓存命中） */
   #cacheReadTokens = 0;
   /** 累积 output tokens */
   #outputTokens = 0;
+  /** 任务已耗时（ms） */
+  #durationMs = 0;
 
   /**
    * 切换展开/折叠状态
@@ -95,11 +97,24 @@ export class AgentStatusBar extends Container {
 
   /**
    * 更新 Token 统计数据
+   *
+   * @param inputTokens - 非缓存 input tokens（usage.input）
+   * @param cacheRead - 缓存读取 tokens（usage.cacheRead）
+   * @param outputTokens - 输出 tokens
+   * @param durationMs - 任务已耗时（毫秒）
    */
-  updateTokenStats(inputTokens: number, cacheRead: number, outputTokens: number): void {
+  updateTokenStats(
+    inputTokens: number,
+    cacheRead: number,
+    outputTokens: number,
+    durationMs?: number
+  ): void {
     this.#inputTokens = inputTokens;
     this.#cacheReadTokens = cacheRead;
     this.#outputTokens = outputTokens;
+    if (durationMs !== undefined) {
+      this.#durationMs = durationMs;
+    }
     this.invalidate();
   }
 
@@ -274,13 +289,20 @@ export class AgentStatusBar extends Container {
   #renderTokenInfoLine(): string {
     const modelStr = chalk.cyan(this.#modelName ?? '');
     const separator = chalk.gray(' · ');
-    const missTokens = Math.max(0, this.#inputTokens - this.#cacheReadTokens);
 
-    const inStr = chalk.white(this.#formatTokenCount(this.#inputTokens));
+    // 在 pi-ai 中：usage.input = 非缓存输入, usage.cacheRead = 缓存命中
+    // 所以总输入 = input + cacheRead, 缓存未命中 = input
+    const totalInput = this.#inputTokens + this.#cacheReadTokens;
+    const missTokens = this.#inputTokens; // 非缓存部分
+    const cacheRate = totalInput > 0 ? Math.round((this.#cacheReadTokens / totalInput) * 100) : 0;
+
+    const inStr = chalk.white(this.#formatTokenCount(totalInput));
     const hitStr = chalk.green(this.#formatTokenCount(this.#cacheReadTokens));
+    const rateStr = cacheRate >= 80 ? chalk.green(`${cacheRate}%`) : chalk.yellow(`${cacheRate}%`);
     const missStr = chalk.yellow(this.#formatTokenCount(missTokens));
     const outStr = chalk.cyan(this.#formatTokenCount(this.#outputTokens));
+    const durationStr = chalk.magenta(this.#formatDuration(this.#durationMs));
 
-    return `  ${modelStr}${separator}${chalk.gray('IN')} ${inStr}${separator}${chalk.gray('HIT')} ${hitStr}${separator}${chalk.gray('MISS')} ${missStr}${separator}${chalk.gray('OUT')} ${outStr}`;
+    return `  ${modelStr}${separator}${chalk.gray('IN')} ${inStr}${separator}${chalk.gray('HIT')} ${hitStr} ${chalk.dim(`(${rateStr})`)}${separator}${chalk.gray('MISS')} ${missStr}${separator}${chalk.gray('OUT')} ${outStr}${separator}${durationStr}`;
   }
 }
