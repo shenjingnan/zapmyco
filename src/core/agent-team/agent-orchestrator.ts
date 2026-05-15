@@ -655,20 +655,13 @@ export class AgentOrchestrator {
 
       if (event.percent === 0) {
         // 工具开始：更新当前活动信息
+        const toolName = event.message;
         const prevUses = instance.currentActivity?.toolUses ?? 0;
 
         // 解析工具名称和参数
-        // Exec 工具使用 $ <command> 格式，其他工具使用 ToolName(args) 格式
-        let namePart: string;
-        let argsPart: string | undefined;
-        if (event.message.startsWith('$ ')) {
-          namePart = 'Exec';
-          argsPart = event.message.slice(2);
-        } else {
-          const parenIdx = event.message.indexOf('(');
-          namePart = parenIdx > 0 ? event.message.slice(0, parenIdx) : event.message;
-          argsPart = parenIdx > 0 ? event.message.slice(parenIdx + 1, -1) : undefined;
-        }
+        const parenIdx = toolName.indexOf('(');
+        const namePart = parenIdx > 0 ? toolName.slice(0, parenIdx) : toolName;
+        const argsPart = parenIdx > 0 ? toolName.slice(parenIdx + 1, -1) : undefined;
 
         const activity: AgentCurrentActivity = {
           toolName: namePart,

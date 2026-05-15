@@ -162,11 +162,7 @@ export class AgentStatusBar extends Container {
 
       // 第二行：当前工具调用（如果有）
       if (act) {
-        const toolDisplay = act.args
-          ? act.toolName === 'Exec'
-            ? `$ ${act.args.slice(0, 60)}`
-            : `${act.toolName}: ${act.args.slice(0, 60)}`
-          : act.toolName;
+        const toolDisplay = act.args ? `${act.toolName}: ${act.args.slice(0, 60)}` : act.toolName;
         const line2 = `  ${chalk.dim(childPrefix + TREE_CONT)}${chalk.cyan(toolDisplay)}`;
         lines.push(line2.slice(0, width));
       }

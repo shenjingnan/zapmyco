@@ -881,7 +881,7 @@ export class ReplSession {
             }
           }
           // 工具开始
-          if (event.message.startsWith('$ ')) {
+          if (event.message.startsWith('Exec(')) {
             // Exec 工具：使用 ⏺ 图标和青色
             execMessage = event.message;
             execLineIndex = this.outputArea.append([execStyle(`  ⏺ ${event.message}`)]);

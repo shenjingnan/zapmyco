@@ -276,24 +276,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
             }
           }
           if (event.type === 'tool_execution_start') {
-            // Exec 工具显示为 $ <command> 格式
-            let message: string;
-            if (
-              event.toolName === 'Exec' &&
-              event.args &&
-              typeof event.args === 'object' &&
-              'command' in event.args
-            ) {
-              const cmd = (event.args as Record<string, unknown>).command;
-              message = `$ ${typeof cmd === 'string' ? cmd : JSON.stringify(cmd)}`;
-            } else {
-              const paramsStr = formatToolArgs(event.args);
-              message = paramsStr ? `${event.toolName}(${paramsStr})` : event.toolName;
-            }
+            const paramsStr = formatToolArgs(event.args);
             this.emit(this.EVENT_PROGRESS, {
               taskId: request.taskId,
               percent: 0,
-              message,
+              message: paramsStr ? `${event.toolName}(${paramsStr})` : event.toolName,
             });
 
             // Doom Loop 检测：记录工具调用
