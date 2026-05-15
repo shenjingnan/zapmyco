@@ -9,7 +9,7 @@ describe('resolveConfig', () => {
     const config = resolveConfig({});
     expect(config.enabled).toBe(true);
     expect(config.mode).toBe('normal');
-    expect(config.defaultAction).toBe('ask');
+    expect(config.defaultAction).toBe('allow');
     expect(config.persistence.enabled).toBe(true);
   });
 
