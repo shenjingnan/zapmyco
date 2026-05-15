@@ -62,6 +62,16 @@ export class AgentStatusBar extends Container {
   /** 上次活跃实例快照（用于检测变化） */
   #lastActiveCount = 0;
 
+  // === Token 信息 ===
+  /** 当前模型名称 */
+  #modelName: string | null = null;
+  /** 累积 input tokens */
+  #inputTokens = 0;
+  /** 累积 cache read tokens（缓存命中） */
+  #cacheReadTokens = 0;
+  /** 累积 output tokens */
+  #outputTokens = 0;
+
   /**
    * 切换展开/折叠状态
    */
@@ -75,6 +85,40 @@ export class AgentStatusBar extends Container {
     return this.#expanded;
   }
 
+  /**
+   * 设置当前模型名称
+   */
+  setModelName(name: string): void {
+    this.#modelName = name;
+    this.invalidate();
+  }
+
+  /**
+   * 更新 Token 统计数据
+   */
+  updateTokenStats(inputTokens: number, cacheRead: number, outputTokens: number): void {
+    this.#inputTokens = inputTokens;
+    this.#cacheReadTokens = cacheRead;
+    this.#outputTokens = outputTokens;
+    this.invalidate();
+  }
+
+  /**
+   * 清除 Token 数据（执行结束后调用）
+   */
+  clearTokenStats(): void {
+    this.#modelName = null;
+    this.#inputTokens = 0;
+    this.#cacheReadTokens = 0;
+    this.#outputTokens = 0;
+    this.invalidate();
+  }
+
+  /** 是否有 Token 信息要显示 */
+  get hasTokenInfo(): boolean {
+    return this.#modelName !== null;
+  }
+
   override invalidate(): void {
     super.invalidate();
   }
@@ -83,10 +127,14 @@ export class AgentStatusBar extends Container {
     const instanceManager = getAgentInstanceManager();
     const activeInstances = instanceManager.listActive();
 
-    // 无活跃实例时自动隐藏
+    // 无活跃实例时
     if (activeInstances.length === 0) {
       this.#stopLoading();
       this.#lastActiveCount = 0;
+      // 如果有 Token 信息，单独显示 Token 行
+      if (this.hasTokenInfo) {
+        return [this.#renderTokenInfoLine().slice(0, width)];
+      }
       return [];
     }
 
@@ -106,18 +154,26 @@ export class AgentStatusBar extends Container {
     const frame = LOADING_FRAMES[this.#loadingFrame % LOADING_FRAMES.length] ?? '';
 
     if (!this.#expanded) {
-      // 折叠模式：单行显示
-      const line = this.#renderCollapsed(
-        frame,
-        activeInstances.length,
-        totalToolUses,
-        totalDuration
+      // 折叠模式：单行显示 Agent + 可选的 Token 信息行
+      const lines: string[] = [];
+      lines.push(
+        this.#renderCollapsed(frame, activeInstances.length, totalToolUses, totalDuration).slice(
+          0,
+          width
+        )
       );
-      return [line.slice(0, width)];
+      if (this.hasTokenInfo) {
+        lines.push(this.#renderTokenInfoLine().slice(0, width));
+      }
+      return lines;
     }
 
     // 展开模式：显示每个 Agent 详情
     const lines = this.#renderExpanded(frame, activeInstances, width);
+    // 有 Token 信息时追加到末尾
+    if (this.hasTokenInfo) {
+      lines.push(this.#renderTokenInfoLine().slice(0, width));
+    }
     return lines;
   }
 
@@ -195,5 +251,36 @@ export class AgentStatusBar extends Container {
     const mins = Math.floor(ms / 60000);
     const secs = Math.floor((ms % 60000) / 1000);
     return `${mins}m${secs}s`;
+  }
+
+  /** 格式化 Token 数字
+   *
+   * - < 1,000: 原始数字（456）
+   * - ≥ 1,000: 千分位分隔（1,234）
+   * - ≥ 10,000: K 单位（15.3K）
+   * - ≥ 1,000,000: M 单位（1.2M）
+   */
+  #formatTokenCount(n: number): string {
+    if (n >= 1_000_000) {
+      return `${(n / 1_000_000).toFixed(1)}M`;
+    }
+    if (n >= 10_000) {
+      return `${(n / 1_000).toFixed(1)}K`;
+    }
+    return n.toLocaleString();
+  }
+
+  /** 渲染 Token 信息行 */
+  #renderTokenInfoLine(): string {
+    const modelStr = chalk.cyan(this.#modelName ?? '');
+    const separator = chalk.gray(' · ');
+    const missTokens = Math.max(0, this.#inputTokens - this.#cacheReadTokens);
+
+    const inStr = chalk.white(this.#formatTokenCount(this.#inputTokens));
+    const hitStr = chalk.green(this.#formatTokenCount(this.#cacheReadTokens));
+    const missStr = chalk.yellow(this.#formatTokenCount(missTokens));
+    const outStr = chalk.cyan(this.#formatTokenCount(this.#outputTokens));
+
+    return `  ${modelStr}${separator}${chalk.gray('IN')} ${inStr}${separator}${chalk.gray('HIT')} ${hitStr}${separator}${chalk.gray('MISS')} ${missStr}${separator}${chalk.gray('OUT')} ${outStr}`;
   }
 }

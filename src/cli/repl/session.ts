@@ -658,6 +658,8 @@ export class ReplSession {
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
     // thinking 折叠状态（需要跨 try/catch/finally 访问）
     let thinkingElapsedInterval: ReturnType<typeof setInterval> | undefined;
+    /** Token 信息推送定时器 */
+    let tokenPushInterval: ReturnType<typeof setInterval> | undefined;
 
     try {
       // 更新状态（禁用编辑器输入，但不显示编辑器 spinner）
@@ -928,6 +930,22 @@ export class ReplSession {
       if (thinkingDisplayMode === 'collapse') {
         this.editor.onToggleThinking = toggleThinking;
       }
+
+      // 设置底部 Token 信息显示的模型名称
+      const agentModel = (this.agent as LlmBasedAgent).innerAgent.state.model;
+      const modelName = typeof agentModel?.id === 'string' ? agentModel.id : 'unknown';
+      this.agentStatusBar.setModelName(modelName);
+
+      // 定时推送 Token 统计数据到状态栏（每 2 秒）
+      tokenPushInterval = setInterval(() => {
+        const usage = (this.agent as LlmBasedAgent).tokenTracker.getUsage();
+        this.agentStatusBar.updateTokenStats(
+          usage.inputTokens,
+          usage.cacheReadTokens,
+          usage.outputTokens
+        );
+        this.tui.requestRender();
+      }, 2000);
 
       log.debug('开始通过 Agent 执行目标', {
         taskId,
@@ -1300,6 +1318,12 @@ export class ReplSession {
         clearInterval(thinkingElapsedInterval);
         thinkingElapsedInterval = undefined;
       }
+      // 清理 Token 推送定时器并清除状态栏信息
+      if (tokenPushInterval) {
+        clearInterval(tokenPushInterval);
+        tokenPushInterval = undefined;
+      }
+      this.agentStatusBar.clearTokenStats();
       this._state = 'idle';
       this.updateStatsState();
       this.editor.setExecuting(false);
