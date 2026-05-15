@@ -231,12 +231,12 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
   for (let i = 0; i < columnCount; i++) {
     const headerCell = token.header[i];
     const headerText = headerCell ? getCellText(headerCell.tokens) : '';
-    let maxW = stripAnsiLength(headerText);
+    let maxW = ansiCellWidth(headerText);
     for (const row of token.rows) {
       const cell = row[i];
       if (cell?.tokens) {
         const cellText = getCellText(cell.tokens);
-        maxW = Math.max(maxW, stripAnsiLength(cellText));
+        maxW = Math.max(maxW, ansiCellWidth(cellText));
       }
     }
     colWidths.push(Math.max(maxW, 3));
@@ -251,7 +251,7 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
     const content = cell?.tokens
       ? cell.tokens.map((t) => formatToken(t, colorEnabled, 0, null, null)).join('')
       : '';
-    const displayLen = stripAnsiLength(content);
+    const displayLen = ansiCellWidth(content);
     const cw = colWidths[i] ?? 3;
     const pad = cw - displayLen;
     const align = token.align?.[i];
@@ -284,7 +284,7 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
       const content = cell?.tokens
         ? cell.tokens.map((t) => formatToken(t, colorEnabled, 0, null, null)).join('')
         : '';
-      const displayLen = stripAnsiLength(content);
+      const displayLen = ansiCellWidth(content);
       const cw = colWidths[i] ?? 3;
       const pad = cw - displayLen;
       const align = token.align?.[i];
@@ -303,13 +303,133 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
 }
 
 /**
- * 计算字符串的"可见"长度（去除 ANSI 转义序列）
+ * 计算字符串在终端中的可见宽度（考虑 CJK 和 emoji 占 2 列宽）
  *
- * \x1B 是 ESC 控制字符的开始，后用 `[` + 数字 + `m` 组成 ANSI 转义。
- * 使用 Unicode 代码点构建正则以通过 lint 检查。
+ * ANSI 转义序列不计入宽度，中文字符/emoji 占 2 列，ASCII 占 1 列。
  */
-function stripAnsiLength(str: string): number {
-  // eslint-disable-next-line no-control-regex
+function ansiCellWidth(str: string): number {
+  // 先去除 ANSI 转义
   const ESC = String.fromCharCode(27);
-  return str.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '').length;
+  const plain = str.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '');
+  let width = 0;
+  for (const ch of plain) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (isWideChar(code)) {
+      width += 2;
+    } else {
+      width += 1;
+    }
+  }
+  return width;
+}
+
+/** 判断 Unicode 码点是否为终端宽字符（CJK / 全角 / emoji） */
+function isWideChar(code: number): boolean {
+  return (
+    // CJK 统一表意文字
+    (code >= 0x1100 && code <= 0x115f) || // Hangul Jamo
+    (code >= 0x2e80 && code <= 0x2fff) || // CJK Radicals
+    (code >= 0x3000 && code <= 0x33ff) || // CJK Symbols, Hiragana, Katakana, Bopomofo, Hangul
+    (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
+    (code >= 0x4e00 && code <= 0x9fff) || // CJK Unified
+    (code >= 0xa000 && code <= 0xa4cf) || // Yi
+    (code >= 0xac00 && code <= 0xd7af) || // Hangul Syllables
+    (code >= 0xf900 && code <= 0xfaff) || // CJK Compatibility
+    (code >= 0xfe10 && code <= 0xfe19) || // Vertical forms
+    (code >= 0xfe30 && code <= 0xfe6f) || // CJK Compatibility Forms
+    (code >= 0xff01 && code <= 0xff60) || // Fullwidth Forms
+    (code >= 0xffe0 && code <= 0xffe6) || // Fullwidth Signs
+    // Emoji 关键范围
+    (code >= 0x1f000 && code <= 0x1ffff) || // Emoticons / 扩展
+    (code >= 0x20000 && code <= 0x2ffff) || // CJK Extension B/C/D/E/F
+    (code >= 0x30000 && code <= 0x3ffff) || // CJK Extension G/H
+    // 常用 emoji 单字符
+    code === 0x00a9 ||
+    code === 0x00ae || // © ®
+    (code >= 0x2000 && code <= 0x206f) || // General Punctuation (en/em dash etc)
+    (code >= 0x20d0 && code <= 0x20ff) || // Combining Diacritical Marks for Symbols
+    (code >= 0x2100 && code <= 0x27bf) || // Letterlike Symbols, Arrows, Math, Misc
+    (code >= 0x2b00 && code <= 0x2bff) || // Misc Symbols and Arrows
+    (code >= 0x2900 && code <= 0x297f) || // Supplemental Arrows-B
+    (code >= 0xfe00 && code <= 0xfe0f) || // Variation Selectors
+    code === 0x3030 || // 〰
+    code === 0x303d || // 〽
+    code === 0x3297 || // ㊗
+    code === 0x3298 || // ㊘
+    code === 0x200d || // ZWJ (Zero Width Joiner)
+    code === 0x20e3 || // Combining Enclosing Keycap
+    code === 0x231a ||
+    code === 0x231b || // ⌚ ⌛
+    code === 0x23e9 ||
+    code === 0x23ec || // ⏩ ⏬
+    code === 0x23f0 ||
+    code === 0x23f3 || // ⏰ ⏳
+    code === 0x25fd ||
+    code === 0x25fe || // ◽ ◾
+    code === 0x2614 ||
+    code === 0x2615 || // ☔ ☕
+    code === 0x2648 ||
+    code === 0x2653 || // ♈ ♓
+    code === 0x267f || // ♿
+    code === 0x2693 || // ⚓
+    code === 0x26a1 || // ⚡
+    code === 0x26aa ||
+    code === 0x26ab || // ⚪ ⚫
+    code === 0x26bd ||
+    code === 0x26be || // ⚽ ⚾
+    code === 0x26c4 ||
+    code === 0x26c5 || // ⛄ ⛅
+    code === 0x26ce || // ⛎
+    code === 0x26d4 || // ⛔
+    code === 0x26ea || // ⛪
+    code === 0x26f2 ||
+    code === 0x26f3 || // ⛲ ⛳
+    code === 0x26f5 || // ⛵
+    code === 0x26fa || // ⛺
+    code === 0x26fd || // ⛽
+    code === 0x2702 || // ✂
+    code === 0x2705 || // ✅
+    code === 0x2708 ||
+    code === 0x2709 || // ✈ ✉
+    code === 0x270a ||
+    code === 0x270b || // ✊ ✋
+    code === 0x270c ||
+    code === 0x270d || // ✌ ✍
+    code === 0x270f || // ✏
+    code === 0x2712 || // ✒
+    code === 0x2714 || // ✔
+    code === 0x2716 || // ✖
+    code === 0x271d || // ✝
+    code === 0x2721 || // ✡
+    code === 0x2728 || // ✨
+    code === 0x2733 ||
+    code === 0x2734 || // ✳ ✴
+    code === 0x2744 || // ❄
+    code === 0x2747 || // ❇
+    code === 0x274c || // ❌
+    code === 0x274e || // ❎
+    code === 0x2753 ||
+    code === 0x2754 ||
+    code === 0x2755 || // ❓ ❔ ❕
+    code === 0x2757 || // ❗
+    code === 0x2763 ||
+    code === 0x2764 || // ❣ ❤
+    code === 0x2795 ||
+    code === 0x2796 ||
+    code === 0x2797 || // ➕ ➖ ➗
+    code === 0x27a1 || // ➡
+    code === 0x27b0 || // ➰
+    code === 0x27bf || // ➿
+    code === 0x2934 ||
+    code === 0x2935 || // ⤴ ⤵
+    code === 0x2b05 ||
+    code === 0x2b06 ||
+    code === 0x2b07 || // ⬅ ⬆ ⬇
+    code === 0x2b1b ||
+    code === 0x2b1c || // ⬛ ⬜
+    code === 0x2b50 || // ⭐
+    code === 0x2b55 || // ⭕
+    code === 0x2bc3 ||
+    code === 0x2bc4 // ⯃ ⯄
+  );
 }
