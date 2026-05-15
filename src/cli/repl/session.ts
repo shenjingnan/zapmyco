@@ -636,7 +636,10 @@ export class ReplSession {
   /**
    * 执行用户目标 — 通过 Agent 执行并流式输出回复
    */
-  async executeGoal(rawInput: string): Promise<import('@/core/result/types').FinalResult> {
+  async executeGoal(
+    rawInput: string,
+    displayLabel?: string
+  ): Promise<import('@/core/result/types').FinalResult> {
     const startTime = Date.now();
     let historyEntry: import('@/cli/repl/types').HistoryEntry | undefined;
     const taskId = `task-${Date.now()}`;
@@ -678,7 +681,7 @@ export class ReplSession {
       });
 
       // 显示用户输入 + spinner
-      this.outputArea.append([userStyle(rawInput), LOADING_FRAMES[0] ?? '']);
+      this.outputArea.append([userStyle(displayLabel ?? rawInput), LOADING_FRAMES[0] ?? '']);
 
       // 输出区 spinner 动画
       let spinnerFrame = 0;
@@ -1784,7 +1787,7 @@ export class ReplSession {
           if (entry) {
             // 将格式化后的技能指令作为 goal 发送给 Agent（内容已展开，无需 LLM 再调用 Skill 工具）
             const skillContent = formatSkillContent(entry.skill, argsStr);
-            await this.executeGoal(skillContent);
+            await this.executeGoal(skillContent, `/${spec.name}`);
           } else {
             // Fallback：技能条目不存在（罕见情况），回退到通用描述
             const goalInput = argsStr
