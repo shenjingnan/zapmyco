@@ -206,7 +206,7 @@ async function replaceBlockCommands(content: string): Promise<string> {
   for (let match = pattern.exec(content); match !== null; match = pattern.exec(content)) {
     matches.push({
       full: match[0],
-      command: match[1]?.trim(),
+      command: (match[1] ?? '').trim(),
     });
   }
 
@@ -237,7 +237,7 @@ async function replaceInlineCommands(content: string): Promise<string> {
   for (let match = pattern.exec(content); match !== null; match = pattern.exec(content)) {
     matches.push({
       full: match[0],
-      command: match[1]?.trim(),
+      command: (match[1] ?? '').trim(),
     });
   }
 
