@@ -9,8 +9,16 @@
  * @module cli/repl/tools/skill-tool
  */
 
+import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import type { Skill, SkillEntry, SkillLoadConfig } from '@/core/skill/types';
+import {
+  checkCommandSecurity,
+  redactSensitiveInfo,
+  sanitizeEnv,
+  stripAnsi,
+  truncateOutput,
+} from './shell-security';
 
 // ============ 参数类型 ============
 
@@ -151,6 +159,213 @@ function parseArgs(args: string | undefined): string[] {
   return result;
 }
 
+// ============ Shell 命令执行（SKILL.md ! 语法） ============
+
+/** 代码块模式: ```! ... ``` */
+const SHELL_BLOCK_PATTERN = /```!\s*\n?([\s\S]*?)\n?```/g;
+
+/** 行内模式: !`command`（前面需有空白或行首） */
+const SHELL_INLINE_PATTERN = /(?<=^|\s)!`([^`]+)`/gm;
+
+/** Shell 命令默认超时（秒） */
+const SKILL_SHELL_TIMEOUT_SEC = 30;
+
+/** Shell 命令输出最大字符数 */
+const SKILL_SHELL_MAX_OUTPUT_CHARS = 10_000;
+
+/**
+ * 执行 SKILL.md 中的 Shell 命令
+ *
+ * 支持两种语法：
+ * 1. 代码块: ```! echo "hello" ```
+ * 2. 行内: 前导 !`echo "hello"`
+ */
+async function executeShellCommandsInSkill(content: string): Promise<string> {
+  // 快速检查：无 shell 标记时直接返回，零开销
+  if (!content.includes('```!') && !content.includes('!`')) {
+    return content;
+  }
+
+  let result = content;
+
+  // 阶段一：处理代码块模式
+  result = await replaceBlockCommands(result);
+
+  // 阶段二：处理行内模式
+  result = await replaceInlineCommands(result);
+
+  return result;
+}
+
+/** 处理 ```! ... ``` 代码块 */
+async function replaceBlockCommands(content: string): Promise<string> {
+  const matches: Array<{ full: string; command: string }> = [];
+
+  // 收集所有匹配
+  const pattern = new RegExp(SHELL_BLOCK_PATTERN.source, 'g');
+  for (let match = pattern.exec(content); match !== null; match = pattern.exec(content)) {
+    matches.push({
+      full: match[0],
+      command: match[1]?.trim(),
+    });
+  }
+
+  if (matches.length === 0) return content;
+
+  // 并行执行所有命令
+  const results = await Promise.all(
+    matches.map(async (m) => ({
+      target: m.full,
+      replacement: await executeSingleCommand(m.command, false),
+    }))
+  );
+
+  // 替换（从后往前避免索引偏移）
+  let result = content;
+  for (const { target, replacement } of results) {
+    result = result.replace(target, replacement);
+  }
+
+  return result;
+}
+
+/** 处理 !`command` 行内命令 */
+async function replaceInlineCommands(content: string): Promise<string> {
+  const matches: Array<{ full: string; command: string }> = [];
+
+  const pattern = new RegExp(SHELL_INLINE_PATTERN.source, 'gm');
+  for (let match = pattern.exec(content); match !== null; match = pattern.exec(content)) {
+    matches.push({
+      full: match[0],
+      command: match[1]?.trim(),
+    });
+  }
+
+  if (matches.length === 0) return content;
+
+  // 行内命令串行执行（避免并行输出顺序混乱）
+  let result = content;
+  for (const m of matches) {
+    const output = await executeSingleCommand(m.command, true);
+    result = result.replace(m.full, output);
+  }
+
+  return result;
+}
+
+/** 执行单个 Shell 命令并返回替换文本 */
+async function executeSingleCommand(command: string, inline: boolean): Promise<string> {
+  if (!command) return '';
+
+  // Step 1: 安全检查
+  const security = checkCommandSecurity(command);
+  if (security.blocked) {
+    return `[Shell 命令被阻断] 命令: ${command}  原因: ${security.reason ?? '未知'}`;
+  }
+  if (security.requiresApproval) {
+    return `[Shell 命令需审批] 命令: ${command}  原因: ${security.reason ?? '需要用户确认'}`;
+  }
+
+  // Step 2: 获取 shell
+  const shell = process.env.SHELL || '/bin/bash';
+
+  // Step 3: 执行命令
+  try {
+    const { stdout, stderr, exitCode } = await spawnCommand(shell, command);
+
+    // Step 4: 格式化输出
+    return formatShellOutput(stdout, stderr, exitCode, inline);
+  } catch (err) {
+    return `[Shell 命令执行失败] ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+/** spawn 执行命令并返回结构化结果 */
+function spawnCommand(
+  shell: string,
+  command: string
+): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  return new Promise((resolve) => {
+    const child = spawn(shell, ['-c', command], {
+      env: sanitizeEnv(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+
+    child.stdout?.on('data', (data: Buffer) => {
+      stdoutChunks.push(data.toString());
+    });
+    child.stderr?.on('data', (data: Buffer) => {
+      stderrChunks.push(data.toString());
+    });
+
+    let settled = false;
+    const settle = (result: { stdout: string; stderr: string; exitCode: number | null }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    child.on('exit', (code) => {
+      settle({
+        stdout: stdoutChunks.join(''),
+        stderr: stderrChunks.join(''),
+        exitCode: code,
+      });
+    });
+
+    child.on('error', () => {
+      settle({ stdout: '', stderr: '进程启动失败', exitCode: -1 });
+    });
+
+    // 超时控制
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // 进程可能已退出
+      }
+      // 宽限期后强制终止
+      setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // 忽略
+        }
+      }, 2000);
+    }, SKILL_SHELL_TIMEOUT_SEC * 1000);
+  });
+}
+
+/** 格式化 shell 命令输出 */
+function formatShellOutput(
+  stdout: string,
+  stderr: string,
+  exitCode: number | null,
+  inline: boolean
+): string {
+  let output = stdout;
+  if (stderr) {
+    output +=
+      (output ? '\n' : '') + (inline ? `[stderr: ${stderr.trim()}]` : `[stderr]\n${stderr.trim()}`);
+  }
+
+  // 后处理
+  output = stripAnsi(output);
+  output = redactSensitiveInfo(output);
+  output = truncateOutput(output, SKILL_SHELL_MAX_OUTPUT_CHARS);
+
+  // 非零退出码追加提示
+  if (exitCode !== null && exitCode !== 0) {
+    output += `\n(退出码: ${exitCode})`;
+  }
+
+  return output || '(无输出)';
+}
+
 // ============ 工具工厂 ============
 
 /**
@@ -236,6 +451,9 @@ export function createSkillTool(_config?: SkillLoadConfig) {
       // 变量替换
       const substituted = substituteVariables(bodyContent, params.args, skill.baseDir, skill.name);
 
+      // 执行 Shell 命令（! 语法）
+      const withShell = await executeShellCommandsInSkill(substituted);
+
       // 构建返回内容
       const hint = skill.frontmatter['argument-hint']
         ? ` [${skill.frontmatter['argument-hint']}]`
@@ -248,13 +466,13 @@ export function createSkillTool(_config?: SkillLoadConfig) {
         '',
         '---',
         '',
-        substituted,
+        withShell,
         '',
         '---',
         `Base directory: ${skill.baseDir}`,
       ];
 
-      if (!substituted.includes(params.args ?? '') && params.args) {
+      if (!withShell.includes(params.args ?? '') && params.args) {
         instructionParts.push('', `ARGUMENTS: ${params.args}`);
       }
 
@@ -305,9 +523,12 @@ export function getSkillCommandSpecs(
  * @param args - 用户传递的参数（可选）
  * @returns 格式化后的完整指令文本
  */
-export function formatSkillContent(skill: Skill, args?: string): string {
+export async function formatSkillContent(skill: Skill, args?: string): Promise<string> {
   // 变量替换（使用内存中的 body，无需重新读文件 + strip frontmatter）
   const substituted = substituteVariables(skill.body, args, skill.baseDir, skill.name);
+
+  // 执行 Shell 命令（! 语法）
+  const withShell = await executeShellCommandsInSkill(substituted);
 
   const hint = skill.frontmatter['argument-hint'] ? ` [${skill.frontmatter['argument-hint']}]` : '';
 
@@ -318,14 +539,14 @@ export function formatSkillContent(skill: Skill, args?: string): string {
     '',
     '---',
     '',
-    substituted,
+    withShell,
     '',
     '---',
     `Base directory: ${skill.baseDir}`,
   ];
 
   // 如果替换后的内容不包含原始参数字符串且参数非空，追加 ARGUMENTS 行
-  if (!substituted.includes(args ?? '') && args) {
+  if (!withShell.includes(args ?? '') && args) {
     instructionParts.push('', `ARGUMENTS: ${args}`);
   }
 
