@@ -1817,7 +1817,7 @@ export class ReplSession {
 
           if (entry) {
             // 将格式化后的技能指令作为 goal 发送给 Agent（内容已展开，无需 LLM 再调用 Skill 工具）
-            const skillContent = formatSkillContent(entry.skill, argsStr);
+            const skillContent = await formatSkillContent(entry.skill, argsStr);
             await this.executeGoal(skillContent, `/${spec.name}`);
           } else {
             // Fallback：技能条目不存在（罕见情况），回退到通用描述

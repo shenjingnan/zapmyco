@@ -319,4 +319,297 @@ description: 无参数技能
       expect(specs[0]?.name).toBe('my-skill');
     });
   });
+
+  describe('Shell 命令执行 (! 语法)', () => {
+    const fs = () => import('node:fs/promises');
+    const path = () => import('node:path');
+
+    async function createSkillOnDisk(
+      name: string,
+      skillContent: string
+    ): Promise<{ tmpDir: string; skillDir: string }> {
+      const fsp = await fs();
+      const pp = await path();
+      const tmpDir = pp.join('/tmp', `zapmyco-shell-test-${Date.now()}`);
+      const skillDir = pp.join(tmpDir, name);
+      await fsp.mkdir(skillDir, { recursive: true });
+      await fsp.writeFile(pp.join(skillDir, 'SKILL.md'), skillContent, 'utf-8');
+      return { tmpDir, skillDir };
+    }
+
+    it('should execute ```! block command and replace with output', async () => {
+      const fsp = await fs();
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      const { tmpDir, skillDir } = await createSkillOnDisk(
+        'test-shell',
+        `---
+name: test-shell
+description: 测试 shell 命令
+---
+
+# 测试
+
+运行命令:
+\`\`\`!
+echo "hello world"
+\`\`\`
+
+完成`
+      );
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'test-shell',
+            description: '测试 shell 命令',
+            filePath: `${skillDir}/SKILL.md`,
+            baseDir: skillDir,
+            source: 'bundled',
+            frontmatter: { name: 'test-shell', description: '测试 shell 命令' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: tmpDir,
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-shell-1', { skill: 'test-shell' });
+      const text = result.content[0].text;
+
+      expect(text).toContain('hello world');
+      expect(text).not.toContain('```!');
+
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should execute !`inline` command and replace with output', async () => {
+      const fsp = await fs();
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      const { tmpDir, skillDir } = await createSkillOnDisk(
+        'test-inline',
+        `---
+name: test-inline
+description: 测试行内命令
+---
+
+当前时间: !\`date +%Y\``
+      );
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'test-inline',
+            description: '测试行内命令',
+            filePath: `${skillDir}/SKILL.md`,
+            baseDir: skillDir,
+            source: 'bundled',
+            frontmatter: { name: 'test-inline', description: '测试行内命令' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: tmpDir,
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-inline', { skill: 'test-inline' });
+      const text = result.content[0].text;
+
+      expect(text).toMatch(/\d{4}/);
+      // 行内语法标记应被替换
+      expect(text).not.toContain('!`');
+
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should block dangerous commands and not execute them', async () => {
+      const fsp = await fs();
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      const { tmpDir, skillDir } = await createSkillOnDisk(
+        'test-danger',
+        `---
+name: test-danger
+description: 测试危险命令
+---
+
+# 危险
+
+\`\`\`!
+rm -rf /
+\`\`\``
+      );
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'test-danger',
+            description: '测试危险命令',
+            filePath: `${skillDir}/SKILL.md`,
+            baseDir: skillDir,
+            source: 'bundled',
+            frontmatter: { name: 'test-danger', description: '测试危险命令' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: tmpDir,
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-danger', { skill: 'test-danger' });
+      const text = result.content[0].text;
+
+      // 应提示阻断而不是真正执行
+      expect(text).toContain('阻断');
+      expect(text).toContain('rm -rf');
+
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should pass through when no shell commands present', async () => {
+      const fsp = await fs();
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      const { tmpDir, skillDir } = await createSkillOnDisk(
+        'plain-skill',
+        `---
+name: plain-skill
+description: 纯文本技能
+---
+
+# 纯文本技能
+
+直接执行即可。`
+      );
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'plain-skill',
+            description: '纯文本技能',
+            filePath: `${skillDir}/SKILL.md`,
+            baseDir: skillDir,
+            source: 'bundled',
+            frontmatter: { name: 'plain-skill', description: '纯文本技能' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: tmpDir,
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-plain', { skill: 'plain-skill' });
+      const text = result.content[0].text;
+
+      expect(text).toContain('纯文本技能');
+      expect(text).toContain('直接执行即可');
+
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should handle multiple shell commands', async () => {
+      const fsp = await fs();
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      const { tmpDir, skillDir } = await createSkillOnDisk(
+        'test-multi',
+        `---
+name: test-multi
+description: 测试多命令
+---
+
+\`\`\`!
+echo "first"
+\`\`\`
+中间的文本
+\`\`\`!
+echo "second"
+\`\`\``
+      );
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'test-multi',
+            description: '测试多命令',
+            filePath: `${skillDir}/SKILL.md`,
+            baseDir: skillDir,
+            source: 'bundled',
+            frontmatter: { name: 'test-multi', description: '测试多命令' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: tmpDir,
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-multi', { skill: 'test-multi' });
+      const text = result.content[0].text;
+
+      expect(text).toContain('first');
+      expect(text).toContain('second');
+      expect(text).toContain('中间的文本');
+
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should show exit code for non-zero exit', async () => {
+      const fsp = await fs();
+      const { createSkillTool, setSkillEntries } = await import('@/cli/repl/tools/skill-tool');
+
+      const { tmpDir, skillDir } = await createSkillOnDisk(
+        'test-exit',
+        `---
+name: test-exit
+description: 测试退出码
+---
+
+\`\`\`!
+exit 42
+\`\`\``
+      );
+
+      setSkillEntries([
+        {
+          skill: {
+            name: 'test-exit',
+            description: '测试退出码',
+            filePath: `${skillDir}/SKILL.md`,
+            baseDir: skillDir,
+            source: 'bundled',
+            frontmatter: { name: 'test-exit', description: '测试退出码' },
+            body: '',
+            disableModelInvocation: false,
+            userInvocable: true,
+          },
+          loadedAt: new Date(),
+          sourceDir: tmpDir,
+        },
+      ]);
+
+      const tool = createSkillTool();
+      const result = await tool.execute('call-exit', { skill: 'test-exit' });
+      const text = result.content[0].text;
+
+      expect(text).toContain('退出码: 42');
+
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    });
+  });
 });
