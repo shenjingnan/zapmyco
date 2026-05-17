@@ -278,7 +278,25 @@ export interface SubAgentConfig {
   maxTurns: number;
   /** 是否允许子 Agent 递归创建孙 Agent（默认 false） */
   allowRecursiveSpawn: boolean;
+  /**
+   * 子 Agent 推理级别（默认 'off'）
+   *
+   * - 'off': 禁用 Thinking（匹配 Claude Code 子代理策略，节省 token）
+   * - 'inherit': 继承父 Agent 的 thinkingLevel
+   * - 'minimal' | 'low' | 'medium' | 'high' | 'xhigh': 指定具体的推理级别
+   */
+  thinkingLevel?: ThinkingLevelOption;
 }
+
+/** Thinking 级别选项 */
+export type ThinkingLevelOption =
+  | 'off'
+  | 'inherit'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh';
 
 /** 日志配置 */
 export interface LoggingConfig {

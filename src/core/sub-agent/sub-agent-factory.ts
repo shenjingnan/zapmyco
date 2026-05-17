@@ -75,7 +75,10 @@ export function createSubAgent(
   _context?: string,
   toolGuard?: ToolGuard
 ): SubAgentInstance {
-  // 1. 创建隔离的 LlmBasedAgent
+  // 1. 解析 thinkingLevel：'inherit' 时读取父 Agent 的配置
+  const thinkingLevel = resolveSubAgentThinkingLevel(config.thinkingLevel, parentAgent);
+
+  // 2. 创建隔离的 LlmBasedAgent
   const subAgent = createLlmBasedAgent({
     agentId: `sub-${spec.id}-${Date.now()}`,
     displayName: `子助手 (${spec.id})`,
@@ -91,6 +94,7 @@ export function createSubAgent(
       enabled: true,
       toolExecution: 'sequential',
       maxTurns: config.maxTurns,
+      thinkingLevel,
     },
   });
 
@@ -146,6 +150,27 @@ export function buildSubAgentSystemPrompt(spec: SubAgentSpec, context?: string):
   );
 
   return parts.join('\n');
+}
+
+// ============ Thinking 级别解析 ============
+
+/**
+ * 解析子 Agent 的 thinkingLevel
+ *
+ * 处理 'inherit' 值：从父 Agent 读取当前 thinkingLevel。
+ * 其他值直接透传（包括 'off' 和具体级别）。
+ */
+function resolveSubAgentThinkingLevel(
+  level: string | undefined,
+  parentAgent: LlmBasedAgent
+): string {
+  if (level === 'inherit') {
+    const parentLevel = parentAgent.innerAgent.state.thinkingLevel;
+    // 父 Agent 可能未设置 thinkingLevel（undefined），此时默认 'medium'
+    return parentLevel ?? 'medium';
+  }
+  // 'off' / 'minimal' / 'low' / 'medium' / 'high' / 'xhigh' / undefined → 透传给 DEFAULT_RUNTIME_CONFIG
+  return level ?? 'off';
 }
 
 // ============ 内部辅助函数 ============

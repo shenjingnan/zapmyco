@@ -82,6 +82,7 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     maxOutputChars: 5000,
     maxTurns: 30,
     allowRecursiveSpawn: false,
+    thinkingLevel: 'off',
   },
   compaction: {
     enabled: true,
