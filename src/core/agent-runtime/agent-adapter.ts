@@ -161,9 +161,35 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     // 传递 thinkingLevel 配置到 Agent 状态（用于开启 Claude/DeepSeek 等模型的 reasoning/thinking）
     this.inner.state.thinkingLevel = this.config.thinkingLevel as ThinkingLevel;
 
-    // 设置 transformContext hook：每次 LLM 调用前自动剪枝旧工具输出
+    // 设置 transformContext hook：每次 LLM 调用前
+    // 1. 提取 summary 角色内容并转为 user 消息（让 LLM 能看到压缩摘要）
+    // 2. 自动剪枝旧工具输出
     this.inner.transformContext = async (messages) => {
-      return this.toolPruner.transform(messages);
+      // Step 1: 提取 summary 角色的文本内容并移除该消息
+      let summaryText: string | undefined;
+      const filtered = messages.filter((m) => {
+        if ((m as AgentMessage).role === 'summary') {
+          const text = (m as AgentMessage & { text?: string }).text;
+          if (text) summaryText = text;
+          return false;
+        }
+        return true;
+      });
+
+      // Step 2: 如有摘要（当前有压缩后的总结），在消息流最前面注入
+      if (summaryText) {
+        return [
+          {
+            role: 'user',
+            content: summaryText,
+            timestamp: Date.now(),
+          } as AgentMessage,
+          ...filtered,
+        ];
+      }
+
+      // Step 3: 无摘要，走原有剪枝逻辑
+      return this.toolPruner.transform(filtered);
     };
 
     // 初始化 Doom Loop 检测器
