@@ -88,7 +88,8 @@
     "Bopomofo",
     "Fullwidth",
     "Letterlike",
-    "Keycap"
+    "Keycap",
+    "xhigh"
   ],
   "ignorePaths": [
     "node_modules",

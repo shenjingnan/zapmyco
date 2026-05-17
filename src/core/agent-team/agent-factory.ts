@@ -8,6 +8,7 @@
  */
 
 import type { Model } from '@earendil-works/pi-ai';
+import type { ThinkingLevelOption } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import type {
@@ -44,6 +45,13 @@ export function createAgentFromType(
   availableTools: ToolRegistration[],
   config: AgentTeamConfig
 ): LlmBasedAgent {
+  // 0. 解析 thinkingLevel：definition > config > 'off'，处理 'inherit'
+  const thinkingLevel = resolveAgentThinkingLevel(
+    definition.thinkingLevel,
+    config.thinkingLevel,
+    parentAgent
+  );
+
   const agent = createLlmBasedAgent({
     agentId: instance.instanceId,
     displayName: definition.displayName,
@@ -52,6 +60,7 @@ export function createAgentFromType(
       enabled: true,
       toolExecution: 'sequential',
       maxTurns: definition.maxTurns,
+      thinkingLevel,
     },
   });
 
@@ -163,6 +172,27 @@ function buildSystemPrompt(
   };
 
   return definition.getSystemPrompt(ctx);
+}
+
+// ============ Thinking 级别解析 ============
+
+/**
+ * 解析 Agent 的 thinkingLevel
+ *
+ * 优先级：definition.thinkingLevel > config.thinkingLevel > 'off'
+ * 'inherit' 值：从父 Agent 读取当前 thinkingLevel
+ */
+function resolveAgentThinkingLevel(
+  definitionLevel: ThinkingLevelOption | undefined,
+  configLevel: ThinkingLevelOption | undefined,
+  parentAgent: LlmBasedAgent
+): string {
+  const level = definitionLevel ?? configLevel ?? 'off';
+  if (level === 'inherit') {
+    const parentLevel = parentAgent.innerAgent.state.thinkingLevel;
+    return parentLevel ?? 'medium';
+  }
+  return level;
 }
 
 // ============ 资源共享 ============

@@ -6,6 +6,7 @@
  * @module core/agent-team
  */
 
+import type { ThinkingLevelOption } from '@/config/types';
 import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
 import type { Artifact, TaskError, TokenUsage } from '@/core/result/types';
 import type { Capability } from '@/protocol/capability';
@@ -111,6 +112,13 @@ export interface AgentTypeDefinition {
    * 每个 Agent 类型可以有独立的安全策略（更严格或更宽松）。
    */
   securityOverride?: AgentSecurityOverride;
+  /**
+   * 该类型 Agent 的推理级别（可选）
+   *
+   * 覆盖 AgentTeamConfig.thinkingLevel 的默认值。
+   * 不设置时使用 AgentTeamConfig.thinkingLevel（默认 'off'）。
+   */
+  thinkingLevel?: ThinkingLevelOption;
 }
 
 // ============ Agent 实例 ============
@@ -340,6 +348,15 @@ export interface AgentTeamConfig {
   maxAggregateOutputChars: number;
   /** 用户定义的 Agent 类型列表 */
   agentTypes?: AgentTypeConfigEntry[];
+  /**
+   * 子 Agent 默认推理级别（默认 'off'）
+   *
+   * 可被 AgentTypeDefinition.thinkingLevel 逐个类型覆盖。
+   * - 'off': 禁用 Thinking，匹配 Claude Code 的子代理策略
+   * - 'inherit': 继承父 Agent 的 thinkingLevel
+   * - 'minimal' | 'low' | 'medium' | 'high' | 'xhigh': 指定具体级别
+   */
+  thinkingLevel?: ThinkingLevelOption;
 }
 
 /** 用户配置的 Agent 类型条目（简化版，用于配置文件） */
