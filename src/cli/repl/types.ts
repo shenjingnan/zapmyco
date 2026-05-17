@@ -33,6 +33,8 @@ export interface CommandDefinition {
   usage: string;
   /** 命令处理器 */
   handler: CommandHandler;
+  /** 命令来源（用于区分以便清理） */
+  source?: 'builtin' | 'skill';
 }
 
 // ============ 历史记录类型 ============

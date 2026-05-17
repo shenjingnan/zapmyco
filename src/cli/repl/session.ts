@@ -9,7 +9,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -47,6 +47,7 @@ import { InputParser } from '@/cli/repl/input-parser';
 import { createTuiQuestionProvider } from '@/cli/repl/question-provider';
 import { Renderer as RendererClass } from '@/cli/repl/renderer';
 import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
+import { SkillWatcher } from '@/cli/repl/skill-watcher';
 import { createTheme } from '@/cli/repl/theme';
 import { createLspTool } from '@/cli/repl/tools/lsp-tool';
 import { getMemoryStore } from '@/cli/repl/tools/memory-tool';
@@ -242,6 +243,7 @@ export class ReplSession {
   private auditLogger!: AuditLogger;
   private secretRedactor!: SecretRedactor;
   private skillGuard!: SkillGuard;
+  private skillWatcher!: SkillWatcher;
 
   /** 交互式提问管理器 */
   private questionManager!: QuestionManager;
@@ -350,6 +352,7 @@ export class ReplSession {
       });
 
     // 初始化 Skill 系统（异步加载，完成后更新 Agent）
+    this.skillWatcher = new SkillWatcher();
     if (this.config.skill?.enabled !== false) {
       this.initSkills();
     }
@@ -459,6 +462,9 @@ export class ReplSession {
       this.cronScheduler.stop();
       this.cronScheduler = null;
     }
+
+    // 停止技能文件监视
+    this.skillWatcher.stop();
 
     // 关闭审计日志（flush 缓冲并清理监听器）
     if (this.auditLogger) {
@@ -1752,34 +1758,121 @@ export class ReplSession {
         // 更新 autocomplete provider（包含新注册的 skill 命令）
         this.buildAutocompleteProvider();
 
-        // Phase 2: 扫描 Skill 安全威胁
-        const results = this.skillGuard.scanAll(entries);
-        const summary = this.skillGuard.getThreatSummary(results);
-        if (summary.danger > 0 || summary.warning > 0) {
-          log.warn('Skill 威胁扫描完成', summary);
-          for (const result of results) {
-            if (!result.passed) {
-              for (const v of result.violations) {
-                eventBus.emit('security:violation', {
-                  toolId: 'Skill',
-                  type: 'skill-threat',
-                  message: `[${result.skillName}] ${v.reason}`,
-                  params: { skillPath: result.skillPath, ruleId: v.ruleId },
-                });
-              }
-            }
-          }
-        }
+        // 扫描 Skill 安全威胁
+        this.scanSkillSecurity(entries);
         log.info('Skill 系统初始化完成', {
           count: entries.length,
           names: entries.map((e) => e.skill.name),
         });
+
+        // 初始加载完成后启动文件监视（避免初始扫描事件触发 reload）
+        this.startSkillWatcher();
       })
       .catch((err: unknown) => {
         log.error('Skill 加载失败', {
           error: err instanceof Error ? err.message : String(err),
         });
       });
+  }
+
+  /**
+   * 启动技能文件变更监视
+   *
+   * 监视项目级（.agents/skills/、.zapmyco/skills/）和用户级
+   *（~/.zapmyco/skills/）技能目录，文件变更时自动重新加载。
+   */
+  private startSkillWatcher(): void {
+    const watchDirs: string[] = [];
+
+    for (const dir of [
+      join(process.cwd(), '.agents', 'skills'),
+      join(process.cwd(), '.zapmyco', 'skills'),
+      join(homedir(), '.zapmyco', 'skills'),
+    ]) {
+      try {
+        if (statSync(dir).isDirectory()) watchDirs.push(dir);
+      } catch {
+        // 目录不存在，跳过
+      }
+    }
+
+    if (watchDirs.length === 0) return;
+
+    this.skillWatcher.start({
+      watchDirs,
+      onChanged: () => this.reloadSkills(),
+    });
+  }
+
+  /**
+   * 重新加载所有技能（文件变更时调用）
+   *
+   * 幂等操作：重新扫描磁盘、更新全局状态、刷新命令注册和自动补全。
+   */
+  private reloadSkills(): void {
+    const skillConfig = this.config.skill;
+    if (!skillConfig?.enabled) return;
+
+    log.info('技能文件变更，重新加载技能...');
+
+    loadSkills(
+      {
+        enabled: true,
+        extraDirs: skillConfig.loadDirs,
+        maxSkillsInPrompt: skillConfig.maxSkillsInPrompt,
+        maxSkillFileBytes: skillConfig.maxSkillFileBytes,
+      },
+      process.cwd()
+    )
+      .then((entries) => {
+        // 更新全局技能条目
+        setSkillEntries(entries);
+        this.agent.skillEntries = entries;
+        this.agent.resetSentSkills();
+
+        // 重新注册斜杠命令（先清除旧的 skill 命令）
+        this.registry.unregisterBySource('skill');
+        this._registerSkillCommands(entries);
+
+        // 刷新自动补全
+        this.buildAutocompleteProvider();
+
+        // 安全扫描
+        this.scanSkillSecurity(entries);
+
+        log.info('技能重新加载完成', {
+          count: entries.length,
+          names: entries.map((e) => e.skill.name),
+        });
+      })
+      .catch((err: unknown) => {
+        log.error('技能重新加载失败', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
+
+  /**
+   * 扫描 Skill 安全威胁
+   */
+  private scanSkillSecurity(entries: SkillEntry[]): void {
+    const results = this.skillGuard.scanAll(entries);
+    const summary = this.skillGuard.getThreatSummary(results);
+    if (summary.danger > 0 || summary.warning > 0) {
+      log.warn('Skill 威胁扫描完成', summary);
+      for (const result of results) {
+        if (!result.passed) {
+          for (const v of result.violations) {
+            eventBus.emit('security:violation', {
+              toolId: 'Skill',
+              type: 'skill-threat',
+              message: `[${result.skillName}] ${v.reason}`,
+              params: { skillPath: result.skillPath, ruleId: v.ruleId },
+            });
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -1803,6 +1896,7 @@ export class ReplSession {
         description: spec.description,
         aliases: [],
         usage: spec.name,
+        source: 'skill',
         handler: async (args: string[]) => {
           const argsStr = args.join(' ');
 
