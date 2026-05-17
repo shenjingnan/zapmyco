@@ -84,11 +84,16 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** 记忆快照内容（由外部注入，会话开始时冻结） */
   memorySnapshot: string = '';
 
-  /** Skill 提示内容（由外部注入，会话开始时构建） */
-  skillPrompt: string = '';
-
   /** Skill 条目列表（用于 allowed-tools 自动授权） */
   skillEntries: import('@/core/skill/types').SkillEntry[] = [];
+
+  /** 已发送给 LLM 的技能名称集合（用于增量发送） */
+  private sentSkillNames: Set<string> = new Set();
+
+  /** 重置已发送记录（技能重新加载时调用） */
+  resetSentSkills(): void {
+    this.sentSkillNames.clear();
+  }
 
   /**
    * 系统提示词覆盖
@@ -738,9 +743,28 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       parts.push('## 持久化记忆（快照）', '', this.memorySnapshot);
     }
 
-    // Skill 提示
-    if (hasSkill && this.skillPrompt) {
-      parts.push('', this.skillPrompt);
+    // Skill 提示（增量发送 — 仅首次发送全部，后续只发新增）
+    if (hasSkill && this.skillEntries.length > 0) {
+      const unsent = this.skillEntries.filter(
+        (e) => !e.skill.disableModelInvocation && !this.sentSkillNames.has(e.skill.name)
+      );
+
+      if (unsent.length > 0) {
+        const lines = unsent.map((e) => {
+          const hint = e.skill.frontmatter['argument-hint']
+            ? ` ${e.skill.frontmatter['argument-hint']}`
+            : '';
+          return `- ${e.skill.name}${hint}: ${e.skill.description || '(无描述)'}`;
+        });
+
+        const title = this.sentSkillNames.size === 0 ? '## 可用技能 (Skills)' : '## 新增可用技能';
+
+        parts.push('', `${title}\n\n${lines.join('\n')}\n\n使用 Skill 工具调用技能。`);
+
+        for (const e of unsent) {
+          this.sentSkillNames.add(e.skill.name);
+        }
+      }
     }
 
     // 上游任务结果

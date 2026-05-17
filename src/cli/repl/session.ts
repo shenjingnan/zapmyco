@@ -74,7 +74,7 @@ import { resolveLspConfig } from '@/core/lsp/lsp-config';
 import { createLspServerManager, type LspServerManager } from '@/core/lsp/lsp-server-manager';
 import { initializeMcpTools, type McpManager } from '@/core/mcp';
 import { getQuestionManager, type QuestionManager } from '@/core/question';
-import { buildSkillSnapshot, loadSkills, type SkillEntry } from '@/core/skill';
+import { loadSkills, type SkillEntry } from '@/core/skill';
 import { TaskStore } from '@/core/task/task-store';
 import type { WorktreeConfig } from '@/core/worktree/types';
 import { setWorktreeManager, WorktreeManager } from '@/core/worktree/worktree-manager';
@@ -1744,10 +1744,7 @@ export class ReplSession {
 
         // 更新 Agent 的 skill 条目（用于 allowed-tools 自动授权）
         this.agent.skillEntries = entries;
-
-        // 构建快照并注入系统提示
-        const snapshot = buildSkillSnapshot(entries, skillConfig.maxSkillsInPrompt);
-        this.agent.skillPrompt = snapshot.prompt;
+        this.agent.resetSentSkills();
 
         // 注册 Skill 斜杠命令（如 /commit, /review-pr）
         this._registerSkillCommands(entries);
@@ -1774,8 +1771,8 @@ export class ReplSession {
           }
         }
         log.info('Skill 系统初始化完成', {
-          count: snapshot.count,
-          names: snapshot.names,
+          count: entries.length,
+          names: entries.map((e) => e.skill.name),
         });
       })
       .catch((err: unknown) => {
