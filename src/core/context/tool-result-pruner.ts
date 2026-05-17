@@ -87,7 +87,12 @@ const TOOL_SUMMARY_RULES: ToolSummaryRule[] = [
   },
   {
     pattern: 'Skill',
-    summarize: (_msg) => `[技能调用完成]`,
+    summarize: (msg) => {
+      const content = extractResultText(msg);
+      const nameMatch = content?.match(/^# Skill:\s*(\S+)/m);
+      const name = nameMatch?.[1] ?? '';
+      return name ? `[技能调用完成: ${name}]` : '[技能调用完成]';
+    },
   },
   {
     pattern: 'SpawnSubAgents',
