@@ -289,7 +289,14 @@ export interface SubAgentConfig {
 }
 
 /** Thinking 级别选项 */
-export type ThinkingLevelOption = 'off' | 'inherit' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ThinkingLevelOption =
+  | 'off'
+  | 'inherit'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh';
 
 /** 日志配置 */
 export interface LoggingConfig {
