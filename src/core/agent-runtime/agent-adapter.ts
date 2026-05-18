@@ -260,7 +260,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     const taskLabel = request.taskDescription.slice(0, 200);
     log.info('Agent 开始执行', {
       taskId: request.taskId,
+      agentId: this.agentId,
+      agentName: this.displayName,
       taskDescription: taskLabel,
+      model: this.inner.state.model?.id ?? this.inner.state.model ?? 'unknown',
+      modelProvider: this.inner.state.model?.provider,
       currentLoad: this._currentLoad,
     });
 

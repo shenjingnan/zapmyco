@@ -104,6 +104,20 @@ export class ModelRouter {
 
     this.stats.attempts++;
 
+    logger.info('ModelRouter: 路由决策', {
+      model: modelInfo.key,
+      provider: modelInfo.provider,
+      routingContext: context
+        ? {
+            model: context.model,
+            taskType: context.taskType,
+            requireVision: context.requireVision,
+            requireReasoning: context.requireReasoning,
+          }
+        : undefined,
+      apiKey: maskApiKey(apiKey),
+    });
+
     return {
       model: modelInfo,
       apiKey,
@@ -189,20 +203,41 @@ export class ModelRouter {
     // 1. 显式指定模型
     if (context?.model) {
       const model = this.registry.resolveModel(context.model);
-      if (model) return model;
+      if (model) {
+        logger.debug('ModelRouter: 使用显式指定模型', {
+          model: model.key,
+          provider: model.provider,
+          source: 'context.model',
+        });
+        return model;
+      }
       logger.warn(`ModelRouter: 指定的模型 [${context.model}] 未注册，回退到默认`);
     }
 
     // 2. 需要视觉能力 → 使用视觉模型
     if (context?.requireVision) {
       const model = this.registry.getVisionModel();
-      if (model) return model;
+      if (model) {
+        logger.debug('ModelRouter: 需要视觉能力，使用视觉模型', {
+          model: model.key,
+          provider: model.provider,
+          source: 'requireVision',
+        });
+        return model;
+      }
     }
 
     // 3. 需要推理能力 → 使用分析模型
     if (context?.requireReasoning) {
       const model = this.registry.getAnalysisModel();
-      if (model) return model;
+      if (model) {
+        logger.debug('ModelRouter: 需要推理能力，使用分析模型', {
+          model: model.key,
+          provider: model.provider,
+          source: 'requireReasoning',
+        });
+        return model;
+      }
     }
 
     // 4. 基于任务类型的路由
@@ -210,7 +245,14 @@ export class ModelRouter {
       // analysis 类型使用完整的语义模型解析链
       if (context.taskType === 'analysis') {
         const model = this.registry.getAnalysisModel();
-        if (model) return model;
+        if (model) {
+          logger.debug('ModelRouter: 分析任务类型，使用分析模型', {
+            model: model.key,
+            provider: model.provider,
+            source: 'taskType=analysis',
+          });
+          return model;
+        }
       }
       // 其他任务类型使用 taskBasedModels 映射
       const routing = this.registry.getRoutingConfig();
@@ -218,13 +260,26 @@ export class ModelRouter {
         const mapped = routing.taskBasedModels[context.taskType];
         if (mapped) {
           const model = this.registry.resolveModel(mapped);
-          if (model) return model;
+          if (model) {
+            logger.debug('ModelRouter: 任务类型映射模型', {
+              model: model.key,
+              provider: model.provider,
+              source: `taskType=${context.taskType}`,
+            });
+            return model;
+          }
         }
       }
     }
 
     // 5. 默认模型
-    return this.registry.getDefaultModel();
+    const defaultModel = this.registry.getDefaultModel();
+    logger.debug('ModelRouter: 使用默认模型', {
+      model: defaultModel.key,
+      provider: defaultModel.provider,
+      source: 'default',
+    });
+    return defaultModel;
   }
 
   /** 在 fallbackChain 中尝试找到有可用 Key 的模型 */

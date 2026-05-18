@@ -129,6 +129,7 @@ async function runLoop(
   log.info('Agent 循环开始', {
     initialContextSize: currentContext.messages.length,
     initialSteeringCount: pendingMessages.length,
+    model: config.model?.id ?? config.model,
   });
 
   // 外层循环：处理 follow-up 消息
