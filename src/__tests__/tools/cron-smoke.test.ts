@@ -56,8 +56,8 @@ describe('Cron 烟测试', () => {
 
     await scheduler.start();
 
-    // 等待调度器触发（最多 3 秒）
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    // 等待调度器触发
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
     expect(firedJobs.length).toBeGreaterThanOrEqual(1);
   });
@@ -76,8 +76,7 @@ describe('Cron 烟测试', () => {
 
     await scheduler.start();
 
-    // 等待 3 秒
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
     expect(firedJobs.length).toBeGreaterThanOrEqual(1);
 
@@ -99,7 +98,7 @@ describe('Cron 烟测试', () => {
     });
 
     await scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
     expect(firedJobs.length).toBe(0);
   });
@@ -118,7 +117,7 @@ describe('Cron 烟测试', () => {
     });
 
     await scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 600));
     expect(firedJobs.length).toBe(0); // 暂停中不触发
 
     // 恢复后立即 triggerJob 手动触发来验证 resume 生效

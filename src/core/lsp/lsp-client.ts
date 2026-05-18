@@ -291,7 +291,6 @@ export function createLspClient(config: LspClientConfig): LspClient {
 
   async function shutdown(): Promise<void> {
     if (!childProcess || isStopping) return;
-    isStopping = true;
 
     try {
       await sendRequest('shutdown');
@@ -304,6 +303,8 @@ export function createLspClient(config: LspClientConfig): LspClient {
     } catch {
       // exit 通知失败可忽略
     }
+
+    isStopping = true;
 
     // 等待 2 秒优雅退出
     await new Promise<void>((resolve) => {
