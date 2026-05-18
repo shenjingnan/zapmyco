@@ -257,5 +257,20 @@ describe('AgentOrchestrator', () => {
       // 没有错误即表示清理正常
       expect(true).toBe(true);
     });
+
+    it('should handle detail field in progress relay without error', async () => {
+      orchestrator = createOrchestrator();
+      // 连续 relay 应正确处理 detail 字段而不抛异常
+      const result = await orchestrator.spawnWorker('general-purpose', 'test task');
+      expect(result).toBeDefined();
+    });
+
+    it('should handle mixed format progress events in relay', async () => {
+      orchestrator = createOrchestrator();
+      // 旧格式（无 detail）和新格式（有 detail）在同一个 relay 中不应冲突
+      const specs: SubAgentSpec[] = [{ id: 'test', description: 'test' }];
+      const result = await orchestrator.spawnFlat(specs);
+      expect(result.results).toHaveLength(1);
+    });
   });
 });

@@ -238,5 +238,32 @@ describe('ZapmycoEditor', () => {
 
       expect(openEditor).not.toHaveBeenCalled();
     });
+
+    it('Ctrl+Shift+O 不应触发 onToggleAgentBar', () => {
+      const editor = createEditor();
+      const toggleBar = vi.fn();
+      editor.onToggleAgentBar = toggleBar;
+
+      editor.handleInput('O'); // Ctrl+Shift+O
+
+      expect(toggleBar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleInput — Ctrl+B', () => {
+    it('Ctrl+B 应触发 onRunInBackground', () => {
+      const editor = createEditor();
+      const runBg = vi.fn();
+      editor.onRunInBackground = runBg;
+
+      editor.handleInput('\x02'); // Ctrl+B
+
+      expect(runBg).toHaveBeenCalledTimes(1);
+    });
+
+    it('onRunInBackground 未设置时 Ctrl+B 不应抛出', () => {
+      const editor = createEditor();
+      expect(() => editor.handleInput('\x02')).not.toThrow();
+    });
   });
 });
