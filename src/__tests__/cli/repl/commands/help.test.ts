@@ -29,6 +29,7 @@ function createMockSession(overrides?: Partial<ReplSession>): ReplSession {
     executeGoal: vi.fn(),
     appendOutput: vi.fn(),
     clearOutput: vi.fn(),
+    clearAgentContext: vi.fn(),
     requestRender: vi.fn(),
     getCommandRegistry: vi.fn().mockReturnValue({
       listCommands: () => [

@@ -509,6 +509,56 @@ export class ReplSession {
     return this.history;
   }
 
+  /**
+   * 彻底清空 Agent 会话上下文。
+   *
+   * - 清空消息历史、Token 统计、缓存、授权
+   * - 保留配置、记忆、持久化任务、定时任务
+   * - 效果等价于"新开一个会话"
+   *
+   * 由 /clear 命令调用。
+   */
+  clearAgentContext(): void {
+    // 1. 中止当前正在执行的任务
+    this.cancelCurrentTask();
+    this.currentTaskId = null;
+    this._state = 'idle';
+
+    // 2. 重置 Agent 运行时（消息、队列、追踪器、缓存、压缩器等）
+    this.agent.resetContext();
+
+    // 3. 清空旧版兼容消息存储
+    this.conversationHistory = [];
+
+    // 4. 重置会话统计
+    this.stats = {
+      totalRequests: 0,
+      successCount: 0,
+      failureCount: 0,
+      totalTokens: 0,
+      totalCostUsd: 0,
+      state: 'idle',
+    };
+
+    // 5. 清理授权缓存（session + persistent）
+    this.permissionStore.clear();
+
+    // 6. 取消所有待处理的交互式提问
+    this.questionManager.rejectAll(new Error('会话已重置'));
+
+    // 7. 停止编辑器 loading 状态
+    this.editor.setExecuting(false);
+
+    // 8. 清空 TUI 输出
+    this.outputArea.clear();
+
+    // 9. 清除 Agent 状态栏的 Token 显示
+    this.agentStatusBar.clearTokenStats();
+
+    // 10. 重新渲染 TUI
+    this.tui.requestRender();
+  }
+
   /** 获取会话统计 */
   getStats(): SessionStats {
     return { ...this.stats };
