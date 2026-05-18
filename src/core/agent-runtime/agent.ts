@@ -322,7 +322,25 @@ export class Agent {
       throw new Error('Agent 已在处理 prompt。使用 steer() 或 followUp() 排队消息，或等待完成。');
     }
     const messages = this.normalizePromptInput(input, images);
+
+    const roleSummary = messages
+      .map((m) => m.role)
+      .reduce<Record<string, number>>((acc, role) => {
+        acc[role] = (acc[role] || 0) + 1;
+        return acc;
+      }, {});
+    logger.info('Agent.prompt() 开始', {
+      messageCount: messages.length,
+      roleDistribution: roleSummary,
+      contextMessagesBefore: this._state.messages.length,
+    });
+
+    const t0 = Date.now();
     await this.runPromptMessages(messages);
+    logger.info('Agent.prompt() 完成', {
+      duration: Date.now() - t0,
+      contextMessagesAfter: this._state.messages.length,
+    });
   }
 
   // ============ Continue ============
@@ -340,6 +358,11 @@ export class Agent {
     if (lastMessage.role === 'assistant') {
       const queuedSteering = this.steeringQueue.drain();
       if (queuedSteering.length > 0) {
+        logger.info('Agent.continue() 通过 steering 消息继续', {
+          steeringCount: queuedSteering.length,
+          steeringRoles: queuedSteering.map((m) => m.role).join(','),
+          contextMessagesBefore: this._state.messages.length,
+        });
         await this.runPromptMessages(queuedSteering, {
           skipInitialSteeringPoll: true,
         });
@@ -348,13 +371,23 @@ export class Agent {
 
       const queuedFollowUps = this.followUpQueue.drain();
       if (queuedFollowUps.length > 0) {
+        logger.info('Agent.continue() 通过 followUp 消息继续', {
+          followUpCount: queuedFollowUps.length,
+          followUpRoles: queuedFollowUps.map((m) => m.role).join(','),
+          contextMessagesBefore: this._state.messages.length,
+        });
         await this.runPromptMessages(queuedFollowUps);
         return;
       }
 
+      logger.warn('Agent.continue() 无法从 assistant 消息继续：无排队消息');
       throw new Error('无法从 assistant 角色消息继续');
     }
 
+    logger.info('Agent.continue() 运行延续（toolResult 触发）', {
+      contextMessagesBefore: this._state.messages.length,
+      lastRole: lastMessage.role,
+    });
     await this.runContinuation();
   }
 
@@ -472,9 +505,24 @@ export class Agent {
     (this._state as Record<string, unknown>).streamingMessage = undefined;
     (this._state as Record<string, unknown>).errorMessage = undefined;
 
+    const lifeStart = Date.now();
+    logger.debug('Agent runWithLifecycle 开始', {
+      modelId: this._state.model.id,
+      modelProvider: this._state.model.provider,
+      contextSize: this._state.messages.length,
+    });
+
     try {
       await executor(abortController.signal);
+      logger.debug('Agent runWithLifecycle 完成', {
+        duration: Date.now() - lifeStart,
+        contextSizeAfter: this._state.messages.length,
+      });
     } catch (error) {
+      logger.debug('Agent runWithLifecycle 异常', {
+        duration: Date.now() - lifeStart,
+        error: error instanceof Error ? error.message : String(error),
+      });
       await this.handleRunFailure(error, abortController.signal.aborted);
     } finally {
       this.finishRun();

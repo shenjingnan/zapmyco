@@ -120,6 +120,12 @@ export class SubAgentManager {
     const startTime = Date.now();
     let subAgentInstance: SubAgentInstance | null = null;
 
+    log.info('开始执行子 Agent', {
+      specId: spec.id,
+      description: spec.description.slice(0, 200),
+      allowedTools: spec.allowedTools,
+    });
+
     try {
       // 1. 创建隔离的子 Agent
       subAgentInstance = createSubAgent(
@@ -139,6 +145,7 @@ export class SubAgentManager {
       //    后台上下文确保 ASK 动作自动降级为 DENY（无用户可交互）
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const agent = subAgentInstance!.agent;
+      const execStartTime = Date.now();
       const result = await Promise.race([
         runWithToolGuardContext({ isBackgroundAgent: true }, () =>
           agent.execute({
@@ -155,12 +162,20 @@ export class SubAgentManager {
       ]);
 
       const duration = Date.now() - startTime;
+      const execDuration = Date.now() - execStartTime;
 
       // 4. 提取输出文本
       const output =
         typeof result === 'object' && result !== null && 'output' in result
           ? (result as { output: unknown }).output
           : null;
+      const rawOutputLength =
+        typeof output === 'string'
+          ? output.length
+          : output != null
+            ? JSON.stringify(output).length
+            : 0;
+
       const outputText =
         typeof output === 'string'
           ? this.truncateOutput(output)
@@ -173,6 +188,15 @@ export class SubAgentManager {
         tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number };
       };
       const isSuccess = taskResult.status === 'success';
+
+      log.info('子 Agent 执行完成', {
+        specId: spec.id,
+        status: isSuccess ? 'success' : 'failure',
+        duration,
+        execDuration,
+        rawOutputLength,
+        truncatedOutputLength: outputText?.length ?? 0,
+      });
 
       // 记录 token 使用量（如果有）
       const tokenUsage = taskResult.tokenUsage;
