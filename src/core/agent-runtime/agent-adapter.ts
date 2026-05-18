@@ -257,6 +257,13 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     const cleanupFns: (() => void)[] = [];
     let hadContextOverflowError = false;
 
+    const taskLabel = request.taskDescription.slice(0, 200);
+    log.info('Agent 开始执行', {
+      taskId: request.taskId,
+      taskDescription: taskLabel,
+      currentLoad: this._currentLoad,
+    });
+
     try {
       // 解析上下文窗口信息（首次执行时）
       if (!this._contextWindowInfo && this.llmFacade) {
@@ -372,6 +379,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       );
 
       // 构建动态上下文消息（记忆、技能、上游结果）并注入到对话开头
+      const t0 = Date.now();
       const dynamicMessages = this.buildDynamicContextMessages(request);
       const promptMessages: AgentMessage[] = [
         ...dynamicMessages,
@@ -381,14 +389,38 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           timestamp: Date.now(),
         },
       ];
+      const buildDuration = Date.now() - t0;
+      log.debug('动态上下文构建完成', {
+        dynamicCount: dynamicMessages.length,
+        totalPromptCount: promptMessages.length,
+        duration: buildDuration,
+      });
+
       // 执行 prompt（含动态上下文）
+      const t1 = Date.now();
       await this.inner.prompt(promptMessages);
+      const promptDuration = Date.now() - t1;
+      log.debug('Agent.prompt() 完成', { duration: promptDuration });
 
       // 等待 Agent 进入空闲状态
+      const t2 = Date.now();
       await this.inner.waitForIdle();
+      const idleDuration = Date.now() - t2;
+      log.debug('Agent.waitForIdle() 完成', { duration: idleDuration });
 
       // 提取结果
       const result = this.extractTaskResult(request.taskId, startTime);
+
+      log.info('Agent 执行完成', {
+        taskId: request.taskId,
+        status: result.status,
+        duration: result.duration,
+        tokenUsage: result.tokenUsage,
+        promptDuration,
+        waitForIdleDuration: idleDuration,
+        hasOutput:
+          result.output != null && typeof result.output === 'string' && result.output.length > 0,
+      });
 
       // 记录对话日志（如已启用）
       if (this.conversationLogger?.isEnabled && this.inner.state.model) {
@@ -407,6 +439,12 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
+
+      log.warn('Agent 执行异常', {
+        taskId: request.taskId,
+        error: err.message,
+        duration: Date.now() - startTime,
+      });
 
       // 检测上下文溢出错误并尝试恢复
       if (
@@ -476,6 +514,14 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           details: { stack: err.stack },
         },
       };
+
+      log.warn('Agent 执行返回失败结果', {
+        taskId: request.taskId,
+        errorCode: errorResult.error?.code,
+        errorMessage: errorResult.error?.message,
+        hadContextOverflowError,
+        duration: Date.now() - startTime,
+      });
 
       // 如果是上下文溢出，在 error 上附加恢复建议
       if (hadContextOverflowError) {

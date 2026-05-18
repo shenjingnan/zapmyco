@@ -14,6 +14,7 @@ import {
   type ToolResultMessage,
   validateToolArguments,
 } from '@earendil-works/pi-ai';
+import { logger } from '@/infra/logger';
 import type {
   AgentContext,
   AgentEvent,
@@ -24,6 +25,8 @@ import type {
   AgentToolResult,
   StreamFn,
 } from './agent-types';
+
+const log = logger.child('agent-loop');
 
 // ============ 事件接收器类型 ============
 
@@ -119,7 +122,14 @@ async function runLoop(
   streamFn?: StreamFn
 ): Promise<void> {
   let firstTurn = true;
+  let turnCount = 0;
   let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
+
+  const loopStartTime = Date.now();
+  log.info('Agent 循环开始', {
+    initialContextSize: currentContext.messages.length,
+    initialSteeringCount: pendingMessages.length,
+  });
 
   // 外层循环：处理 follow-up 消息
   while (true) {
@@ -127,14 +137,30 @@ async function runLoop(
 
     // 内层循环：处理工具调用和 steering 消息
     while (hasMoreToolCalls || pendingMessages.length > 0) {
+      turnCount++;
+      const turnStartTime = Date.now();
+
       if (!firstTurn) {
         await emit({ type: 'turn_start' });
       } else {
         firstTurn = false;
       }
 
+      log.debug('内层循环迭代开始', {
+        turnCount,
+        pendingMessagesCount: pendingMessages.length,
+        hasMoreToolCalls,
+        contextSize: currentContext.messages.length,
+      });
+
       // 处理 pending 消息（在下次 assistant 回复前注入）
       if (pendingMessages.length > 0) {
+        const injectionTypes = pendingMessages.map((m) => m.role).join(',');
+        log.debug('注入 pending 消息', {
+          turnCount,
+          count: pendingMessages.length,
+          types: injectionTypes,
+        });
         for (const message of pendingMessages) {
           await emit({ type: 'message_start', message });
           await emit({ type: 'message_end', message });
@@ -146,10 +172,17 @@ async function runLoop(
 
       // 流式获取 assistant 回复
       const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFn);
+      const llmDuration = Date.now() - turnStartTime;
       newMessages.push(message);
 
       // 处理错误或中止
       if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+        log.warn('Agent 循环因错误或中止退出', {
+          turnCount,
+          stopReason: message.stopReason,
+          errorMessage: (message as unknown as Record<string, unknown>).errorMessage,
+          duration: Date.now() - loopStartTime,
+        });
         await emit({ type: 'turn_end', message, toolResults: [] });
         await emit({ type: 'agent_end', messages: newMessages });
         return;
@@ -162,14 +195,37 @@ async function runLoop(
       hasMoreToolCalls = false;
 
       if (toolCalls.length > 0) {
+        log.info('LLM 返回工具调用', {
+          turnCount,
+          toolCallCount: toolCalls.length,
+          toolNames: toolCalls.map((tc) => tc.name),
+          llmDuration,
+        });
+
         const executedBatch = await executeToolCalls(currentContext, message, config, signal, emit);
+        const execDuration = Date.now() - turnStartTime - llmDuration;
         toolResults.push(...executedBatch.messages);
         hasMoreToolCalls = !executedBatch.terminate;
+
+        log.info('工具调用执行完成', {
+          turnCount,
+          toolResultCount: toolResults.length,
+          terminate: executedBatch.terminate,
+          execDuration,
+          totalDuration: Date.now() - turnStartTime,
+        });
 
         for (const result of toolResults) {
           currentContext.messages.push(result);
           newMessages.push(result);
         }
+      } else {
+        log.debug('LLM 回复无需工具调用', {
+          turnCount,
+          stopReason: message.stopReason,
+          llmDuration,
+          totalDuration: Date.now() - turnStartTime,
+        });
       }
 
       await emit({ type: 'turn_end', message, toolResults });
@@ -184,6 +240,10 @@ async function runLoop(
           newMessages,
         }))
       ) {
+        log.info('Agent 循环因 shouldStopAfterTurn 停止', {
+          turnCount,
+          duration: Date.now() - loopStartTime,
+        });
         await emit({ type: 'agent_end', messages: newMessages });
         return;
       }
@@ -195,6 +255,10 @@ async function runLoop(
     // Agent 在此处自然停止。检查是否有 follow-up 消息
     const followUpMessages = (await config.getFollowUpMessages?.()) || [];
     if (followUpMessages.length > 0) {
+      log.info('Agent 继续处理 follow-up 消息', {
+        followUpCount: followUpMessages.length,
+        followUpRoles: followUpMessages.map((m) => m.role).join(','),
+      });
       pendingMessages = followUpMessages;
       continue;
     }
@@ -203,6 +267,11 @@ async function runLoop(
     break;
   }
 
+  log.info('Agent 循环正常结束', {
+    totalTurns: turnCount,
+    newMessagesCount: newMessages.length,
+    duration: Date.now() - loopStartTime,
+  });
   await emit({ type: 'agent_end', messages: newMessages });
 }
 
@@ -220,17 +289,31 @@ async function streamAssistantResponse(
   emit: AgentEventSink,
   streamFn?: StreamFn
 ): Promise<AssistantMessage> {
+  const startTime = Date.now();
+  log.debug('开始 LLM 流式调用', {
+    model: config.model?.id ?? config.model,
+    contextSize: context.messages.length,
+  });
+
   // 应用上下文转换（AgentMessage[] → AgentMessage[]）
   let messages = context.messages;
   if (config.transformContext) {
+    const t0 = Date.now();
     messages = await config.transformContext(messages, signal);
+    log.debug('上下文转换完成', {
+      duration: Date.now() - t0,
+      originalSize: context.messages.length,
+      trimmedSize: messages.length,
+    });
   }
 
   // 转换为 LLM 兼容消息（AgentMessage[] → Message[]）
   if (!config.convertToLlm) {
     throw new Error('convertToLlm 未设置');
   }
+  const t1 = Date.now();
   const llmMessages = await config.convertToLlm(messages);
+  log.debug('消息格式转换完成', { duration: Date.now() - t1, llmMessageCount: llmMessages.length });
 
   // 构建 LLM 上下文
   const llmContext: Context = {
@@ -253,6 +336,7 @@ async function streamAssistantResponse(
 
   let partialMessage: AssistantMessage | null = null;
   let addedPartial = false;
+  let firstDeltaTime = 0;
 
   for await (const event of response) {
     switch (event.type) {
@@ -272,6 +356,9 @@ async function streamAssistantResponse(
       case 'toolcall_start':
       case 'toolcall_delta':
       case 'toolcall_end':
+        if (!firstDeltaTime) {
+          firstDeltaTime = Date.now();
+        }
         if (partialMessage) {
           partialMessage = event.partial;
           context.messages[context.messages.length - 1] = partialMessage;
@@ -295,6 +382,16 @@ async function streamAssistantResponse(
           await emit({ type: 'message_start', message: { ...finalMessage } });
         }
         await emit({ type: 'message_end', message: finalMessage });
+
+        const toolCalls =
+          finalMessage.content?.filter((c): c is AgentToolCall => c.type === 'toolCall') ?? [];
+        log.info('LLM 流式调用完成', {
+          duration: Date.now() - startTime,
+          firstDeltaLatency: firstDeltaTime ? firstDeltaTime - startTime : 0,
+          stopReason: finalMessage.stopReason,
+          toolCallCount: toolCalls.length,
+          inputMessageCount: llmMessages.length,
+        });
         return finalMessage;
       }
     }
@@ -308,6 +405,15 @@ async function streamAssistantResponse(
     await emit({ type: 'message_start', message: { ...finalMessage } });
   }
   await emit({ type: 'message_end', message: finalMessage });
+
+  const toolCalls =
+    finalMessage.content?.filter((c): c is AgentToolCall => c.type === 'toolCall') ?? [];
+  log.info('LLM 流式调用完成（无事件结束标记）', {
+    duration: Date.now() - startTime,
+    stopReason: finalMessage.stopReason,
+    toolCallCount: toolCalls.length,
+    inputMessageCount: llmMessages.length,
+  });
   return finalMessage;
 }
 
@@ -368,6 +474,13 @@ async function executeToolCalls(
   const hasSequentialToolCall = toolCalls.some(
     (tc) => currentContext.tools?.find((t) => t.name === tc.name)?.executionMode === 'sequential'
   );
+
+  const isParallel = config.toolExecution !== 'sequential' && !hasSequentialToolCall;
+  log.debug('选择工具执行模式', {
+    mode: isParallel ? 'parallel' : 'sequential',
+    toolCount: toolCalls.length,
+    toolNames: toolCalls.map((tc) => tc.name),
+  });
 
   if (config.toolExecution === 'sequential' || hasSequentialToolCall) {
     return executeToolCallsSequential(
@@ -621,6 +734,13 @@ async function executePreparedToolCall(
   emit: AgentEventSink
 ): Promise<ExecutedToolCallOutcome> {
   const updateEvents: Promise<void>[] = [];
+  const execStartTime = Date.now();
+
+  const argsStr = JSON.stringify(prepared.args).slice(0, 200);
+  log.debug('开始执行工具', {
+    toolName: prepared.toolCall.name,
+    args: argsStr,
+  });
 
   try {
     const result = await prepared.tool.execute(
@@ -642,9 +762,33 @@ async function executePreparedToolCall(
       }
     );
     await Promise.all(updateEvents);
+    const execDuration = Date.now() - execStartTime;
+
+    if (execDuration > 30_000) {
+      log.warn('工具执行时间过长', {
+        toolName: prepared.toolCall.name,
+        duration: execDuration,
+        args: argsStr,
+      });
+    } else {
+      log.debug('工具执行完成', {
+        toolName: prepared.toolCall.name,
+        duration: execDuration,
+      });
+    }
+
     return { result, isError: false };
   } catch (error) {
     await Promise.all(updateEvents);
+    const execDuration = Date.now() - execStartTime;
+
+    log.warn('工具执行失败', {
+      toolName: prepared.toolCall.name,
+      duration: execDuration,
+      error: error instanceof Error ? error.message : String(error),
+      args: argsStr,
+    });
+
     return {
       result: createErrorToolResult(error instanceof Error ? error.message : String(error)),
       isError: true,
