@@ -333,6 +333,7 @@ async function streamAssistantResponse(
     ...config,
     apiKey: resolvedApiKey,
     signal,
+    timeoutMs: 120_000, // 网络层 HTTP 请求超时（2 分钟），防止 LLM 调用无限挂起
   } as Record<string, unknown>);
 
   let partialMessage: AssistantMessage | null = null;

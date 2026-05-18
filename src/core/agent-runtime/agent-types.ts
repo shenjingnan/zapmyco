@@ -233,6 +233,8 @@ export interface AgentLoopConfig {
     | undefined;
   apiKey: string | undefined;
   signal: AbortSignal | undefined;
+  /** LLM 流式调用超时（毫秒），透传给 streamFunction 的 SimpleStreamOptions.timeoutMs */
+  timeoutMs?: number;
   maxTokens: number | undefined;
   temperature: number | undefined;
   thinkingBudgets: ThinkingBudgets | undefined;

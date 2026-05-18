@@ -119,6 +119,7 @@ export class SubAgentManager {
   private async executeOne(spec: SubAgentSpec, context?: string): Promise<SubAgentResultEntry> {
     const startTime = Date.now();
     let subAgentInstance: SubAgentInstance | null = null;
+    let progressTimer: ReturnType<typeof setInterval> | undefined;
 
     log.info('开始执行子 Agent', {
       specId: spec.id,
@@ -147,6 +148,20 @@ export class SubAgentManager {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const agent = subAgentInstance!.agent;
       const execStartTime = Date.now();
+
+      // 3a. 启动进度监控定时器（每 60 秒报告一次执行状态）
+      progressTimer = setInterval(() => {
+        const state = agent.innerAgent.state;
+        log.info('子 Agent 执行进度', {
+          specId: spec.id,
+          duration: Date.now() - startTime,
+          messageCount: state.messages.length,
+          pendingToolCallsCount: state.pendingToolCalls.size,
+          isStreaming: state.isStreaming,
+          turnCount: agent.tokenTracker.turnCount,
+        });
+      }, 60_000);
+
       const result = await runWithToolGuardContext({ isBackgroundAgent: true }, () =>
         agent.execute({
           taskId: `sub-${spec.id}`,
@@ -218,10 +233,16 @@ export class SubAgentManager {
       const duration = Date.now() - startTime;
       const message = error instanceof Error ? error.message : String(error);
 
+      // 收集 Agent 状态诊断信息（在超时等异常场景下特别有用）
+      const agentState = subAgentInstance?.agent?.innerAgent.state;
       log.warn('子 Agent 执行失败', {
         specId: spec.id,
         error: message,
         duration,
+        messageCount: agentState?.messages.length,
+        pendingToolCallsCount: agentState?.pendingToolCalls.size,
+        isStreaming: agentState?.isStreaming,
+        hasError: !!agentState?.errorMessage,
       });
 
       return {
@@ -232,7 +253,8 @@ export class SubAgentManager {
         duration,
       };
     } finally {
-      // 5. 清理：移除系统提示词覆盖（帮助 GC）
+      if (progressTimer) clearInterval(progressTimer);
+      // 6. 清理：移除系统提示词覆盖（帮助 GC）
       if (subAgentInstance) {
         subAgentInstance.agent.systemPromptOverride = null;
       }
