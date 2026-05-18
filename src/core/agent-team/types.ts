@@ -139,10 +139,61 @@ export interface AgentCurrentActivity {
   /** 累计工具调用次数 */
   toolUses: number;
   /** 工具参数摘要（可选） */
-  args?: string;
+  args?: string | undefined;
   /** 开始时间戳 */
   startedAt: number;
 }
+
+// ============ 工具调用记录（用于 Explore Agent UI） ============
+
+/** 工具调用状态 */
+export type AgentToolCallStatus = 'running' | 'completed' | 'failed';
+
+/** 单条工具调用记录 */
+export interface AgentToolCallRecord {
+  /** 工具名称 */
+  toolName: string;
+  /** 工具调用 ID */
+  toolCallId?: string | undefined;
+  /** 参数摘要 */
+  argsDisplay?: string | undefined;
+  /** 执行状态 */
+  status: AgentToolCallStatus;
+  /** 开始时间戳 */
+  startedAt: number;
+  /** 结束时间戳 */
+  endedAt?: number | undefined;
+}
+
+/** 工具分类（用于分组连续的同类型调用） */
+export type ToolCallCategory =
+  | 'read'
+  | 'search'
+  | 'write'
+  | 'edit'
+  | 'exec'
+  | 'web'
+  | 'task'
+  | 'other';
+
+/** 展示分组 */
+export interface AgentToolCallGroup {
+  /** 分类 */
+  category: ToolCallCategory;
+  /** 展示标签（如 "Read"、"Search"） */
+  label: string;
+  /** 分组内的调用记录 */
+  calls: AgentToolCallRecord[];
+  /** 调用次数 */
+  count: number;
+  /** 分组开始时间 */
+  startTime: number;
+  /** 分组结束时间 */
+  endTime?: number | undefined;
+}
+
+/** 每个 Agent 实例保留的最大工具调用记录数 */
+export const MAX_TOOL_CALL_HISTORY = 100;
 
 /**
  * Agent 实例（运行时包装）
@@ -173,6 +224,10 @@ export interface AgentInstance {
   createdAt: number;
   /** 当前活动信息（实时更新，用于 UI 状态栏） */
   currentActivity?: AgentCurrentActivity;
+  /** 工具调用历史记录（ring-buffer，最大 MAX_TOOL_CALL_HISTORY 条） */
+  toolCallHistory: AgentToolCallRecord[];
+  /** 工具调用分组（UI 渲染时懒计算） */
+  toolCallGroups: AgentToolCallGroup[];
 }
 
 // ============ 任务规格 ============

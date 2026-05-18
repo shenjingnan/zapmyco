@@ -104,6 +104,22 @@ interface MockInstance {
     args?: string;
     startedAt: number;
   };
+  toolCallHistory: Array<{
+    toolName: string;
+    toolCallId?: string;
+    argsDisplay?: string;
+    status: string;
+    startedAt: number;
+    endedAt?: number;
+  }>;
+  toolCallGroups: Array<{
+    category: string;
+    label: string;
+    calls: Array<Record<string, unknown>>;
+    count: number;
+    startTime: number;
+    endTime?: number;
+  }>;
 }
 
 function makeInstance(overrides?: Partial<MockInstance>): MockInstance {
@@ -124,6 +140,8 @@ function makeInstance(overrides?: Partial<MockInstance>): MockInstance {
       inheritContext: false,
     },
     createdAt: Date.now(),
+    toolCallHistory: [],
+    toolCallGroups: [],
     ...overrides,
   };
 }
@@ -294,8 +312,8 @@ describe('AgentStatusBar', () => {
       bar.toggle();
       const result = bar.render(100);
 
-      // 只有标题行 + agent 信息行，没有工具详情行
-      expect(result).toHaveLength(2);
+      // 标题行 + agent 信息行 + 后台提示行（running 状态自动显示）
+      expect(result).toHaveLength(3);
     });
 
     it('活动工具带参数时显示参数', () => {
@@ -357,6 +375,118 @@ describe('AgentStatusBar', () => {
 
       // 确保渲染不崩溃，typeId 正常显示
       expect(result.some((l) => l.includes('custom-agent'))).toBe(true);
+    });
+
+    it('toolCallHistory 展开后显示分组工具列表', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          instanceId: 'a',
+          typeId: 'researcher',
+          toolCallHistory: [
+            {
+              toolName: 'ReadFile',
+              argsDisplay: 'src/foo.ts',
+              status: 'completed',
+              startedAt: 1000,
+            },
+            {
+              toolName: 'ReadFile',
+              argsDisplay: 'src/bar.ts',
+              status: 'completed',
+              startedAt: 2000,
+            },
+            { toolName: 'Grep', argsDisplay: 'pattern', status: 'completed', startedAt: 3000 },
+          ],
+          status: 'running',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      bar.toggle(); // 展开状态栏
+      bar.toggle('a'); // 展开 agent-a 的工具详情
+      const result = bar.render(100);
+
+      // 应包含分组标题行 ⎿  Read 2 items ...
+      expect(result.some((l) => l.includes('Read 2 items'))).toBe(true);
+      // 单个 Grep 保持独立
+      expect(result.some((l) => l.includes('Grep: pattern'))).toBe(true);
+    });
+
+    it('隐藏工具计数显示 "+N more tool uses"', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          instanceId: 'a',
+          toolCallHistory: [
+            { toolName: 'ReadFile', status: 'completed', startedAt: 1 },
+            { toolName: 'ReadFile', status: 'completed', startedAt: 2 },
+            { toolName: 'ReadFile', status: 'completed', startedAt: 3 },
+            { toolName: 'ReadFile', status: 'completed', startedAt: 4 },
+            { toolName: 'ReadFile', status: 'completed', startedAt: 5 },
+            { toolName: 'ReadFile', status: 'completed', startedAt: 6 },
+          ],
+          status: 'running',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      bar.toggle(); // 展开状态栏
+      // 不调用 toggle('a')，所以 collapsed 状态下应显示 "+N more"
+      const result = bar.render(100);
+
+      // collapsed 模式下显示最近 1 条 + "+N more" 提示
+      expect(result.some((l) => l.includes('+5 more tool uses'))).toBe(true);
+    });
+
+    it('running 状态的 Agent 显示 background hint', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          instanceId: 'a',
+          toolCallHistory: [{ toolName: 'ReadFile', status: 'completed', startedAt: 1000 }],
+          status: 'running',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      bar.toggle();
+      const result = bar.render(100);
+
+      expect(result.some((l) => l.includes('ctrl+b'))).toBe(true);
+    });
+
+    it('非 running 状态的 Agent 不显示 background hint', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          instanceId: 'a',
+          toolCallHistory: [],
+          status: 'completed',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      bar.toggle();
+      const result = bar.render(100);
+
+      expect(result.some((l) => l.includes('ctrl+b'))).toBe(false);
+    });
+
+    it('toggle(instanceId) 可单独展开/折叠 Agent 工具详情', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          instanceId: 'a',
+          toolCallHistory: [
+            { toolName: 'ReadFile', status: 'completed', startedAt: 1000 },
+            { toolName: 'Grep', status: 'completed', startedAt: 2000 },
+          ],
+          status: 'running',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      bar.toggle(); // 展开状态栏
+
+      // 先折叠状态（默认）— 只有 ⎿ 最近工具行
+      const collapsedResult = bar.render(100);
+
+      // 展开 agent-a 详情
+      bar.toggle('a');
+      const expandedResult = bar.render(100);
+      // 展开后应能看到更多内容
+      expect(expandedResult.length).toBeGreaterThanOrEqual(collapsedResult.length);
     });
   });
 

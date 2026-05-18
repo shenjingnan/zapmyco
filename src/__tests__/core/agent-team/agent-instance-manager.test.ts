@@ -469,4 +469,95 @@ describe('AgentInstanceManager', () => {
       expect(manager.getActivity('agent-1')).toBeUndefined();
     });
   });
+
+  describe('recordToolCall', () => {
+    it('should record tool call in toolCallHistory', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+
+      manager.recordToolCall('agent-1', {
+        toolName: 'ReadFile',
+        toolCallId: 'call-1',
+        status: 'running',
+        startedAt: Date.now(),
+      });
+
+      const inst = manager.get('agent-1');
+      expect(inst?.toolCallHistory).toHaveLength(1);
+      expect(inst?.toolCallHistory[0]?.toolName).toBe('ReadFile');
+      expect(inst?.toolCallHistory[0]?.status).toBe('running');
+    });
+
+    it('should emit instance:toolcall event', () => {
+      const manager = getAgentInstanceManager();
+      const events: unknown[] = [];
+      manager.on('instance:toolcall', (e) => events.push(e));
+
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+      manager.recordToolCall('agent-1', {
+        toolName: 'Grep',
+        status: 'running',
+        startedAt: Date.now(),
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        instanceId: 'agent-1',
+        typeId: 'coder',
+        record: { toolName: 'Grep', status: 'running' },
+      });
+    });
+
+    it('should update currentActivity on each call', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+
+      manager.recordToolCall('agent-1', {
+        toolName: 'ReadFile',
+        argsDisplay: 'src/foo.ts',
+        status: 'completed',
+        startedAt: 1000,
+      });
+
+      expect(manager.getActivity('agent-1')).toMatchObject({
+        toolName: 'ReadFile',
+        toolUses: 1,
+        args: 'src/foo.ts',
+      });
+    });
+
+    it('should accumulate toolUses across multiple calls', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-1'), makeTask('t1'), null, 1);
+
+      manager.recordToolCall('agent-1', {
+        toolName: 'ReadFile',
+        status: 'completed',
+        startedAt: 1000,
+      });
+      manager.recordToolCall('agent-1', {
+        toolName: 'Grep',
+        status: 'completed',
+        startedAt: 2000,
+      });
+      manager.recordToolCall('agent-1', {
+        toolName: 'ReadFile',
+        status: 'completed',
+        startedAt: 3000,
+      });
+
+      expect(manager.getActivity('agent-1')?.toolUses).toBe(3);
+    });
+
+    it('should be no-op for non-existent instance', () => {
+      const manager = getAgentInstanceManager();
+      expect(() =>
+        manager.recordToolCall('non-existent', {
+          toolName: 'ReadFile',
+          status: 'running',
+          startedAt: Date.now(),
+        })
+      ).not.toThrow();
+    });
+  });
 });

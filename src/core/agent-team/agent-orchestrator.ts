@@ -648,17 +648,55 @@ export class AgentOrchestrator {
    * @returns 清理函数，调用后移除事件监听
    */
   #relayAgentProgress(agent: LlmBasedAgent, instanceId: string): () => void {
-    const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
+    const progressHandler = (event: {
+      taskId: string;
+      percent: number;
+      message: string;
+      detail?: {
+        toolName: string;
+        toolCallId?: string;
+        argsDisplay?: string;
+        isStart?: boolean;
+        isEnd?: boolean;
+        isError?: boolean;
+      };
+    }) => {
       const instanceManager = getAgentInstanceManager();
       const instance = instanceManager.get(instanceId);
       if (!instance) return;
 
-      if (event.percent === 0) {
-        // 工具开始：更新当前活动信息
+      if (event.detail?.isStart) {
+        // 新格式：直接使用 detail 字段记录工具调用
+        instanceManager.recordToolCall(instanceId, {
+          toolName: event.detail.toolName,
+          toolCallId: event.detail.toolCallId,
+          argsDisplay: event.detail.argsDisplay,
+          status: 'running',
+          startedAt: Date.now(),
+        });
+      } else if (event.detail?.isEnd) {
+        // 工具结束：更新最后一条 running 状态
+        const lastRunning = [...instance.toolCallHistory]
+          .reverse()
+          .find((t) => t.status === 'running' && t.toolName === event.detail!.toolName);
+        if (lastRunning) {
+          lastRunning.status = event.detail.isError ? 'failed' : 'completed';
+          lastRunning.endedAt = Date.now();
+        }
+        instanceManager.emit('instance:toolcall', {
+          instanceId,
+          typeId: instance.typeId,
+          record: {
+            toolName: event.detail.toolName,
+            status: event.detail.isError ? 'failed' : 'completed',
+            startedAt: 0,
+          },
+        });
+      } else if (event.percent === 0) {
+        // 旧格式（无 detail）：向后兼容，解析 message 更新 currentActivity
         const toolName = event.message;
         const prevUses = instance.currentActivity?.toolUses ?? 0;
 
-        // 解析工具名称和参数
         const parenIdx = toolName.indexOf('(');
         const namePart = parenIdx > 0 ? toolName.slice(0, parenIdx) : toolName;
         const argsPart = parenIdx > 0 ? toolName.slice(parenIdx + 1, -1) : undefined;
@@ -671,10 +709,8 @@ export class AgentOrchestrator {
         };
 
         instanceManager.setActivity(instanceId, activity);
-      } else if (event.percent === 100 || event.percent === -1) {
-        // 工具结束或取消：不清除 activity，保留最后状态供 UI 查看
-        // 后续新工具开始时 toolUses 会继续累加
       }
+      // 工具结束（旧格式无 detail）：不处理，保留最后状态
     };
 
     agent.on(agent.EVENT_PROGRESS, progressHandler);

@@ -49,8 +49,14 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+D 回调 */
   onCtrlD?: () => void;
 
-  /** Ctrl+O 回调（打开外部编辑器） */
+  /** Ctrl+O 回调（展开/折叠 Agent 状态栏） */
+  onToggleAgentBar?: () => void;
+
+  /** Ctrl+E 回调（打开外部编辑器） */
   onOpenEditor?: () => void;
+
+  /** Ctrl+B 回调（后台运行当前任务） */
+  onRunInBackground?: () => void;
 
   /** Ctrl+T 回调（展开/折叠 TaskStatusBar） */
   onToggleTasks: (() => void) | undefined;
@@ -58,8 +64,8 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+Y 回调（展开/折叠 thinking 内容） */
   onToggleThinking: (() => void) | undefined;
 
-  /** Ctrl+Shift+O 回调（展开/折叠 Agent 状态栏） */
-  onToggleAgentBar: (() => void) | undefined;
+  /** Ctrl+Shift+O 回调（展开/折叠当前焦点 Agent 工具调用详情） */
+  onToggleAgentDetails?: () => void;
 
   /** 是否正在执行（用于显示 loading） */
   #executing = false;
@@ -124,13 +130,23 @@ export class ZapmycoEditor extends Editor {
       return;
     }
     if (matchesKey(data, Key.ctrl('o'))) {
+      if (this.onToggleAgentBar) {
+        this.onToggleAgentBar();
+      }
+      return;
+    }
+    if (matchesKey(data, Key.ctrl('e'))) {
       if (this.onOpenEditor) {
         this.onOpenEditor();
       }
       return;
     }
-    if (matchesKey(data, Key.ctrlShift('o')) && this.onToggleAgentBar) {
-      this.onToggleAgentBar();
+    if (matchesKey(data, Key.ctrl('b')) && this.onRunInBackground) {
+      this.onRunInBackground();
+      return;
+    }
+    if (matchesKey(data, Key.ctrlShift('o')) && this.onToggleAgentDetails) {
+      this.onToggleAgentDetails();
       return;
     }
     if (matchesKey(data, Key.ctrl('t'))) {

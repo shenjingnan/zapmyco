@@ -69,6 +69,8 @@ import { formatMarkdown } from '@/cli/repl/utils/markdown-formatter';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
+import { categorizeTool } from '@/core/agent-team/agent-tool-categorizer';
+import type { AgentTypeDefinition } from '@/core/agent-team/types';
 import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
 import { createDiagnosticCollector, type DiagnosticCollector } from '@/core/lsp/diagnostics';
 import { resolveLspConfig } from '@/core/lsp/lsp-config';
@@ -712,6 +714,38 @@ export class ReplSession {
     const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+
+    // 注册主 Agent 为 AgentInstance（depth=0），使 AgentStatusBar 能跟踪其进度
+    const mainAgentDef: AgentTypeDefinition = {
+      typeId: 'Explore',
+      displayName: 'Explore Agent',
+      whenToUse: 'Main REPL agent',
+      role: 'universal',
+      capabilities: [],
+      toolPolicy: { mode: 'inherit' },
+      permissionMode: 'inherit',
+      source: 'builtin',
+      maxTurns: 100,
+      maxSpawnDepth: 0,
+      getSystemPrompt: () => '',
+      color: '#3498db',
+    };
+    const mainAgent = this.agent as unknown as LlmBasedAgent;
+    const instanceManager = getAgentInstanceManager();
+    const mainInstance = instanceManager.register(
+      mainAgentDef,
+      mainAgent,
+      {
+        taskId,
+        description: rawInput.slice(0, 200),
+        mode: 'sync',
+        timeoutMs: this.config.scheduler.taskTimeoutMs,
+        inheritContext: false,
+      },
+      null,
+      0
+    );
+    instanceManager.transition(mainInstance.instanceId, 'running');
     // thinking 折叠状态（需要跨 try/catch/finally 访问）
     let thinkingElapsedInterval: ReturnType<typeof setInterval> | undefined;
     /** Token 信息推送定时器 */
@@ -816,6 +850,13 @@ export class ReplSession {
 
       const outputHandler = (event: { taskId: string; text: string }) => {
         if (event.taskId !== taskId || !event.text) return;
+
+        // 首次输出文本时，如果之前执行过工具，说明 LLM 已进入结论生成阶段，
+        // 将主 Agent 标记为 completed，停止底部 spinner（工具执行已完成）
+        if (hasExecutedTool) {
+          hasExecutedTool = false; // 只执行一次
+          instanceManager.transition(mainInstance.instanceId, 'completed');
+        }
 
         if (!spinnerStopped) {
           spinnerStopped = true;
@@ -931,12 +972,54 @@ export class ReplSession {
       };
 
       // 工具调用展示：Agent EVENT_PROGRESS -> outputArea.append()
-      // 参考 claude-code 风格：Exec 使用 ⏺ 图标 + 状态颜色，其他工具使用 → 图标
+      // 参考 claude-code 风格：Exec 使用 ⏺ 图标 + 状态颜色，其他工具使用 ⎿ 图标
       let execLineIndex: number | undefined;
       let execMessage: string | undefined;
+      /** 是否执行过工具调用（用于判断输出阶段时是否结束 agent 状态） */
+      let hasExecutedTool = false;
+      /** 连续同类型工具调用的分组跟踪（用于 OutputArea 展示 ⎿ 分组） */
+      let lastToolCategory = '';
+      let lastToolLabel = '';
+      let toolGroupCount = 0;
+      let toolGroupLineIndex: number | null = null;
+      let toolGroupSampleArg = '';
 
-      const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
+      const progressHandler = (event: {
+        taskId: string;
+        percent: number;
+        message: string;
+        detail?: {
+          toolName: string;
+          toolCallId?: string;
+          argsDisplay?: string;
+          isStart?: boolean;
+          isEnd?: boolean;
+          isError?: boolean;
+        };
+      }) => {
         if (event.taskId !== taskId) return;
+
+        // 通过 InstanceManager 记录工具调用（驱动 AgentStatusBar 更新）
+        if (event.detail?.isStart) {
+          instanceManager.recordToolCall(mainInstance.instanceId, {
+            toolName: event.detail.toolName,
+            toolCallId: event.detail.toolCallId,
+            argsDisplay: event.detail.argsDisplay,
+            status: 'running',
+            startedAt: Date.now(),
+          });
+        } else if (event.detail?.isEnd) {
+          const mainInst = instanceManager.get(mainInstance.instanceId);
+          if (mainInst) {
+            const lastRunning = [...mainInst.toolCallHistory]
+              .reverse()
+              .find((t) => t.status === 'running' && t.toolName === event.detail!.toolName);
+            if (lastRunning) {
+              lastRunning.status = event.detail.isError ? 'failed' : 'completed';
+              lastRunning.endedAt = Date.now();
+            }
+          }
+        }
 
         if (event.percent === 0) {
           // 工具开始 → thinking 阶段结束，移除 thinking 行
@@ -950,15 +1033,51 @@ export class ReplSession {
             }
           }
           // 工具开始
+          hasExecutedTool = true;
           if (event.message.startsWith('Exec(')) {
-            // Exec 工具：使用 ⏺ 图标和青色
+            // Exec 工具：使用 ⏺ 图标和青色（不参与分组）
             execMessage = event.message;
             execLineIndex = this.outputArea.append([execStyle(`  ⏺ ${event.message}`)]);
+            // 重置分组状态
+            lastToolCategory = '';
+            toolGroupCount = 0;
+            toolGroupLineIndex = null;
           } else if (event.message.startsWith('TaskManage(')) {
             // TaskManage 信息已由底部 TaskStatusBar 展示，不在 OutputArea 重复显示
             log.debug('TaskManage 工具调用已记录，跳过 TUI 展示');
+            // 重置分组状态
+            lastToolCategory = '';
+            toolGroupCount = 0;
+            toolGroupLineIndex = null;
+          } else if (event.detail?.toolName) {
+            // 分类当前工具，判断是否与上一个连续同类型
+            const { category, label } = categorizeTool(event.detail.toolName);
+            const argsPart = event.detail.argsDisplay ?? '';
+
+            if (category === lastToolCategory && toolGroupLineIndex !== null) {
+              // 连续同类型：计数器 +1，更新行内容
+              toolGroupCount++;
+              // 保留第一个参数作为示例
+              const sampleDisplay = toolGroupSampleArg
+                ? ` (e.g. ${toolGroupSampleArg.slice(0, 50)})`
+                : '';
+              const groupedText = toolStyle(
+                `  ⎿  ${lastToolLabel} ${toolGroupCount} items${sampleDisplay}`
+              );
+              this.outputArea.updateLine(toolGroupLineIndex, groupedText);
+            } else {
+              // 不同类型或新开始：重置分组，开始新行
+              // 刷新上一个分组（如果有）
+              lastToolCategory = category;
+              lastToolLabel = label;
+              toolGroupCount = 1;
+              toolGroupSampleArg = argsPart;
+              const sampleDisplay = argsPart ? ` (e.g. ${argsPart.slice(0, 50)})` : '';
+              const lineText = toolStyle(`  ⎿  ${label} ${toolGroupCount} item${sampleDisplay}`);
+              toolGroupLineIndex = this.outputArea.append([lineText]);
+            }
           } else {
-            // 其他工具：保持原有 → 风格
+            // 无 detail（旧格式）：保持原有 → 风格
             this.outputArea.append([toolStyle(`  → ${event.message}`)]);
           }
           this.tui.requestRender();
@@ -1028,6 +1147,14 @@ export class ReplSession {
       this.agent.off(this.agent.EVENT_PROGRESS, progressHandler);
       // 恢复 editor 快捷键回调
       this.editor.onToggleThinking = originalOnToggleThinking;
+
+      // 更新主 Agent 实例状态（如果 outputHandler 已经 transition 为 completed，跳过重复调用）
+      const mainInst = instanceManager.get(mainInstance.instanceId);
+      if (mainInst && mainInst.status === 'running') {
+        const mainAgentStatus = taskResult.status === 'success' ? 'completed' : 'failed';
+        instanceManager.transition(mainInstance.instanceId, mainAgentStatus);
+      }
+      this.tui.requestRender();
 
       log.debug('Agent 执行完成', {
         taskId,
@@ -2011,12 +2138,30 @@ export class ReplSession {
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
 
-    // Ctrl+O: 展开/折叠 Agent 状态栏（优先），或打开外部编辑器
+    // Ctrl+O: 展开/折叠 Agent 状态栏
     this.editor.onToggleAgentBar = () => {
       this.agentStatusBar.toggle();
       this.tui.requestRender();
     };
+
+    // Ctrl+E: 打开外部编辑器
     this.editor.onOpenEditor = () => this.openInEditor();
+
+    // Ctrl+Shift+O: 展开/折叠当前 Agent 工具调用详情
+    this.editor.onToggleAgentDetails = () => {
+      this.agentStatusBar.toggleActiveAgentDetails();
+      this.tui.requestRender();
+    };
+
+    // Ctrl+B: 将当前任务转入后台执行
+    this.editor.onRunInBackground = () => {
+      if (this.currentTaskId) {
+        const bgTaskId = this.currentTaskId;
+        this.cancelCurrentTask();
+        this.outputArea.append([chalk.gray(`  (任务 ${bgTaskId} 已转入后台运行)`), '']);
+        this.tui.requestRender();
+      }
+    };
 
     // Ctrl+T: 展开/折叠 TaskStatusBar
     this.editor.onToggleTasks = () => {
@@ -2048,12 +2193,14 @@ export class ReplSession {
     instanceManager.on('instance:registered', refreshStatusBar);
     instanceManager.on('instance:transitioned', refreshStatusBar);
     instanceManager.on('instance:activity', refreshStatusBar);
+    instanceManager.on('instance:toolcall', refreshStatusBar);
 
     // 关闭时清理监听器
     eventBus.on('system:shutdown', () => {
       instanceManager.off('instance:registered', refreshStatusBar);
       instanceManager.off('instance:transitioned', refreshStatusBar);
       instanceManager.off('instance:activity', refreshStatusBar);
+      instanceManager.off('instance:toolcall', refreshStatusBar);
     });
   }
 
