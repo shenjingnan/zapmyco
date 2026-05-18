@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.15.0](https://github.com/shenjingnan/zapmyco/compare/v0.14.0...v0.15.0) (2026-05-18)
+
+### Features
+
+* **agent:** transformContext 支持 summary 角色消息转为 user 消息 ([#132](https://github.com/shenjingnan/zapmyco/issues/132)) ([25f37ea](https://github.com/shenjingnan/zapmyco/commit/25f37ea2035c0b38c2d613bbd5cc7e23585bce19))
+* **cli:** 优化 Token 统计显示，新增缓存命中率和耗时 ([#128](https://github.com/shenjingnan/zapmyco/issues/128)) ([69b7ea0](https://github.com/shenjingnan/zapmyco/commit/69b7ea096f73e66e28f92bb9240189c62741a1db))
+* **context:** 在压缩摘要中记录技能调用信息 ([#133](https://github.com/shenjingnan/zapmyco/issues/133)) ([fead8a8](https://github.com/shenjingnan/zapmyco/commit/fead8a8532c4f6de9601e5f96d31492253f3c68f))
+* **core:** 增强核心模块日志可观测性 ([#137](https://github.com/shenjingnan/zapmyco/issues/137)) ([df6ebb3](https://github.com/shenjingnan/zapmyco/commit/df6ebb3e76b17bab3d489603e2d4dd3d5064b020))
+* **core:** 添加 Agent 执行链路日志追踪 ([#136](https://github.com/shenjingnan/zapmyco/issues/136)) ([5e10299](https://github.com/shenjingnan/zapmyco/commit/5e10299a1783cdf79e8a7b5ebe4ea6a0ff7ab892))
+* **core:** 添加 LLM 调用超时与子 Agent 进度监控 ([#139](https://github.com/shenjingnan/zapmyco/issues/139)) ([9d84c46](https://github.com/shenjingnan/zapmyco/commit/9d84c46426892314ccab27c713e4a8ba6cf98c0e))
+* **repl:** /clear 命令改为清空 Agent 会话上下文 ([#135](https://github.com/shenjingnan/zapmyco/issues/135)) ([08408d8](https://github.com/shenjingnan/zapmyco/commit/08408d8bbefdbf8d271bef3a0a2ebe12f8e2c5d3))
+* **repl:** 技能文件热重载支持 ([#134](https://github.com/shenjingnan/zapmyco/issues/134)) ([091cd4b](https://github.com/shenjingnan/zapmyco/commit/091cd4bf9e1e827aef60478e44ee8f4fbeebb1e6))
+* **skill-tool:** 新增 Shell 命令执行 (! 语法) 支持 ([#130](https://github.com/shenjingnan/zapmyco/issues/130)) ([3733ea1](https://github.com/shenjingnan/zapmyco/commit/3733ea1076703c45be078028b61df51bc36693f8))
+
+### Code Refactoring
+
+* **agent-runtime:** 技能提示改为增量发送机制 ([#131](https://github.com/shenjingnan/zapmyco/issues/131)) ([76198b6](https://github.com/shenjingnan/zapmyco/commit/76198b684ee1fc5bfb9625dc0ac9e387a4b8cfb5))
+* **core:** 将子 Agent 超时机制迁移至 Agent 内部实现 ([#138](https://github.com/shenjingnan/zapmyco/issues/138)) ([9b5e761](https://github.com/shenjingnan/zapmyco/commit/9b5e76187fbb5e616fa13ada2b95a0a26109cca0))
+
 ## [0.14.0](https://github.com/shenjingnan/zapmyco/compare/v0.13.0...v0.14.0) (2026-05-15)
 
 ### Features
