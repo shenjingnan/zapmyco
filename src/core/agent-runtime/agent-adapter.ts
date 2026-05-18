@@ -323,6 +323,12 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
               taskId: request.taskId,
               percent: 0,
               message: paramsStr ? `${event.toolName}(${paramsStr})` : event.toolName,
+              detail: {
+                toolName: event.toolName,
+                toolCallId: event.toolCallId,
+                argsDisplay: paramsStr,
+                isStart: true,
+              },
             });
 
             // Doom Loop 检测：记录工具调用
@@ -355,6 +361,12 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
               taskId: request.taskId,
               percent: 100,
               message: `工具 ${event.toolName} ${isSuccess ? '完成' : '失败'}`,
+              detail: {
+                toolName: event.toolName,
+                toolCallId: event.toolCallId,
+                isEnd: true,
+                isError: !isSuccess,
+              },
             });
 
             // Doom Loop 检测：记录执行结果

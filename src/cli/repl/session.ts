@@ -69,6 +69,7 @@ import { formatMarkdown } from '@/cli/repl/utils/markdown-formatter';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
+import type { AgentTypeDefinition } from '@/core/agent-team/types';
 import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
 import { createDiagnosticCollector, type DiagnosticCollector } from '@/core/lsp/diagnostics';
 import { resolveLspConfig } from '@/core/lsp/lsp-config';
@@ -712,6 +713,38 @@ export class ReplSession {
     const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+
+    // 注册主 Agent 为 AgentInstance（depth=0），使 AgentStatusBar 能跟踪其进度
+    const mainAgentDef: AgentTypeDefinition = {
+      typeId: 'Explore',
+      displayName: 'Explore Agent',
+      whenToUse: 'Main REPL agent',
+      role: 'universal',
+      capabilities: [],
+      toolPolicy: { mode: 'inherit' },
+      permissionMode: 'inherit',
+      source: 'builtin',
+      maxTurns: 100,
+      maxSpawnDepth: 0,
+      getSystemPrompt: () => '',
+      color: '#3498db',
+    };
+    const mainAgent = this.agent as unknown as LlmBasedAgent;
+    const instanceManager = getAgentInstanceManager();
+    const mainInstance = instanceManager.register(
+      mainAgentDef,
+      mainAgent,
+      {
+        taskId,
+        description: rawInput.slice(0, 200),
+        mode: 'sync',
+        timeoutMs: this.config.scheduler.taskTimeoutMs,
+        inheritContext: false,
+      },
+      null,
+      0
+    );
+    instanceManager.transition(mainInstance.instanceId, 'running');
     // thinking 折叠状态（需要跨 try/catch/finally 访问）
     let thinkingElapsedInterval: ReturnType<typeof setInterval> | undefined;
     /** Token 信息推送定时器 */
@@ -935,8 +968,42 @@ export class ReplSession {
       let execLineIndex: number | undefined;
       let execMessage: string | undefined;
 
-      const progressHandler = (event: { taskId: string; percent: number; message: string }) => {
+      const progressHandler = (event: {
+        taskId: string;
+        percent: number;
+        message: string;
+        detail?: {
+          toolName: string;
+          toolCallId?: string;
+          argsDisplay?: string;
+          isStart?: boolean;
+          isEnd?: boolean;
+          isError?: boolean;
+        };
+      }) => {
         if (event.taskId !== taskId) return;
+
+        // 通过 InstanceManager 记录工具调用（驱动 AgentStatusBar 更新）
+        if (event.detail?.isStart) {
+          instanceManager.recordToolCall(mainInstance.instanceId, {
+            toolName: event.detail.toolName,
+            toolCallId: event.detail.toolCallId,
+            argsDisplay: event.detail.argsDisplay,
+            status: 'running',
+            startedAt: Date.now(),
+          });
+        } else if (event.detail?.isEnd) {
+          const mainInst = instanceManager.get(mainInstance.instanceId);
+          if (mainInst) {
+            const lastRunning = [...mainInst.toolCallHistory]
+              .reverse()
+              .find((t) => t.status === 'running' && t.toolName === event.detail!.toolName);
+            if (lastRunning) {
+              lastRunning.status = event.detail.isError ? 'failed' : 'completed';
+              lastRunning.endedAt = Date.now();
+            }
+          }
+        }
 
         if (event.percent === 0) {
           // 工具开始 → thinking 阶段结束，移除 thinking 行
@@ -1028,6 +1095,11 @@ export class ReplSession {
       this.agent.off(this.agent.EVENT_PROGRESS, progressHandler);
       // 恢复 editor 快捷键回调
       this.editor.onToggleThinking = originalOnToggleThinking;
+
+      // 更新主 Agent 实例状态
+      const mainAgentStatus = taskResult.status === 'success' ? 'completed' : 'failed';
+      instanceManager.transition(mainInstance.instanceId, mainAgentStatus);
+      this.tui.requestRender();
 
       log.debug('Agent 执行完成', {
         taskId,
@@ -2011,12 +2083,30 @@ export class ReplSession {
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
 
-    // Ctrl+O: 展开/折叠 Agent 状态栏（优先），或打开外部编辑器
+    // Ctrl+O: 展开/折叠 Agent 状态栏
     this.editor.onToggleAgentBar = () => {
       this.agentStatusBar.toggle();
       this.tui.requestRender();
     };
+
+    // Ctrl+E: 打开外部编辑器
     this.editor.onOpenEditor = () => this.openInEditor();
+
+    // Ctrl+Shift+O: 展开/折叠当前 Agent 工具调用详情
+    this.editor.onToggleAgentDetails = () => {
+      this.agentStatusBar.toggleActiveAgentDetails();
+      this.tui.requestRender();
+    };
+
+    // Ctrl+B: 将当前任务转入后台执行
+    this.editor.onRunInBackground = () => {
+      if (this.currentTaskId) {
+        const bgTaskId = this.currentTaskId;
+        this.cancelCurrentTask();
+        this.outputArea.append([chalk.gray(`  (任务 ${bgTaskId} 已转入后台运行)`), '']);
+        this.tui.requestRender();
+      }
+    };
 
     // Ctrl+T: 展开/折叠 TaskStatusBar
     this.editor.onToggleTasks = () => {
@@ -2048,12 +2138,14 @@ export class ReplSession {
     instanceManager.on('instance:registered', refreshStatusBar);
     instanceManager.on('instance:transitioned', refreshStatusBar);
     instanceManager.on('instance:activity', refreshStatusBar);
+    instanceManager.on('instance:toolcall', refreshStatusBar);
 
     // 关闭时清理监听器
     eventBus.on('system:shutdown', () => {
       instanceManager.off('instance:registered', refreshStatusBar);
       instanceManager.off('instance:transitioned', refreshStatusBar);
       instanceManager.off('instance:activity', refreshStatusBar);
+      instanceManager.off('instance:toolcall', refreshStatusBar);
     });
   }
 

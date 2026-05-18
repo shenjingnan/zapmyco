@@ -104,6 +104,22 @@ interface MockInstance {
     args?: string;
     startedAt: number;
   };
+  toolCallHistory: Array<{
+    toolName: string;
+    toolCallId?: string;
+    argsDisplay?: string;
+    status: string;
+    startedAt: number;
+    endedAt?: number;
+  }>;
+  toolCallGroups: Array<{
+    category: string;
+    label: string;
+    calls: Array<Record<string, unknown>>;
+    count: number;
+    startTime: number;
+    endTime?: number;
+  }>;
 }
 
 function makeInstance(overrides?: Partial<MockInstance>): MockInstance {
@@ -124,6 +140,8 @@ function makeInstance(overrides?: Partial<MockInstance>): MockInstance {
       inheritContext: false,
     },
     createdAt: Date.now(),
+    toolCallHistory: [],
+    toolCallGroups: [],
     ...overrides,
   };
 }
@@ -294,8 +312,8 @@ describe('AgentStatusBar', () => {
       bar.toggle();
       const result = bar.render(100);
 
-      // 只有标题行 + agent 信息行，没有工具详情行
-      expect(result).toHaveLength(2);
+      // 标题行 + agent 信息行 + 后台提示行（running 状态自动显示）
+      expect(result).toHaveLength(3);
     });
 
     it('活动工具带参数时显示参数', () => {

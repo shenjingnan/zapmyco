@@ -422,10 +422,15 @@ describe('LlmBasedAgent internal event handling', () => {
       });
 
       expect(progressEvents).toHaveLength(1);
-      expect(progressEvents[0]).toEqual({
+      expect(progressEvents[0]).toMatchObject({
         taskId,
         percent: 0,
         message: 'ReadFile(file_path="/a/b.txt")',
+        detail: {
+          toolName: 'ReadFile',
+          toolCallId: 'call-1',
+          isStart: true,
+        },
       });
     });
 
@@ -440,10 +445,15 @@ describe('LlmBasedAgent internal event handling', () => {
       });
 
       expect(progressEvents).toHaveLength(1);
-      expect(progressEvents[0]).toEqual({
+      expect(progressEvents[0]).toMatchObject({
         taskId,
         percent: 0,
         message: 'list_files',
+        detail: {
+          toolName: 'list_files',
+          toolCallId: 'call-1',
+          isStart: true,
+        },
       });
     });
 
@@ -458,10 +468,15 @@ describe('LlmBasedAgent internal event handling', () => {
       });
 
       expect(progressEvents).toHaveLength(1);
-      expect(progressEvents[0]).toEqual({
+      expect(progressEvents[0]).toMatchObject({
         taskId,
         percent: 0,
         message: 'ping',
+        detail: {
+          toolName: 'ping',
+          toolCallId: 'call-1',
+          isStart: true,
+        },
       });
     });
 
@@ -613,10 +628,16 @@ describe('LlmBasedAgent internal event handling', () => {
       });
 
       expect(progressEvents).toHaveLength(1);
-      expect(progressEvents[0]).toEqual({
+      expect(progressEvents[0]).toMatchObject({
         taskId,
         percent: 100,
         message: '工具 ReadFile 完成',
+        detail: {
+          toolName: 'ReadFile',
+          toolCallId: 'call-1',
+          isEnd: true,
+          isError: false,
+        },
       });
     });
   });

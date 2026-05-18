@@ -14,8 +14,10 @@ import type {
   AgentInstance,
   AgentInstanceState,
   AgentTaskSpec,
+  AgentToolCallRecord,
   AgentTypeDefinition,
 } from '@/core/agent-team/types';
+import { MAX_TOOL_CALL_HISTORY } from '@/core/agent-team/types';
 import { logger } from '@/infra/logger';
 
 const log = logger.child('agent-instance-manager');
@@ -55,6 +57,7 @@ export type AgentInstanceManagerEvent = {
     to: AgentInstanceState;
   };
   'instance:activity': { instanceId: string; typeId: string; activity: AgentCurrentActivity };
+  'instance:toolcall': { instanceId: string; typeId: string; record: AgentToolCallRecord };
 };
 
 /**
@@ -98,6 +101,8 @@ export class AgentInstanceManager extends EventEmitter {
       inbox: [],
       task,
       createdAt: Date.now(),
+      toolCallHistory: [],
+      toolCallGroups: [],
     };
 
     this.instances.set(instance.instanceId, instance);
@@ -200,6 +205,45 @@ export class AgentInstanceManager extends EventEmitter {
    */
   getActivity(instanceId: string): AgentCurrentActivity | undefined {
     return this.instances.get(instanceId)?.currentActivity;
+  }
+
+  /**
+   * 记录工具调用事件到实例历史
+   *
+   * 将工具调用记录推入 toolCallHistory（ring-buffer 风格），
+   * 同步更新 currentActivity，并发射 instance:toolcall 事件。
+   *
+   * @param instanceId - 实例 ID
+   * @param record - 工具调用记录
+   */
+  recordToolCall(instanceId: string, record: AgentToolCallRecord): void {
+    const instance = this.instances.get(instanceId);
+    if (!instance) return;
+
+    // 推入历史（ring-buffer：超出上限时截断头部）
+    instance.toolCallHistory.push(record);
+    if (instance.toolCallHistory.length > MAX_TOOL_CALL_HISTORY) {
+      instance.toolCallHistory = instance.toolCallHistory.slice(-MAX_TOOL_CALL_HISTORY);
+    }
+    instance.toolCallGroups = []; // 标记为需重新计算
+
+    // 同步更新 currentActivity（向后兼容）
+    const runningCount = instance.toolCallHistory.filter(
+      (t) => t.status === 'running' || t.status === 'completed'
+    ).length;
+    instance.currentActivity = {
+      toolName: record.toolName,
+      toolUses: runningCount,
+      args: record.argsDisplay,
+      startedAt: record.startedAt,
+    };
+
+    // 发射 toolcall 事件（驱动 UI 更新）
+    this.emit('instance:toolcall', {
+      instanceId,
+      typeId: instance.typeId,
+      record,
+    });
   }
 
   // ============ 查询 ============
