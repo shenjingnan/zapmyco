@@ -400,9 +400,26 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         duration: buildDuration,
       });
 
-      // 执行 prompt（含动态上下文）
+      // 执行 prompt（含动态上下文），设置超时 abort
+      const execTimeout = request.options?.timeout;
+      let execTimer: ReturnType<typeof setTimeout> | undefined;
+      if (execTimeout && execTimeout > 0) {
+        execTimer = setTimeout(() => {
+          log.warn('Agent 执行超时，强制中止', {
+            taskId: request.taskId,
+            timeout: execTimeout,
+            agentId: this.agentId,
+          });
+          this.inner.abort();
+        }, execTimeout);
+      }
+
       const t1 = Date.now();
-      await this.inner.prompt(promptMessages);
+      try {
+        await this.inner.prompt(promptMessages);
+      } finally {
+        if (execTimer) clearTimeout(execTimer);
+      }
       const promptDuration = Date.now() - t1;
       log.debug('Agent.prompt() 完成', { duration: promptDuration });
 

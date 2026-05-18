@@ -143,23 +143,21 @@ export class SubAgentManager {
 
       // 3. 在后台 Agent 上下文中执行（带超时）
       //    后台上下文确保 ASK 动作自动降级为 DENY（无用户可交互）
+      //    timeout 由 agent.execute() 内部通过 AbortController 处理
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const agent = subAgentInstance!.agent;
       const execStartTime = Date.now();
-      const result = await Promise.race([
-        runWithToolGuardContext({ isBackgroundAgent: true }, () =>
-          agent.execute({
-            taskId: `sub-${spec.id}`,
-            taskDescription: spec.description,
-            workdir: process.cwd(),
-            options: {
-              timeout: this.config.taskTimeoutMs,
-              verbose: false,
-            },
-          })
-        ),
-        this.createTimeoutPromise(spec.id, this.config.taskTimeoutMs),
-      ]);
+      const result = await runWithToolGuardContext({ isBackgroundAgent: true }, () =>
+        agent.execute({
+          taskId: `sub-${spec.id}`,
+          taskDescription: spec.description,
+          workdir: process.cwd(),
+          options: {
+            timeout: this.config.taskTimeoutMs,
+            verbose: false,
+          },
+        })
+      );
 
       const duration = Date.now() - startTime;
       const execDuration = Date.now() - execStartTime;
@@ -239,17 +237,6 @@ export class SubAgentManager {
         subAgentInstance.agent.systemPromptOverride = null;
       }
     }
-  }
-
-  /**
-   * 创建超时 Promise
-   */
-  private createTimeoutPromise(specId: string, timeoutMs: number): Promise<never> {
-    return new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`子任务 "${specId}" 执行超时（${timeoutMs / 1000}秒）`));
-      }, timeoutMs);
-    });
   }
 
   /**
