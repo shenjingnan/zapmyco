@@ -65,6 +65,37 @@ export class CommandRegistry {
   }
 
   /**
+   * 注销单个命令
+   */
+  unregister(name: string): boolean {
+    const lowerName = name.toLowerCase();
+    const cmd = this.commands.get(lowerName);
+    if (!cmd) return false;
+
+    for (const alias of cmd.aliases) {
+      this.aliasMap.delete(alias.toLowerCase());
+    }
+
+    return this.commands.delete(lowerName);
+  }
+
+  /**
+   * 注销所有指定来源的命令
+   *
+   * @returns 被注销的命令名称列表
+   */
+  unregisterBySource(source: 'builtin' | 'skill'): string[] {
+    const removed: string[] = [];
+    for (const [name, cmd] of this.commands) {
+      if (cmd.source === source) {
+        this.unregister(name);
+        removed.push(name);
+      }
+    }
+    return removed;
+  }
+
+  /**
    * 分发并执行命令
    */
   async dispatch(parsed: ParsedInput): Promise<void> {
