@@ -132,6 +132,9 @@ export interface ReplSession {
   /** 清空输出区域 */
   clearOutput(): void;
 
+  /** 清空 Agent 会话上下文（消息、统计、缓存等），保留配置和持久化数据 */
+  clearAgentContext(): void;
+
   /** 请求 TUI 重绘 */
   requestRender(): void;
 

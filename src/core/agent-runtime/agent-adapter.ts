@@ -538,6 +538,24 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   }
 
   /**
+   * 重置 Agent 会话上下文（不清除工具注册和配置）。
+   *
+   * 清空消息历史、流式状态、待处理工具调用、队列、Token 追踪、
+   * 工具 Schema 缓存、压缩器状态、错误恢复计数、Doom Loop 检测器。
+   *
+   * 由 /clear 命令调用，效果等价于新 Agent 实例。
+   */
+  resetContext(): void {
+    this.inner.reset();
+    this.resetSentSkills();
+    this.tokenTracker.reset();
+    this.toolSchemaCache.clear();
+    this.compactor.reset();
+    this.errorRecovery.reset();
+    this.doomLoop.reset();
+  }
+
+  /**
    * 获取上下文窗口信息
    */
   getContextWindowInfo(): ContextWindowInfo | null {

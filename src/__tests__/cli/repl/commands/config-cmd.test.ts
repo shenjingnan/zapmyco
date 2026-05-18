@@ -53,6 +53,7 @@ function createMockSession(): ReplSession {
     executeGoal: vi.fn(),
     appendOutput: vi.fn(),
     clearOutput: vi.fn(),
+    clearAgentContext: vi.fn(),
     requestRender: vi.fn(),
     getCommandRegistry: vi.fn(),
     getInputParser: vi.fn(),
