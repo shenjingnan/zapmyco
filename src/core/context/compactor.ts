@@ -350,6 +350,8 @@ export class Compactor {
       model = this.llmFacade.resolvePiModel();
     }
 
+    log.info('摘要模型选择', { model: model.id });
+
     // 过滤消息，减少无用的内容块
     const simplifiedMessages = messages.map((m) => this.simplifyMessage(m));
 

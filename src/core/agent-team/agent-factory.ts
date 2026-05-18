@@ -225,6 +225,17 @@ function shareParentResources(
       const resolvedModel = resolveModelForDefinition(definition.model, parentAgent);
       if (resolvedModel) {
         subAgent.innerAgent.state.model = resolvedModel;
+        // 模型切换日志：子 Agent 模型与父 Agent 不同时记录
+        if (resolvedModel.id !== parentInner.state.model?.id) {
+          log.info(
+            `子 Agent [${definition?.typeId}] 模型切换: ${parentInner.state.model?.id ?? 'N/A'} → ${resolvedModel.id}`,
+            {
+              typeId: definition?.typeId,
+              parentModel: parentInner.state.model?.id,
+              childModel: resolvedModel.id,
+            }
+          );
+        }
       } else {
         // 解析失败时回退到继承父 Agent 模型
         subAgent.innerAgent.state.model = parentInner.state.model;
