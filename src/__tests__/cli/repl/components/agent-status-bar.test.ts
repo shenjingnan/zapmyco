@@ -414,6 +414,103 @@ describe('AgentStatusBar', () => {
       const bar = new AgentStatusBar();
       expect(() => bar.toggleActiveAgentDetails()).not.toThrow();
     });
+
+    it('有当前活动且有工具历史时显示双重信息', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          typeId: 'researcher',
+          currentActivity: { toolName: 'Exec', toolUses: 3, startedAt: Date.now() },
+          toolCallHistory: [
+            {
+              toolName: 'ReadFile',
+              argsDisplay: 'src/foo.ts',
+              status: 'completed',
+              startedAt: 1000,
+              endedAt: 2000,
+            },
+            {
+              toolName: 'ReadFile',
+              argsDisplay: 'src/bar.ts',
+              status: 'completed',
+              startedAt: 1000,
+              endedAt: 2000,
+            },
+          ],
+          status: 'running',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      // line1: 当前活动描述（中文）
+      expect(result[1]).toContain('正在执行命令');
+      // line2: 工具调用总次数
+      expect(result[2]).toContain('已完成 2 次工具调用');
+      // 共 3 行：header + agent 行 + 工具统计行
+      expect(result).toHaveLength(3);
+    });
+
+    it('工具历史未全部完成时不显示已完成描述', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          typeId: 'researcher',
+          // 无 currentActivity
+          toolCallHistory: [
+            { toolName: 'ReadFile', status: 'completed', startedAt: 1000, endedAt: 2000 },
+            { toolName: 'Grep', status: 'running', startedAt: 3000 },
+          ],
+          status: 'running',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      // line1: 没有 activityDesc（不是所有调用都完成），只显示 typeId
+      expect(result[1]).toContain('researcher');
+      expect(result[1]).not.toContain('已完成');
+      // line2: 仍有工具调用摘要（totalCalls > 0 && !act）
+      expect(result[2]).toContain('Read 1次');
+      expect(result[2]).toContain('Search 1次');
+    });
+
+    it('不同工具名显示对应中文描述', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          typeId: 'coder',
+          currentActivity: { toolName: 'WriteFile', toolUses: 1, startedAt: Date.now() },
+        }),
+        makeInstance({
+          typeId: 'researcher',
+          currentActivity: { toolName: 'WebSearch', toolUses: 2, startedAt: Date.now() },
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      expect(result.some((l) => l.includes('正在写入文件'))).toBe(true);
+      expect(result.some((l) => l.includes('正在搜索网络'))).toBe(true);
+    });
+
+    it('展开模式 header 显示总耗时', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          instanceId: 'a',
+          typeId: 'coder',
+          createdAt: Date.now() - 5000,
+        }),
+        makeInstance({
+          instanceId: 'b',
+          typeId: 'researcher',
+          createdAt: Date.now() - 2000,
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      // header 行包含 agent 数量和耗时
+      expect(result[0]).toContain('2 agents');
+      expect(result[0]).toContain('5.0s');
+    });
   });
 
   describe('duration 格式化', () => {
