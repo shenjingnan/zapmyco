@@ -339,6 +339,8 @@ async function streamAssistantResponse(
   let partialMessage: AssistantMessage | null = null;
   let addedPartial = false;
   let firstDeltaTime = 0;
+  let eventCount = 0;
+  const YIELD_INTERVAL = 10; // 每处理 10 个事件用 setImmediate 让出事件循环
 
   for await (const event of response) {
     switch (event.type) {
@@ -396,6 +398,12 @@ async function streamAssistantResponse(
         });
         return finalMessage;
       }
+    }
+
+    // 定期让出事件循环，让 TUI setInterval (spinner/timer) 有机会执行
+    eventCount++;
+    if (eventCount % YIELD_INTERVAL === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 
