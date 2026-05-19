@@ -21,6 +21,7 @@
 
 import { Container } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
+import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
 import type { TaskStore } from '@/core/task/task-store';
 import type { TaskItem, TaskManageSummary } from '@/core/task/types';
 
@@ -43,21 +44,27 @@ const STATUS_ICONS: Record<string, string> = {
  * 固定在 OutputArea 和 AgentStatusBar 之间。
  */
 export class TaskStatusBar extends Container {
+  /** AnimationManager 实例（用于渲染周期驱动的动画） */
+  #animationManager: AnimationManager;
+
   /** TaskStore 引用（只读，不写） */
   #store: TaskStore;
 
   /** loading 动画帧索引 */
   #loadingFrame = 0;
 
-  /** loading 动画定时器 */
-  #loadingTimer: ReturnType<typeof setInterval> | undefined;
+  /** AnimationManager 回调注销函数 */
+  #unregLoading: (() => void) | null = null;
+  /** 上次帧推进时间戳 */
+  #lastLoadingTick = 0;
 
   /** 上次是否有 in_progress 任务（用于启停动画） */
   #hadInProgress = false;
 
-  constructor(store: TaskStore) {
+  constructor(store: TaskStore, animationManager: AnimationManager) {
     super();
     this.#store = store;
+    this.#animationManager = animationManager;
   }
 
   /** 当前是否处于展开状态 */
@@ -100,22 +107,25 @@ export class TaskStatusBar extends Container {
     // 注意：#hadInProgress 不在此处更新，由 render 在调用 #updateLoading 之后设置
   }
 
-  /** 启动 loading 动画 */
+  /** 启动 loading 动画（由 animationManager 在渲染周期中驱动） */
   #startLoading(): void {
-    if (this.#loadingTimer) return;
-    this.#loadingTimer = setInterval(() => {
+    if (this.#unregLoading) return;
+    this.#lastLoadingTick = 0;
+    this.#unregLoading = this.#animationManager.register((now) => {
+      if (now - this.#lastLoadingTick < LOADING_INTERVAL_MS) return;
+      this.#lastLoadingTick = now;
       this.#loadingFrame = (this.#loadingFrame + 1) % LOADING_FRAMES.length;
       this.invalidate();
-    }, LOADING_INTERVAL_MS);
+    });
   }
 
   /** 停止 loading 动画 */
   #stopLoading(): void {
-    if (this.#loadingTimer) {
-      clearInterval(this.#loadingTimer);
-      this.#loadingTimer = undefined;
-      this.#loadingFrame = 0;
+    if (this.#unregLoading) {
+      this.#unregLoading();
+      this.#unregLoading = null;
     }
+    this.#loadingFrame = 0;
   }
 
   /** 获取当前 in_progress 的图标（可能为动画帧） */

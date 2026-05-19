@@ -5,6 +5,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
+
+/** 模拟 AnimationManager — setInterval 已由渲染周期驱动替代，测试中无需真实实现 */
+const mockAnimationManager = {
+  register: () => () => {},
+  bind: () => {},
+  unbind: () => {},
+} as unknown as AnimationManager;
 
 // Mock chalk — 返回纯文本以便断言
 type ChalkFn = (s: string) => string;
@@ -153,18 +161,18 @@ describe('AgentStatusBar', () => {
 
   describe('construction', () => {
     it('应该能正常实例化', () => {
-      expect(() => new AgentStatusBar()).not.toThrow();
+      expect(() => new AgentStatusBar(mockAnimationManager)).not.toThrow();
     });
 
     it('默认 isExpanded 为 true', () => {
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       expect(bar.isExpanded).toBe(true);
     });
   });
 
   describe('toggle', () => {
     it('应该在展开/折叠间切换', () => {
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       expect(bar.isExpanded).toBe(true);
 
       bar.toggle();
@@ -175,7 +183,7 @@ describe('AgentStatusBar', () => {
     });
 
     it('应该调用 invalidate', () => {
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const spy = vi.spyOn(bar, 'invalidate');
 
       bar.toggle();
@@ -187,7 +195,7 @@ describe('AgentStatusBar', () => {
   describe('render - 无活跃 Agent', () => {
     it('无活跃实例时返回空数组', () => {
       mockListActive.mockReturnValue([]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       expect(result).toEqual([]);
@@ -198,7 +206,7 @@ describe('AgentStatusBar', () => {
     let bar: AgentStatusBar;
 
     beforeEach(() => {
-      bar = new AgentStatusBar();
+      bar = new AgentStatusBar(mockAnimationManager);
       bar.toggle(); // 默认展开，切到折叠模式
     });
 
@@ -231,7 +239,7 @@ describe('AgentStatusBar', () => {
   describe('render - 展开模式', () => {
     it('展开模式显示多行', () => {
       mockListActive.mockReturnValue([makeInstance({ instanceId: 'a', typeId: 'researcher' })]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.length).toBeGreaterThan(1);
@@ -252,7 +260,7 @@ describe('AgentStatusBar', () => {
           },
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // 第二行包含 agent 信息
@@ -265,7 +273,7 @@ describe('AgentStatusBar', () => {
           currentActivity: { toolName: 'ReadFile', toolUses: 5, startedAt: Date.now() },
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // activityDesc = '正在读取文件'，仅有 2 行：header + agent 行
@@ -275,7 +283,7 @@ describe('AgentStatusBar', () => {
 
     it('无 currentActivity 时不显示工具行', () => {
       mockListActive.mockReturnValue([makeInstance()]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // 标题行 + agent 信息行 + 后台提示行（running 状态自动显示）
@@ -293,7 +301,7 @@ describe('AgentStatusBar', () => {
           },
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // activityDesc = '正在读取文件'，仅有 2 行：header + agent 行
@@ -306,7 +314,7 @@ describe('AgentStatusBar', () => {
         makeInstance({ instanceId: 'a', typeId: 'coder', status: 'running' }),
         makeInstance({ instanceId: 'b', typeId: 'researcher', status: 'completed' }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // Agent 行显示 typeId 而非 instanceId
@@ -322,7 +330,7 @@ describe('AgentStatusBar', () => {
         makeInstance({ instanceId: 'd', status: 'idle' }),
         makeInstance({ instanceId: 'e', status: 'cancelled' }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // 所有 Agent 都显示在输出中
@@ -333,7 +341,7 @@ describe('AgentStatusBar', () => {
       mockListActive.mockReturnValue([
         makeInstance({ instanceId: 'a', status: 'unknown_status', typeId: 'custom-agent' }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // 确保渲染不崩溃，typeId 正常显示
@@ -372,7 +380,7 @@ describe('AgentStatusBar', () => {
           status: 'running',
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // result[1] = agent 行，含活动描述
@@ -390,7 +398,7 @@ describe('AgentStatusBar', () => {
           status: 'running',
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('ctrl+b'))).toBe(true);
@@ -404,14 +412,14 @@ describe('AgentStatusBar', () => {
           status: 'completed',
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('ctrl+b'))).toBe(false);
     });
 
     it('toggleActiveAgentDetails 不抛异常', () => {
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       expect(() => bar.toggleActiveAgentDetails()).not.toThrow();
     });
 
@@ -439,7 +447,7 @@ describe('AgentStatusBar', () => {
           status: 'running',
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // line1: 当前活动描述（中文）
@@ -462,7 +470,7 @@ describe('AgentStatusBar', () => {
           status: 'running',
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // line1: 没有 activityDesc（不是所有调用都完成），只显示 typeId
@@ -484,7 +492,7 @@ describe('AgentStatusBar', () => {
           currentActivity: { toolName: 'WebSearch', toolUses: 2, startedAt: Date.now() },
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('正在写入文件'))).toBe(true);
@@ -504,7 +512,7 @@ describe('AgentStatusBar', () => {
           createdAt: Date.now() - 2000,
         }),
       ]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       const result = bar.render(100);
 
       // header 行包含 agent 数量和耗时
@@ -517,7 +525,7 @@ describe('AgentStatusBar', () => {
     let bar: AgentStatusBar;
 
     beforeEach(() => {
-      bar = new AgentStatusBar();
+      bar = new AgentStatusBar(mockAnimationManager);
       bar.toggle(); // 切到折叠模式测试 duration 格式化
     });
 
@@ -566,18 +574,18 @@ describe('AgentStatusBar', () => {
 
     describe('hasTokenInfo', () => {
       it('初始为 false', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         expect(bar.hasTokenInfo).toBe(false);
       });
 
       it('setModelName 后为 true', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         expect(bar.hasTokenInfo).toBe(true);
       });
 
       it('clearTokenStats 后恢复为 false', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.clearTokenStats();
         expect(bar.hasTokenInfo).toBe(false);
@@ -586,21 +594,21 @@ describe('AgentStatusBar', () => {
 
     describe('方法调用 invalidate', () => {
       it('setModelName 调用 invalidate', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         const spy = vi.spyOn(bar, 'invalidate');
         bar.setModelName('test-model');
         expect(spy).toHaveBeenCalledTimes(1);
       });
 
       it('updateTokenStats 调用 invalidate', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         const spy = vi.spyOn(bar, 'invalidate');
         bar.updateTokenStats(100, 900, 200);
         expect(spy).toHaveBeenCalledTimes(1);
       });
 
       it('clearTokenStats 调用 invalidate', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         const spy = vi.spyOn(bar, 'invalidate');
         bar.clearTokenStats();
@@ -610,7 +618,7 @@ describe('AgentStatusBar', () => {
 
     describe('render - 无活跃 Agent', () => {
       it('有 Token 信息时单独显示 Token 行', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 30000);
         const result = bar.render(200);
@@ -624,7 +632,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('只设置 modelName 未设置统计值时显示默认 0', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         const result = bar.render(200);
 
@@ -635,7 +643,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('Token 行被截断到指定宽度', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('long-model-name');
         bar.updateTokenStats(1000, 9000, 500, 30000);
         const result = bar.render(10);
@@ -646,7 +654,7 @@ describe('AgentStatusBar', () => {
 
     describe('render - 数值格式', () => {
       it('大数值使用 M 单位 (>= 1,000,000)', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(500_000, 1_500_000, 200_000, 10000);
 
@@ -658,7 +666,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('中等数值使用 K 单位 (>= 10,000)', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(5_000, 15_000, 3_000, 10000);
 
@@ -668,7 +676,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('小数值使用千分位格式', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 10000);
 
@@ -680,7 +688,7 @@ describe('AgentStatusBar', () => {
 
     describe('render - 缓存命中率', () => {
       it('高缓存率 (>=80%)', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 30000);
 
@@ -690,7 +698,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('低缓存率 (<80%)', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(500, 500, 200, 10000);
 
@@ -700,7 +708,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('总输入为 0 时缓存率为 0', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(0, 0, 0, 0);
 
@@ -711,7 +719,7 @@ describe('AgentStatusBar', () => {
 
     describe('duration 格式化', () => {
       it('毫秒级 (< 1s)', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 500);
 
@@ -719,7 +727,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('秒级 (< 60s)', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 30000);
 
@@ -727,7 +735,7 @@ describe('AgentStatusBar', () => {
       });
 
       it('分钟级', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 90000);
 
@@ -737,7 +745,7 @@ describe('AgentStatusBar', () => {
 
     describe('updateTokenStats 参数', () => {
       it('不传 durationMs 时保留上一次的值', () => {
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 30000);
         expect(bar.render(200)[0]).toContain('30.0s');
@@ -751,7 +759,7 @@ describe('AgentStatusBar', () => {
     describe('render - 与 Agent 活跃实例共存', () => {
       it('展开模式 + Token 信息 = Token 行在末尾', () => {
         mockListActive.mockReturnValue([makeInstance()]);
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 30000);
 
@@ -761,7 +769,7 @@ describe('AgentStatusBar', () => {
 
       it('折叠模式 + Token 信息 = 折叠模式 + Token 行', () => {
         mockListActive.mockReturnValue([makeInstance()]);
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.toggle(); // 切到折叠模式
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 30000);
@@ -774,7 +782,7 @@ describe('AgentStatusBar', () => {
 
       it('展开模式 + clearTokenStats 后不显示 Token 行', () => {
         mockListActive.mockReturnValue([makeInstance()]);
-        const bar = new AgentStatusBar();
+        const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200);
         bar.clearTokenStats();
@@ -799,7 +807,7 @@ describe('AgentStatusBar', () => {
 
     it('从无到有启动动画', () => {
       mockListActive.mockReturnValue([]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       bar.render(100); // 无 Agent
 
       mockListActive.mockReturnValue([makeInstance()]);
@@ -815,7 +823,7 @@ describe('AgentStatusBar', () => {
 
     it('从有到无停止动画', () => {
       mockListActive.mockReturnValue([makeInstance()]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
       bar.render(100); // 有 Agent，启动动画
 
       mockListActive.mockReturnValue([]);
@@ -831,7 +839,7 @@ describe('AgentStatusBar', () => {
 
     it('loading 帧轮转', () => {
       mockListActive.mockReturnValue([makeInstance()]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
 
       const result1 = bar.render(100);
 
@@ -847,7 +855,7 @@ describe('AgentStatusBar', () => {
 
     it('重复 render 不重复启动动画', () => {
       mockListActive.mockReturnValue([makeInstance()]);
-      const bar = new AgentStatusBar();
+      const bar = new AgentStatusBar(mockAnimationManager);
 
       // 连续渲染都保持有 Agent
       bar.render(100);

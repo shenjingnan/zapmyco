@@ -10,6 +10,7 @@
 
 import { Container, truncateToWidth } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
+import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
 import { buildToolCallGroups } from '@/core/agent-team/agent-progress-processor';
 import type { AgentInstance } from '@/core/agent-team/types';
@@ -71,6 +72,9 @@ function getToolDescription(toolName: string): string {
  * 从 AgentInstanceManager 读取活跃实例状态，渲染为紧凑状态栏。
  */
 export class AgentStatusBar extends Container {
+  /** AnimationManager 实例（用于渲染周期驱动的动画） */
+  #animationManager: AnimationManager;
+
   /** 是否展开显示详情（默认展开） */
   #expanded = true;
 
@@ -80,11 +84,18 @@ export class AgentStatusBar extends Container {
   /** loading 动画帧索引 */
   #loadingFrame = 0;
 
-  /** loading 动画定时器 */
-  #loadingTimer: ReturnType<typeof setInterval> | undefined;
+  /** AnimationManager 回调注销函数 */
+  #unregLoading: (() => void) | null = null;
+  /** 上次帧推进时间戳 */
+  #lastLoadingTick = 0;
 
   /** 上次活跃实例快照（用于检测变化） */
   #lastActiveCount = 0;
+
+  constructor(animationManager: AnimationManager) {
+    super();
+    this.#animationManager = animationManager;
+  }
 
   // === Token 信息 ===
   /** 当前模型名称 */
@@ -352,21 +363,25 @@ export class AgentStatusBar extends Container {
     return lines;
   }
 
-  /** 启动 loading 动画 */
+  /** 启动 loading 动画（由 animationManager 在渲染周期中驱动） */
   #startLoading(): void {
-    if (this.#loadingTimer) return;
-    this.#loadingTimer = setInterval(() => {
+    if (this.#unregLoading) return;
+    this.#lastLoadingTick = 0;
+    this.#unregLoading = this.#animationManager.register((now) => {
+      if (now - this.#lastLoadingTick < LOADING_INTERVAL_MS) return;
+      this.#lastLoadingTick = now;
       this.#loadingFrame = (this.#loadingFrame + 1) % LOADING_FRAMES.length;
       this.invalidate();
-    }, LOADING_INTERVAL_MS);
+    });
   }
 
   /** 停止 loading 动画 */
   #stopLoading(): void {
-    if (this.#loadingTimer) {
-      clearInterval(this.#loadingTimer);
-      this.#loadingTimer = undefined;
+    if (this.#unregLoading) {
+      this.#unregLoading();
+      this.#unregLoading = null;
     }
+    this.#loadingFrame = 0;
   }
 
   /** 格式化持续时间为可读字符串 */
