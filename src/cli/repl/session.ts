@@ -67,6 +67,7 @@ import type {
   SessionState,
   SessionStats,
 } from '@/cli/repl/types';
+import { AnimationManager } from '@/cli/repl/utils/animation-manager';
 import { formatMarkdown } from '@/cli/repl/utils/markdown-formatter';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
@@ -211,6 +212,9 @@ export class ReplSession {
   private readonly history: HistoryStoreClass;
   private currentTaskAbort: AbortController | null = null;
 
+  /** 动画管理器（渲染周期驱动的 spinner/计时器，替代 setInterval） */
+  private readonly animationManager = new AnimationManager();
+
   /** 欢迎语逐字输出定时器引用（用于 shutdown 时清理） */
   private welcomeTypewriterInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -282,6 +286,7 @@ export class ReplSession {
     // 初始化 TUI
     const terminal = new ProcessTerminal();
     this.tui = new TUI(terminal);
+    this.animationManager.bind(this.tui);
 
     // 注：仅保留方向键用于自动补全列表导航。此前使用了 'j'/'k'/'h'/'l'
     // 作为导航键，但它们与命令名称字符（如 /clear 中的 'l'）冲突，
@@ -300,8 +305,8 @@ export class ReplSession {
 
     // 创建组件
     this.outputArea = new OutputArea();
-    this.agentStatusBar = new AgentStatusBar();
-    this.taskStatusBar = new TaskStatusBar(this.taskStore);
+    this.agentStatusBar = new AgentStatusBar(this.animationManager);
+    this.taskStatusBar = new TaskStatusBar(this.taskStore, this.animationManager);
 
     // TaskStore 变化时自动刷新 TaskStatusBar
     this.taskStore.onChange(() => {
@@ -309,7 +314,7 @@ export class ReplSession {
       this.tui.requestRender();
     });
 
-    this.editor = new ZapmycoEditor(this.tui, theme.editorTheme);
+    this.editor = new ZapmycoEditor(this.tui, theme.editorTheme, this.animationManager);
 
     // 组装组件树：outputArea → taskStatusBar → agentStatusBar → editor(无边框，带提示符)
     const root = new Container();
@@ -720,7 +725,29 @@ export class ReplSession {
     const execFailStyle = (s: string) => (colorEnabled ? chalk.red(s) : s);
     const dimStyle = (s: string) => (colorEnabled ? chalk.gray(s) : s);
     let spinnerActive = true;
-    let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+    /** 动画管理器帧推进计时（spinner，100ms间隔） */
+    let lastSpinnerTick = 0;
+    /** thinking 计时动画活跃标志（替代 thinkingElapsedInterval setInterval） */
+    let thinkingTimerActive = false;
+    let thinkingFrame = 0;
+    let lastThinkingTick = 0;
+    /** AnimationManager 回调注销函数集合（finally 中统一清理） */
+    const animCleanup: (() => void)[] = [];
+
+    /**
+     * 合并渲染请求——在同一个微任务内的多次调用合并为一次 requestRender。
+     * 流式事件（OUTPUT/THINKING/PROGRESS）短时间密集到达时，避免为每个事件
+     * 都调用 requestRender（即使 pi-tui 内部有 16ms 去抖，仍可减少调度开销）。
+     */
+    let coalesceRenderPending = false;
+    const requestCoalescedRender = () => {
+      if (coalesceRenderPending) return;
+      coalesceRenderPending = true;
+      queueMicrotask(() => {
+        coalesceRenderPending = false;
+        this.tui.requestRender();
+      });
+    };
 
     // 注册主 Agent 为 AgentInstance（depth=0），使 AgentStatusBar 能跟踪其进度
     // Coordinator 模式下使用协调者身份，便于 UI 展示和子 Agent 识别
@@ -776,8 +803,7 @@ export class ReplSession {
       0
     );
     instanceManager.transition(mainInstance.instanceId, 'running');
-    // thinking 折叠状态（需要跨 try/catch/finally 访问）
-    let thinkingElapsedInterval: ReturnType<typeof setInterval> | undefined;
+    // thinking 计时动画已由 animationManager 驱动，无需 setInterval
     /** Token 信息推送定时器 */
     let tokenPushInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -805,15 +831,18 @@ export class ReplSession {
       // 显示用户输入 + spinner
       this.outputArea.append([userStyle(displayLabel ?? rawInput), LOADING_FRAMES[0] ?? '']);
 
-      // 输出区 spinner 动画
+      // 输出区 spinner 动画（由 animationManager 在每次 render 前驱动，替代 setInterval）
       let spinnerFrame = 0;
       spinnerActive = true;
-      spinnerInterval = setInterval(() => {
-        if (!spinnerActive) return;
-        spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
-        this.outputArea.replaceLastLine(LOADING_FRAMES[spinnerFrame] ?? '');
-        this.tui.requestRender();
-      }, 100);
+      animCleanup.push(
+        this.animationManager.register((now) => {
+          if (!spinnerActive) return;
+          if (now - lastSpinnerTick < 100) return;
+          lastSpinnerTick = now;
+          spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
+          this.outputArea.replaceLastLine(LOADING_FRAMES[spinnerFrame] ?? '');
+        })
+      );
 
       // 流式输出桥接：Agent EVENT_OUTPUT / EVENT_THINKING -> outputArea
       let spinnerStopped = false;
@@ -891,7 +920,6 @@ export class ReplSession {
         if (!spinnerStopped) {
           spinnerStopped = true;
           spinnerActive = false;
-          clearInterval(spinnerInterval);
           streamMode = 'response';
           thinkingAccumulator = '';
           outputAccumulator = event.text;
@@ -900,10 +928,7 @@ export class ReplSession {
           // 从 thinking 模式切换到 response：移除 thinking 行，换为响应文本
           streamMode = 'response';
           // 停止 thinking 耗时计时器
-          if (thinkingElapsedInterval) {
-            clearInterval(thinkingElapsedInterval);
-            thinkingElapsedInterval = undefined;
-          }
+          thinkingTimerActive = false;
           thinkingAccumulator = '';
           outputAccumulator = event.text;
           // 移除 thinking header 行，在同一位置替换为响应文本
@@ -920,7 +945,7 @@ export class ReplSession {
           outputAccumulator += event.text;
           this.outputArea.replaceLastLine(responseStyle(outputAccumulator));
         }
-        this.tui.requestRender();
+        requestCoalescedRender();
       };
 
       const thinkingHandler = (event: { taskId: string; text: string }) => {
@@ -937,7 +962,6 @@ export class ReplSession {
             // thinking 先到达：替换 spinner 行为带 spinner 帧的 thinking header
             spinnerStopped = true;
             spinnerActive = false;
-            clearInterval(spinnerInterval);
             thinkingHeaderLineIndex = this.outputArea.replaceLastLine(
               dimStyle(`  ${LOADING_FRAMES[0] ?? ''} Thinking...`)
             );
@@ -956,21 +980,26 @@ export class ReplSession {
             this.outputArea.append([dimStyle(THINKING_CONTINUE_PREFIX + thinkingAccumulator)]);
             thinkingContentLineCount = 1;
           } else if (thinkingDisplayMode === 'collapse') {
-            // collapse 模式：启动耗时计时器，使用 spinner 动画
-            let thinkingFrame = 0;
-            thinkingElapsedInterval = setInterval(() => {
-              if (thinkingHeaderLineIndex === null) return;
-              // 展开时不更新（header 已替换为纯文本）
-              if (thinkingContentLineCount > 0) return;
-              const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
-              const frame = LOADING_FRAMES[thinkingFrame % LOADING_FRAMES.length];
-              thinkingFrame++;
-              this.outputArea.updateLine(
-                thinkingHeaderLineIndex,
-                dimStyle(`  ${frame} Thinking... (${elapsed}s)`)
-              );
-              this.tui.requestRender();
-            }, 200);
+            // collapse 模式：由 animationManager 驱动 spinner 动画和计时器（替代 setInterval）
+            thinkingTimerActive = true;
+            thinkingFrame = 0;
+            // 注册 thinking 动画回调（会在 executeGoal cleanup 时自动注销）
+            animCleanup.push(
+              this.animationManager.register((now) => {
+                if (!thinkingTimerActive) return;
+                if (thinkingHeaderLineIndex === null) return;
+                if (thinkingContentLineCount > 0) return;
+                if (now - lastThinkingTick < 200) return;
+                lastThinkingTick = now;
+                const elapsed = ((Date.now() - thinkingStartTimeMs) / 1000).toFixed(1);
+                const frame = LOADING_FRAMES[thinkingFrame % LOADING_FRAMES.length];
+                thinkingFrame++;
+                this.outputArea.updateLine(
+                  thinkingHeaderLineIndex,
+                  dimStyle(`  ${frame} Thinking... (${elapsed}s)`)
+                );
+              })
+            );
           }
         } else {
           thinkingAccumulator += event.text;
@@ -989,7 +1018,7 @@ export class ReplSession {
             this.outputArea.replaceLastLine(dimStyle(THINKING_CONTINUE_PREFIX + lastLine));
           }
         }
-        this.tui.requestRender();
+        requestCoalescedRender();
       };
 
       // 监听 Agent 错误事件
@@ -1053,13 +1082,12 @@ export class ReplSession {
 
         if (event.percent === 0) {
           // 工具开始 → thinking 阶段结束，移除 thinking 行
-          if (thinkingElapsedInterval && streamMode === 'thinking') {
-            clearInterval(thinkingElapsedInterval);
-            thinkingElapsedInterval = undefined;
+          if (thinkingTimerActive && streamMode === 'thinking') {
+            thinkingTimerActive = false;
             if (thinkingHeaderLineIndex !== null) {
               this.outputArea.spliceLines(thinkingHeaderLineIndex, 1, []);
               thinkingHeaderLineIndex = null;
-              this.tui.requestRender();
+              requestCoalescedRender();
             }
           }
           // 工具开始
@@ -1110,7 +1138,7 @@ export class ReplSession {
             // 无 detail（旧格式）：保持原有 → 风格
             this.outputArea.append([toolStyle(`  → ${event.message}`)]);
           }
-          this.tui.requestRender();
+          requestCoalescedRender();
         } else if (event.percent === 100 && execLineIndex !== undefined && execMessage) {
           // 工具结束 — 仅处理 Exec 状态颜色更新
           if (event.message.startsWith('工具 Exec')) {
@@ -1119,7 +1147,7 @@ export class ReplSession {
             this.outputArea.updateLine(execLineIndex, style(`  ⏺ ${execMessage}`));
             execLineIndex = undefined;
             execMessage = undefined;
-            this.tui.requestRender();
+            requestCoalescedRender();
           }
         }
       };
@@ -1236,9 +1264,8 @@ export class ReplSession {
           '',
         ]);
 
-        // 暂停 spinner
+        // 暂停 spinner（animationManager 会根据 spinnerActive 标志自动停止推进）
         spinnerActive = false;
-        clearInterval(spinnerInterval);
 
         try {
           // 执行紧急压缩
@@ -1265,14 +1292,8 @@ export class ReplSession {
           this.outputArea.append([chalk.red('  上下文整理异常，请手动执行 /compact 后重试'), '']);
         }
 
-        // 恢复 spinner 用于后续错误显示
+        // 恢复 spinner（animationManager 的回调仍在注册中，只需重新激活标志）
         spinnerActive = true;
-        spinnerInterval = setInterval(() => {
-          if (!spinnerActive) return;
-          spinnerFrame = (spinnerFrame + 1) % LOADING_FRAMES.length;
-          this.outputArea.replaceLastLine(LOADING_FRAMES[spinnerFrame] ?? '');
-          this.tui.requestRender();
-        }, 100);
       }
 
       // 根据执行结果渲染到 TUI
@@ -1286,7 +1307,6 @@ export class ReplSession {
       // 如果 spinner 还在运行（Agent 未发射流式输出），停止并处理
       if (spinnerActive) {
         spinnerActive = false;
-        clearInterval(spinnerInterval);
         if (outputText) {
           this.outputArea.replaceLastLine(responseStyle(outputText));
         } else if (taskResult.status !== 'success') {
@@ -1461,12 +1481,8 @@ export class ReplSession {
 
       // 停止 spinner（如果还在运行）
       spinnerActive = false;
-      clearInterval(spinnerInterval);
       // 清理 thinking 耗时计时器
-      if (thinkingElapsedInterval) {
-        clearInterval(thinkingElapsedInterval);
-        thinkingElapsedInterval = undefined;
-      }
+      thinkingTimerActive = false;
 
       this.stats.totalRequests++;
       this.stats.failureCount++;
@@ -1561,12 +1577,12 @@ export class ReplSession {
       };
     } finally {
       spinnerActive = false;
-      if (spinnerInterval) clearInterval(spinnerInterval);
-      // 清理 thinking 耗时计时器
-      if (thinkingElapsedInterval) {
-        clearInterval(thinkingElapsedInterval);
-        thinkingElapsedInterval = undefined;
+      thinkingTimerActive = false;
+      // 注销 AnimationManager 回调（spinner + thinking 动画）
+      for (const unregister of animCleanup) {
+        unregister();
       }
+      animCleanup.length = 0;
       // 清理 Token 推送定时器
       if (tokenPushInterval) {
         clearInterval(tokenPushInterval);

@@ -13,8 +13,10 @@
  * - 执行中时显示 loading spinner
  */
 
+import type { EditorOptions, EditorTheme, TUI } from '@mariozechner/pi-tui';
 import { Editor, Key, matchesKey, truncateToWidth } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
+import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
 
 /** 输入提示符 */
 const PROMPT_PREFIX = '\u276f '; // "❯ "
@@ -40,6 +42,23 @@ function isBorderLine(line: string): boolean {
 }
 
 export class ZapmycoEditor extends Editor {
+  /** AnimationManager 实例（用于渲染周期驱动的动画） */
+  #animationManager: AnimationManager;
+  /** AnimationManager 回调注销函数 */
+  #unregLoading: (() => void) | null = null;
+  /** 上次帧推进时间戳 */
+  #lastLoadingTick = 0;
+
+  constructor(
+    tui: TUI,
+    theme: EditorTheme,
+    animationManager: AnimationManager,
+    options?: EditorOptions
+  ) {
+    super(tui, theme, options);
+    this.#animationManager = animationManager;
+  }
+
   /** Escape 键回调 */
   onEscape?: () => void;
 
@@ -67,9 +86,6 @@ export class ZapmycoEditor extends Editor {
   /** loading 动画帧索引 */
   #loadingFrame = 0;
 
-  /** loading 动画定时器 */
-  #loadingTimer?: ReturnType<typeof setInterval> | undefined;
-
   /** 审批模式状态 */
   #approvalState: {
     title: string;
@@ -81,9 +97,9 @@ export class ZapmycoEditor extends Editor {
   enterApprovalMode(title: string, options: ApprovalOption[]): void {
     // 停止 spinner（如果有）
     this.#executing = false;
-    if (this.#loadingTimer) {
-      clearInterval(this.#loadingTimer);
-      this.#loadingTimer = undefined;
+    if (this.#unregLoading) {
+      this.#unregLoading();
+      this.#unregLoading = null;
     }
     this.#approvalState = { title, options, selectedIndex: 0 };
     this.invalidate();
@@ -198,15 +214,19 @@ export class ZapmycoEditor extends Editor {
     this.#showSpinner = showSpinner;
     if (executing && showSpinner) {
       this.#loadingFrame = 0;
-      this.#loadingTimer = setInterval(() => {
+      this.#lastLoadingTick = 0;
+      this.#unregLoading = this.#animationManager.register((now) => {
+        if (now - this.#lastLoadingTick < 100) return;
+        this.#lastLoadingTick = now;
         this.#loadingFrame = (this.#loadingFrame + 1) % LOADING_FRAMES.length;
         this.tui?.requestRender();
-      }, 100);
+      });
     } else {
-      if (this.#loadingTimer) {
-        clearInterval(this.#loadingTimer);
-        this.#loadingTimer = undefined;
+      if (this.#unregLoading) {
+        this.#unregLoading();
+        this.#unregLoading = null;
       }
+      this.#loadingFrame = 0;
     }
     this.tui?.requestRender();
   }
