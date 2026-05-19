@@ -273,6 +273,20 @@ describe('AgentInstanceManager', () => {
       expect(await manager.cancel('agent-1')).not.toContain('agent-1');
     });
 
+    it('should handle cancel when agent.cancel rejects', async () => {
+      const manager = getAgentInstanceManager();
+      const agent = createTestAgent('agent-error');
+      // Make inner.abort() reject to trigger the catch block
+      vi.spyOn(agent.innerAgent, 'abort').mockImplementationOnce(() => {
+        throw new Error('cancel failed');
+      });
+      manager.register(mockDef('coder'), agent, makeTask('t1'), null, 1);
+      manager.transition('agent-error', 'running');
+      const cancelled = await manager.cancel('agent-error');
+      expect(cancelled).toContain('agent-error');
+      expect(manager.get('agent-error')?.status).toBe('cancelled');
+    });
+
     it('should return empty for non-existent', async () => {
       expect(await getAgentInstanceManager().cancel('non-existent')).toEqual([]);
     });
