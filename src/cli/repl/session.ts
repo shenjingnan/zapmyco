@@ -129,12 +129,26 @@ function getApiKeyErrorHelp(errorMessage: string): string[] {
  */
 class OutputArea extends Container {
   private lines: string[] = [];
+  /** 逐行缓存的渲染结果（避免每帧对所有历史行重新调用 wrapTextWithAnsi） */
+  private lineCache: Map<number, string[]> = new Map();
+  /** 缓存生成时使用的终端宽度，变化时重建 */
+  private cacheWidth = 0;
 
   override render(width: number): string[] {
-    // 对每行做自动换行，确保不超过终端宽度
+    // 终端宽度变化 → 所有缓存行失效
+    if (width !== this.cacheWidth) {
+      this.cacheWidth = width;
+      this.lineCache.clear();
+    }
+
     const result: string[] = [];
-    for (const line of this.lines) {
-      result.push(...wrapTextWithAnsi(line, width));
+    for (let i = 0; i < this.lines.length; i++) {
+      let cached = this.lineCache.get(i);
+      if (!cached) {
+        cached = wrapTextWithAnsi(this.lines[i] ?? '', width);
+        this.lineCache.set(i, cached);
+      }
+      result.push(...cached);
     }
     return result;
   }
@@ -153,6 +167,8 @@ class OutputArea extends Container {
       this.lines.push(text);
     } else {
       this.lines[this.lines.length - 1] += text;
+      // 追加文本后，最后一行缓存失效
+      this.lineCache.delete(this.lines.length - 1);
     }
     this.invalidate();
   }
@@ -161,6 +177,8 @@ class OutputArea extends Container {
   replaceLastLine(text: string): number {
     if (this.lines.length > 0) {
       this.lines[this.lines.length - 1] = text;
+      // 最后一行变化，失效其缓存
+      this.lineCache.delete(this.lines.length - 1);
     } else {
       this.lines.push(text);
     }
@@ -171,6 +189,8 @@ class OutputArea extends Container {
   /** 在指定位置插入/删除/替换行（原子操作） */
   spliceLines(startIndex: number, deleteCount: number, insertLines: string[]): void {
     this.lines.splice(startIndex, deleteCount, ...insertLines);
+    // 行索引发生变化，从 startIndex 起的所有缓存失效
+    this.invalidateCacheFrom(startIndex);
     this.invalidate();
   }
 
@@ -178,6 +198,7 @@ class OutputArea extends Container {
   updateLine(index: number, text: string): void {
     if (index >= 0 && index < this.lines.length) {
       this.lines[index] = text;
+      this.lineCache.delete(index);
       this.invalidate();
     }
   }
@@ -185,7 +206,19 @@ class OutputArea extends Container {
   /** 清空所有内容 */
   clear(): void {
     this.lines = [];
+    this.lineCache.clear();
     this.invalidate();
+  }
+
+  /** 使从指定索引开始的所有缓存行失效 */
+  private invalidateCacheFrom(startIndex: number): void {
+    // Map 的 keys() 按插入顺序返回，但 index 不保证连续
+    // 遍历 keys 删除 >= startIndex 的条目
+    for (const key of this.lineCache.keys()) {
+      if (key >= startIndex) {
+        this.lineCache.delete(key);
+      }
+    }
   }
 }
 
