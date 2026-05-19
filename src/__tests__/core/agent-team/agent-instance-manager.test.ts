@@ -488,6 +488,27 @@ describe('AgentInstanceManager', () => {
       expect(inst?.toolCallHistory[0]?.status).toBe('running');
     });
 
+    it('should truncate toolCallHistory at MAX_TOOL_CALL_HISTORY', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-2'), makeTask('t2'), null, 1);
+      const COUNT = 150;
+
+      for (let i = 0; i < COUNT; i++) {
+        manager.recordToolCall('agent-2', {
+          toolName: `Tool-${i}`,
+          toolCallId: `call-${i}`,
+          status: 'completed',
+          startedAt: Date.now() + i,
+        });
+      }
+
+      const inst = manager.get('agent-2');
+      // MAX_TOOL_CALL_HISTORY is 100 (ring buffer)
+      expect(inst?.toolCallHistory.length).toBeLessThanOrEqual(100);
+      // Should keep the most recent entries
+      expect(inst?.toolCallHistory[0]?.toolName).toBe('Tool-50');
+    });
+
     it('should emit instance:toolcall event', () => {
       const manager = getAgentInstanceManager();
       const events: unknown[] = [];
