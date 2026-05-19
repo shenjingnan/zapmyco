@@ -2228,20 +2228,8 @@ export class ReplSession {
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
 
-    // Ctrl+O: 展开/折叠 Agent 状态栏
-    this.editor.onToggleAgentBar = () => {
-      this.agentStatusBar.toggle();
-      this.tui.requestRender();
-    };
-
     // Ctrl+E: 打开外部编辑器
     this.editor.onOpenEditor = () => this.openInEditor();
-
-    // Ctrl+Shift+O: 展开/折叠当前 Agent 工具调用详情
-    this.editor.onToggleAgentDetails = () => {
-      this.agentStatusBar.toggleActiveAgentDetails();
-      this.tui.requestRender();
-    };
 
     // Ctrl+B: 将当前任务转入后台执行
     this.editor.onRunInBackground = () => {
@@ -2251,12 +2239,6 @@ export class ReplSession {
         this.outputArea.append([chalk.gray(`  (任务 ${bgTaskId} 已转入后台运行)`), '']);
         this.tui.requestRender();
       }
-    };
-
-    // Ctrl+T: 展开/折叠 TaskStatusBar
-    this.editor.onToggleTasks = () => {
-      this.taskStatusBar.toggle();
-      this.tui.requestRender();
     };
   }
 
