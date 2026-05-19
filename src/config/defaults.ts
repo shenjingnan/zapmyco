@@ -108,8 +108,8 @@ export const DEFAULT_CONFIG: ZapmycoConfig = {
     },
   },
   agentTeam: {
-    enabled: false,
-    defaultMode: 'flat',
+    enabled: true,
+    defaultMode: 'coordinator',
     maxGlobalDepth: 2,
     messageTimeoutMs: 60_000,
     maxAggregateOutputChars: 10_000,
