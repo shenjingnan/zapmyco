@@ -154,5 +154,16 @@ describe('SecretRedactor', () => {
       expect(result).not.toContain('my_custom_secret_12345');
       expect(result).toContain('****REDACTED****');
     });
+
+    it('should handle invalid regex extraPatterns gracefully', () => {
+      const redactor = new SecretRedactor({
+        enabled: true,
+        // Invalid regex pattern - unmatched opening bracket
+        extraPatterns: ['[invalid'],
+      });
+      const input = 'some text';
+      const result = redactor.redact(input);
+      expect(result).toBe(input);
+    });
   });
 });

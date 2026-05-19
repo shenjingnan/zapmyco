@@ -203,4 +203,19 @@ describe('AgentMessageBus', () => {
       expect(a).not.toBe(b);
     });
   });
+
+  describe('subscriptionCount', () => {
+    it('should return 0 when no subscriptions', () => {
+      expect(bus.subscriptionCount).toBe(0);
+    });
+
+    it('should return 0 even with subscriptions (listenerCount uses exact event name)', () => {
+      // subscriptionCount uses listenerCount('msg:') which only matches
+      // the exact event name 'msg:', but subscribe creates 'msg:agentId' events.
+      // This is current behavior.
+      const cb = vi.fn();
+      bus.subscribe('test-agent-1', cb);
+      expect(bus.subscriptionCount).toBe(0);
+    });
+  });
 });

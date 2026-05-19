@@ -51,6 +51,7 @@ import { SkillWatcher } from '@/cli/repl/skill-watcher';
 import { createTheme } from '@/cli/repl/theme';
 import { createLspTool } from '@/cli/repl/tools/lsp-tool';
 import { getMemoryStore } from '@/cli/repl/tools/memory-tool';
+import { createSendMessageTool } from '@/cli/repl/tools/send-message';
 import {
   formatSkillContent,
   getSkillCommandSpecs,
@@ -58,6 +59,7 @@ import {
   sanitizeSkillCommandName,
   setSkillEntries,
 } from '@/cli/repl/tools/skill-tool';
+import { createTaskStopTool } from '@/cli/repl/tools/task-stop';
 import type {
   HistoryStore,
   ParsedInput,
@@ -68,7 +70,9 @@ import type {
 import { formatMarkdown } from '@/cli/repl/utils/markdown-formatter';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
+import { COORDINATOR_TOOLS, getMainCoordinatorSystemPrompt } from '@/core/agent-team';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
+import { getAgentMessageBus } from '@/core/agent-team/agent-message-bus';
 import { categorizeTool } from '@/core/agent-team/agent-tool-categorizer';
 import type { AgentTypeDefinition } from '@/core/agent-team/types';
 import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
@@ -716,20 +720,43 @@ export class ReplSession {
     let spinnerInterval: ReturnType<typeof setInterval> | undefined;
 
     // 注册主 Agent 为 AgentInstance（depth=0），使 AgentStatusBar 能跟踪其进度
-    const mainAgentDef: AgentTypeDefinition = {
-      typeId: 'Explore',
-      displayName: 'Explore Agent',
-      whenToUse: 'Main REPL agent',
-      role: 'universal',
-      capabilities: [],
-      toolPolicy: { mode: 'inherit' },
-      permissionMode: 'inherit',
-      source: 'builtin',
-      maxTurns: 100,
-      maxSpawnDepth: 0,
-      getSystemPrompt: () => '',
-      color: '#3498db',
-    };
+    // Coordinator 模式下使用协调者身份，便于 UI 展示和子 Agent 识别
+    const mainAgentDef: AgentTypeDefinition = this.isCoordinatorMode()
+      ? {
+          typeId: 'repl-coordinator',
+          displayName: '协调者',
+          whenToUse: 'Main REPL coordinator',
+          role: 'coordinator',
+          capabilities: [
+            {
+              id: 'agent-orchestration',
+              name: 'Agent 编排',
+              description: '编排多个子 Agent 协同完成复杂任务',
+              category: 'planning',
+            },
+          ],
+          toolPolicy: { mode: 'inherit' },
+          permissionMode: 'inherit',
+          source: 'builtin',
+          maxTurns: 100,
+          maxSpawnDepth: 2,
+          getSystemPrompt: () => '',
+          color: '#e67e22',
+        }
+      : {
+          typeId: 'Explore',
+          displayName: 'Explore Agent',
+          whenToUse: 'Main REPL agent',
+          role: 'universal',
+          capabilities: [],
+          toolPolicy: { mode: 'inherit' },
+          permissionMode: 'inherit',
+          source: 'builtin',
+          maxTurns: 100,
+          maxSpawnDepth: 0,
+          getSystemPrompt: () => '',
+          color: '#3498db',
+        };
     const mainAgent = this.agent as unknown as LlmBasedAgent;
     const instanceManager = getAgentInstanceManager();
     const mainInstance = instanceManager.register(
@@ -1129,10 +1156,44 @@ export class ReplSession {
         taskDescription: rawInput.slice(0, 100),
       });
 
+      // Coordinator 模式：在 execute 之前 drain inbox 获取后台任务完成通知
+      let effectiveTaskDescription = rawInput;
+      if (this.isCoordinatorMode()) {
+        const messageBus = getAgentMessageBus();
+        const pendingMessages = messageBus.drainInbox('repl-chat-agent');
+        if (pendingMessages.length > 0) {
+          const notificationBlocks = pendingMessages.map((msg) => {
+            try {
+              const parsed = JSON.parse(msg.payload);
+              if (parsed.type === 'task_result') {
+                return [
+                  `[任务完成通知]`,
+                  `任务 ID: ${parsed.taskId}`,
+                  `类型: ${parsed.typeId}`,
+                  `状态: ${parsed.status}`,
+                  parsed.summary ? `\n结果:\n${parsed.summary}` : '',
+                  parsed.error ? `错误: ${parsed.error}` : '',
+                ].join('\n');
+              }
+            } catch {
+              // payload 非 JSON，原样展示
+            }
+            return `[消息 - ${msg.fromAgentId}]\n${msg.payload}`;
+          });
+
+          effectiveTaskDescription = [
+            '## 以下后台任务已完成',
+            ...notificationBlocks,
+            '---',
+            rawInput,
+          ].join('\n\n');
+        }
+      }
+
       // 通过 Agent 执行（替代原来的 chatStream）
       const taskResult = await this.agent.execute({
         taskId,
-        taskDescription: rawInput,
+        taskDescription: effectiveTaskDescription,
         workdir: process.cwd(),
         options: {
           timeout: this.config.scheduler.taskTimeoutMs,
@@ -1822,11 +1883,25 @@ export class ReplSession {
   }
 
   /**
+   * 判断是否处于 Coordinator 模式
+   *
+   * 当 agentTeam.defaultMode === 'coordinator' 时，
+   * 主 Agent 切换为编排模式：工具受限、系统提示词替换。
+   */
+  private isCoordinatorMode(): boolean {
+    return this.config.agentTeam?.defaultMode === 'coordinator';
+  }
+
+  /**
    * 注册 REPL 场景下的基础工具
    *
    * 在注册内置工具后，异步初始化 MCP 工具。
    * MCP 连接不阻塞内置工具注册——Agent 立即可用内置工具，
    * MCP 工具在连接完成后自动追加。
+   *
+   * 在 Coordinator 模式下，主 Agent 仅注册编排工具
+   *（AgentTool + SendMessage + TaskStop），完整工具集
+   * 仍传递给 AgentOrchestrator 供子 Agent 使用。
    */
   private registerBuiltinTools(): void {
     // 1. 注册内置工具（同步，立即可用）
@@ -1842,13 +1917,28 @@ export class ReplSession {
       this.toolGuard
     );
 
-    // 更新 PermissionEngine 的工具信息解析器
+    // 更新 PermissionEngine 的工具信息解析器（使用完整工具列表）
     this.permissionEngine.setToolInfoResolver(createToolInfoResolver(rawTools));
 
-    // 用 ToolGuard 包装所有工具（代理模式，添加安全管道）
-    const guardedTools = this.toolGuard.wrapAll(rawTools);
+    // Coordinator 模式：主 Agent 仅保留编排工具
+    // 完整工具集仍通过 AgentOrchestrator 传递给子 Agent
+    const mainTools = this.isCoordinatorMode()
+      ? [
+          ...rawTools.filter((t) => (COORDINATOR_TOOLS as readonly string[]).includes(t.id)),
+          createSendMessageTool('repl-chat-agent'),
+          createTaskStopTool(),
+        ]
+      : rawTools;
+
+    // 用 ToolGuard 包装工具（代理模式，添加安全管道）
+    const guardedTools = this.toolGuard.wrapAll(mainTools);
 
     this.agent.registerTools(guardedTools);
+
+    // 设置 Coordinator 模式系统提示词
+    if (this.isCoordinatorMode()) {
+      this.agent.systemPromptOverride = getMainCoordinatorSystemPrompt(process.cwd());
+    }
 
     // 2. 异步初始化 MCP 工具（fire-and-forget，完成后自动注册）
     //    normalizeMcpConfig 兼容 key-value 和 servers 数组两种格式
