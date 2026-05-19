@@ -519,7 +519,7 @@ export class ReplSession {
    * 彻底清空 Agent 会话上下文。
    *
    * - 清空消息历史、Token 统计、缓存、授权
-   * - 保留配置、记忆、持久化任务、定时任务
+   * - 保留配置、记忆、定时任务
    * - 效果等价于"新开一个会话"
    *
    * 由 /clear 命令调用。
@@ -557,6 +557,9 @@ export class ReplSession {
 
     // 8. 清空 TUI 输出
     this.outputArea.clear();
+
+    // ★ 新增：清空任务列表，防止历史任务残留
+    this.taskStore.clear();
 
     // 9. 清除 Agent 状态栏的 Token 显示
     this.agentStatusBar.clearTokenStats();
