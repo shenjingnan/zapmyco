@@ -156,22 +156,22 @@ describe('AgentStatusBar', () => {
       expect(() => new AgentStatusBar()).not.toThrow();
     });
 
-    it('默认 isExpanded 为 false', () => {
+    it('默认 isExpanded 为 true', () => {
       const bar = new AgentStatusBar();
-      expect(bar.isExpanded).toBe(false);
+      expect(bar.isExpanded).toBe(true);
     });
   });
 
   describe('toggle', () => {
     it('应该在展开/折叠间切换', () => {
       const bar = new AgentStatusBar();
-      expect(bar.isExpanded).toBe(false);
-
-      bar.toggle();
       expect(bar.isExpanded).toBe(true);
 
       bar.toggle();
       expect(bar.isExpanded).toBe(false);
+
+      bar.toggle();
+      expect(bar.isExpanded).toBe(true);
     });
 
     it('应该调用 invalidate', () => {
@@ -195,9 +195,15 @@ describe('AgentStatusBar', () => {
   });
 
   describe('render - 折叠模式', () => {
+    let bar: AgentStatusBar;
+
+    beforeEach(() => {
+      bar = new AgentStatusBar();
+      bar.toggle(); // 默认展开，切到折叠模式
+    });
+
     it('1 个 Agent 显示单数', () => {
       mockListActive.mockReturnValue([makeInstance()]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       expect(result).toHaveLength(1);
@@ -209,7 +215,6 @@ describe('AgentStatusBar', () => {
         makeInstance({ instanceId: 'a' }),
         makeInstance({ instanceId: 'b' }),
       ]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       expect(result[0]).toContain('Running 2 agents');
@@ -221,7 +226,6 @@ describe('AgentStatusBar', () => {
           currentActivity: { toolName: 'Read', toolUses: 3, startedAt: Date.now() },
         }),
       ]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       expect(result[0]).toContain('3 tool uses');
@@ -233,23 +237,13 @@ describe('AgentStatusBar', () => {
           currentActivity: { toolName: 'Read', toolUses: 1, startedAt: Date.now() },
         }),
       ]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       expect(result[0]).toContain('1 tool use');
     });
 
-    it('显示展开提示', () => {
-      mockListActive.mockReturnValue([makeInstance()]);
-      const bar = new AgentStatusBar();
-      const result = bar.render(100);
-
-      expect(result[0]).toContain('ctrl+o to expand');
-    });
-
     it('输出被截断到指定宽度', () => {
       mockListActive.mockReturnValue([makeInstance()]);
-      const bar = new AgentStatusBar();
       const result = bar.render(10);
 
       expect(result[0]?.length ?? 0).toBeLessThanOrEqual(10);
@@ -260,12 +254,10 @@ describe('AgentStatusBar', () => {
     it('展开模式显示多行', () => {
       mockListActive.mockReturnValue([makeInstance({ instanceId: 'a', typeId: 'researcher' })]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       expect(result.length).toBeGreaterThan(1);
       expect(result[0]).toContain('Running 1 agent');
-      expect(result[0]).toContain('ctrl+o to collapse');
     });
 
     it('显示 Agent 类型和任务描述', () => {
@@ -283,7 +275,6 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       // 第二行包含 agent 信息
@@ -298,7 +289,6 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       // result[1] = agent 行, result[2] = tool 详情行
@@ -309,7 +299,6 @@ describe('AgentStatusBar', () => {
     it('无 currentActivity 时不显示工具行', () => {
       mockListActive.mockReturnValue([makeInstance()]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       // 标题行 + agent 信息行 + 后台提示行（running 状态自动显示）
@@ -328,7 +317,6 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       expect(result[2]).toContain('ReadFile');
@@ -341,7 +329,6 @@ describe('AgentStatusBar', () => {
         makeInstance({ instanceId: 'b', typeId: 'researcher', status: 'completed' }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       // Agent 行显示 typeId 而非 instanceId
@@ -358,7 +345,6 @@ describe('AgentStatusBar', () => {
         makeInstance({ instanceId: 'e', status: 'cancelled' }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       // 所有 Agent 都显示在输出中
@@ -370,7 +356,6 @@ describe('AgentStatusBar', () => {
         makeInstance({ instanceId: 'a', status: 'unknown_status', typeId: 'custom-agent' }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       // 确保渲染不崩溃，typeId 正常显示
@@ -401,7 +386,6 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle(); // 展开状态栏
       bar.toggle('a'); // 展开 agent-a 的工具详情
       const result = bar.render(100);
 
@@ -427,11 +411,10 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle(); // 展开状态栏
-      // 不调用 toggle('a')，所以 collapsed 状态下应显示 "+N more"
+      // 不调用 toggle('a')，默认展开状态栏 + 折叠 agent 详情，应显示 "+N more"
       const result = bar.render(100);
 
-      // collapsed 模式下显示最近 1 条 + "+N more" 提示
+      // 展开模式下 agent 详情折叠显示最近 1 条 + "+N more" 提示
       expect(result.some((l) => l.includes('+5 more tool uses'))).toBe(true);
     });
 
@@ -444,7 +427,6 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('ctrl+b'))).toBe(true);
@@ -459,7 +441,6 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle();
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('ctrl+b'))).toBe(false);
@@ -477,9 +458,8 @@ describe('AgentStatusBar', () => {
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle(); // 展开状态栏
 
-      // 先折叠状态（默认）— 只有 ⎿ 最近工具行
+      // 状态栏默认展开，但 agent 详情折叠 — 只有 ⎿ 最近工具行
       const collapsedResult = bar.render(100);
 
       // 展开 agent-a 详情
@@ -491,10 +471,16 @@ describe('AgentStatusBar', () => {
   });
 
   describe('duration 格式化', () => {
+    let bar: AgentStatusBar;
+
+    beforeEach(() => {
+      bar = new AgentStatusBar();
+      bar.toggle(); // 切到折叠模式测试 duration 格式化
+    });
+
     it('毫秒级 (< 1s)', () => {
       const now = Date.now();
       mockListActive.mockReturnValue([makeInstance({ createdAt: now - 500 })]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       // 由于测试执行耗时，实际值可能是 500~510ms
@@ -504,7 +490,6 @@ describe('AgentStatusBar', () => {
     it('秒级 (< 60s)', () => {
       const now = Date.now();
       mockListActive.mockReturnValue([makeInstance({ createdAt: now - 1500 })]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       expect(result[0]).toContain('1.5s');
@@ -513,7 +498,6 @@ describe('AgentStatusBar', () => {
     it('分钟级', () => {
       const now = Date.now();
       mockListActive.mockReturnValue([makeInstance({ createdAt: now - 90000 })]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       expect(result[0]).toContain('1m30s');
@@ -525,7 +509,6 @@ describe('AgentStatusBar', () => {
         makeInstance({ instanceId: 'a', createdAt: now - 5000 }),
         makeInstance({ instanceId: 'b', createdAt: now - 3000 }),
       ]);
-      const bar = new AgentStatusBar();
       const result = bar.render(100);
 
       // 最长 5s → "5.0s"
@@ -723,9 +706,20 @@ describe('AgentStatusBar', () => {
     });
 
     describe('render - 与 Agent 活跃实例共存', () => {
-      it('折叠模式 + Token 信息 = 显示两行', () => {
+      it('展开模式 + Token 信息 = Token 行在末尾', () => {
         mockListActive.mockReturnValue([makeInstance()]);
         const bar = new AgentStatusBar();
+        bar.setModelName('test-model');
+        bar.updateTokenStats(100, 900, 200, 30000);
+
+        const result = bar.render(100);
+        expect(result[result.length - 1]).toContain('test-model');
+      });
+
+      it('折叠模式 + Token 信息 = 折叠模式 + Token 行', () => {
+        mockListActive.mockReturnValue([makeInstance()]);
+        const bar = new AgentStatusBar();
+        bar.toggle(); // 切到折叠模式
         bar.setModelName('test-model');
         bar.updateTokenStats(100, 900, 200, 30000);
 
@@ -735,18 +729,7 @@ describe('AgentStatusBar', () => {
         expect(result[1]).toContain('test-model');
       });
 
-      it('展开模式 + Token 信息 = Token 行在末尾', () => {
-        mockListActive.mockReturnValue([makeInstance()]);
-        const bar = new AgentStatusBar();
-        bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 30000);
-        bar.toggle();
-
-        const result = bar.render(100);
-        expect(result[result.length - 1]).toContain('test-model');
-      });
-
-      it('clearTokenStats 后不显示 Token 行', () => {
+      it('展开模式 + clearTokenStats 后不显示 Token 行', () => {
         mockListActive.mockReturnValue([makeInstance()]);
         const bar = new AgentStatusBar();
         bar.setModelName('test-model');
@@ -754,8 +737,8 @@ describe('AgentStatusBar', () => {
         bar.clearTokenStats();
 
         const result = bar.render(100);
-        // 只有 agent 行，没有 token 行
-        expect(result).toHaveLength(1);
+        // 展开模式：3 行 agent 信息，没有 token 行
+        expect(result).toHaveLength(3);
         expect(result[0]).not.toContain('IN');
         expect(result[0]).not.toContain('HIT');
       });
@@ -782,9 +765,9 @@ describe('AgentStatusBar', () => {
       // 推进一个 tick
       vi.advanceTimersByTime(200);
 
-      // 再次渲染，帧已变化
+      // 再次渲染，帧已变化（展开模式有 3 行）
       const result = bar.render(100);
-      expect(result).toHaveLength(1);
+      expect(result).toHaveLength(3);
     });
 
     it('从有到无停止动画', () => {
@@ -814,9 +797,9 @@ describe('AgentStatusBar', () => {
 
       const result2 = bar.render(100);
 
-      // 连续渲染应该有内容
-      expect(result1).toHaveLength(1);
-      expect(result2).toHaveLength(1);
+      // 连续渲染应该有内容（展开模式有 3 行）
+      expect(result1).toHaveLength(3);
+      expect(result2).toHaveLength(3);
     });
 
     it('重复 render 不重复启动动画', () => {
@@ -831,7 +814,7 @@ describe('AgentStatusBar', () => {
       // 推进多个 tick，不应崩溃
       vi.advanceTimersByTime(1000);
       const result = bar.render(100);
-      expect(result).toHaveLength(1);
+      expect(result).toHaveLength(3);
     });
   });
 });

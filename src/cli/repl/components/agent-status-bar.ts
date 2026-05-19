@@ -61,8 +61,8 @@ const VISIBLE_TOOL_LINES_COLLAPSED = 1;
  * 从 AgentInstanceManager 读取活跃实例状态，渲染为紧凑状态栏。
  */
 export class AgentStatusBar extends Container {
-  /** 是否展开显示详情 */
-  #expanded = false;
+  /** 是否展开显示详情（默认展开） */
+  #expanded = true;
 
   /** 按实例的工具调用列表展开状态 */
   #agentExpanded: Map<string, boolean> = new Map();
@@ -234,8 +234,7 @@ export class AgentStatusBar extends Container {
     const statsStr = chalk.gray(
       `\u00B7 ${toolUses} tool use${toolUses !== 1 ? 's' : ''} \u00B7 ${duration}`
     );
-    const hintStr = chalk.dim('(ctrl+o to expand)');
-    return `  ${countStr} ${statsStr}  ${hintStr}`;
+    return `  ${countStr} ${statsStr}`;
   }
 
   /** 渲染展开模式多行 */
@@ -245,8 +244,7 @@ export class AgentStatusBar extends Container {
 
     // 标题行
     const header = chalk.cyan(`  ${frame} Running ${count} agent${count > 1 ? 's' : ''}...`);
-    const hint = chalk.dim('(ctrl+o to collapse)');
-    lines.push(truncateToWidth(`${header}  ${hint}`, width));
+    lines.push(truncateToWidth(header, width));
 
     // 每个 Agent 的详情行
     for (let i = 0; i < instances.length; i++) {
@@ -327,7 +325,7 @@ export class AgentStatusBar extends Container {
       if (hiddenCount > 0) {
         lines.push(
           truncateToWidth(
-            `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(`+${hiddenCount} more tool uses (${chalk.italic('ctrl+o to expand')})`)}`,
+            `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(`+${hiddenCount} more tool uses`)}`,
             width
           )
         );
@@ -348,7 +346,7 @@ export class AgentStatusBar extends Container {
         if (hiddenCount > 0) {
           lines.push(
             truncateToWidth(
-              `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(`+${hiddenCount} more tool uses (${chalk.italic('ctrl+o to expand')})`)}`,
+              `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(`+${hiddenCount} more tool uses`)}`,
               width
             )
           );

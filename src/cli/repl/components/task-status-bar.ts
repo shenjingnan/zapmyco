@@ -4,17 +4,13 @@
  * 显示 TaskManage 创建的任务列表，支持折叠/展开两种模式。
  * 类似 Claude Code 的 TaskListV2，使用 pi-tui Container 实现。
  *
- * 折叠模式（默认，单行）:
- *   📋 3 tasks · ◼ 1 in_progress · ◻ 1 pending · ✔ 1 completed    Ctrl+T expand
- *
- * 展开模式（Ctrl+T 切换）:
+ * 有任务时始终展开（多行）:
  *   ⠋ #1 Search files
  *   ◻ #2 Core logic
  *   ◻ #3 Tests                     ▸ blocked by #1
  *   ✔ #4 Analysis
  *
  *   1 in_progress · 1 pending · 1 completed
- *   (Ctrl+T collapse)
  *
  * 自动隐藏：无任务时 render() 返回 []。
  * 进行中任务：显示 loading spinner 动画 + cyan 高亮。
@@ -47,14 +43,6 @@ const STATUS_ICONS: Record<string, string> = {
  * 固定在 OutputArea 和 AgentStatusBar 之间。
  */
 export class TaskStatusBar extends Container {
-  /**
-   * 用户手动折叠标记
-   *
-   * - false（默认）：根据任务状态自动决定展开/折叠
-   * - true：用户通过 Ctrl+T 手动折叠，覆盖自动行为
-   */
-  #forceCollapsed = false;
-
   /** TaskStore 引用（只读，不写） */
   #store: TaskStore;
 
@@ -72,17 +60,6 @@ export class TaskStatusBar extends Container {
     this.#store = store;
   }
 
-  /**
-   * 切换展开/折叠状态
-   *
-   * 用户手动 Ctrl+T 时调用，设置 forceCollapsed 标记。
-   * 当新任务出现时，forceCollapsed 会被自动重置。
-   */
-  toggle(): void {
-    this.#forceCollapsed = !this.#forceCollapsed;
-    this.invalidate();
-  }
-
   /** 当前是否处于展开状态 */
   get isExpanded(): boolean {
     const summary = this.#store.summary();
@@ -91,18 +68,8 @@ export class TaskStatusBar extends Container {
 
   /**
    * 当 TaskStore 变化时由外部调用
-   *
-   * 如果出现新的活跃任务，自动展开；全部完成后自动折叠。
    */
   onTasksChanged(): void {
-    const summary = this.#store.summary();
-    const hasActiveTasks = summary.pending > 0 || summary.in_progress > 0;
-
-    if (hasActiveTasks) {
-      // 有活跃任务时重置用户折叠标记，自动展开
-      this.#forceCollapsed = false;
-    }
-    // 全部完成时保持当前状态（用户已折叠则不打扰）
     this.invalidate();
   }
 
@@ -110,14 +77,9 @@ export class TaskStatusBar extends Container {
     super.invalidate();
   }
 
-  /** 判断当前是否应展开 */
-  #shouldExpand(summary: { total: number; pending: number; in_progress: number }): boolean {
-    if (summary.total === 0) return false;
-    if (this.#forceCollapsed) return false;
-
-    // 有活跃任务时自动展开
-    const hasActiveTasks = summary.pending > 0 || summary.in_progress > 0;
-    return hasActiveTasks;
+  /** 判断当前是否应展开（有任务时始终展开） */
+  #shouldExpand(summary: { total: number }): boolean {
+    return summary.total > 0;
   }
 
   /**
@@ -214,10 +176,7 @@ export class TaskStatusBar extends Container {
       parts.push(chalk.red.dim(`${STATUS_ICONS.cancelled} ${summary.cancelled} cancelled`));
     }
 
-    // ⌨️ hint
-    const hint = chalk.dim('Ctrl+T expand');
-
-    const line = `  ${parts.join(' · ')}    ${hint}`;
+    const line = `  ${parts.join(' · ')}`;
     return line;
   }
 
@@ -251,9 +210,6 @@ export class TaskStatusBar extends Container {
       summaryParts.push(chalk.red.dim(`${summary.cancelled} cancelled`));
     }
     lines.push(`  ${summaryParts.join(' · ')}`);
-
-    // 折叠提示
-    lines.push(chalk.dim('  (Ctrl+T collapse)'));
 
     return lines;
   }
