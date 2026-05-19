@@ -207,7 +207,7 @@ describe('AgentStatusBar', () => {
       const result = bar.render(100);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toContain('Running 1 agent');
+      expect(result[0]).toContain('1 agent');
     });
 
     it('多个 Agent 显示复数', () => {
@@ -217,29 +217,7 @@ describe('AgentStatusBar', () => {
       ]);
       const result = bar.render(100);
 
-      expect(result[0]).toContain('Running 2 agents');
-    });
-
-    it('显示 tool uses 统计（复数）', () => {
-      mockListActive.mockReturnValue([
-        makeInstance({
-          currentActivity: { toolName: 'Read', toolUses: 3, startedAt: Date.now() },
-        }),
-      ]);
-      const result = bar.render(100);
-
-      expect(result[0]).toContain('3 tool uses');
-    });
-
-    it('显示 tool use 统计（单数）', () => {
-      mockListActive.mockReturnValue([
-        makeInstance({
-          currentActivity: { toolName: 'Read', toolUses: 1, startedAt: Date.now() },
-        }),
-      ]);
-      const result = bar.render(100);
-
-      expect(result[0]).toContain('1 tool use');
+      expect(result[0]).toContain('2 agents');
     });
 
     it('输出被截断到指定宽度', () => {
@@ -257,7 +235,7 @@ describe('AgentStatusBar', () => {
       const result = bar.render(100);
 
       expect(result.length).toBeGreaterThan(1);
-      expect(result[0]).toContain('Running 1 agent');
+      expect(result[0]).toContain('1 agent');
     });
 
     it('显示 Agent 类型和任务描述', () => {
@@ -279,7 +257,6 @@ describe('AgentStatusBar', () => {
 
       // 第二行包含 agent 信息
       expect(result[1]).toContain('researcher');
-      expect(result[1]).toContain('research data');
     });
 
     it('显示当前活动工具信息', () => {
@@ -291,9 +268,9 @@ describe('AgentStatusBar', () => {
       const bar = new AgentStatusBar();
       const result = bar.render(100);
 
-      // result[1] = agent 行, result[2] = tool 详情行
-      expect(result[2]).toContain('ReadFile');
-      expect(result[1]).toContain('5 tool uses');
+      // activityDesc = '正在读取文件'，仅有 2 行：header + agent 行
+      expect(result[1]).toContain('正在读取文件');
+      expect(result).toHaveLength(2);
     });
 
     it('无 currentActivity 时不显示工具行', () => {
@@ -319,8 +296,9 @@ describe('AgentStatusBar', () => {
       const bar = new AgentStatusBar();
       const result = bar.render(100);
 
-      expect(result[2]).toContain('ReadFile');
-      expect(result[2]).toContain('path:/test/file.txt');
+      // activityDesc = '正在读取文件'，仅有 2 行：header + agent 行
+      expect(result[1]).toContain('正在读取文件');
+      expect(result).toHaveLength(2);
     });
 
     it('最后一个 Agent 使用不同的连接线', () => {
@@ -362,60 +340,46 @@ describe('AgentStatusBar', () => {
       expect(result.some((l) => l.includes('custom-agent'))).toBe(true);
     });
 
-    it('toolCallHistory 展开后显示分组工具列表', () => {
+    it('toolCallHistory 显示分组工具列表', () => {
       mockListActive.mockReturnValue([
         makeInstance({
           instanceId: 'a',
           typeId: 'researcher',
+          // 不要设置 currentActivity
           toolCallHistory: [
             {
               toolName: 'ReadFile',
               argsDisplay: 'src/foo.ts',
               status: 'completed',
               startedAt: 1000,
+              endedAt: 2000,
             },
             {
               toolName: 'ReadFile',
               argsDisplay: 'src/bar.ts',
               status: 'completed',
-              startedAt: 2000,
+              startedAt: 1000,
+              endedAt: 2000,
             },
-            { toolName: 'Grep', argsDisplay: 'pattern', status: 'completed', startedAt: 3000 },
+            {
+              toolName: 'Grep',
+              argsDisplay: 'pattern',
+              status: 'completed',
+              startedAt: 3000,
+              endedAt: 4000,
+            },
           ],
           status: 'running',
         }),
       ]);
       const bar = new AgentStatusBar();
-      bar.toggle('a'); // 展开 agent-a 的工具详情
       const result = bar.render(100);
 
-      // 应包含分组标题行 ⎿  Read 2 items ...
-      expect(result.some((l) => l.includes('Read 2 items'))).toBe(true);
-      // 单个 Grep 保持独立
-      expect(result.some((l) => l.includes('Grep: pattern'))).toBe(true);
-    });
-
-    it('隐藏工具计数显示 "+N more tool uses"', () => {
-      mockListActive.mockReturnValue([
-        makeInstance({
-          instanceId: 'a',
-          toolCallHistory: [
-            { toolName: 'ReadFile', status: 'completed', startedAt: 1 },
-            { toolName: 'ReadFile', status: 'completed', startedAt: 2 },
-            { toolName: 'ReadFile', status: 'completed', startedAt: 3 },
-            { toolName: 'ReadFile', status: 'completed', startedAt: 4 },
-            { toolName: 'ReadFile', status: 'completed', startedAt: 5 },
-            { toolName: 'ReadFile', status: 'completed', startedAt: 6 },
-          ],
-          status: 'running',
-        }),
-      ]);
-      const bar = new AgentStatusBar();
-      // 不调用 toggle('a')，默认展开状态栏 + 折叠 agent 详情，应显示 "+N more"
-      const result = bar.render(100);
-
-      // 展开模式下 agent 详情折叠显示最近 1 条 + "+N more" 提示
-      expect(result.some((l) => l.includes('+5 more tool uses'))).toBe(true);
+      // result[1] = agent 行，含活动描述
+      expect(result[1]).toContain('已完成 3 次调用');
+      // result[2] = 工具调用摘要行
+      expect(result[2]).toContain('Read 2次');
+      expect(result[2]).toContain('Search 1次');
     });
 
     it('running 状态的 Agent 显示 background hint', () => {
@@ -446,27 +410,106 @@ describe('AgentStatusBar', () => {
       expect(result.some((l) => l.includes('ctrl+b'))).toBe(false);
     });
 
-    it('toggle(instanceId) 可单独展开/折叠 Agent 工具详情', () => {
+    it('toggleActiveAgentDetails 不抛异常', () => {
+      const bar = new AgentStatusBar();
+      expect(() => bar.toggleActiveAgentDetails()).not.toThrow();
+    });
+
+    it('有当前活动且有工具历史时显示双重信息', () => {
       mockListActive.mockReturnValue([
         makeInstance({
-          instanceId: 'a',
+          typeId: 'researcher',
+          currentActivity: { toolName: 'Exec', toolUses: 3, startedAt: Date.now() },
           toolCallHistory: [
-            { toolName: 'ReadFile', status: 'completed', startedAt: 1000 },
-            { toolName: 'Grep', status: 'completed', startedAt: 2000 },
+            {
+              toolName: 'ReadFile',
+              argsDisplay: 'src/foo.ts',
+              status: 'completed',
+              startedAt: 1000,
+              endedAt: 2000,
+            },
+            {
+              toolName: 'ReadFile',
+              argsDisplay: 'src/bar.ts',
+              status: 'completed',
+              startedAt: 1000,
+              endedAt: 2000,
+            },
           ],
           status: 'running',
         }),
       ]);
       const bar = new AgentStatusBar();
+      const result = bar.render(100);
 
-      // 状态栏默认展开，但 agent 详情折叠 — 只有 ⎿ 最近工具行
-      const collapsedResult = bar.render(100);
+      // line1: 当前活动描述（中文）
+      expect(result[1]).toContain('正在执行命令');
+      // line2: 工具调用总次数
+      expect(result[2]).toContain('已完成 2 次工具调用');
+      // 共 3 行：header + agent 行 + 工具统计行
+      expect(result).toHaveLength(3);
+    });
 
-      // 展开 agent-a 详情
-      bar.toggle('a');
-      const expandedResult = bar.render(100);
-      // 展开后应能看到更多内容
-      expect(expandedResult.length).toBeGreaterThanOrEqual(collapsedResult.length);
+    it('工具历史未全部完成时不显示已完成描述', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          typeId: 'researcher',
+          // 无 currentActivity
+          toolCallHistory: [
+            { toolName: 'ReadFile', status: 'completed', startedAt: 1000, endedAt: 2000 },
+            { toolName: 'Grep', status: 'running', startedAt: 3000 },
+          ],
+          status: 'running',
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      // line1: 没有 activityDesc（不是所有调用都完成），只显示 typeId
+      expect(result[1]).toContain('researcher');
+      expect(result[1]).not.toContain('已完成');
+      // line2: 仍有工具调用摘要（totalCalls > 0 && !act）
+      expect(result[2]).toContain('Read 1次');
+      expect(result[2]).toContain('Search 1次');
+    });
+
+    it('不同工具名显示对应中文描述', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          typeId: 'coder',
+          currentActivity: { toolName: 'WriteFile', toolUses: 1, startedAt: Date.now() },
+        }),
+        makeInstance({
+          typeId: 'researcher',
+          currentActivity: { toolName: 'WebSearch', toolUses: 2, startedAt: Date.now() },
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      expect(result.some((l) => l.includes('正在写入文件'))).toBe(true);
+      expect(result.some((l) => l.includes('正在搜索网络'))).toBe(true);
+    });
+
+    it('展开模式 header 显示总耗时', () => {
+      mockListActive.mockReturnValue([
+        makeInstance({
+          instanceId: 'a',
+          typeId: 'coder',
+          createdAt: Date.now() - 5000,
+        }),
+        makeInstance({
+          instanceId: 'b',
+          typeId: 'researcher',
+          createdAt: Date.now() - 2000,
+        }),
+      ]);
+      const bar = new AgentStatusBar();
+      const result = bar.render(100);
+
+      // header 行包含 agent 数量和耗时
+      expect(result[0]).toContain('2 agents');
+      expect(result[0]).toContain('5.0s');
     });
   });
 
@@ -725,7 +768,7 @@ describe('AgentStatusBar', () => {
 
         const result = bar.render(100);
         expect(result).toHaveLength(2);
-        expect(result[0]).toContain('Running');
+        expect(result[0]).toContain('1 agent');
         expect(result[1]).toContain('test-model');
       });
 
