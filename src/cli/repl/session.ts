@@ -2228,7 +2228,7 @@ export class ReplSession {
       void this.shutdown('收到 EOF (Ctrl+D)');
     };
 
-    // Ctrl+E: 打开外部编辑器
+    // Ctrl+G: 打开外部编辑器
     this.editor.onOpenEditor = () => this.openInEditor();
 
     // Ctrl+B: 将当前任务转入后台执行

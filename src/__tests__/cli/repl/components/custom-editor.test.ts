@@ -28,7 +28,7 @@ vi.mock('@mariozechner/pi-tui', () => ({
       // 同时验证 data 字符与键名一致，避免误匹配
       const ctrlChar = String.fromCharCode(k.name.charCodeAt(0) - 96);
       if (data !== ctrlChar) return false;
-      if (k.name === 't' || k.name === 'y' || k.name === 'e' || k.name === 'b') return true;
+      if (k.name === 't' || k.name === 'y' || k.name === 'g' || k.name === 'b') return true;
       return false;
     }
     return false;
@@ -153,20 +153,20 @@ describe('ZapmycoEditor', () => {
     });
   });
 
-  describe('handleInput — Ctrl+E', () => {
-    it('Ctrl+E 应触发 onOpenEditor', () => {
+  describe('handleInput — Ctrl+G', () => {
+    it('Ctrl+G 应触发 onOpenEditor', () => {
       const editor = createEditor();
       const openEditor = vi.fn();
       editor.onOpenEditor = openEditor;
 
-      editor.handleInput('\x05'); // Ctrl+E
+      editor.handleInput('\x07'); // Ctrl+G
 
       expect(openEditor).toHaveBeenCalledTimes(1);
     });
 
-    it('onOpenEditor 未设置时 Ctrl+E 不应抛出', () => {
+    it('onOpenEditor 未设置时 Ctrl+G 不应抛出', () => {
       const editor = createEditor();
-      expect(() => editor.handleInput('\x05')).not.toThrow();
+      expect(() => editor.handleInput('\x07')).not.toThrow();
     });
   });
 

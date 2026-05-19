@@ -4,7 +4,7 @@
  * 继承自 pi-tui 的 Editor，添加 zapmyco 特有的快捷键处理：
  * - Ctrl+C: 取消任务 / 二次退出
  * - Ctrl+D: 退出
- * - Ctrl+O: 打开外部编辑器编辑输入
+ * - Ctrl+G: 打开外部编辑器编辑输入
  * - Escape: 取消当前输入
  *
  * 同时 override render() 以：
@@ -49,7 +49,7 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+D 回调 */
   onCtrlD?: () => void;
 
-  /** Ctrl+O 回调（打开外部编辑器） */
+  /** Ctrl+G 回调（打开外部编辑器） */
   onOpenEditor?: () => void;
 
   /** Ctrl+B 回调（后台运行当前任务） */
@@ -120,7 +120,7 @@ export class ZapmycoEditor extends Editor {
       }
       return;
     }
-    if (matchesKey(data, Key.ctrl('e'))) {
+    if (matchesKey(data, Key.ctrl('g'))) {
       if (this.onOpenEditor) {
         this.onOpenEditor();
       }
