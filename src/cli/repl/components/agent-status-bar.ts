@@ -11,19 +11,16 @@
 import { Container, truncateToWidth } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';
-import {
-  buildToolCallGroups,
-  countHiddenToolUses,
-} from '@/core/agent-team/agent-progress-processor';
+import { buildToolCallGroups } from '@/core/agent-team/agent-progress-processor';
 import type { AgentInstance } from '@/core/agent-team/types';
 
-/** 状态图标映射 */
+/** 状态图标映射 — 纯文字符号，无 emoji */
 const STATUS_ICONS: Record<string, string> = {
   idle: '\u25CB', // ○
-  running: '\u25C9', // ◉
+  running: '\u25CF', // ●
   paused: '\u25D0', // ◐
-  completed: '\u25CF', // ●
-  failed: '\u2715', // ✕
+  completed: '\u2714', // ✔
+  failed: '\u2718', // ✘
   cancelled: '\u25CC', // ◌
 };
 
@@ -47,13 +44,26 @@ const TREE_BRANCH = '\u251C\u2500\u2500 '; // ├──
 const TREE_LAST = '\u2514\u2500\u2500 '; // └──
 const TREE_PIPE = '\u2502   '; // │
 const TREE_SPACE = '    '; // (空格缩进)
-const TREE_CONT = '\u23BF  '; // ⎿
 
-/** 每个 Agent 默认显示的 Tool Call 分组数 */
-const MAX_VISIBLE_GROUPS = 5;
+/** 工具名 → 可读动词描述 */
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  AgentTool: '派发子任务',
+  Grep: '搜索代码',
+  ReadFile: '读取文件',
+  Glob: '查找文件',
+  Exec: '执行命令',
+  WriteFile: '写入文件',
+  EditFile: '编辑文件',
+  WebFetch: '抓取网页',
+  WebSearch: '搜索网络',
+  SendMessage: '发送消息',
+  TaskStop: '停止任务',
+};
 
-/** 折叠状态下每个 Agent 显示的工具行数 */
-const VISIBLE_TOOL_LINES_COLLAPSED = 1;
+/** 获取工具的可读描述 */
+function getToolDescription(toolName: string): string {
+  return TOOL_DESCRIPTIONS[toolName] ?? toolName;
+}
 
 /**
  * Agent 状态栏组件
@@ -229,12 +239,8 @@ export class AgentStatusBar extends Container {
   }
 
   /** 渲染折叠模式单行 */
-  #renderCollapsed(frame: string, count: number, toolUses: number, duration: string): string {
-    const countStr = chalk.cyan(`${frame} Running ${count} agent${count > 1 ? 's' : ''}...`);
-    const statsStr = chalk.gray(
-      `\u00B7 ${toolUses} tool use${toolUses !== 1 ? 's' : ''} \u00B7 ${duration}`
-    );
-    return `  ${countStr} ${statsStr}`;
+  #renderCollapsed(frame: string, count: number, _toolUses: number, duration: string): string {
+    return `  ${chalk.cyan(`${frame} ${count} agent${count > 1 ? 's' : ''}`)} ${chalk.gray(`· ${duration}`)}`;
   }
 
   /** 渲染展开模式多行 */
@@ -243,7 +249,12 @@ export class AgentStatusBar extends Container {
     const count = instances.length;
 
     // 标题行
-    const header = chalk.cyan(`  ${frame} Running ${count} agent${count > 1 ? 's' : ''}...`);
+    const totalDuration = this.#formatDuration(
+      Math.max(...instances.map((i) => Date.now() - i.createdAt))
+    );
+    const header = chalk.cyan(
+      `  ${frame} ${count} agent${count > 1 ? 's' : ''} · ${totalDuration}`
+    );
     lines.push(truncateToWidth(header, width));
 
     // 每个 Agent 的详情行
@@ -273,95 +284,63 @@ export class AgentStatusBar extends Container {
     const icon = STATUS_ICONS[inst.status] ?? '?';
     const statusColor = inst.status === 'running' ? chalk.yellow : chalk.gray;
     const typeLabel = chalk.bold(inst.typeId);
-    const taskPreview = inst.task.description.slice(0, 40);
     const act = inst.currentActivity;
 
-    // 第一行：类型 + 任务 + tool uses + duration
-    const toolUsesStr = act ? chalk.gray(`\u00B7 ${act.toolUses} tool uses`) : '';
-    const durationStr = chalk.gray(`\u00B7 ${this.#formatDuration(Date.now() - inst.createdAt)}`);
-    const line1 = `  ${chalk.dim(connector)}${statusColor(icon)}${chalk.reset} ${typeLabel}  ${chalk.dim(taskPreview)}  ${toolUsesStr} ${durationStr}`;
-    lines.push(truncateToWidth(line1, width));
-
-    // 工具调用详情
-    const isExpanded = this.#agentExpanded.get(inst.instanceId) ?? false;
-    if (isExpanded && inst.toolCallHistory.length > 0) {
-      // 展开模式：显示分组后的工具调用
-      const groups = buildToolCallGroups(inst.toolCallHistory);
-      const { visibleGroups, hiddenCount } = countHiddenToolUses(groups, MAX_VISIBLE_GROUPS);
-
-      for (const group of visibleGroups) {
-        if (group.count === 1 && group.calls.length === 1) {
-          // 单个工具调用：显示工具名和参数
-          const call = group.calls[0]!;
-          const statusMark =
-            call.status === 'completed'
-              ? chalk.green('\u2713 ')
-              : call.status === 'failed'
-                ? chalk.red('\u2715 ')
-                : '';
-          const display = call.argsDisplay
-            ? `${call.toolName}: ${call.argsDisplay}`
-            : call.toolName;
-          lines.push(
-            truncateToWidth(
-              `  ${chalk.dim(childPrefix + TREE_CONT)}${statusMark}${chalk.cyan(display)}`,
-              width
-            )
-          );
-        } else {
-          // 分组摘要：显示 "Label N items (e.g. sample)"
-          const firstCall = group.calls[0];
-          const sampleArg = firstCall?.argsDisplay
-            ? ` (e.g. ${firstCall.argsDisplay.slice(0, 40)})`
-            : '';
-          const summary = `${group.label} ${group.count} item${group.count > 1 ? 's' : ''}${sampleArg}`;
-          lines.push(
-            truncateToWidth(`  ${chalk.dim(childPrefix + TREE_CONT)}${chalk.cyan(summary)}`, width)
-          );
+    // === 构建当前活动描述 ===
+    let activityDesc = '';
+    if (act) {
+      // 有当前活动：显示工具描述
+      activityDesc = `正在${getToolDescription(act.toolName)}`;
+    } else {
+      // 没有当前活动：检查工具调用历史
+      const totalCalls = inst.toolCallHistory.length;
+      if (totalCalls > 0) {
+        const allCompleted = inst.toolCallHistory.every(
+          (t) => t.status === 'completed' || t.status === 'failed'
+        );
+        if (allCompleted) {
+          activityDesc = `已完成 ${totalCalls} 次调用`;
         }
       }
+    }
 
-      // "+N more" 提示
-      if (hiddenCount > 0) {
+    // === 第一行：图标 + 类型 + 活动描述 + 耗时 ===
+    const duration = chalk.gray(`· ${this.#formatDuration(Date.now() - inst.createdAt)}`);
+    let line1: string;
+    if (activityDesc) {
+      line1 = `  ${chalk.dim(connector)}${statusColor(icon)} ${typeLabel} ${chalk.dim(`· ${activityDesc}`)} ${duration}`;
+    } else {
+      line1 = `  ${chalk.dim(connector)}${statusColor(icon)} ${typeLabel} ${duration}`;
+    }
+    lines.push(truncateToWidth(line1, width));
+
+    // === 第二行（可选）：工具调用历史摘要 ===
+    // 只有当有工具调用历史且没有当前活动时才显示摘要
+    const totalCalls = inst.toolCallHistory.length;
+    if (totalCalls > 0 && !act) {
+      // 按工具类型分组，只显示一次汇总
+      const groups = buildToolCallGroups(inst.toolCallHistory);
+      const summaries = groups.map((g) => `${getToolDescription(g.label)} ${g.count}次`);
+      if (summaries.length > 0) {
         lines.push(
           truncateToWidth(
-            `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(`+${hiddenCount} more tool uses`)}`,
+            `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(summaries.join('  '))}`,
             width
           )
         );
       }
-    } else if (inst.toolCallHistory.length > 0) {
-      // 折叠模式：仅显示最近的工具调用
-      const recent = inst.toolCallHistory[inst.toolCallHistory.length - 1];
-      if (recent) {
-        const display = recent.argsDisplay
-          ? `${recent.toolName}: ${recent.argsDisplay}`
-          : recent.toolName;
-        lines.push(
-          truncateToWidth(`  ${chalk.dim(childPrefix + TREE_CONT)}${chalk.cyan(display)}`, width)
-        );
-
-        // "+N more" 提示（隐藏的工具调用）
-        const hiddenCount = inst.toolCallHistory.length - VISIBLE_TOOL_LINES_COLLAPSED;
-        if (hiddenCount > 0) {
-          lines.push(
-            truncateToWidth(
-              `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(`+${hiddenCount} more tool uses`)}`,
-              width
-            )
-          );
-        }
-      }
-    } else if (act) {
-      // 无历史但有当前活动：显示当前工具
-      const toolDisplay = act.args ? `${act.toolName}: ${act.args.slice(0, 60)}` : act.toolName;
+    } else if (totalCalls > 0 && act) {
+      // 有当前活动：也显示总调用数
       lines.push(
-        truncateToWidth(`  ${chalk.dim(childPrefix + TREE_CONT)}${chalk.cyan(toolDisplay)}`, width)
+        truncateToWidth(
+          `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim(`已完成 ${totalCalls} 次工具调用`)}`,
+          width
+        )
       );
     }
 
-    // 后台提示（仅在运行时显示）
-    if (inst.status === 'running') {
+    // === 后台运行提示 ===
+    if (inst.status === 'running' && !act) {
       lines.push(
         truncateToWidth(
           `  ${chalk.dim(childPrefix + TREE_SPACE)}${chalk.dim('(ctrl+b to run in background)')}`,

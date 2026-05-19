@@ -138,7 +138,7 @@ export class OutputFormatter {
     const c = this.getColor();
     const lines: string[] = [
       '',
-      c.bold(`  📋 ${t('output.taskGraph.title')}`),
+      c.bold(`  ${t('output.taskGraph.title')}:`),
       c.gray(
         `  ${t('output.taskGraph.total', { count: graph.nodes.size, layers: graph.layers.length })}`
       ),
