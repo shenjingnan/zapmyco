@@ -17,7 +17,7 @@ import {
   type OverlayHandle,
   type OverlayOptions,
   type TUI,
-} from '@mariozechner/pi-tui';
+} from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import type {
   AskUserQuestionParams,

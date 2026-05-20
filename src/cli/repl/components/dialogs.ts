@@ -16,7 +16,7 @@ import {
   SelectList,
   type SelectListTheme,
   type TUI,
-} from '@mariozechner/pi-tui';
+} from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import type { Renderer } from '@/cli/repl/types';
 import type { ZapmycoConfig } from '@/config/types';

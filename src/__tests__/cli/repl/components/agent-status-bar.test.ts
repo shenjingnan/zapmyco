@@ -64,7 +64,7 @@ vi.mock('chalk', () => {
 });
 
 // Mock pi-tui Container
-vi.mock('@mariozechner/pi-tui', () => ({
+vi.mock('@earendil-works/pi-tui', () => ({
   Container: class MockContainer {
     invalidate() {
       /* prototype method for super.invalidate() */

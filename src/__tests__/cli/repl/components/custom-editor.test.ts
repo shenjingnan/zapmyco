@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 // Mock pi-tui — 让 ZapmycoEditor 可以正常实例化
-vi.mock('@mariozechner/pi-tui', () => ({
+vi.mock('@earendil-works/pi-tui', () => ({
   Editor: class MockEditor {
     getText = vi.fn().mockReturnValue('');
     // 注意：handleInput 必须是原型方法而非实例属性

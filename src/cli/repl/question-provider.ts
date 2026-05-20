@@ -7,7 +7,7 @@
  * @module cli/repl/question-provider
  */
 
-import type { TUI } from '@mariozechner/pi-tui';
+import type { TUI } from '@earendil-works/pi-tui';
 import { showAskUserQuestionDialog } from '@/cli/repl/components/ask-user-question';
 import type {
   AskUserQuestionParams,

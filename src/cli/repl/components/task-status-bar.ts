@@ -19,7 +19,7 @@
  * @module cli/repl/components
  */
 
-import { Container } from '@mariozechner/pi-tui';
+import { Container } from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
 import type { TaskStore } from '@/core/task/task-store';
