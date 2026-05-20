@@ -5,16 +5,16 @@
 import type { LogLevel } from '@/infra/logger';
 import type { CredentialEntry, CredentialStrategy } from '@/llm/credential-pool';
 
-/** 单个模型配置（嵌套在 provider 内部，所有字段均可选，未填则从 pi-ai 内置注册表自动获取） */
+/** 单个模型配置（嵌套在 provider 内部，所有字段均可选，未填则使用内置默认值） */
 export interface ModelConfig {
   /** 模型 ID（发送给 API 的模型名称，默认等于模型 key 名） */
   id?: string;
-  /** 模型支持的输入类型（从 pi-ai 自动获取） */
+  /** 模型支持的输入类型 */
   input?: string[];
   /** 模型描述 */
   description?: string;
   /**
-   * 自定义 API 基础 URL（覆盖 provider 级别和 pi-ai 内置值）
+   * 自定义 API 基础 URL（覆盖 provider 级别默认值）
    */
   baseUrl?: string;
 }
@@ -25,7 +25,7 @@ export interface LlmProviderConfig {
   baseUrl?: string;
   /** API Key（支持 ${ENV_VAR} 环境变量引用） */
   apiKey?: string;
-  /** API 格式：决定使用哪个 pi-ai 适配器（openai / anthropic） */
+  /** API 格式：openai / anthropic */
   apiFormat?: 'openai' | 'anthropic' | string;
   /**
    * 凭据池：支持多 API Key 轮转和故障转移
@@ -75,7 +75,7 @@ export interface LlmRoutingConfig {
   strategy?: 'default-then-fallback' | 'task-based' | 'lowest-cost';
 }
 
-/** LLM 配置（基于 pi-ai 多模型架构） */
+/** LLM 配置（多提供商架构） */
 export interface LlmConfig {
   /** 默认使用的模型标识（格式：provider/modelId，如 anthropic/claude-sonnet-4-20250514） */
   defaultModel: string;
@@ -342,7 +342,7 @@ export interface ZapmycoConfig {
   /** UI 语言设置（如 'zh-CN'、'en'） */
   locale?: string;
 
-  /** LLM 配置（新格式，基于 pi-ai 多模型） */
+  /** LLM 配置 */
   llm: LlmConfig;
 
   /** @deprecated 向后兼容字段，优先使用 llm */

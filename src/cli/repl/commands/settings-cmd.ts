@@ -369,7 +369,7 @@ async function handleInteractiveMode(
     const configuredProviders = _getByDotPath(state.current, 'llm.providers') as
       | Record<string, unknown>
       | undefined;
-    // Merge configured providers + built-in providers (replaces pi-ai getProviders())
+    // Merge configured providers + built-in providers
     const configuredProviderNames = configuredProviders ? Object.keys(configuredProviders) : [];
     const builtinProviderNames = Object.keys(BUILTIN_MODEL_IDS);
     const allProviders = [...new Set([...configuredProviderNames, ...builtinProviderNames])];

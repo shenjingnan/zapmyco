@@ -1,13 +1,13 @@
 /**
  * 上下文窗口解析
  *
- * 从 pi-ai Model 对象中获取上下文窗口大小，
+ * 从本地 Model 对象中获取上下文窗口大小，
  * 计算有效可用窗口。
  *
  * @module core/context
  */
 
-import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { Model } from '@/core/agent-runtime/runtime-types';
 import type { ContextWindowInfo } from './types';
 
 /** 默认上下文窗口大小（当无法从模型获取时） */
@@ -33,12 +33,12 @@ const KNOWN_CONTEXT_WINDOWS: Record<string, number> = {
 };
 
 /**
- * 从 pi-ai Model 对象解析上下文窗口信息
+ * 从本地 Model 对象解析上下文窗口信息
  *
- * @param model - pi-ai Model 实例
+ * @param model - Model 实例
  * @returns 上下文窗口信息
  */
-// biome-ignore lint/suspicious/noExplicitAny: 兼容 pi-ai Model 的泛型约束
+// biome-ignore lint/suspicious/noExplicitAny: 兼容 Model 的泛型约束
 export function resolveContextWindow(model: Model): ContextWindowInfo {
   const contextWindow =
     model.contextWindow || KNOWN_CONTEXT_WINDOWS[model.id] || DEFAULT_CONTEXT_WINDOW;

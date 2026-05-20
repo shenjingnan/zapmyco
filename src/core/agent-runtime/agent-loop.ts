@@ -22,7 +22,7 @@ import type {
   AgentToolResult,
   StreamFn,
 } from './agent-types';
-import type { AssistantMessage, ToolResultMessage } from './pi-ai-compat-types';
+import type { AssistantMessage, ToolResultMessage } from './runtime-types';
 
 const log = logger.child('agent-loop');
 
@@ -368,7 +368,7 @@ async function streamAssistantResponse(
   const messageProvider = config.model.provider || '';
   const messageApi = config.model.provider || '';
   let stopReason: string | undefined;
-  // biome-ignore lint/suspicious/noExplicitAny: usage 字段兼容 pi-ai 格式
+  // biome-ignore lint/suspicious/noExplicitAny: usage 字段使用字符串索引
   const usage: Record<string, any> = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
   // 7. 事件处理循环
@@ -585,7 +585,7 @@ function buildPartialMessage(
     partialJson?: string;
     signature?: string;
   }>,
-  // biome-ignore lint/suspicious/noExplicitAny: usage 兼容 pi-ai 格式
+  // biome-ignore lint/suspicious/noExplicitAny: usage 使用字符串索引
   usage: Record<string, any>,
   stopReason: string | undefined,
   model: string,
@@ -621,7 +621,7 @@ function buildFinalMessage(
     partialJson?: string;
     signature?: string;
   }>,
-  // biome-ignore lint/suspicious/noExplicitAny: usage 兼容 pi-ai 格式
+  // biome-ignore lint/suspicious/noExplicitAny: usage 使用字符串索引
   usage: Record<string, any>,
   stopReason: string | undefined,
   model: string,
@@ -646,7 +646,7 @@ function buildFinalMessage(
 }
 
 /**
- * 将累积的 Anthropic 内容块转为 pi-ai AssistantMessage 兼容的 content 数组
+ * 将累积的 Anthropic 内容块转为 AssistantMessage 的 content 数组
  */
 function contentBlocksToAssistantContent(
   blocks: Array<{
@@ -700,7 +700,7 @@ function contentBlocksToAssistantContent(
 }
 
 /**
- * 映射 Anthropic SDK stop_reason 到 pi-ai 兼容的 stopReason
+ * 映射 Anthropic SDK stop_reason 到内部 stopReason
  */
 function mapStopReason(reason: string | undefined): string | undefined {
   switch (reason) {

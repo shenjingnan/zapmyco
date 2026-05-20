@@ -2,7 +2,6 @@
  * 工具参数校验器
  *
  * 将 JSON Schema 格式的 tool parameters 转为 Zod schema 执行校验。
- * 替代 pi-ai 的 validateToolArguments()。
  *
  * @module llm/tool-validator
  */

@@ -1,8 +1,7 @@
 /**
  * Agent 运行时类型定义
  *
- * 替代 @mariozechner/pi-agent-core 的类型系统，
- * 与 pi-ai 的类型保持兼容。
+ * 本地 Agent 运行时类型系统。
  *
  * @module core/agent-runtime/agent-types
  */
@@ -18,7 +17,7 @@ import type {
   ThinkingLevel,
   Tool,
   ToolResultMessage,
-} from './pi-ai-compat-types';
+} from './runtime-types';
 
 // ============ 消息类型 ============
 
@@ -43,7 +42,7 @@ export interface UserMessage {
 /**
  * AgentMessage — 会话中的消息类型联合
  *
- * 兼容 pi-ai 的 Message，同时允许自定义角色（如 summary）。
+ * 支持自定义角色（如 summary）。
  */
 export type AgentMessage =
   | AssistantMessage

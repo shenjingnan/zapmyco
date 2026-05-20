@@ -1865,7 +1865,7 @@ export class ReplSession {
   /**
    * 创建 REPL 专用的 Agent 实例
    *
-   * Agent 复用 pi-ai 的 Model 对象进行 LLM 调用，
+   * Agent 复用本地 Model 对象进行 LLM 调用，
    * 因此需要从 config.llm 解析 model 并注入到 Agent state。
    */
   private createReplAgent(): LlmBasedAgent {
@@ -2421,7 +2421,7 @@ export class ReplSession {
     // 从更新后的 config 重新创建 LLM facade
     const newFacade = new AgentLlmFacade(this.config.llm);
 
-    // 重新注入 pi-ai Model 对象到 Agent state
+    // 重新注入 Model 对象到 Agent state
     this.agent.innerAgent.state.model = newFacade.resolvePiModel();
 
     // 重新注入 getApiKey 函数（供 pi-agent-core 每次 LLM 调用时使用）

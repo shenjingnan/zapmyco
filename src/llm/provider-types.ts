@@ -1,7 +1,7 @@
 /**
  * LLM 提供商类型定义
  *
- * ResolvedModel 替代 pi-ai 的 Model 类型，只携带 LLM 调用实际需要的字段。
+ * ResolvedModel 轻量模型解析结果类型，只携带 LLM 调用实际需要的字段。
  * 与 ModelInfo（用于注册/发现）互补：ModelInfo 用于配置和路由，ResolvedModel 用于实际调用。
  *
  * @module llm/provider-types

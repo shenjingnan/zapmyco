@@ -5,14 +5,14 @@
  * 替代 session.ts 中分散的模型解析和 Key 注入逻辑。
  *
  * 职责：
- * - 解析 pi-ai Model 对象（替代 resolveModelForAgent）
+ * - 解析本地 Model 对象
  * - 提供 getApiKey 闭包（支持凭据池轮转）
  * - 报告 Key 使用结果（更新凭据池状态）
  * - 故障转移（获取备选 Model + Key）
  */
 
 import type { LlmConfig } from '@/config/types';
-import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { Model } from '@/core/agent-runtime/runtime-types';
 import type { RoutingContext } from '@/llm/model-router';
 import { ModelRouter } from '@/llm/model-router';
 import type { ModelInfo } from '@/llm/provider-registry';
@@ -29,9 +29,9 @@ export class AgentLlmFacade {
   }
 
   /**
-   * 解析 pi-ai 兼容 Model 对象
+   * 解析本地 Model 对象
    *
-   * 返回与 pi-ai Model 结构兼容的本地对象，供仍需 pi-ai 格式的旧代码使用。
+   * 返回与 Model 结构兼容的本地对象。
    * 新代码应优先使用 resolveResolvedModel()。
    */
   resolvePiModel(modelKey?: string): Model {
@@ -39,9 +39,9 @@ export class AgentLlmFacade {
   }
 
   /**
-   * 解析 ResolvedModel（替代 pi-ai Model，用于 anthropic-provider API 调用）
+   * 解析 ResolvedModel（用于 API 调用）
    *
-   * 与 resolvePiModel() 对应，返回不依赖 pi-ai 的轻量模型对象。
+   * 返回 ResolvedModel 对象。
    */
   resolveResolvedModel(modelKey?: string): ResolvedModel {
     return this.registry.resolveResolvedModel(modelKey);
@@ -103,7 +103,7 @@ export class AgentLlmFacade {
   }
 
   /**
-   * 解析模型信息（非 pi-ai 对象）
+   * 解析模型信息
    */
   getModelInfo(modelKey?: string): ModelInfo | undefined {
     if (modelKey) return this.registry.resolveModel(modelKey);

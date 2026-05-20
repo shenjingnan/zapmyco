@@ -160,7 +160,7 @@
       "listProvidersUsage": "/settings list-providers     — List all known providers",
       "listModelsUsage": "/settings list-models <name> — List available models for a provider",
       "knownProviders": "Known providers:",
-      "noModelsAvailable": "No models available from pi-ai registry",
+      "noModelsAvailable": "No models available",
       "hintConfigureFirst": "Hint: use /settings to configure this provider first",
       "availableModels": "available models:"
     },

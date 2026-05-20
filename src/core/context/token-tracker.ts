@@ -1,13 +1,13 @@
 /**
  * Token 追踪器
  *
- * 从 pi-agent-core 的 turn_end 事件中提取实际 token 用量，
+ * 从 Agent 的 turn_end 事件中提取实际 token 用量，
  * 维护累积计数，提供 token 使用状态查询。
  *
  * @module core/context
  */
 
-import type { PiUsage as Usage } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { Usage } from '@/core/agent-runtime/runtime-types';
 import type { TokenUsageSnapshot } from './types';
 
 /**

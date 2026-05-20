@@ -139,7 +139,7 @@ describe('TokenTracker', () => {
       cacheWrite: overrides?.cacheWrite ?? 0,
       totalTokens: (overrides?.input ?? 100) + (overrides?.output ?? 50),
       cost: {} as unknown as Record<string, never>,
-    }) as unknown as import('@/core/agent-runtime/pi-ai-compat-types').PiUsage;
+    }) as unknown as import('@/core/agent-runtime/runtime-types').Usage;
 
   it('should have correct initial state', () => {
     const tracker = new TokenTracker();
@@ -221,7 +221,7 @@ describe('TokenTracker advanced metrics', () => {
       cacheWrite: overrides?.cacheWrite ?? 0,
       totalTokens: (overrides?.input ?? 100) + (overrides?.output ?? 50),
       cost: {} as unknown as Record<string, never>,
-    }) as unknown as import('@/core/agent-runtime/pi-ai-compat-types').PiUsage;
+    }) as unknown as import('@/core/agent-runtime/runtime-types').Usage;
 
   it('getCacheHitRate 空历史返回 0', () => {
     const tracker = new TokenTracker();

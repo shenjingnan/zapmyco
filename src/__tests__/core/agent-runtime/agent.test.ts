@@ -8,7 +8,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
-import type { AssistantMessage } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { AssistantMessage } from '@/core/agent-runtime/runtime-types';
 
 // ============ Mock EventStream (Anthropic SDK 格式) ============
 

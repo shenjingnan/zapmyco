@@ -34,7 +34,7 @@ import type {
 import type { Capability } from '@/protocol/capability';
 import { createDoomLoopDetector, type DoomLoopDetector } from '@/security/doom-loop-detector';
 import { createEventBridgeListener } from './event-bridge';
-import type { ThinkingLevel } from './pi-ai-compat-types';
+import type { ThinkingLevel } from './runtime-types';
 import { type ToolRegistration, toAgentTools } from './tool-bridge';
 import { ToolSchemaCache } from './tool-schema-cache';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';

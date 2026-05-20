@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlmConfig } from '@/config/types';
-import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { Model } from '@/core/agent-runtime/runtime-types';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';
 
 // Mock ProviderRegistry
