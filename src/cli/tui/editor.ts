@@ -11,6 +11,7 @@
  */
 
 import { Key, matchesKey } from './key';
+import { truncateToWidth } from './text-utils';
 import type { Component, EditorOptions, EditorTheme } from './types';
 
 /** APC (Application Program Command) 零宽光标标记 */
@@ -330,6 +331,8 @@ export class Editor implements Component {
     }
 
     // 追加 autocomplete 补全列表（在内容末尾，边框内部）
+    // 注意：每行必须截断到 contentWidth 以内，否则 TUI 引擎会抛出
+    // "Rendered line exceeds terminal width" 异常
     if (this.#acActive && this.#acItems.length > 0) {
       const maxVisible = Math.min(this.#acItems.length, 10);
       for (let i = 0; i < maxVisible; i++) {
@@ -338,7 +341,9 @@ export class Editor implements Component {
         const selected = i === this.#acSelected ? '❯' : ' ';
         const label = item.label ?? item.value ?? '';
         const desc = item.description ? `  ${item.description}` : '';
-        contentLines.push(`${selected} ${label}${desc}`);
+        // 用 truncateToWidth 截断（其 visibleWidth 会高估 CURSOR_MARKER 的宽度，
+        // 但对纯文本 autocomplete 行是准确的，且比终端宽度更窄，保证安全）
+        contentLines.push(truncateToWidth(`${selected} ${label}${desc}`, contentWidth));
       }
     }
 
