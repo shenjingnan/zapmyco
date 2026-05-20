@@ -4,7 +4,7 @@
  * 覆盖 Editor 类的所有公有方法和关键私有路径。
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // Mock pi-tui — parseKey 用于 key.ts 的 matchesKey
 vi.mock('@earendil-works/pi-tui', () => ({
@@ -235,6 +235,7 @@ describe('handleInput — Autocomplete 活跃', () => {
         items,
         prefix: '/',
       }),
+      applyCompletion: vi.fn() as any,
     };
     editor.setAutocompleteProvider(provider);
     editor.handleInput('/');
@@ -248,30 +249,28 @@ describe('handleInput — Autocomplete 活跃', () => {
   }
 
   it('↑ 键应上移选中项', async () => {
-    const { editor, tui } = await createEditorWithAC();
+    const { editor } = await createEditorWithAC();
     const beforeLines = editor.render(80).slice(1, -1);
-    const beforeAcLines = beforeLines.filter(l => l.includes('❯'));
+    const beforeAcLines = beforeLines.filter((l) => l.includes('❯'));
     expect(beforeAcLines.length).toBe(1);
 
     editor.handleInput('\x1b[A'); // up — 在第一项上不移
     const afterLines = editor.render(80).slice(1, -1);
-    const afterAcLines = afterLines.filter(l => l.includes('❯'));
+    const afterAcLines = afterLines.filter((l) => l.includes('❯'));
     expect(afterAcLines.length).toBe(1);
   });
 
   it('↓ 键应下移选中项', async () => {
-    const { editor, tui } = await createEditorWithAC();
+    const { editor } = await createEditorWithAC();
     // 初始选中第一项，按↓移到第二项
     editor.handleInput('\x1b[B'); // down
     const lines = editor.render(80).slice(1, -1);
-    // 第二个补全行应有 ❯
-    const acLines = lines.filter(l => l.trim().startsWith('❯') || l.trim().startsWith('❯'));
     // 选择标记应该移动了
     expect(lines.length).toBeGreaterThan(1);
   });
 
   it('Tab 应应用补全并关闭列表', async () => {
-    const { editor, tui, provider } = await createEditorWithAC([{ label: 'help', value: 'help' }]);
+    const { editor, provider } = await createEditorWithAC([{ label: 'help', value: 'help' }]);
     provider.applyCompletion = vi.fn().mockReturnValue({
       lines: ['/help'],
       cursorLine: 0,
@@ -288,7 +287,7 @@ describe('handleInput — Autocomplete 活跃', () => {
   });
 
   it('Enter 应应用补全并关闭列表', async () => {
-    const { editor, tui, provider } = await createEditorWithAC([{ label: 'help', value: 'help' }]);
+    const { editor, provider } = await createEditorWithAC([{ label: 'help', value: 'help' }]);
     provider.applyCompletion = vi.fn().mockReturnValue({
       lines: ['/help'],
       cursorLine: 0,

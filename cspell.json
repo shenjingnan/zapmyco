@@ -92,7 +92,9 @@
     "xhigh",
     "macrotask",
     "unreg",
-    "unsub"
+    "unsub",
+    "ncdef",
+    "hllo"
   ],
   "ignorePaths": [
     "node_modules",
