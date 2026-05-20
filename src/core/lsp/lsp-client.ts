@@ -171,11 +171,11 @@ export function createLspClient(config: LspClientConfig): LspClient {
       (msg) => trace('←', msg)
     );
 
-    childProcess.stdout!.on('data', (chunk: Buffer) => {
+    childProcess.stdout?.on('data', (chunk: Buffer) => {
       reader.feed(chunk);
     });
 
-    childProcess.stdout!.on('end', () => {
+    childProcess.stdout?.on('end', () => {
       if (!isStopping) {
         rejectAllPending(new LspError('LSP stdout closed unexpectedly', 'STDOUT_CLOSED'));
       }
@@ -246,7 +246,7 @@ export function createLspClient(config: LspClientConfig): LspClient {
         method,
       });
 
-      messageWriter!.write(request).catch((err) => {
+      messageWriter?.write(request).catch((err) => {
         clearTimeout(timer);
         pendingRequests.delete(id);
         reject(err);
@@ -315,7 +315,7 @@ export function createLspClient(config: LspClientConfig): LspClient {
         resolve();
       }, 2000);
 
-      childProcess!.once('exit', () => {
+      childProcess?.once('exit', () => {
         clearTimeout(timer);
         resolve();
       });

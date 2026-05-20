@@ -58,8 +58,8 @@ describe('McpManager', () => {
       const tools = await manager.initialize([makeServerConfig('srv')]);
 
       expect(tools).toHaveLength(2);
-      expect(tools[0]!.id).toBe('mcp__srv__tool_1');
-      expect(tools[1]!.id).toBe('mcp__srv__tool_2');
+      expect(tools[0]?.id).toBe('mcp__srv__tool_1');
+      expect(tools[1]?.id).toBe('mcp__srv__tool_2');
     });
 
     it('should handle one server failing while another succeeds', async () => {
@@ -83,7 +83,7 @@ describe('McpManager', () => {
 
       // Only server_b's tools should be available
       expect(tools).toHaveLength(1);
-      expect(tools[0]!.id).toBe('mcp__server_b__tool_b');
+      expect(tools[0]?.id).toBe('mcp__server_b__tool_b');
     });
 
     it('should handle all servers failing', async () => {
@@ -167,7 +167,7 @@ describe('initializeMcpTools', () => {
     const manager = await initializeMcpTools([makeServerConfig('demo')], mockAgent);
 
     expect(registerTools).toHaveBeenCalledTimes(1);
-    const registeredTools: unknown[] = registerTools.mock.calls[0]![0];
+    const registeredTools: unknown[] = registerTools.mock.calls[0]?.[0];
     expect(registeredTools).toHaveLength(1);
     expect((registeredTools[0]! as { id: string }).id).toBe('mcp__demo__hello');
     expect(manager).toBeDefined();

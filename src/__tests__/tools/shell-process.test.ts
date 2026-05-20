@@ -45,7 +45,7 @@ describe('shell-process', () => {
   describe('list action', () => {
     it('空注册表应该返回空列表信息', async () => {
       const result = await tool.execute('test_1', { action: 'list' });
-      expect(result.content[0]!.text).toContain('没有活动');
+      expect(result.content[0]?.text).toContain('没有活动');
     });
 
     it('有进程时应列出所有进程', async () => {
@@ -54,7 +54,7 @@ describe('shell-process', () => {
       registry.register('sleep 1', child);
 
       const result = await tool.execute('test_2', { action: 'list' });
-      expect(result.content[0]!.text).toContain('sleep');
+      expect(result.content[0]?.text).toContain('sleep');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((result.details as any).processCount).toBeGreaterThanOrEqual(1);
 
@@ -66,7 +66,7 @@ describe('shell-process', () => {
   describe('poll action', () => {
     it('无 sessionId 时应返回提示', async () => {
       const result = await tool.execute('test_3', { action: 'poll' });
-      expect(result.content[0]!.text).toContain('sessionId');
+      expect(result.content[0]?.text).toContain('sessionId');
     });
 
     it('不存在的 session 应返回未找到', async () => {
@@ -74,35 +74,35 @@ describe('shell-process', () => {
         action: 'poll',
         sessionId: 'proc_nonexistent',
       });
-      expect(result.content[0]!.text).toContain('未找到');
+      expect(result.content[0]?.text).toContain('未找到');
     });
   });
 
   describe('log action', () => {
     it('无 sessionId 时应返回提示', async () => {
       const result = await tool.execute('test_5', { action: 'log' });
-      expect(result.content[0]!.text).toContain('sessionId');
+      expect(result.content[0]?.text).toContain('sessionId');
     });
   });
 
   describe('wait action', () => {
     it('无 sessionId 时应返回提示', async () => {
       const result = await tool.execute('test_6', { action: 'wait' });
-      expect(result.content[0]!.text).toContain('sessionId');
+      expect(result.content[0]?.text).toContain('sessionId');
     });
   });
 
   describe('kill action', () => {
     it('无 sessionId 时应返回提示', async () => {
       const result = await tool.execute('test_7', { action: 'kill' });
-      expect(result.content[0]!.text).toContain('sessionId');
+      expect(result.content[0]?.text).toContain('sessionId');
     });
   });
 
   describe('write action', () => {
     it('无 sessionId 时应返回提示', async () => {
       const result = await tool.execute('test_8', { action: 'write' });
-      expect(result.content[0]!.text).toContain('sessionId');
+      expect(result.content[0]?.text).toContain('sessionId');
     });
 
     it('无 data 时应返回提示', async () => {
@@ -110,21 +110,21 @@ describe('shell-process', () => {
         action: 'write',
         sessionId: 'proc_test',
       });
-      expect(result.content[0]!.text).toContain('data');
+      expect(result.content[0]?.text).toContain('data');
     });
   });
 
   describe('submit action', () => {
     it('submit 同样需要 sessionId 和 data', async () => {
       const result = await tool.execute('test_10', { action: 'submit' });
-      expect(result.content[0]!.text).toContain('sessionId');
+      expect(result.content[0]?.text).toContain('sessionId');
     });
   });
 
   describe('未知操作', () => {
     it('应该返回错误提示', async () => {
       const result = await tool.execute('test_11', { action: 'unknown' as never });
-      expect(result.content[0]!.text).toContain('未知操作');
+      expect(result.content[0]?.text).toContain('未知操作');
     });
   });
 
@@ -138,14 +138,14 @@ describe('shell-process', () => {
 
       // list 应该看到该进程
       const listResult = await tool.execute('test_12', { action: 'list' });
-      expect(listResult.content[0]!.text).toContain(session.sessionId);
+      expect(listResult.content[0]?.text).toContain(session.sessionId);
 
       // kill 该进程
       const killResult = await tool.execute('test_13', {
         action: 'kill',
         sessionId: session.sessionId,
       });
-      expect(killResult.content[0]!.text).toContain('终止信号');
+      expect(killResult.content[0]?.text).toContain('终止信号');
 
       registry.destroy();
     });

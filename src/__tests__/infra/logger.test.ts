@@ -318,7 +318,7 @@ describe('Logger', () => {
 
 describe('configureLogger()', () => {
   it('should set log level on global logger', () => {
-    const originalLevel = 'getEntries' in logger ? true : false;
+    const originalLevel = 'getEntries' in logger;
     configureLogger({ level: 'error' });
     logger.debug('should be filtered');
     expect(logger.getEntries()).toHaveLength(0);

@@ -311,7 +311,7 @@ async function handleInteractiveMode(
       { onExit: exitAll }
     );
 
-    if (selected && selected.value) {
+    if (selected?.value) {
       const modelId = selected.value;
       // Register the model in config
       const settings = readSettings();
@@ -400,7 +400,7 @@ async function handleInteractiveMode(
     }
 
     const selected = await showSelectList(tui, modelItems, { onExit: exitAll });
-    if (!selected || !selected.value) return;
+    if (!selected?.value) return;
 
     const selectedKey = selected.value;
     const slashIndex = selectedKey.indexOf('/');
@@ -619,7 +619,7 @@ async function handleInteractiveMode(
           { maxVisible: 12, onExit: exitAll }
         );
 
-        if (!selected || !selected.value) continue;
+        if (!selected?.value) continue;
 
         const providerName = selected.value;
 
@@ -693,7 +693,7 @@ async function handleInteractiveMode(
       }));
 
       const selected = await showSelectList(tui, localeItems, { onExit: exitAll });
-      if (!selected || !selected.value) continue;
+      if (!selected?.value) continue;
 
       if (selected.value !== currentLocale) {
         setConfigValue(session, 'locale', selected.value);

@@ -72,8 +72,8 @@ describe('TaskStore', () => {
       const after = Date.now();
 
       const tasks = store.read();
-      expect(tasks[0]!.createdAt).toBeGreaterThanOrEqual(before);
-      expect(tasks[0]!.createdAt).toBeLessThanOrEqual(after);
+      expect(tasks[0]?.createdAt).toBeGreaterThanOrEqual(before);
+      expect(tasks[0]?.createdAt).toBeLessThanOrEqual(after);
     });
 
     it('应该正确统计各状态数量', () => {
@@ -98,7 +98,7 @@ describe('TaskStore', () => {
 
       const tasks = store.read();
       expect(tasks).toHaveLength(1);
-      expect(tasks[0]!.id).toBe('2');
+      expect(tasks[0]?.id).toBe('2');
     });
 
     // ============ 状态约束校验 ============
@@ -150,8 +150,8 @@ describe('TaskStore', () => {
 
       const tasks = store.read();
       expect(tasks).toHaveLength(1);
-      expect(tasks[0]!.subject).toBe('新标题');
-      expect(tasks[0]!.status).toBe('in_progress');
+      expect(tasks[0]?.subject).toBe('新标题');
+      expect(tasks[0]?.status).toBe('in_progress');
     });
 
     it('merge 模式下应静默跳过 terminal 状态任务', () => {
@@ -160,7 +160,7 @@ describe('TaskStore', () => {
 
       expect(error).toBeNull();
       const tasks = store.read();
-      expect(tasks[0]!.status).toBe('completed'); // 状态未变
+      expect(tasks[0]?.status).toBe('completed'); // 状态未变
     });
 
     it('merge 模式下也应检查 in_progress 约束', () => {
@@ -179,7 +179,7 @@ describe('TaskStore', () => {
       const error = store.update('1', { status: 'in_progress' });
 
       expect(error).toBeNull();
-      expect(store.read()[0]!.status).toBe('in_progress');
+      expect(store.read()[0]?.status).toBe('in_progress');
     });
 
     it('应该更新任务标题', () => {
@@ -187,7 +187,7 @@ describe('TaskStore', () => {
 
       store.update('1', { subject: '新标题' });
 
-      expect(store.read()[0]!.subject).toBe('新标题');
+      expect(store.read()[0]?.subject).toBe('新标题');
     });
 
     it('应该更新 updatedAt 时间戳', () => {
@@ -197,8 +197,8 @@ describe('TaskStore', () => {
       store.update('1', { status: 'in_progress' });
       const after = Date.now();
 
-      expect(store.read()[0]!.updatedAt).toBeGreaterThanOrEqual(before);
-      expect(store.read()[0]!.updatedAt).toBeLessThanOrEqual(after);
+      expect(store.read()[0]?.updatedAt).toBeGreaterThanOrEqual(before);
+      expect(store.read()[0]?.updatedAt).toBeLessThanOrEqual(after);
     });
 
     it('应该拒绝更新不存在的任务', () => {
@@ -244,7 +244,7 @@ describe('TaskStore', () => {
       const error = store.update('2', { status: 'in_progress' });
 
       expect(error).toBeNull();
-      expect(store.read().find((t) => t.id === '2')!.status).toBe('in_progress');
+      expect(store.read().find((t) => t.id === '2')?.status).toBe('in_progress');
     });
   });
 
@@ -404,10 +404,10 @@ describe('TaskStore', () => {
       expect(loaded).toBe(true);
       const tasks = restoredStore.read();
       expect(tasks).toHaveLength(2);
-      expect(tasks[0]!.id).toBe('1');
-      expect(tasks[0]!.subject).toBe('任务1');
-      expect(tasks[0]!.status).toBe('pending');
-      expect(tasks[1]!.description).toBe('详细描述');
+      expect(tasks[0]?.id).toBe('1');
+      expect(tasks[0]?.subject).toBe('任务1');
+      expect(tasks[0]?.status).toBe('pending');
+      expect(tasks[1]?.description).toBe('详细描述');
     });
 
     it('无效 JSON 文件应返回 false', () => {

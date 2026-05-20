@@ -131,7 +131,7 @@ export async function appendAgentMemory(typeId: string, content: string): Promis
   }
 
   const trimmedContent =
-    content.length > MAX_ENTRY_LENGTH ? content.slice(0, MAX_ENTRY_LENGTH) + '...' : content;
+    content.length > MAX_ENTRY_LENGTH ? `${content.slice(0, MAX_ENTRY_LENGTH)}...` : content;
 
   const filePath = getMemoryFilePath(typeId);
   const timestamp = new Date().toISOString();

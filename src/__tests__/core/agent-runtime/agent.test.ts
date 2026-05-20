@@ -4,33 +4,25 @@
  * 直接测试 Agent 类（不 mock），使用 mock streamFn 控制 LLM 响应。
  */
 
+import type Anthropic from '@anthropic-ai/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
-import type {
-  AssistantMessage,
-  AssistantMessageEvent,
-} from '@/core/agent-runtime/pi-ai-compat-types';
+import type { AssistantMessage } from '@/core/agent-runtime/pi-ai-compat-types';
 
-// ============ Mock EventStream ============
+// ============ Mock EventStream (Anthropic SDK 格式) ============
 
 class MockEventStream {
-  private events: AssistantMessageEvent[];
-  private finalResult: AssistantMessage;
+  private events: Anthropic.RawMessageStreamEvent[];
 
-  constructor(events: AssistantMessageEvent[], finalResult: AssistantMessage) {
+  constructor(events: Anthropic.RawMessageStreamEvent[]) {
     this.events = events;
-    this.finalResult = finalResult;
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<AssistantMessageEvent> {
+  async *[Symbol.asyncIterator](): AsyncIterator<Anthropic.RawMessageStreamEvent> {
     for (const event of this.events) {
       yield event;
     }
-  }
-
-  async result(): Promise<AssistantMessage> {
-    return { ...this.finalResult };
   }
 }
 
@@ -54,12 +46,92 @@ function makeTextResponse(text: string): AssistantMessage {
   } as AssistantMessage;
 }
 
-function makeStreamEvents(response: AssistantMessage): AssistantMessageEvent[] {
-  return [
-    { type: 'start', partial: response } as AssistantMessageEvent,
-    { type: 'text_delta', contentIndex: 0, delta: '', partial: response } as AssistantMessageEvent,
-    { type: 'done', reason: 'stop', message: response } as AssistantMessageEvent,
+/**
+ * 将 AssistantMessage 转换为 Anthropic SDK 流式事件序列
+ *
+ * 生成: message_start → content_block_start(text) → content_block_delta(text_delta)
+ *       → content_block_stop → [tool_use blocks] → message_delta → message_stop
+ */
+function makeStreamEvents(response: AssistantMessage): Anthropic.RawMessageStreamEvent[] {
+  const text = response.content
+    .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+    .map((c) => c.text)
+    .join('');
+
+  const events: Anthropic.RawMessageStreamEvent[] = [
+    {
+      type: 'message_start',
+      message: {
+        id: 'msg-test-1',
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model: response.model ?? 'test',
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: response.usage?.input ?? 0, output_tokens: 0 },
+      },
+    } as unknown as Anthropic.MessageStartEvent,
+    {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as Anthropic.ContentBlockStartEvent,
+    {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text },
+    } as unknown as Anthropic.ContentBlockDeltaEvent,
+    {
+      type: 'content_block_stop',
+      index: 0,
+    } as unknown as Anthropic.ContentBlockStopEvent,
   ];
+
+  // 如果有工具调用，添加 tool_use 内容块（递增索引）
+  let toolIndex = 1;
+  for (const block of response.content) {
+    if (block.type === 'toolCall') {
+      events.push(
+        {
+          type: 'content_block_start',
+          index: toolIndex,
+          content_block: {
+            type: 'tool_use',
+            id: block.id,
+            name: block.name,
+            input: {},
+          },
+        } as unknown as Anthropic.ContentBlockStartEvent,
+        {
+          type: 'content_block_delta',
+          index: toolIndex,
+          delta: {
+            type: 'input_json_delta',
+            partial_json: JSON.stringify(block.arguments),
+          },
+        } as unknown as Anthropic.ContentBlockDeltaEvent,
+        {
+          type: 'content_block_stop',
+          index: toolIndex,
+        } as unknown as Anthropic.ContentBlockStopEvent
+      );
+      toolIndex++;
+    }
+  }
+
+  events.push(
+    {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' as const, stop_sequence: null },
+      usage: { output_tokens: response.usage?.output ?? 0 },
+    } as unknown as Anthropic.MessageDeltaEvent,
+    {
+      type: 'message_stop',
+    } as unknown as Anthropic.MessageStopEvent
+  );
+
+  return events;
 }
 
 /**
@@ -71,7 +143,7 @@ function createMultiTurnStreamFn(firstMessage: AssistantMessage, fallbackText = 
   return vi.fn().mockImplementation(async () => {
     callCount++;
     const msg = callCount <= 1 ? firstMessage : makeTextResponse(fallbackText);
-    return new MockEventStream(makeStreamEvents(msg), msg);
+    return new MockEventStream(makeStreamEvents(msg));
   });
 }
 
@@ -137,15 +209,7 @@ describe('Agent', () => {
           messages: [{ role: 'user' as const, content: 'Hi', timestamp: Date.now() }],
           model: {
             id: 'test',
-            name: 'test',
-            api: 'test',
             provider: 'test',
-            baseUrl: '',
-            reasoning: false,
-            input: [],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 0,
-            maxTokens: 0,
           },
           thinkingLevel: 'medium' as const,
         },
@@ -462,19 +526,13 @@ describe('Agent', () => {
 
   describe('handleRunFailure', () => {
     it('should handle errors during prompt', async () => {
-      // streamFn 返回一个会出错的 stream
-      const errorMsg = makeTextResponse('');
-      errorMsg.stopReason = 'error';
-      (errorMsg as any).errorMessage = 'API error';
-      const events: AssistantMessageEvent[] = [
-        { type: 'start', partial: errorMsg } as AssistantMessageEvent,
-        {
-          type: 'error',
-          reason: 'error' as const,
-          error: { errorMessage: 'API error' },
-        } as AssistantMessageEvent,
-      ];
-      agent.streamFn = vi.fn().mockResolvedValue(new MockEventStream(events, errorMsg));
+      // streamFn 返回一个会抛出错误的 stream
+      agent.streamFn = vi.fn().mockImplementation(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'message_stop' } as unknown as Anthropic.MessageStopEvent;
+          throw new Error('API error');
+        },
+      }));
 
       await agent.prompt('hi');
 

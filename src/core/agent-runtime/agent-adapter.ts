@@ -692,7 +692,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       return {
         是否健康: this.config.enabled && !state.isStreaming,
         latencyMs,
-        version: `pi-agent-core@${this.getPkgVersion()}`,
+        version: `zapmyco-agent@${this.getPkgVersion()}`,
         details: {
           isStreaming: state.isStreaming,
           messagesCount: state.messages.length,
@@ -969,10 +969,10 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   private getPkgVersion(): string {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pkg = require('@earendil-works/pi-ai/package.json');
-      return pkg.version ?? 'unknown';
+      const pkg = require('../../../../package.json');
+      return (pkg.version as string) ?? '0.1.0';
     } catch {
-      return 'unknown';
+      return '0.1.0';
     }
   }
 }
@@ -1040,6 +1040,11 @@ function extractTextFromMessage(message: unknown): string | null {
 /**
  * 从 message_update 事件中提取 delta 文本
  */
+/**
+ * 从 message_update 事件中提取增量文本（Anthropic SDK 事件格式）
+ *
+ * 处理 content_block_delta 事件中的 text_delta 和 thinking_delta。
+ */
 function extractDeltaFromEvent(event: {
   type: 'message_update';
   message: unknown;
@@ -1047,18 +1052,16 @@ function extractDeltaFromEvent(event: {
 }): { delta: string; kind: 'text' | 'thinking' } | null {
   const evt = event.assistantMessageEvent as Record<string, unknown> | null;
   if (!evt || typeof evt !== 'object') return null;
-  // 处理 text_delta
-  if (evt.type === 'text_delta') {
-    if (typeof evt.delta === 'string') return { delta: evt.delta, kind: 'text' };
-    if (typeof (evt as Record<string, unknown>).text_delta === 'string') {
-      return { delta: (evt as Record<string, unknown>).text_delta as string, kind: 'text' };
+
+  if (evt.type === 'content_block_delta') {
+    const delta = evt.delta as Record<string, unknown> | undefined;
+    if (!delta || typeof delta !== 'object') return null;
+
+    if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+      return { delta: delta.text, kind: 'text' };
     }
-  }
-  // 处理 thinking_delta
-  if (evt.type === 'thinking_delta') {
-    if (typeof evt.delta === 'string') return { delta: evt.delta, kind: 'thinking' };
-    if (typeof (evt as Record<string, unknown>).thinking_delta === 'string') {
-      return { delta: (evt as Record<string, unknown>).thinking_delta as string, kind: 'thinking' };
+    if (delta.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+      return { delta: delta.thinking, kind: 'thinking' };
     }
   }
   return null;
@@ -1077,7 +1080,7 @@ function formatToolArgs(args: unknown): string {
   return entries
     .map(([key, value]) => {
       const raw = typeof value === 'string' ? value : JSON.stringify(value);
-      const display = raw.length > 80 ? raw.slice(0, 77) + '...' : raw;
+      const display = raw.length > 80 ? `${raw.slice(0, 77)}...` : raw;
       return `${key}="${display.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
     })
     .join(', ');

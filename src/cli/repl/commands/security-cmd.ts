@@ -63,7 +63,7 @@ function renderSecurityDefault(report: SecurityHealthReport): string[] {
 /** 简单柱状图 */
 function barChart(score: number): string {
   const filled = Math.round(score / 10);
-  return '█'.repeat(filled) + '░'.repeat(10 - filled) + ` ${score}/100`;
+  return `${'█'.repeat(filled) + '░'.repeat(10 - filled)} ${score}/100`;
 }
 
 /**

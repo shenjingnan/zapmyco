@@ -51,7 +51,7 @@ const OVERLAY_OPTIONS: OverlayOptions = {
 /** 截断文本到指定宽度 */
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen - 1) + '…';
+  return `${text.slice(0, maxLen - 1)}…`;
 }
 
 // ============ 组件 ============

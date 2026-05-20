@@ -77,7 +77,7 @@ export class AnimationManager {
         cb(now);
       }
       // 调回原始 doRender
-      self.#originalDoRender!.call(this);
+      self.#originalDoRender?.call(this);
     };
   }
 

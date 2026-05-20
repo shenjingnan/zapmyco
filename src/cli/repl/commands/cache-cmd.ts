@@ -33,7 +33,7 @@ export function createCacheCommand(): CommandDefinition {
       const lines: string[] = [];
       lines.push('');
       lines.push(chalk.cyan('  Prompt 缓存状态'));
-      lines.push('  ' + chalk.gray('─'.repeat(40)));
+      lines.push(`  ${chalk.gray('─'.repeat(40))}`);
       lines.push(chalk.gray('  缓存命中率: ') + formatPercent(stats.hitRate));
       lines.push(chalk.gray('  平均缓存读取比例: ') + formatPercent(stats.averageCacheRatio));
       lines.push(chalk.gray('  总调用次数: ') + chalk.white(String(stats.totalCalls)));

@@ -72,8 +72,8 @@ describe('ProcessRegistry', () => {
 
       const list = registry.list();
       expect(list.length).toBe(2);
-      expect(list[0]!.command).toBeDefined();
-      expect(list[1]!.command).toBeDefined();
+      expect(list[0]?.command).toBeDefined();
+      expect(list[1]?.command).toBeDefined();
 
       registry.destroy();
     });
@@ -94,8 +94,8 @@ describe('ProcessRegistry', () => {
 
       const result = registry.poll(session.sessionId);
       expect(result).not.toBeNull();
-      expect(result!.session.status).toBe('exited');
-      expect(result!.newOutput).toContain('test output');
+      expect(result?.session.status).toBe('exited');
+      expect(result?.newOutput).toContain('test output');
 
       registry.destroy();
     });
@@ -116,7 +116,7 @@ describe('ProcessRegistry', () => {
 
       const result = registry.getLog(session.sessionId);
       expect(result).not.toBeNull();
-      expect(result!.output).toContain('log line 1');
+      expect(result?.output).toContain('log line 1');
 
       registry.destroy();
     });
@@ -148,7 +148,7 @@ describe('ProcessRegistry', () => {
 
       const result = await registry.wait(session.sessionId);
       expect(result).not.toBeNull();
-      expect(result!.status).toBe('exited');
+      expect(result?.status).toBe('exited');
 
       registry.destroy();
     });
@@ -160,7 +160,7 @@ describe('ProcessRegistry', () => {
 
       const result = await registry.wait(session.sessionId, 100);
       expect(result).not.toBeNull();
-      expect(result!.status).toBe('running');
+      expect(result?.status).toBe('running');
 
       registry.kill(session.sessionId);
       registry.destroy();
@@ -182,7 +182,7 @@ describe('ProcessRegistry', () => {
 
       const killed = registry.kill(session.sessionId);
       expect(killed).not.toBeNull();
-      expect(killed!.status).toBe('killed');
+      expect(killed?.status).toBe('killed');
 
       await registry.wait(session.sessionId);
       registry.destroy();
@@ -196,7 +196,7 @@ describe('ProcessRegistry', () => {
       await registry.wait(session.sessionId);
 
       const killed = registry.kill(session.sessionId);
-      expect(killed!.status).toBe('exited');
+      expect(killed?.status).toBe('exited');
 
       registry.destroy();
     });

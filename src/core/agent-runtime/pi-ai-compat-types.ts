@@ -123,58 +123,13 @@ export type PiThinkingBudgets = Record<string, any>;
 
 export type PiTransport = string;
 
-export interface PiSimpleStreamOptions {
-  onPayload?: (payload: unknown) => void;
-  onResponse?: (response: unknown) => void;
-  timeoutMs?: number;
-}
-
-// ============ 流式事件 ============
-
-export type PiAssistantMessageEvent =
-  | { type: 'start'; partial: PiAssistantMessage }
-  | {
-      type: 'text_start' | 'text_delta' | 'text_end';
-      partial: PiAssistantMessage;
-      delta?: string;
-      contentIndex?: number;
-    }
-  | {
-      type: 'thinking_start' | 'thinking_delta' | 'thinking_end';
-      partial: PiAssistantMessage;
-      delta?: string;
-    }
-  | {
-      type: 'toolcall_start' | 'toolcall_delta' | 'toolcall_end';
-      partial: PiAssistantMessage;
-      delta?: string;
-    }
-  | { type: 'done' | 'error'; partial?: PiAssistantMessage; reason?: string }
-  | { type: string; partial?: PiAssistantMessage };
-
-export interface PiAssistantMessageEventStream extends AsyncIterable<PiAssistantMessageEvent> {
-  result(): Promise<PiAssistantMessage>;
-}
-
-// ============ 上下文 ============
-
-export interface PiContext {
-  systemPrompt: string;
-  messages: PiMessage[];
-  tools?: PiTool[];
-}
-
 // ============ 兼容别名（与 pi-ai 类型名一致，便于逐步替换） ============
 
 export type {
   PiAssistantMessage as AssistantMessage,
-  PiAssistantMessageEvent as AssistantMessageEvent,
-  PiAssistantMessageEventStream as AssistantMessageEventStream,
-  PiContext as Context,
   PiImageContent as ImageContent,
   PiMessage as Message,
   PiModel as Model,
-  PiSimpleStreamOptions as SimpleStreamOptions,
   PiTextContent as TextContent,
   PiThinkingBudgets as ThinkingBudgets,
   PiThinkingLevel as ThinkingLevel,

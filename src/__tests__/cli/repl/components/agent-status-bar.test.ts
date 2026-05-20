@@ -75,7 +75,7 @@ vi.mock('@mariozechner/pi-tui', () => ({
     if (text.length <= maxWidth) return text;
     const target = maxWidth - 3;
     if (target <= 0) return '.'.repeat(maxWidth);
-    return text.slice(0, target) + '...';
+    return `${text.slice(0, target)}...`;
   },
 }));
 

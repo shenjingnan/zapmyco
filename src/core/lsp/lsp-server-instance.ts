@@ -103,7 +103,7 @@ export function createLspServerInstance(config: LspServerInstanceConfig): LspSer
     await ensureRunning();
 
     try {
-      await client!.sendNotification('textDocument/didOpen', {
+      await client?.sendNotification('textDocument/didOpen', {
         textDocument: {
           uri,
           languageId,
@@ -231,8 +231,12 @@ export function createLspServerInstance(config: LspServerInstanceConfig): LspSer
     await ensureRunning();
     requestCount++;
 
+    if (!client) {
+      throw new LspError('CLIENT_NOT_INITIALIZED', 'LSP 客户端未初始化');
+    }
+
     try {
-      const result = await client!.sendRequest<T>(method, params);
+      const result = await client.sendRequest<T>(method, params);
       return result;
     } catch (err) {
       errorCount++;

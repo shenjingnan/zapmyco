@@ -678,7 +678,7 @@ export class AgentOrchestrator {
         // 工具结束：更新最后一条 running 状态
         const lastRunning = [...instance.toolCallHistory]
           .reverse()
-          .find((t) => t.status === 'running' && t.toolName === event.detail!.toolName);
+          .find((t) => t.status === 'running' && t.toolName === event.detail?.toolName);
         if (lastRunning) {
           lastRunning.status = event.detail.isError ? 'failed' : 'completed';
           lastRunning.endedAt = Date.now();

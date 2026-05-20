@@ -90,7 +90,7 @@ describe('EnterWorktree 工具', () => {
       await tool.execute('test-2', {});
 
       expect(manager.create).toHaveBeenCalled();
-      const callArgs = (manager.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      const callArgs = (manager.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
       expect(callArgs.slug).toContain('manual-');
     });
 

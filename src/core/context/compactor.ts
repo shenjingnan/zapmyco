@@ -401,7 +401,11 @@ export class Compactor {
       if (block.type === 'text') {
         blocks.push({ type: 'text', text: String(block.text ?? '') });
       } else if (block.type === 'thinking') {
-        blocks.push({ type: 'text', text: String(block.thinking ?? '') });
+        blocks.push({
+          type: 'thinking',
+          thinking: String((block as Record<string, unknown>).thinking ?? ''),
+          signature: String((block as Record<string, unknown>).signature ?? ''),
+        });
       } else if (block.type === 'toolCall') {
         blocks.push({
           type: 'tool_use',

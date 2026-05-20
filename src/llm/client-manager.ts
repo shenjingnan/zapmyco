@@ -11,6 +11,15 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const DEFAULT_BASE_URL = 'https://api.anthropic.com';
 
+/** 已知提供商的默认 baseURL 映射（当 provider-registry 未配置 baseURL 时使用） */
+const PROVIDER_DEFAULT_BASE_URLS: Record<string, string> = {
+  anthropic: 'https://api.anthropic.com',
+  deepseek: 'https://api.deepseek.com/anthropic',
+  glm: 'https://open.bigmodel.cn/api/paas/v4',
+  kimi: 'https://api.moonshot.cn/v1',
+  minimax: 'https://api.minimax.chat/v1',
+};
+
 const clients = new Map<string, Anthropic>();
 
 /**
@@ -18,13 +27,17 @@ const clients = new Map<string, Anthropic>();
  *
  * @param baseURL - API base URL（默认 https://api.anthropic.com）
  * @param apiKey  - API Key
+ * @param provider - 提供商名称（用于 baseURL 为空时查找默认值）
  * @returns Anthropic 客户端实例
  */
-export function getClient(baseURL: string = DEFAULT_BASE_URL, apiKey?: string): Anthropic {
-  const key = `${baseURL}|${apiKey || ''}`;
+export function getClient(baseURL?: string, apiKey?: string, provider?: string): Anthropic {
+  // baseURL 优先级：显式传入 > provider 默认 > 全局默认（anthropic.com）
+  const effectiveBaseURL =
+    baseURL || (provider && PROVIDER_DEFAULT_BASE_URLS[provider]) || DEFAULT_BASE_URL;
+  const key = `${effectiveBaseURL}|${apiKey || ''}`;
   let client = clients.get(key);
   if (!client) {
-    client = new Anthropic({ apiKey, baseURL });
+    client = new Anthropic({ apiKey, baseURL: effectiveBaseURL });
     clients.set(key, client);
   }
   return client;

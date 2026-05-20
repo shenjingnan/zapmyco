@@ -104,8 +104,8 @@ describe('formatDiagnostics', () => {
   it('无 source 和 code 的诊断', () => {
     const diags = [makeDiag({ severity: 1, message: 'Bare error' })];
     // 确保 source 和 code 未定义
-    delete diags[0]!.source;
-    delete diags[0]!.code;
+    delete diags[0]?.source;
+    delete diags[0]?.code;
     const result = formatDiagnostics('/file.ts', diags);
     expect(result).toContain('Bare error');
     expect(result).not.toContain('[');

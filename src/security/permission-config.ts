@@ -89,7 +89,7 @@ export function matchToolPattern(pattern: string, toolId: string): boolean {
 
   // glob 风格：将 * 替换为正则 .*
   const regex = new RegExp(
-    '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'
+    `^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`
   );
   return regex.test(toolId);
 }

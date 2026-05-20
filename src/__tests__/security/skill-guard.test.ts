@@ -183,8 +183,8 @@ describe('SkillGuard', () => {
       ];
       const results = guard.scanAll(entries);
       expect(results).toHaveLength(2);
-      expect(results[0]!.passed).toBe(true);
-      expect(results[1]!.passed).toBe(false);
+      expect(results[0]?.passed).toBe(true);
+      expect(results[1]?.passed).toBe(false);
     });
   });
 

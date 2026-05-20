@@ -180,7 +180,7 @@ export class ToolResultPruner {
       // 限制摘要长度
       const truncated =
         summary.length > maxSummaryLength
-          ? summary.slice(0, maxSummaryLength - 3) + '...'
+          ? `${summary.slice(0, maxSummaryLength - 3)}...`
           : summary;
 
       // 替换 content 为摘要文本

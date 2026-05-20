@@ -19,7 +19,7 @@ export function readSettings(): Record<string, unknown> {
 
 /** Write back to settings.json */
 export function writeSettings(settings: Record<string, unknown>): void {
-  writeFileSync(HOME_CONFIG_PATH, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  writeFileSync(HOME_CONFIG_PATH, `${JSON.stringify(settings, null, 2)}\n`, 'utf-8');
 }
 
 /** Safely set a nested property (prototype-chain safe) */

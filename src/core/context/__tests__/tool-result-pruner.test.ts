@@ -68,7 +68,7 @@ describe('ToolResultPruner', () => {
       const pruner = new ToolResultPruner({ enabled: false });
       const messages: Record<string, unknown>[] = [makeToolResult({ toolName: 'Read' })];
       pruner.transform(messages as any);
-      expect(messages[0]!._pruned).toBeUndefined();
+      expect(messages[0]?._pruned).toBeUndefined();
     });
 
     it('should return messages unchanged when empty', () => {
@@ -86,8 +86,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
       // All 3 messages protected, none pruned
-      expect(messages[0]!._pruned).toBeUndefined();
-      expect(messages[1]!._pruned).toBeUndefined();
+      expect(messages[0]?._pruned).toBeUndefined();
+      expect(messages[1]?._pruned).toBeUndefined();
     });
 
     it('should prune old toolResult messages beyond protect boundary', () => {
@@ -104,10 +104,10 @@ describe('ToolResultPruner', () => {
       // messages[2] and [3] protected
       pruner.transform(messages as any);
 
-      expect(messages[0]!._pruned).toBe(true);
-      expect(messages[1]!._pruned).toBeUndefined();
-      expect(messages[2]!._pruned).toBeUndefined();
-      expect(messages[3]!._pruned).toBeUndefined();
+      expect(messages[0]?._pruned).toBe(true);
+      expect(messages[1]?._pruned).toBeUndefined();
+      expect(messages[2]?._pruned).toBeUndefined();
+      expect(messages[3]?._pruned).toBeUndefined();
     });
 
     it('should not re-prune already pruned messages', () => {
@@ -117,7 +117,7 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
       // Content should remain unchanged because it was already pruned
-      expect(messages[0]!.content).toBe('should not change');
+      expect(messages[0]?.content).toBe('should not change');
     });
 
     it('should replace content with summary text block', () => {
@@ -127,11 +127,11 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(Array.isArray(content)).toBe(true);
-      expect(content[0]!.type).toBe('text');
-      expect(content[0]!.text).toContain('已读取文件');
-      expect(content[0]!.text).toContain('2行');
+      expect(content[0]?.type).toBe('text');
+      expect(content[0]?.text).toContain('已读取文件');
+      expect(content[0]?.text).toContain('2行');
     });
 
     it('should clear details on pruned messages', () => {
@@ -141,7 +141,7 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      expect(messages[0]!.details).toBeUndefined();
+      expect(messages[0]?.details).toBeUndefined();
     });
 
     it('should not modify details if already undefined', () => {
@@ -151,7 +151,7 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      expect(messages[0]!.details).toBeUndefined();
+      expect(messages[0]?.details).toBeUndefined();
     });
 
     // Tool-specific summary tests
@@ -162,8 +162,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[已读取文件，3行]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[已读取文件，3行]');
     });
 
     it('should generate correct Bash success summary', () => {
@@ -173,9 +173,9 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toContain('执行完成');
-      expect(content[0]!.text).toContain('命令');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toContain('执行完成');
+      expect(content[0]?.text).toContain('命令');
     });
 
     it('should generate correct Bash error summary', () => {
@@ -185,8 +185,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toContain('执行失败');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toContain('执行失败');
     });
 
     it('should generate correct Grep summary with match count', () => {
@@ -199,8 +199,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[搜索完成, 2处匹配]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[搜索完成, 2处匹配]');
     });
 
     it('should generate correct Glob summary with file count', () => {
@@ -213,8 +213,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toContain('文件匹配完成');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toContain('文件匹配完成');
     });
 
     it('should generate generic summary for unknown tools', () => {
@@ -224,8 +224,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[工具执行完成]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[工具执行完成]');
     });
 
     it('should generate summary for WebFetch tool', () => {
@@ -235,8 +235,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[网页抓取完成]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[网页抓取完成]');
     });
 
     it('should generate summary for WebSearch tool', () => {
@@ -246,8 +246,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[网页搜索完成]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[网页搜索完成]');
     });
 
     it('should generate summary for Write tool', () => {
@@ -257,8 +257,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[文件写入完成]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[文件写入完成]');
     });
 
     it('should generate summary for Edit tool', () => {
@@ -268,8 +268,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[文件编辑完成]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[文件编辑完成]');
     });
 
     it('should generate summary for Skill tool', () => {
@@ -279,8 +279,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[技能调用完成]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[技能调用完成]');
     });
 
     it('should handle toolName with prefix match', () => {
@@ -291,8 +291,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toContain('已读取文件');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toContain('已读取文件');
     });
 
     it('should handle empty toolName', () => {
@@ -302,8 +302,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[工具执行完成]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[工具执行完成]');
     });
 
     it('should handle content that is neither string nor array', () => {
@@ -313,9 +313,9 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
       // extractResultText returns '' for number content → summary is "[已读取文件，0行]"
-      expect(content[0]!.text).toBe('[已读取文件，0行]');
+      expect(content[0]?.text).toBe('[已读取文件，0行]');
     });
 
     it('should truncate summaries exceeding maxSummaryLength', () => {
@@ -325,10 +325,10 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
       // Summary "[已读取文件，5行]" truncated to 5 chars → "[已..." (5 chars)
-      expect(content[0]!.text.length).toBe(5);
-      expect(content[0]!.text).toContain('...');
+      expect(content[0]?.text.length).toBe(5);
+      expect(content[0]?.text).toContain('...');
     });
 
     it('should handle content as array with text blocks', () => {
@@ -344,8 +344,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[已读取文件，2行]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[已读取文件，2行]');
     });
 
     it('should handle content as array with non-text blocks', () => {
@@ -358,8 +358,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[已读取文件，1行]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[已读取文件，1行]');
     });
 
     it('should handle content as array with no text blocks', () => {
@@ -372,8 +372,8 @@ describe('ToolResultPruner', () => {
       ];
       pruner.transform(messages as any);
 
-      const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      expect(content[0]!.text).toBe('[已读取文件，0行]');
+      const content = messages[0]?.content as Array<{ type: string; text: string }>;
+      expect(content[0]?.text).toBe('[已读取文件，0行]');
     });
   });
 

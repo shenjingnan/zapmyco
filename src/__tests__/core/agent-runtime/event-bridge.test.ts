@@ -261,7 +261,7 @@ describe('event-bridge', () => {
         toolCallId: 'c1',
         args: { command: longStr },
       });
-      const callArg = spy.mock.calls[0]![1] as { message: string };
+      const callArg = spy.mock.calls[0]?.[1] as { message: string };
       expect(callArg.message).toContain('...');
       expect(callArg.message.length).toBeLessThan(longStr.length + 20);
       spy.mockRestore();

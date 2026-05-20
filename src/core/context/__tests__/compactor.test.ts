@@ -270,8 +270,8 @@ describe('Compactor', () => {
 
       // Check that agent.state.messages[0] is the summary
       const newMessages = agent.state.messages as Record<string, unknown>[];
-      expect(newMessages[0]!.role).toBe('summary');
-      expect(newMessages[0]!.text).toBeDefined();
+      expect(newMessages[0]?.role).toBe('summary');
+      expect(newMessages[0]?.text).toBeDefined();
     });
 
     it('should update recentSavings after successful compaction', async () => {

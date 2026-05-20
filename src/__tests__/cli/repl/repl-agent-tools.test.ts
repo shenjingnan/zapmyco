@@ -161,8 +161,7 @@ import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import type { SkillConfig, SubAgentConfig, WebConfig } from '@/config/types';
 import type { TaskStore } from '@/core/task/task-store';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function textOf(result: any): string {
+function textOf(result: { content?: Array<{ text?: string }> }): string {
   return result?.content?.[0]?.text ?? '';
 }
 

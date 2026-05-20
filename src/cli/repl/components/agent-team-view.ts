@@ -142,7 +142,7 @@ export function formatAgentInstanceTree(
     if (!childrenMap.has(parentKey)) {
       childrenMap.set(parentKey, []);
     }
-    childrenMap.get(parentKey)!.push(inst);
+    childrenMap.get(parentKey)?.push(inst);
   }
 
   // 渲染每棵根树

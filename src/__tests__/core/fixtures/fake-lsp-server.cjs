@@ -7,7 +7,7 @@
  * textDocument/references, textDocument/hover, textDocument/documentSymbol 等。
  */
 
-const { stdin, stdout } = require('process');
+const { stdin, stdout } = require('node:process');
 
 const HEADER_CONTENT_LENGTH = 'Content-Length';
 
@@ -187,7 +187,7 @@ function parseMessages() {
     }
 
     const contentLength = parseInt(headers[HEADER_CONTENT_LENGTH], 10);
-    if (isNaN(contentLength)) {
+    if (Number.isNaN(contentLength)) {
       // 跳过无效消息
       buffer = buffer.slice(headerEnd + 4);
       continue;
@@ -323,8 +323,8 @@ setTimeout(() => {
 // 特殊测试命令：
 // - initialize 后自动发送 textDocument/publishDiagnostics
 // 我们通过监听 initialized 通知来实现
-const originalInitialized = methodHandlers['initialized'];
-methodHandlers['initialized'] = (params) => {
+const originalInitialized = methodHandlers.initialized;
+methodHandlers.initialized = (params) => {
   if (originalInitialized) originalInitialized(params);
   // 延迟发送诊断通知
   setTimeout(() => {

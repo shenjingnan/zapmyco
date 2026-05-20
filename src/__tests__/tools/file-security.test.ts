@@ -46,7 +46,7 @@ describe('file-security', () => {
       expect(result.valid).toBe(true);
       // realpathSync 会解析符号链接（如 macOS 的 /var → /private/var）
       // 新建文件场景下 realpathSync 会向上遍历找到存在的祖先目录
-      expect(result.resolved).toBe(realpathSync(tmpDir) + '/test.txt');
+      expect(result.resolved).toBe(`${realpathSync(tmpDir)}/test.txt`);
       cleanupTmpDir();
     });
 
@@ -55,7 +55,7 @@ describe('file-security', () => {
       const result = validateFilePath('test.txt', tmpDir);
       expect(result.valid).toBe(true);
       // realpathSync 会解析符号链接（如 macOS 的 /var → /private/var）
-      expect(result.resolved).toBe(realpathSync(tmpDir) + '/test.txt');
+      expect(result.resolved).toBe(`${realpathSync(tmpDir)}/test.txt`);
       cleanupTmpDir();
     });
 

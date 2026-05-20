@@ -168,7 +168,7 @@ describe('Cron 烟测试', () => {
     // 重新加载
     const loaded = await store.load();
     expect(loaded.length).toBe(1);
-    expect(loaded[0]!.id).toBe(jobId);
+    expect(loaded[0]?.id).toBe(jobId);
   });
 
   it('status 应返回正确状态', async () => {
