@@ -56,6 +56,9 @@ importers:
       turndown:
         specifier: ^7.2.4
         version: 7.2.4
+      typebox:
+        specifier: ^1.1.38
+        version: 1.1.38
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.4.9

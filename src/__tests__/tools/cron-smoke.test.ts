@@ -63,8 +63,9 @@ describe('Cron 烟测试', () => {
   });
 
   it('循环任务应触发且不被删除', async () => {
+    const jobId = CronStore.generateId();
     await scheduler.addJob({
-      id: CronStore.generateId(),
+      id: jobId,
       cron: `* * * * *`, // 每分钟
       prompt: '烟测试 — 循环',
       createdAt: Date.now() - 60000,
@@ -76,8 +77,9 @@ describe('Cron 烟测试', () => {
 
     await scheduler.start();
 
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
+    // 通过 triggerJob 手动触发，避免依赖定时器抖动（最多 6 秒延迟）
+    const err = await scheduler.triggerJob(jobId);
+    expect(err).toBeNull();
     expect(firedJobs.length).toBeGreaterThanOrEqual(1);
 
     // 循环任务不应被删除
