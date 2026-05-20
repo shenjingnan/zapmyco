@@ -31,6 +31,12 @@ describe('createDiagnosticCollector', () => {
     expect(collector.getForFile('/test.ts')).toEqual([]);
   });
 
+  it('clear 后 getForFile 应返回空数组', () => {
+    const collector = createDiagnosticCollector();
+    collector.clear();
+    expect(collector.getForFile('/test.ts')).toEqual([]);
+  });
+
   it('clearForFile 不应抛异常', () => {
     const collector = createDiagnosticCollector();
     expect(() => collector.clearForFile('/test.ts')).not.toThrow();

@@ -4,7 +4,7 @@
  * 继承自 pi-tui 的 Editor，添加 zapmyco 特有的快捷键处理：
  * - Ctrl+C: 取消任务 / 二次退出
  * - Ctrl+D: 退出
- * - Ctrl+O: 打开外部编辑器编辑输入
+ * - Ctrl+G: 打开外部编辑器编辑输入
  * - Escape: 取消当前输入
  *
  * 同时 override render() 以：
@@ -13,8 +13,10 @@
  * - 执行中时显示 loading spinner
  */
 
+import type { EditorOptions, EditorTheme, TUI } from '@mariozechner/pi-tui';
 import { Editor, Key, matchesKey, truncateToWidth } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
+import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
 
 /** 输入提示符 */
 const PROMPT_PREFIX = '\u276f '; // "❯ "
@@ -40,6 +42,23 @@ function isBorderLine(line: string): boolean {
 }
 
 export class ZapmycoEditor extends Editor {
+  /** AnimationManager 实例（用于渲染周期驱动的动画） */
+  #animationManager: AnimationManager;
+  /** AnimationManager 回调注销函数 */
+  #unregLoading: (() => void) | null = null;
+  /** 上次帧推进时间戳 */
+  #lastLoadingTick = 0;
+
+  constructor(
+    tui: TUI,
+    theme: EditorTheme,
+    animationManager: AnimationManager,
+    options?: EditorOptions
+  ) {
+    super(tui, theme, options);
+    this.#animationManager = animationManager;
+  }
+
   /** Escape 键回调 */
   onEscape?: () => void;
 
@@ -49,23 +68,14 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+D 回调 */
   onCtrlD?: () => void;
 
-  /** Ctrl+O 回调（展开/折叠 Agent 状态栏） */
-  onToggleAgentBar?: () => void;
-
-  /** Ctrl+E 回调（打开外部编辑器） */
+  /** Ctrl+G 回调（打开外部编辑器） */
   onOpenEditor?: () => void;
 
   /** Ctrl+B 回调（后台运行当前任务） */
   onRunInBackground?: () => void;
 
-  /** Ctrl+T 回调（展开/折叠 TaskStatusBar） */
-  onToggleTasks: (() => void) | undefined;
-
-  /** Ctrl+Y 回调（展开/折叠 thinking 内容） */
+  /** Ctrl+T 回调（展开/折叠 thinking 内容） */
   onToggleThinking: (() => void) | undefined;
-
-  /** Ctrl+Shift+O 回调（展开/折叠当前焦点 Agent 工具调用详情） */
-  onToggleAgentDetails?: () => void;
 
   /** 是否正在执行（用于显示 loading） */
   #executing = false;
@@ -75,9 +85,6 @@ export class ZapmycoEditor extends Editor {
 
   /** loading 动画帧索引 */
   #loadingFrame = 0;
-
-  /** loading 动画定时器 */
-  #loadingTimer?: ReturnType<typeof setInterval> | undefined;
 
   /** 审批模式状态 */
   #approvalState: {
@@ -90,9 +97,9 @@ export class ZapmycoEditor extends Editor {
   enterApprovalMode(title: string, options: ApprovalOption[]): void {
     // 停止 spinner（如果有）
     this.#executing = false;
-    if (this.#loadingTimer) {
-      clearInterval(this.#loadingTimer);
-      this.#loadingTimer = undefined;
+    if (this.#unregLoading) {
+      this.#unregLoading();
+      this.#unregLoading = null;
     }
     this.#approvalState = { title, options, selectedIndex: 0 };
     this.invalidate();
@@ -129,13 +136,7 @@ export class ZapmycoEditor extends Editor {
       }
       return;
     }
-    if (matchesKey(data, Key.ctrl('o'))) {
-      if (this.onToggleAgentBar) {
-        this.onToggleAgentBar();
-      }
-      return;
-    }
-    if (matchesKey(data, Key.ctrl('e'))) {
+    if (matchesKey(data, Key.ctrl('g'))) {
       if (this.onOpenEditor) {
         this.onOpenEditor();
       }
@@ -145,20 +146,9 @@ export class ZapmycoEditor extends Editor {
       this.onRunInBackground();
       return;
     }
-    if (matchesKey(data, Key.ctrlShift('o')) && this.onToggleAgentDetails) {
-      this.onToggleAgentDetails();
+    if (matchesKey(data, Key.ctrl('t')) && this.onToggleThinking) {
+      this.onToggleThinking();
       return;
-    }
-    if (matchesKey(data, Key.ctrl('t'))) {
-      if (this.onToggleTasks) {
-        this.onToggleTasks();
-        return;
-      }
-      // 回退：如果未设置 onToggleTasks，尝试 thinking
-      if (this.onToggleThinking) {
-        this.onToggleThinking();
-        return;
-      }
     }
     if (matchesKey(data, Key.ctrl('y')) && this.onToggleThinking) {
       this.onToggleThinking();
@@ -224,15 +214,19 @@ export class ZapmycoEditor extends Editor {
     this.#showSpinner = showSpinner;
     if (executing && showSpinner) {
       this.#loadingFrame = 0;
-      this.#loadingTimer = setInterval(() => {
+      this.#lastLoadingTick = 0;
+      this.#unregLoading = this.#animationManager.register((now) => {
+        if (now - this.#lastLoadingTick < 100) return;
+        this.#lastLoadingTick = now;
         this.#loadingFrame = (this.#loadingFrame + 1) % LOADING_FRAMES.length;
         this.tui?.requestRender();
-      }, 100);
+      });
     } else {
-      if (this.#loadingTimer) {
-        clearInterval(this.#loadingTimer);
-        this.#loadingTimer = undefined;
+      if (this.#unregLoading) {
+        this.#unregLoading();
+        this.#unregLoading = null;
       }
+      this.#loadingFrame = 0;
     }
     this.tui?.requestRender();
   }

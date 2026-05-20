@@ -89,7 +89,10 @@
     "Fullwidth",
     "Letterlike",
     "Keycap",
-    "xhigh"
+    "xhigh",
+    "macrotask",
+    "unreg",
+    "unsub"
   ],
   "ignorePaths": [
     "node_modules",

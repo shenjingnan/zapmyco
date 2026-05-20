@@ -111,6 +111,7 @@ vi.mock('@/core/agent-runtime/agent', () => ({
     waitForIdle: mockAgentWaitForIdle,
     abort: mockAgentAbort,
     reset: vi.fn(),
+    resetContext: vi.fn(),
   })),
 }));
 
@@ -322,6 +323,7 @@ vi.spyOn(process, 'exit').mockImplementation((() => {
 // ============ 导入被测模块 ============
 import { ReplSession } from '@/cli/repl/session';
 import type { ZapmycoConfig } from '@/config/types';
+import { TaskStore } from '@/core/task/task-store';
 
 function createTestConfig(overrides?: Partial<ZapmycoConfig>): ZapmycoConfig {
   return {
@@ -868,6 +870,65 @@ describe('ReplSession', () => {
       session.requestRender();
 
       expect(mockTuiRequestRender).toHaveBeenCalled();
+    });
+  });
+
+  describe('clearAgentContext', () => {
+    it('应调用 taskStore.clear()', () => {
+      // agent mock 缺少 cancel 方法，需要手动补充
+      (session as any).agent.cancel = vi.fn();
+      const spy = vi.spyOn(TaskStore.prototype, 'clear');
+      session.clearAgentContext();
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('应重置会话状态为 idle', () => {
+      (session as any).agent.cancel = vi.fn();
+      (session as any)._state = 'busy';
+      session.clearAgentContext();
+      expect(session.currentState).toBe('idle');
+    });
+
+    it('应清空 conversationHistory', () => {
+      (session as any).agent.cancel = vi.fn();
+      (session as any).conversationHistory = [{ role: 'user', content: 'test' }];
+      session.clearAgentContext();
+      expect((session as any).conversationHistory).toEqual([]);
+    });
+
+    it('应重置会话统计信息', () => {
+      (session as any).agent.cancel = vi.fn();
+      (session as any).stats = {
+        totalRequests: 10,
+        successCount: 8,
+        failureCount: 2,
+        totalTokens: 5000,
+        totalCostUsd: 0.05,
+        state: 'busy',
+      };
+      session.clearAgentContext();
+      expect((session as any).stats).toEqual({
+        totalRequests: 0,
+        successCount: 0,
+        failureCount: 0,
+        totalTokens: 0,
+        totalCostUsd: 0,
+        state: 'idle',
+      });
+    });
+
+    it('应调用 agent.resetContext()', () => {
+      (session as any).agent.cancel = vi.fn();
+      const spy = vi.spyOn((session as any).agent, 'resetContext');
+      session.clearAgentContext();
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('应调用 outputArea.clear()', () => {
+      (session as any).agent.cancel = vi.fn();
+      const outputArea = (session as any).outputArea;
+      session.clearAgentContext();
+      expect(outputArea.lines).toEqual([]);
     });
   });
 });
