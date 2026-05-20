@@ -132,7 +132,7 @@ export async function generateAgentType(
   const prompt = buildGeneratorPrompt(description.trim());
 
   try {
-    // Use pi-ai's complete with a single user message to generate the config
+    // [TODO Phase 3] 使用 AnthropicProvider.complete() 替换 piComplete
     const response = await piComplete(
       model,
       {
