@@ -6,15 +6,15 @@ const {
   mockLogInfo,
   mockLogWarn,
   mockLogError,
-  mockPiComplete,
-  mockResolvePiModel,
+  mockComplete,
+  mockResolveResolvedModel,
 } = vi.hoisted(() => ({
   mockEstimateMessagesTokens: vi.fn(),
   mockLogInfo: vi.fn(),
   mockLogWarn: vi.fn(),
   mockLogError: vi.fn(),
-  mockPiComplete: vi.fn(),
-  mockResolvePiModel: vi.fn(),
+  mockComplete: vi.fn(),
+  mockResolveResolvedModel: vi.fn(),
 }));
 
 vi.mock('@/infra/logger', () => ({
@@ -33,8 +33,8 @@ vi.mock('../token-tracker', () => ({
   TokenTracker: vi.fn(),
 }));
 
-vi.mock('@earendil-works/pi-ai', () => ({
-  complete: mockPiComplete,
+vi.mock('@/llm/anthropic-provider', () => ({
+  complete: mockComplete,
 }));
 
 import { Compactor } from '../compactor';
@@ -64,10 +64,9 @@ function createContextWindowInfo(overrides?: Partial<ContextWindowInfo>): Contex
 
 function createMockLlmFacade(): any {
   return {
-    resolvePiModel: mockResolvePiModel.mockReturnValue({
+    resolveResolvedModel: mockResolveResolvedModel.mockReturnValue({
       id: 'test-model',
       provider: 'test-provider',
-      contextWindow: 200_000,
     }),
     getLightModel: () => undefined,
     getModelInfo: () => ({ key: 'test-provider/test-model' }),
@@ -108,10 +107,9 @@ describe('Compactor', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockResolvePiModel.mockReturnValue({
+    mockResolveResolvedModel.mockReturnValue({
       id: 'test-model',
       provider: 'test-provider',
-      contextWindow: 200_000,
     });
     mockFacade = createMockLlmFacade();
     compactor = new Compactor(DEFAULT_COMPACTION_CONFIG, mockFacade);
@@ -186,7 +184,7 @@ describe('Compactor', () => {
 
   describe('compact', () => {
     it('should successfully compact and return result', async () => {
-      mockPiComplete.mockResolvedValue({ content: 'This is a summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'This is a summary' }] });
       // Use mockImplementation to return high beforeTokens and low afterTokens
       let callIndex = 0;
       mockEstimateMessagesTokens.mockImplementation(() => {
@@ -211,11 +209,11 @@ describe('Compactor', () => {
       // After compaction: [summary, ...tailMessages]
       expect(result.afterMessageCount).toBeLessThan(5);
       expect(result.savingsRatio).toBeGreaterThan(0);
-      expect(mockPiComplete).toHaveBeenCalled();
+      expect(mockComplete).toHaveBeenCalled();
     });
 
     it('should return failure when summarize throws', async () => {
-      mockPiComplete.mockRejectedValue(new Error('LLM call failed'));
+      mockComplete.mockRejectedValue(new Error('LLM call failed'));
       mockEstimateMessagesTokens.mockReturnValue(1000);
 
       const messages = [
@@ -252,7 +250,7 @@ describe('Compactor', () => {
     });
 
     it('should generate summary message with preamble and postamble', async () => {
-      mockPiComplete.mockResolvedValue({ content: 'Summary content' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Summary content' }] });
       let callIndex = 0;
       mockEstimateMessagesTokens.mockImplementation(() => {
         callIndex++;
@@ -278,7 +276,7 @@ describe('Compactor', () => {
 
     it('should update recentSavings after successful compaction', async () => {
       // First call - high savings
-      mockPiComplete.mockResolvedValue({ content: 'Summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Summary' }] });
       let callIndex = 0;
       mockEstimateMessagesTokens.mockImplementation(() => {
         callIndex++;
@@ -312,7 +310,7 @@ describe('Compactor', () => {
       // Setup: make low-savings compactions to trigger anti-thrashing
       compactor.updateConfig({ antiThrashEnabled: false });
 
-      mockPiComplete.mockResolvedValue({ content: 'Summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Summary' }] });
       let callIndexR = 0;
       mockEstimateMessagesTokens.mockImplementation(() => {
         callIndexR++;
@@ -342,7 +340,7 @@ describe('Compactor', () => {
     it('should handle messages with image blocks', async () => {
       // Use small protectLastMessages so image message is in head (gets summarized)
       compactor.updateConfig({ protectLastMessages: 2 });
-      mockPiComplete.mockResolvedValue({ content: 'Summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Summary' }] });
       let callIndexI = 0;
       mockEstimateMessagesTokens.mockImplementation(() => {
         callIndexI++;
@@ -368,7 +366,7 @@ describe('Compactor', () => {
 
     it('should handle unknown block types', async () => {
       compactor.updateConfig({ protectLastMessages: 2 });
-      mockPiComplete.mockResolvedValue({ content: 'Summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Summary' }] });
       let callIndexU = 0;
       mockEstimateMessagesTokens.mockImplementation(() => {
         callIndexU++;
@@ -395,7 +393,7 @@ describe('Compactor', () => {
 
   describe('boundary alignment', () => {
     it('should handle tool_use/tool_result pair alignment', async () => {
-      mockPiComplete.mockResolvedValue({ content: 'Summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Summary' }] });
       mockEstimateMessagesTokens.mockReturnValue(1000);
 
       const messages = [
@@ -413,7 +411,7 @@ describe('Compactor', () => {
     });
 
     it('should keep last user message in tail', async () => {
-      mockPiComplete.mockResolvedValue({ content: 'Summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Summary' }] });
       mockEstimateMessagesTokens.mockReturnValue(1000);
 
       const messages = [
@@ -438,7 +436,7 @@ describe('Compactor', () => {
 
   describe('emergency mode', () => {
     it('should compact with emergency mode (more aggressive boundary)', async () => {
-      mockPiComplete.mockResolvedValue({ content: 'Emergency summary' });
+      mockComplete.mockResolvedValue({ content: [{ type: 'text', text: 'Emergency summary' }] });
       mockEstimateMessagesTokens.mockReturnValue(1000);
 
       const messages = [

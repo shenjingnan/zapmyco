@@ -17,6 +17,7 @@ import type { RoutingContext } from '@/llm/model-router';
 import { ModelRouter } from '@/llm/model-router';
 import type { ModelInfo } from '@/llm/provider-registry';
 import { ProviderRegistry } from '@/llm/provider-registry';
+import type { ResolvedModel } from '@/llm/provider-types';
 
 export class AgentLlmFacade {
   readonly registry: ProviderRegistry;
@@ -36,6 +37,15 @@ export class AgentLlmFacade {
   // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
   resolvePiModel(modelKey?: string): Model<any> {
     return this.registry.resolvePiModel(modelKey);
+  }
+
+  /**
+   * 解析 ResolvedModel（替代 pi-ai Model，用于 anthropic-provider API 调用）
+   *
+   * 与 resolvePiModel() 对应，返回不依赖 pi-ai 的轻量模型对象。
+   */
+  resolveResolvedModel(modelKey?: string): ResolvedModel {
+    return this.registry.resolveResolvedModel(modelKey);
   }
 
   /**
