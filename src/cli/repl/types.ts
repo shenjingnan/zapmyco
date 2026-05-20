@@ -2,7 +2,7 @@
  * REPL 核心类型定义
  */
 
-import type { TUI } from '@earendil-works/pi-tui';
+import type { TUI } from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';

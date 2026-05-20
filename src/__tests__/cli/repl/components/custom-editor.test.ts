@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 // Mock pi-tui — 让 ZapmycoEditor 可以正常实例化
+// Key 和 matchesKey 由 @/cli/tui 本地提供，不再走 pi-tui mock
 vi.mock('@earendil-works/pi-tui', () => ({
   Editor: class MockEditor {
     getText = vi.fn().mockReturnValue('');
@@ -9,29 +10,6 @@ vi.mock('@earendil-works/pi-tui', () => ({
     handleInput(_data: string): void {
       // no-op
     }
-  },
-  Key: {
-    escape: '\u001b',
-    ctrl: (key: string) => ({ name: key, ctrl: true }),
-    ctrlShift: (key: string) => ({ name: key, ctrl: true, shift: true }),
-  },
-  matchesKey: (data: string, key: unknown) => {
-    // 对 escape 键永远返回 false（让测试走常规路径）
-    if (key === '\u001b') return false;
-    if (key && typeof key === 'object' && 'ctrl' in key) {
-      const k = key as { name: string; ctrl: boolean; shift?: boolean };
-      // Ctrl+Shift 修饰的键：通过大写字母作为 data 来模拟
-      if (k.shift) {
-        return data === k.name.toUpperCase();
-      }
-      // 只对 Ctrl+T / Ctrl+Y / Ctrl+E / Ctrl+B 返回 true（避免 Ctrl+D 等 Handler 截断流程）
-      // 同时验证 data 字符与键名一致，避免误匹配
-      const ctrlChar = String.fromCharCode(k.name.charCodeAt(0) - 96);
-      if (data !== ctrlChar) return false;
-      if (k.name === 't' || k.name === 'y' || k.name === 'g' || k.name === 'b') return true;
-      return false;
-    }
-    return false;
   },
 }));
 

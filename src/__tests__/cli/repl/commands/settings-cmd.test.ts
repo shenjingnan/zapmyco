@@ -420,6 +420,7 @@ describe('/settings command', () => {
       menu.handleInput('t');
       expect(menu.isFiltering).toBe(true);
 
+      // filter 模式使用直接字符串比较 data === 'escape'
       menu.handleInput('escape');
       expect(menu.isFiltering).toBe(false);
       expect(menu.filterText).toBe('');
@@ -592,7 +593,8 @@ describe('/settings command', () => {
         origCancel?.();
       };
 
-      menu.handleInput('escape');
+      // 普通模式使用 matchesKey(data, 'escape')，需要真实控制字符
+      menu.handleInput('\x1b');
       expect(exitCalled).toBe(true);
       // Should NOT trigger onCancel — escape is now an exit key
       expect(cancelCalled).toBe(false);

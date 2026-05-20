@@ -12,15 +12,6 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  CombinedAutocompleteProvider,
-  Container,
-  getKeybindings,
-  ProcessTerminal,
-  type SlashCommand,
-  TUI,
-  wrapTextWithAnsi,
-} from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
@@ -69,6 +60,15 @@ import type {
 } from '@/cli/repl/types';
 import { AnimationManager } from '@/cli/repl/utils/animation-manager';
 import { formatMarkdown } from '@/cli/repl/utils/markdown-formatter';
+import {
+  CombinedAutocompleteProvider,
+  Container,
+  getKeybindings,
+  ProcessTerminal,
+  type SlashCommand,
+  TUI,
+  wrapTextWithAnsi,
+} from '@/cli/tui';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
 import { COORDINATOR_TOOLS, getMainCoordinatorSystemPrompt } from '@/core/agent-team';

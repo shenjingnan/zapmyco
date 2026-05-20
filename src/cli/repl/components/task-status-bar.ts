@@ -19,9 +19,9 @@
  * @module cli/repl/components
  */
 
-import { Container } from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
+import { Container } from '@/cli/tui';
 import type { TaskStore } from '@/core/task/task-store';
 import type { TaskItem, TaskManageSummary } from '@/core/task/types';
 

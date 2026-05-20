@@ -2,18 +2,11 @@
  * AskUserQuestion UI 组件测试
  */
 
-import type { TUI } from '@earendil-works/pi-tui';
 import { describe, expect, it, vi } from 'vitest';
 import { AskUserQuestionComponent } from '@/cli/repl/components/ask-user-question';
+import type { TUI } from '@/cli/tui';
 
-// Mock matchesKey — 在测试中使用解析后的键名（如 'escape', 'enter'）进行比较
-// 实际的 matchesKey 接收原始终端数据，而测试用例直接传入逻辑键名字符串
-vi.mock('@earendil-works/pi-tui', async (importOriginal) => {
-  const actual = await importOriginal();
-  return Object.assign({}, actual, {
-    matchesKey: vi.fn((data: string, key: string) => data === key),
-  });
-});
+// matchesKey 由 @/cli/tui 本地提供，测试使用真实终端控制字符
 
 import type {
   AskUserQuestionParams,
@@ -104,7 +97,7 @@ describe('AskUserQuestionComponent', () => {
   describe('handleInput - escape/cancel', () => {
     it('should cancel when escape is pressed in answering phase', () => {
       const { component, onCancel } = createComponent();
-      component.handleInput('escape');
+      component.handleInput('\x1b');
       expect(onCancel).toHaveBeenCalled();
     });
 
@@ -119,7 +112,7 @@ describe('AskUserQuestionComponent', () => {
       // Enter other_input
       component.handleInput('o');
       // Escape back
-      component.handleInput('escape');
+      component.handleInput('\x1b');
       expect(onCancel).not.toHaveBeenCalled();
     });
 
@@ -128,9 +121,9 @@ describe('AskUserQuestionComponent', () => {
       const { component, onCancel } = createComponent(params);
       // Select and advance to reviewing
       component.handleInput('1');
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Escape from reviewing back to answering
-      component.handleInput('escape');
+      component.handleInput('\x1b');
       expect(onCancel).not.toHaveBeenCalled();
     });
   });
@@ -139,9 +132,9 @@ describe('AskUserQuestionComponent', () => {
     it('should select first option with navigate and enter (single select)', () => {
       const { component, onResolve } = createComponent();
       // Navigate to option 1 and select with Enter
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Then submit (advances to review for single question)
-      component.handleInput('enter');
+      component.handleInput('\r');
       expect(onResolve).toHaveBeenCalled();
     });
 
@@ -150,9 +143,9 @@ describe('AskUserQuestionComponent', () => {
       // Navigate down to option 2
       component.handleInput('j');
       // Select it with Enter (advances to reviewing)
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Submit from reviewing
-      component.handleInput('enter');
+      component.handleInput('\r');
       const result = onResolve.mock.calls[0]?.[0] as AskUserQuestionResult;
       expect(result?.answers['Which library to use?']).toBe('dayjs');
     });
@@ -192,9 +185,9 @@ describe('AskUserQuestionComponent', () => {
       // Toggle second option
       component.handleInput('2');
       // Confirm and submit
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Only one question, goes to review
-      component.handleInput('enter');
+      component.handleInput('\r');
 
       expect(onResolve).toHaveBeenCalled();
     });
@@ -212,12 +205,12 @@ describe('AskUserQuestionComponent', () => {
       const { component, onCancel } = createComponent(params);
 
       // Press enter without selecting anything in multi-select mode
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Should not have resolved or cancelled
       expect(onCancel).not.toHaveBeenCalled();
       // Should still be able to select and continue
       component.handleInput('1');
-      component.handleInput('enter');
+      component.handleInput('\r');
     });
   });
 
@@ -251,7 +244,7 @@ describe('AskUserQuestionComponent', () => {
       const { component } = createComponent(params);
       // Advance
       component.handleInput('1');
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Go back
       component.handleInput('h');
     });
@@ -332,9 +325,9 @@ describe('AskUserQuestionComponent', () => {
       component.handleInput('o');
       component.handleInput('m');
       // Submit custom text - advances to review
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Submit review
-      component.handleInput('enter');
+      component.handleInput('\r');
       expect(onResolve).toHaveBeenCalled();
     });
 
@@ -350,9 +343,9 @@ describe('AskUserQuestionComponent', () => {
     it('should return to answering on escape from other_input', () => {
       const { component } = createComponent();
       component.handleInput('o');
-      component.handleInput('escape');
+      component.handleInput('\x1b');
       // Should be back in answering, escape again should cancel
-      component.handleInput('escape');
+      component.handleInput('\x1b');
     });
   });
 
@@ -366,9 +359,9 @@ describe('AskUserQuestionComponent', () => {
       const { component } = createComponent(params);
       // Advance to Q2
       component.handleInput('1');
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Go back to Q1
-      component.handleInput('shift+tab');
+      component.handleInput('\x1b[Z');
       // Should not crash
     });
   });
@@ -379,9 +372,9 @@ describe('AskUserQuestionComponent', () => {
       // Select first option
       component.handleInput('1');
       // Advance to reviewing
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Submit from reviewing
-      component.handleInput('enter');
+      component.handleInput('\r');
       expect(onResolve).toHaveBeenCalled();
     });
 
@@ -393,15 +386,15 @@ describe('AskUserQuestionComponent', () => {
       const { component } = createComponent(params);
       // Answer Q1
       component.handleInput('1');
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Answer Q2
       component.handleInput('1');
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Now in review
       // Escape back
-      component.handleInput('escape');
+      component.handleInput('\x1b');
       // Should be back in answering (last question)
-      component.handleInput('escape');
+      component.handleInput('\x1b');
     });
   });
 
@@ -415,11 +408,11 @@ describe('AskUserQuestionComponent', () => {
 
       // Answer Q1: select second option ('dayjs') via j + enter
       component.handleInput('j');
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Answer Q2: select first option ('date-fns') via enter
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Advance to review, then submit
-      component.handleInput('enter');
+      component.handleInput('\r');
 
       expect(onResolve).toHaveBeenCalled();
       const result = onResolve.mock.calls[0]?.[0] as AskUserQuestionResult;

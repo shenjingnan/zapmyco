@@ -11,14 +11,14 @@
  * @module cli/repl/components/ask-user-question
  */
 
+import chalk from 'chalk';
 import {
   type Component,
   matchesKey,
   type OverlayHandle,
   type OverlayOptions,
   type TUI,
-} from '@earendil-works/pi-tui';
-import chalk from 'chalk';
+} from '@/cli/tui';
 import type {
   AskUserQuestionParams,
   AskUserQuestionResult,

@@ -5,8 +5,8 @@
  * 风格：灰色边框 + 简洁配色，与原有 CLI 风格保持一致。
  */
 
-import type { EditorTheme, SelectListTheme } from '@earendil-works/pi-tui';
 import chalk, { Chalk } from 'chalk';
+import type { EditorTheme, SelectListTheme } from '@/cli/tui';
 
 /** 根据颜色开关获取 chalk 实例 */
 function makeColor(colorEnabled: boolean): typeof chalk {
