@@ -47,12 +47,24 @@ const DEFAULT_MODEL: ResolvedModel = {
 
 function defaultConvertToLlm(messages: AgentMessage[]): Anthropic.MessageParam[] {
   const result: Anthropic.MessageParam[] = [];
+  // 累积连续 toolResult 消息，合并为一条 user 消息
+  // DeepSeek 兼容端点要求同一条 assistant 消息的所有 tool_result 在紧随其后的同一条 user 消息中
+  const pendingToolResults: Anthropic.ContentBlockParam[] = [];
+
+  function flushToolResults(): void {
+    if (pendingToolResults.length > 0) {
+      result.push({ role: 'user', content: [...pendingToolResults] });
+      pendingToolResults.length = 0;
+    }
+  }
+
   for (const msg of messages) {
     const raw = msg as Record<string, unknown>;
     const role = raw.role as string;
     const content = raw.content;
 
     if (role === 'user') {
+      flushToolResults();
       if (typeof content === 'string') {
         result.push({ role: 'user', content });
       } else if (Array.isArray(content)) {
@@ -62,6 +74,7 @@ function defaultConvertToLlm(messages: AgentMessage[]): Anthropic.MessageParam[]
         result.push({ role: 'user', content: textParts.join('\n') });
       }
     } else if (role === 'assistant') {
+      flushToolResults();
       const assistantContent: Anthropic.ContentBlockParam[] = [];
       if (Array.isArray(content)) {
         for (const block of content as Array<Record<string, unknown>>) {
@@ -85,9 +98,9 @@ function defaultConvertToLlm(messages: AgentMessage[]): Anthropic.MessageParam[]
       }
       result.push({ role: 'assistant', content: assistantContent });
     } else if (role === 'toolResult') {
-      let toolContent: Anthropic.ContentBlockParam[];
+      let toolBlock: Anthropic.ContentBlockParam;
       if (typeof content === 'string') {
-        toolContent = [{ type: 'tool_result', tool_use_id: String(raw.toolCallId ?? ''), content }];
+        toolBlock = { type: 'tool_result', tool_use_id: String(raw.toolCallId ?? ''), content };
       } else if (Array.isArray(content)) {
         const textBlocks: Anthropic.TextBlockParam[] = [];
         for (const block of content as Array<Record<string, unknown>>) {
@@ -95,21 +108,23 @@ function defaultConvertToLlm(messages: AgentMessage[]): Anthropic.MessageParam[]
             textBlocks.push({ type: 'text', text: String(block.text ?? '') });
           }
         }
-        toolContent = [
-          {
-            type: 'tool_result',
-            tool_use_id: String(raw.toolCallId ?? ''),
-            content: textBlocks.length > 0 ? textBlocks : '',
-          },
-        ];
+        toolBlock = {
+          type: 'tool_result',
+          tool_use_id: String(raw.toolCallId ?? ''),
+          content: textBlocks.length > 0 ? textBlocks : '',
+        };
       } else {
-        toolContent = [
-          { type: 'tool_result', tool_use_id: String(raw.toolCallId ?? ''), content: '' },
-        ];
+        toolBlock = {
+          type: 'tool_result',
+          tool_use_id: String(raw.toolCallId ?? ''),
+          content: '',
+        };
       }
-      result.push({ role: 'user', content: toolContent });
+      pendingToolResults.push(toolBlock);
     }
   }
+
+  flushToolResults();
   return result;
 }
 
