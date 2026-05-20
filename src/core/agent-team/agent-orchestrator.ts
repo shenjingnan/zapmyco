@@ -445,9 +445,9 @@ export class AgentOrchestrator {
           const inner = innerWrapExecute ? () => innerWrapExecute(execute) : execute;
           return runInWorktree(
             {
-              worktreeId: worktreeInfo?.id,
-              worktreePath: worktreeInfo?.worktreePath,
-              originalPath: worktreeInfo?.originalPath,
+              worktreeId: worktreeInfo!.id,
+              worktreePath: worktreeInfo!.worktreePath,
+              originalPath: worktreeInfo!.originalPath,
             },
             inner
           );
