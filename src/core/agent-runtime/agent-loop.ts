@@ -12,9 +12,9 @@ import {
   type Context,
   streamSimple,
   type ToolResultMessage,
-  validateToolArguments,
 } from '@earendil-works/pi-ai';
 import { logger } from '@/infra/logger';
+import { validateToolCallArguments } from '@/llm/tool-validator';
 import type {
   AgentContext,
   AgentEvent,
@@ -698,7 +698,11 @@ async function prepareToolCall(
     // 准备参数（兼容性 shim）
     const preparedToolCall = prepareToolCallArguments(tool, toolCall);
     // 验证参数
-    const validatedArgs = validateToolArguments(tool, preparedToolCall);
+    const validatedArgs = validateToolCallArguments(
+      tool.name,
+      tool.parameters as unknown as Record<string, unknown>,
+      preparedToolCall.arguments as Record<string, unknown>
+    );
 
     // 执行 beforeToolCall 钩子
     if (config.beforeToolCall) {
