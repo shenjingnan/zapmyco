@@ -1,7 +1,7 @@
-import type { Component } from '@earendil-works/pi-tui';
 import { describe, expect, it, vi } from 'vitest';
 import { createSettingsCommand } from '@/cli/repl/commands/settings-cmd';
 import type { ReplSession } from '@/cli/repl/types';
+import type { Component } from '@/cli/tui';
 
 // ============ Mock node:fs so readSettings() returns testable config ============
 
@@ -25,13 +25,7 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => true),
 }));
 
-// Mock matchesKey — 测试中使用解析后的键名（如 'escape'）进行比较
-vi.mock('@earendil-works/pi-tui', async (importOriginal) => {
-  const actual = await importOriginal();
-  return Object.assign({}, actual, {
-    matchesKey: vi.fn((data: string, key: string) => data === key),
-  });
-});
+// @/cli/tui 使用真实实现（matchesKey 由 @/cli/tui/key.ts 本地提供）
 
 // ============ Mock helpers ============
 

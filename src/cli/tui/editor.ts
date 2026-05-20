@@ -85,7 +85,7 @@ export class Editor implements Component {
   setText(text: string): void {
     this.#buffer = text === '' ? [''] : text.split('\n');
     this.cursorRow = this.#buffer.length - 1;
-    this.cursorCol = this.#buffer[this.cursorRow]!.length;
+    this.cursorCol = this.#buffer[this.cursorRow]?.length ?? 0;
     this.#scrollOffset = 0;
     this.historyIndex = -1;
   }
@@ -176,11 +176,13 @@ export class Editor implements Component {
     // Enter → 提交
     if (matchesKey(data, Key.enter)) {
       if (this.onSubmit) {
-        this.onSubmit(this.getText());
+        const text = this.getText();
         this.#buffer = [''];
         this.cursorRow = 0;
         this.cursorCol = 0;
         this.#scrollOffset = 0;
+        this.tui?.requestRender();
+        this.onSubmit(text);
       }
       return;
     }
@@ -234,7 +236,7 @@ export class Editor implements Component {
       return;
     }
     if (matchesKey(data, 'end')) {
-      this.cursorCol = this.#buffer[this.cursorRow]!.length;
+      this.cursorCol = this.#buffer[this.cursorRow]?.length ?? 0;
       return;
     }
 
@@ -258,6 +260,7 @@ export class Editor implements Component {
     if (data.length === 1 && data >= ' ') {
       this.#insertAtCursor(data);
       this.cursorCol++;
+      this.tui?.requestRender();
       // 输入后检查是否触发 autocomplete
       if (this.#acProvider) {
         const ch = data;
@@ -456,7 +459,7 @@ export class Editor implements Component {
       // 行首退格：合并到上一行
       const currentLine = this.#buffer[this.cursorRow]!;
       const prevRow = this.cursorRow - 1;
-      this.cursorCol = this.#buffer[prevRow]!.length;
+      this.cursorCol = this.#buffer[prevRow]?.length ?? 0;
       this.#buffer[prevRow] = this.#buffer[prevRow]! + currentLine;
       this.#buffer.splice(this.cursorRow, 1);
       this.cursorRow = prevRow;
@@ -467,7 +470,7 @@ export class Editor implements Component {
   #moveCursorUp(): void {
     if (this.cursorRow <= 0) return;
     this.cursorRow--;
-    this.cursorCol = Math.min(this.cursorCol, this.#buffer[this.cursorRow]!.length);
+    this.cursorCol = Math.min(this.cursorCol, this.#buffer[this.cursorRow]?.length ?? 0);
     // 滚动调整：若光标行移出可视区上边界
     if (this.cursorRow < this.#scrollOffset) {
       this.#scrollOffset = this.cursorRow;
@@ -478,7 +481,7 @@ export class Editor implements Component {
   #moveCursorDown(): void {
     if (this.cursorRow >= this.#buffer.length - 1) return;
     this.cursorRow++;
-    this.cursorCol = Math.min(this.cursorCol, this.#buffer[this.cursorRow]!.length);
+    this.cursorCol = Math.min(this.cursorCol, this.#buffer[this.cursorRow]?.length ?? 0);
     // 滚动调整：若光标行移出可视区下边界（由 render 时的 soft wrap 决定）
   }
 
@@ -488,7 +491,7 @@ export class Editor implements Component {
       // 行首左移 → 跳到上一行行尾
       if (this.cursorRow > 0) {
         this.cursorRow--;
-        this.cursorCol = this.#buffer[this.cursorRow]!.length;
+        this.cursorCol = this.#buffer[this.cursorRow]?.length ?? 0;
       }
     } else {
       this.cursorCol--;
@@ -497,7 +500,7 @@ export class Editor implements Component {
 
   /** 光标右移 */
   #moveCursorRight(): void {
-    const maxCol = this.#buffer[this.cursorRow]!.length;
+    const maxCol = this.#buffer[this.cursorRow]?.length ?? 0;
     if (this.cursorCol >= maxCol) {
       // 行尾右移 → 跳到下一行行首
       if (this.cursorRow < this.#buffer.length - 1) {

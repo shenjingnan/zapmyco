@@ -8,7 +8,6 @@ const {
   mockTuiSetFocus,
   mockTuiRequestRender,
   mockContainerAddChild,
-  mockTextSetText,
   mockContainerInvalidate,
   mockEmit,
   mockOn,
@@ -24,7 +23,6 @@ const {
   mockTuiSetFocus: vi.fn(),
   mockTuiRequestRender: vi.fn(),
   mockContainerAddChild: vi.fn(),
-  mockTextSetText: vi.fn(),
   mockContainerInvalidate: vi.fn(),
   mockEmit: vi.fn(),
   mockOn: vi.fn(),
@@ -35,28 +33,33 @@ const {
   mockHistoryPush: vi.fn().mockReturnValue({ id: 1, timestamp: Date.now(), input: '' }),
 }));
 
-// Mock @earendil-works/pi-tui
+// Mock @earendil-works/pi-tui — 仅保留仍从 pi-tui 导出的内容
 vi.mock('@earendil-works/pi-tui', () => ({
-  TUI: class MockTUI {
-    addChild = mockTuiAddChild;
-    setFocus = mockTuiSetFocus;
-    start = mockTuiStart;
-    stop = mockTuiStop;
-    requestRender = mockTuiRequestRender;
-  },
-  Container: class MockContainer {
-    addChild = mockContainerAddChild;
-    invalidate = mockContainerInvalidate;
-  },
-  ProcessTerminal: vi.fn(),
-  Text: class MockText {
-    setText = mockTextSetText;
-  },
   CombinedAutocompleteProvider: vi.fn(),
   getKeybindings: vi.fn(() => ({
     setUserBindings: vi.fn(),
   })),
 }));
+
+// Mock @/cli/tui — 覆盖本地引擎类，保留其他本地实现
+vi.mock('@/cli/tui', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    TUI: class MockTUI {
+      addChild = mockTuiAddChild;
+      setFocus = mockTuiSetFocus;
+      start = mockTuiStart;
+      stop = mockTuiStop;
+      requestRender = mockTuiRequestRender;
+    },
+    Container: class MockContainer {
+      addChild = mockContainerAddChild;
+      invalidate = mockContainerInvalidate;
+    },
+    ProcessTerminal: vi.fn(),
+  };
+});
 
 // Mock ZapmycoEditor
 vi.mock('@/cli/repl/components/custom-editor', () => ({

@@ -7,10 +7,6 @@ import { ApprovalDialogComponentForTesting } from '@/cli/repl/components/dialogs
 import type { ApprovalRequest } from '@/security/types';
 
 // matchesKey 由 @/cli/tui 本地提供，测试使用真实终端控制字符
-vi.mock('@earendil-works/pi-tui', async (importOriginal) => {
-  const actual = await importOriginal();
-  return Object.assign({}, actual);
-});
 
 // ============ 辅助函数 ============
 
