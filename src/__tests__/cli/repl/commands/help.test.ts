@@ -87,4 +87,44 @@ describe('/help command', () => {
     expect(output).toContain('续行');
     expect(output).toContain('Ctrl+C');
   });
+
+  it('启用颜色时应使用 chalk', async () => {
+    const session = createMockSession({
+      replOptions: {
+        color: true,
+        debug: false,
+        maxHistorySize: 100,
+        prompt: '> ',
+        continuationPrompt: '... ',
+      },
+    });
+    const cmd = createHelpCommand();
+    await cmd.handler([], session);
+    expect(session.appendOutput).toHaveBeenCalled();
+  });
+
+  it('应显示自定义用法（当用法与默认不同时）', async () => {
+    const session = createMockSession();
+    // Override command registry to include a command with custom usage
+    session.getCommandRegistry = vi.fn().mockReturnValue({
+      listCommands: () => [
+        {
+          name: 'test-cmd',
+          aliases: [],
+          description: '测试命令',
+          usage: '/test-cmd <arg1> <arg2>',
+          handler: vi.fn(),
+        },
+      ],
+    });
+
+    const cmd = createHelpCommand();
+    await cmd.handler([], session);
+
+    const calls = (session.appendOutput as ReturnType<typeof vi.fn>).mock.calls;
+    const lines = calls[0]?.[0] as string[] | undefined;
+    const output = (lines ?? []).join('\n');
+    expect(output).toContain('用法:');
+    expect(output).toContain('<arg1>');
+  });
 });

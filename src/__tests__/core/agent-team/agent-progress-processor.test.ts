@@ -39,6 +39,15 @@ describe('buildToolCallGroups', () => {
     expect(groups).toEqual([]);
   });
 
+  it('包含 null 记录的数组应跳过空值', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const records = [makeRecord('ReadFile'), null as any, makeRecord('Exec')];
+    const groups = buildToolCallGroups(records);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.label).toBe('Read');
+    expect(groups[1]?.label).toBe('Exec');
+  });
+
   it('单个工具调用应返回独立分组', () => {
     const records = [makeRecord('ReadFile')];
     const groups = buildToolCallGroups(records);

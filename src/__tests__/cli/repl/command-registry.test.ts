@@ -54,6 +54,28 @@ describe('CommandRegistry', () => {
       expect(found).toBe(cmd);
     });
 
+    it('重复注册应覆盖旧命令', () => {
+      const cmd1: CommandDefinition = {
+        name: 'test',
+        aliases: [],
+        description: '原版',
+        usage: '/test',
+        handler: vi.fn(),
+      };
+      const cmd2: CommandDefinition = {
+        name: 'test',
+        aliases: [],
+        description: '新版',
+        usage: '/test',
+        handler: vi.fn(),
+      };
+      registry.register(cmd1);
+      registry.register(cmd2);
+
+      const found = registry.getCommand('test');
+      expect(found?.description).toBe('新版');
+    });
+
     it('注册后应能通过别名查找', () => {
       const cmd: CommandDefinition = {
         name: 'quit',
