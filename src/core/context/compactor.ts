@@ -7,11 +7,13 @@
  * @module core/context
  */
 
-import { complete as piComplete } from '@earendil-works/pi-ai';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
+import { complete } from '@/llm/anthropic-provider';
+import type { ResolvedModel } from '@/llm/provider-types';
 import { buildCompactionPrompt, buildSummaryMessage } from './compaction-prompt';
 import { estimateMessagesTokens } from './token-tracker';
 import type { CompactionConfig, CompactionResult, ContextWindowInfo } from './types';
@@ -324,6 +326,94 @@ export class Compactor {
     return Math.min(adjusted, messages.length);
   }
 
+  // ============ 消息格式转换（pi-ai → Anthropic SDK） ============
+
+  /**
+   * 将内部消息列表转换为 Anthropic SDK 格式
+   *
+   * 转换规则：
+   * - role=user → 保持，text/thinking → text，image → text 占位符
+   * - role=assistant → 保持，toolCall → tool_use
+   * - role=toolResult → 转为 role=user，content 转为 tool_result block
+   * - 其他 role（summary 等）跳过
+   */
+  private toAnthropicMessages(messages: AgentMessage[]): Anthropic.MessageParam[] {
+    const result: Anthropic.MessageParam[] = [];
+
+    for (const raw of messages) {
+      const msg = raw as Record<string, unknown>;
+      const role = msg.role as string | undefined;
+      const content = msg.content;
+
+      if (role === 'user') {
+        result.push({
+          role: 'user',
+          content: this.toAnthropicContent(content),
+        });
+      } else if (role === 'assistant') {
+        result.push({
+          role: 'assistant',
+          content: this.toAnthropicAssistantContent(content),
+        });
+      } else if (role === 'toolResult') {
+        result.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result' as const,
+              tool_use_id: (msg.toolCallId as string) ?? '',
+              content: this.toAnthropicContent(content),
+            },
+          ],
+        });
+      }
+      // 其他角色跳过
+    }
+
+    return result;
+  }
+
+  /** 转换通用 content（user 消息 / tool_result 内容） */
+  private toAnthropicContent(content: unknown): string | Anthropic.TextBlockParam[] {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+
+    const blocks: Anthropic.TextBlockParam[] = [];
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (block.type === 'text') {
+        blocks.push({ type: 'text', text: String(block.text ?? '') });
+      } else if (block.type === 'thinking') {
+        blocks.push({ type: 'text', text: String(block.thinking ?? '') });
+      } else if (block.type === 'image') {
+        blocks.push({ type: 'text', text: '[图片]' });
+      }
+    }
+    return blocks;
+  }
+
+  /** 转换 assistant 消息 content（支持 toolCall → tool_use） */
+  private toAnthropicAssistantContent(content: unknown): string | Anthropic.ContentBlockParam[] {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+
+    const blocks: Anthropic.ContentBlockParam[] = [];
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (block.type === 'text') {
+        blocks.push({ type: 'text', text: String(block.text ?? '') });
+      } else if (block.type === 'thinking') {
+        blocks.push({ type: 'text', text: String(block.thinking ?? '') });
+      } else if (block.type === 'toolCall') {
+        blocks.push({
+          type: 'tool_use',
+          id: String(block.id ?? ''),
+          name: String(block.name ?? ''),
+          input: (block.arguments as Record<string, unknown>) ?? {},
+        });
+      }
+    }
+    return blocks;
+  }
+
   /**
    * 调用 LLM 生成摘要
    */
@@ -340,14 +430,14 @@ export class Compactor {
     const summaryModelKey = this.config.summaryModel;
     const lightModelInfo = this.llmFacade.getLightModel();
 
-    let model: ReturnType<typeof this.llmFacade.resolvePiModel>;
+    let model: ResolvedModel;
     if (summaryModelKey) {
-      model = this.llmFacade.resolvePiModel(summaryModelKey);
+      model = this.llmFacade.resolveResolvedModel(summaryModelKey);
     } else if (lightModelInfo && lightModelInfo.key !== this.llmFacade.getModelInfo()?.key) {
       // 使用 lightModel（仅当与默认模型不同时）
-      model = this.llmFacade.resolvePiModel(lightModelInfo.key);
+      model = this.llmFacade.resolveResolvedModel(lightModelInfo.key);
     } else {
-      model = this.llmFacade.resolvePiModel();
+      model = this.llmFacade.resolveResolvedModel();
     }
 
     log.info('摘要模型选择', { model: model.id });
@@ -363,13 +453,12 @@ export class Compactor {
     });
 
     try {
-      // [TODO Phase 3] 使用 AnthropicProvider.complete() 替换 piComplete
-      const response = await piComplete(
+      const anthropicMessages = this.toAnthropicMessages(llmMessages as AgentMessage[]);
+      const response = await complete(
         model,
         {
           systemPrompt: prompt,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          messages: llmMessages as any,
+          messages: anthropicMessages,
         },
         {
           maxTokens: 4000,
@@ -378,24 +467,10 @@ export class Compactor {
       );
 
       // 提取文本内容
-      if (Array.isArray(response.content)) {
-        return response.content
-          .filter(
-            (block): block is { type: 'text'; text: string } =>
-              typeof block === 'object' &&
-              block !== null &&
-              block.type === 'text' &&
-              'text' in block
-          )
-          .map((block) => block.text)
-          .join('');
-      }
-
-      if (typeof response.content === 'string') {
-        return response.content;
-      }
-
-      return '';
+      return response.content
+        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log.error('摘要 LLM 调用失败', { error: message });
@@ -403,32 +478,31 @@ export class Compactor {
       // 如果辅助模型失败，依次尝试 lightModel → defaultModel
       if (summaryModelKey || lightModelInfo) {
         log.info('摘要模型调用失败，尝试回退模型');
-        const defaultModel = this.llmFacade.resolvePiModel();
-        let fallbackModel = defaultModel;
+        const defaultResolved = this.llmFacade.resolveResolvedModel();
+        let fallbackModel: ResolvedModel = defaultResolved;
 
         // 如果 lightModel 和当前模型/默认模型都不同，优先尝试 lightModel
         if (
           lightModelInfo &&
           lightModelInfo.key !== model.id &&
-          lightModelInfo.key !== defaultModel.id
+          lightModelInfo.key !== defaultResolved.id
         ) {
           try {
-            fallbackModel = this.llmFacade.resolvePiModel(lightModelInfo.key);
+            fallbackModel = this.llmFacade.resolveResolvedModel(lightModelInfo.key);
           } catch {
-            fallbackModel = defaultModel;
+            fallbackModel = defaultResolved;
           }
         }
 
         const isSameModel = fallbackModel.id === model.id;
         if (isSameModel) throw error; // 已经是同一模型，不再重试
 
-        // [TODO Phase 3] 使用 AnthropicProvider.complete() 替换 piComplete（回退路径）
-        const retryResponse = await piComplete(
+        const fallbackMessages = this.toAnthropicMessages(llmMessages as AgentMessage[]);
+        const retryResponse = await complete(
           fallbackModel,
           {
             systemPrompt: prompt,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            messages: llmMessages as any,
+            messages: fallbackMessages,
           },
           {
             maxTokens: 4000,
@@ -436,22 +510,10 @@ export class Compactor {
           }
         );
 
-        if (Array.isArray(retryResponse.content)) {
-          return retryResponse.content
-            .filter(
-              (block): block is { type: 'text'; text: string } =>
-                typeof block === 'object' &&
-                block !== null &&
-                block.type === 'text' &&
-                'text' in block
-            )
-            .map((block) => block.text)
-            .join('');
-        }
-
-        if (typeof retryResponse.content === 'string') {
-          return retryResponse.content;
-        }
+        return retryResponse.content
+          .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+          .map((block) => block.text)
+          .join('');
       }
 
       throw error;

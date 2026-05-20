@@ -10,6 +10,7 @@ import { getModel, getModels } from '@earendil-works/pi-ai';
 import type { LlmConfig, LlmFallbackConfig, LlmRoutingConfig } from '@/config/types';
 import { logger } from '@/infra/logger';
 import { CredentialPoolManager } from '@/llm/credential-pool-manager';
+import type { ResolvedModel } from '@/llm/provider-types';
 // ============ 类型定义 ============
 
 /**
@@ -442,6 +443,34 @@ export class ProviderRegistry {
     }
 
     return model;
+  }
+
+  // ============ ResolvedModel 解析 ============
+
+  /**
+   * 解析 ResolvedModel（替代 pi-ai Model 用于 LLM API 调用）
+   *
+   * 从 ModelInfo + 凭据池创建 ResolvedModel，可直接用于 anthropic-provider 的 API。
+   * 与 resolvePiModel() 不同，不依赖 pi-ai 的 Model 对象。
+   */
+  resolveResolvedModel(modelKey?: string): ResolvedModel {
+    const key = modelKey ?? this.defaultModelKey;
+    const parsed = parseModelKey(key);
+    if (!parsed) {
+      throw new Error(`无效的模型标识符格式: ${key}，期望格式为 provider/modelId`);
+    }
+
+    const modelInfo = this.models.get(key);
+    const provider = modelInfo?.provider ?? parsed.provider;
+    const modelId = modelInfo?.id ?? parsed.modelId;
+    const apiKey = this.credentialManager.getKey(provider);
+
+    return {
+      id: modelId,
+      provider,
+      ...(modelInfo?.baseUrl && { baseURL: modelInfo.baseUrl }),
+      ...(apiKey && { apiKey }),
+    };
   }
 
   // ============ 故障转移链 ============

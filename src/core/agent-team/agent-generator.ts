@@ -7,10 +7,12 @@
  * @module core/agent-team
  */
 
-import { complete as piComplete } from '@earendil-works/pi-ai';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentTypeDefinition } from '@/core/agent-team/types';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
+import { complete } from '@/llm/anthropic-provider';
+import type { ResolvedModel } from '@/llm/provider-types';
 import { parseAgentMarkdown } from './markdown-agent-parser';
 
 const log = logger.child('agent-generator');
@@ -117,10 +119,9 @@ export async function generateAgentType(
   const modelKey = config.modelKey;
   const maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let model: ReturnType<AgentLlmFacade['resolvePiModel']>;
+  let model: ResolvedModel;
   try {
-    model = llmFacade.resolvePiModel(modelKey);
+    model = llmFacade.resolveResolvedModel(modelKey);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -132,8 +133,7 @@ export async function generateAgentType(
   const prompt = buildGeneratorPrompt(description.trim());
 
   try {
-    // [TODO Phase 3] 使用 AnthropicProvider.complete() 替换 piComplete
-    const response = await piComplete(
+    const response = await complete(
       model,
       {
         systemPrompt: prompt,
@@ -141,7 +141,6 @@ export async function generateAgentType(
           {
             role: 'user',
             content: [{ type: 'text', text: '请根据上述描述生成 Agent 类型定义。' }],
-            timestamp: Date.now(),
           },
         ],
       },
@@ -222,57 +221,29 @@ export async function generateAgentTypes(
 // ============ 内部实现 ============
 
 /**
- * 从 pi-ai complete 响应中提取文本内容
+ * 从 Anthropic.Message 响应中提取文本内容
  */
-function extractTextFromResponse(response: unknown): string {
-  if (typeof response !== 'object' || response === null) {
-    return '';
-  }
-
-  const resp = response as Record<string, unknown>;
-
-  // pi-ai 返回格式: { content: [{ type: 'text', text: '...' }] }
-  if (Array.isArray(resp.content)) {
-    const textParts = (resp.content as Array<Record<string, unknown>>)
-      .filter((block) => block.type === 'text')
-      .map((block) => String(block.text ?? ''))
-      .join('');
-    return textParts;
-  }
-
-  // 备用格式: { text: '...' }
-  if (typeof resp.text === 'string') {
-    return resp.text;
-  }
-
-  // 最后尝试: { output: '...' }
-  if (typeof resp.output === 'string') {
-    return resp.output;
-  }
-
-  return '';
+function extractTextFromResponse(response: Anthropic.Message): string {
+  return response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('');
 }
 
 /**
- * 从 pi-ai complete 响应中提取 token 用量
+ * 从 Anthropic.Message 响应中提取 token 用量
  */
-function extractTokenUsage(response: unknown):
+function extractTokenUsage(response: Anthropic.Message):
   | {
       inputTokens: number;
       outputTokens: number;
     }
   | undefined {
-  if (typeof response !== 'object' || response === null) {
-    return undefined;
-  }
-
-  const resp = response as Record<string, unknown>;
-  const usage = resp.usage as Record<string, unknown> | undefined;
-
-  if (usage && (typeof usage.inputTokens === 'number' || typeof usage.outputTokens === 'number')) {
+  const usage = response.usage;
+  if (usage && typeof usage.input_tokens === 'number') {
     return {
-      inputTokens: (usage.inputTokens as number) ?? 0,
-      outputTokens: (usage.outputTokens as number) ?? 0,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens ?? 0,
     };
   }
 
