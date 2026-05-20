@@ -91,6 +91,7 @@ import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';
 import type { ChatMessage } from '@/llm/types';
+import type { ResolvedModel } from '@/llm/provider-types';
 import {
   ApprovalManager,
   createToolInfoResolver,
@@ -1885,8 +1886,8 @@ export class ReplSession {
     // 创建 AgentLlmFacade（统一管理 Model 解析 + Key 获取 + 故障转移）
     const facade = new AgentLlmFacade(this.config.llm);
 
-    // 将 pi-ai Model 注入到 Agent state
-    agent.innerAgent.state.model = facade.resolvePiModel();
+    // 将 ResolvedModel 注入到 Agent state
+    agent.innerAgent.state.model = facade.resolveResolvedModel() as unknown as ResolvedModel;
 
     // 注入 getApiKey 函数（支持凭据池轮转）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

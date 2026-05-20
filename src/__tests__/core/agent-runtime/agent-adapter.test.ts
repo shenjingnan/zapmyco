@@ -261,7 +261,7 @@ describe('LlmBasedAgent', () => {
       const health = await agent.healthCheck();
 
       expect(health.是否健康).toBe(true);
-      expect(health.version).toContain('pi-agent-core@');
+      expect(health.version).toContain('zapmyco-agent@');
     });
 
     it('should return unhealthy when disabled', async () => {
@@ -514,13 +514,16 @@ describe('LlmBasedAgent internal event handling', () => {
   });
 
   describe('message_update event', () => {
-    it('should emit output for text_delta', async () => {
+    it('should emit output for content_block_delta text_delta', async () => {
       const { taskId, outputEvents } = await setupAndCapture();
 
       capturedSubscriber!({
         type: 'message_update',
         message: {},
-        assistantMessageEvent: { type: 'text_delta', delta: 'hello world' },
+        assistantMessageEvent: {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: 'hello world' },
+        },
       });
 
       expect(outputEvents).toHaveLength(1);
@@ -530,38 +533,25 @@ describe('LlmBasedAgent internal event handling', () => {
       });
     });
 
-    it('should NOT emit output for toolcall_delta', async () => {
+    it('should NOT emit output for input_json_delta', async () => {
       const { outputEvents } = await setupAndCapture();
 
       capturedSubscriber!({
         type: 'message_update',
         message: {},
         assistantMessageEvent: {
-          type: 'toolcall_delta',
-          delta: '{"file_path":"/tmp/x"}',
+          type: 'content_block_delta',
+          delta: {
+            type: 'input_json_delta',
+            partial_json: '{"file_path":"/tmp/x"}',
+          },
         },
       });
 
       expect(outputEvents).toHaveLength(0);
     });
 
-    it('should emit output for text_delta using text_delta field', async () => {
-      const { outputEvents } = await setupAndCapture();
-
-      capturedSubscriber!({
-        type: 'message_update',
-        message: {},
-        assistantMessageEvent: {
-          type: 'text_delta',
-          text_delta: 'from text_delta field',
-        },
-      });
-
-      expect(outputEvents).toHaveLength(1);
-      expect(outputEvents[0]!.text).toBe('from text_delta field');
-    });
-
-    it('should emit thinking for thinking_delta using delta field', async () => {
+    it('should emit thinking for content_block_delta thinking_delta', async () => {
       const { agent, outputEvents } = await setupAndCapture();
 
       const thinkingEvents: Array<{ taskId: string; text: string }> = [];
@@ -570,32 +560,15 @@ describe('LlmBasedAgent internal event handling', () => {
       capturedSubscriber!({
         type: 'message_update',
         message: {},
-        assistantMessageEvent: { type: 'thinking_delta', delta: 'hmm let me think' },
+        assistantMessageEvent: {
+          type: 'content_block_delta',
+          delta: { type: 'thinking_delta', thinking: 'hmm let me think' },
+        },
       });
 
       expect(outputEvents).toHaveLength(0);
       expect(thinkingEvents).toHaveLength(1);
       expect(thinkingEvents[0]!.text).toBe('hmm let me think');
-    });
-
-    it('should emit thinking for thinking_delta using thinking_delta field', async () => {
-      const { agent, outputEvents } = await setupAndCapture();
-
-      const thinkingEvents: Array<{ taskId: string; text: string }> = [];
-      agent.on('thinking', (e) => thinkingEvents.push(e));
-
-      capturedSubscriber!({
-        type: 'message_update',
-        message: {},
-        assistantMessageEvent: {
-          type: 'thinking_delta',
-          thinking_delta: 'from thinking_delta field',
-        },
-      });
-
-      expect(outputEvents).toHaveLength(0);
-      expect(thinkingEvents).toHaveLength(1);
-      expect(thinkingEvents[0]!.text).toBe('from thinking_delta field');
     });
 
     it('should not emit for unrecognized message_update type', async () => {

@@ -7,22 +7,17 @@
  * @module core/agent-runtime/agent-types
  */
 
+import type Anthropic from '@anthropic-ai/sdk';
 import type { Static, TSchema } from 'typebox';
+import type { ResolvedModel } from '@/llm/provider-types';
 import type {
   AssistantMessage,
-  AssistantMessageEvent,
-  AssistantMessageEventStream,
-  Context,
   ImageContent,
-  Message,
-  Model,
-  SimpleStreamOptions,
   TextContent,
   ThinkingBudgets,
   ThinkingLevel,
   Tool,
   ToolResultMessage,
-  Transport,
 } from './pi-ai-compat-types';
 
 // ============ 消息类型 ============
@@ -103,7 +98,7 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
  */
 export interface AgentState {
   systemPrompt: string;
-  model: Model;
+  model: ResolvedModel;
   thinkingLevel: ThinkingLevel;
   set tools(tools: AgentTool[]);
   get tools(): AgentTool[];
@@ -129,7 +124,7 @@ export type AgentEvent =
   | {
       type: 'message_update';
       message: AgentMessage;
-      assistantMessageEvent: AssistantMessageEvent;
+      assistantMessageEvent: Anthropic.RawMessageStreamEvent;
     }
   | { type: 'message_end'; message: AgentMessage }
   | {
@@ -204,14 +199,16 @@ export interface ShouldStopAfterTurnContext {
 
 /** Agent 循环配置 */
 export interface AgentLoopConfig {
-  model: Model;
+  model: ResolvedModel;
   reasoning: ThinkingLevel | undefined;
   sessionId: string | undefined;
   cacheRetention?: 'none' | 'short' | 'long';
   transformContext:
     | ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>)
     | undefined;
-  convertToLlm: ((messages: AgentMessage[]) => Message[] | Promise<Message[]>) | undefined;
+  convertToLlm:
+    | ((messages: AgentMessage[]) => Anthropic.MessageParam[] | Promise<Anthropic.MessageParam[]>)
+    | undefined;
   getApiKey: ((provider: string) => Promise<string | undefined> | string | undefined) | undefined;
   shouldStopAfterTurn:
     | ((context: ShouldStopAfterTurnContext) => boolean | Promise<boolean>)
@@ -233,15 +230,12 @@ export interface AgentLoopConfig {
     | undefined;
   apiKey: string | undefined;
   signal: AbortSignal | undefined;
-  /** LLM 流式调用超时（毫秒），透传给 streamFunction 的 SimpleStreamOptions.timeoutMs */
+  /** LLM 流式调用超时（毫秒） */
   timeoutMs?: number;
   maxTokens: number | undefined;
   temperature: number | undefined;
   thinkingBudgets: ThinkingBudgets | undefined;
-  transport: Transport | undefined;
   maxRetryDelayMs: number | undefined;
-  onPayload: SimpleStreamOptions['onPayload'] | undefined;
-  onResponse: SimpleStreamOptions['onResponse'] | undefined;
 }
 
 // ============ Agent 选项（用于 Agent 类构造函数） ============
@@ -250,7 +244,7 @@ export interface AgentLoopConfig {
 export interface AgentOptions {
   initialState?: Partial<AgentState>;
   cacheRetention?: 'none' | 'short' | 'long';
-  convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
+  convertToLlm?: (messages: AgentMessage[]) => Anthropic.MessageParam[] | Promise<Anthropic.MessageParam[]>;
   transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
   streamFn?: StreamFn;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
@@ -266,7 +260,6 @@ export interface AgentOptions {
   followUpMode?: 'all' | 'one-at-a-time';
   sessionId?: string;
   thinkingBudgets?: ThinkingBudgets;
-  transport?: Transport;
   maxRetryDelayMs?: number;
   toolExecution?: ToolExecutionMode;
 }
@@ -275,7 +268,17 @@ export interface AgentOptions {
 
 /** Agent 循环使用的流函数 */
 export type StreamFn = (
-  model: Model,
-  context: Context,
-  options?: Record<string, unknown>
-) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
+  model: ResolvedModel,
+  params: {
+    systemPrompt?: string;
+    messages: Anthropic.MessageParam[];
+    tools?: Anthropic.Tool[];
+  },
+  options?: {
+    signal?: AbortSignal;
+    maxTokens?: number;
+    temperature?: number;
+    apiKey?: string;
+    timeoutMs?: number;
+  }
+) => AsyncIterable<Anthropic.RawMessageStreamEvent> | Promise<AsyncIterable<Anthropic.RawMessageStreamEvent>>;

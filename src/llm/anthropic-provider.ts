@@ -17,6 +17,8 @@ export interface CompleteParams {
   systemPrompt?: string;
   /** 消息列表（Anthropic SDK 原生格式） */
   messages: Anthropic.MessageParam[];
+  /** 工具定义列表 */
+  tools?: Anthropic.Tool[];
 }
 
 /** 补全调用选项 */
@@ -44,7 +46,7 @@ export async function complete(
   params: CompleteParams,
   options?: CompleteOptions
 ): Promise<Anthropic.Message> {
-  const client = getClient(model.baseURL, model.apiKey);
+  const client = getClient(model.baseURL, model.apiKey, model.provider);
 
   return client.messages.create(
     {
@@ -52,6 +54,7 @@ export async function complete(
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       ...(params.systemPrompt && { system: params.systemPrompt }),
+      ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
       messages: params.messages,
     },
     {
@@ -75,7 +78,7 @@ export function streamComplete(
   params: CompleteParams,
   options?: CompleteOptions
 ): AsyncIterable<Anthropic.RawMessageStreamEvent> {
-  const client = getClient(model.baseURL, model.apiKey);
+  const client = getClient(model.baseURL, model.apiKey, model.provider);
 
   const stream = client.messages.stream(
     {
@@ -84,6 +87,7 @@ export function streamComplete(
       stream: true,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       ...(params.systemPrompt && { system: params.systemPrompt }),
+      ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
       messages: params.messages,
     },
     {

@@ -62,7 +62,7 @@ describe('complete', () => {
 
     await complete(mockModel, mockParams);
 
-    expect(mockGetClient).toHaveBeenCalledWith(mockModel.baseURL, mockModel.apiKey);
+    expect(mockGetClient).toHaveBeenCalledWith(mockModel.baseURL, mockModel.apiKey, mockModel.provider);
     expect(mockCreate).toHaveBeenCalledTimes(1);
 
     const [firstArg] = mockCreate.mock.calls[0]!;
@@ -147,7 +147,7 @@ describe('streamComplete', () => {
     const result = streamComplete(mockModel, mockParams);
 
     // 验证 getClient 被调用
-    expect(mockGetClient).toHaveBeenCalledWith(mockModel.baseURL, mockModel.apiKey);
+    expect(mockGetClient).toHaveBeenCalledWith(mockModel.baseURL, mockModel.apiKey, mockModel.provider);
 
     // 验证调用的是 stream 而非 create
     expect(mockStreamFn).toHaveBeenCalledTimes(1);

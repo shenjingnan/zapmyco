@@ -7,8 +7,10 @@
  * @module core/agent-runtime/agent-loop
  */
 
-import { streamSimple } from '@earendil-works/pi-ai';
+import type Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@/infra/logger';
+import { streamComplete } from '@/llm/anthropic-provider';
+import type { ResolvedModel } from '@/llm/provider-types';
 import { validateToolCallArguments } from '@/llm/tool-validator';
 import type {
   AgentContext,
@@ -20,7 +22,7 @@ import type {
   AgentToolResult,
   StreamFn,
 } from './agent-types';
-import type { AssistantMessage, Context, ToolResultMessage } from './pi-ai-compat-types';
+import type { AssistantMessage, ToolResultMessage } from './pi-ai-compat-types';
 
 const log = logger.child('agent-loop');
 
@@ -38,7 +40,7 @@ export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
  * @param config - 循环配置
  * @param emit - 事件发射器
  * @param signal - 可选的取消信号
- * @param streamFn - 流函数（默认 streamSimple）
+ * @param streamFn - 流函数（默认 streamComplete）
  * @returns 本轮新增的消息列表
  */
 export async function runAgentLoop(
@@ -74,7 +76,7 @@ export async function runAgentLoop(
  * @param config - 循环配置
  * @param emit - 事件发射器
  * @param signal - 可选的取消信号
- * @param streamFn - 流函数（默认 streamSimple）
+ * @param streamFn - 流函数（默认 streamComplete）
  * @returns 本轮新增的消息列表
  */
 export async function runAgentLoopContinue(
@@ -277,7 +279,7 @@ async function runLoop(
 /**
  * 从 LLM 流式获取 assistant 回复
  *
- * 此处将 AgentMessage[] 转换为 Message[] 供 LLM 使用。
+ * 使用 Anthropic SDK 原生事件格式处理流式响应。
  */
 async function streamAssistantResponse(
   context: AgentContext,
@@ -292,7 +294,7 @@ async function streamAssistantResponse(
     contextSize: context.messages.length,
   });
 
-  // 应用上下文转换（AgentMessage[] → AgentMessage[]）
+  // 1. 应用上下文转换（AgentMessage[] → AgentMessage[]）
   let messages = context.messages;
   if (config.transformContext) {
     const t0 = Date.now();
@@ -304,7 +306,7 @@ async function streamAssistantResponse(
     });
   }
 
-  // 转换为 LLM 兼容消息（AgentMessage[] → Message[]）
+  // 2. 转换为 LLM 兼容消息（AgentMessage[] → Anthropic.MessageParam[]）
   if (!config.convertToLlm) {
     throw new Error('convertToLlm 未设置');
   }
@@ -312,73 +314,187 @@ async function streamAssistantResponse(
   const llmMessages = await config.convertToLlm(messages);
   log.debug('消息格式转换完成', { duration: Date.now() - t1, llmMessageCount: llmMessages.length });
 
-  // 构建 LLM 上下文
-  const llmContext: Context = {
-    systemPrompt: context.systemPrompt,
-    messages: llmMessages,
-    tools: context.tools as Context['tools'],
-  } as Context;
+  // 3. 转换工具定义为 Anthropic SDK 格式
+  const anthropicTools: Anthropic.Tool[] | undefined = context.tools
+    ?.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters as Anthropic.Tool.InputSchema,
+    }))
+    .filter((t) => Boolean(t.name));
 
-  const streamFunction = (streamFn || streamSimple) as unknown as StreamFn;
-
-  // 解析 API Key
+  // 4. 解析 API Key 并构建 ResolvedModel
   const resolvedApiKey =
     (config.getApiKey ? await config.getApiKey(config.model.provider) : undefined) || config.apiKey;
+  const model: ResolvedModel = {
+    ...config.model,
+    ...(resolvedApiKey ? { apiKey: resolvedApiKey } : {}),
+  };
 
-  const response = await streamFunction(config.model, llmContext, {
-    ...config,
-    apiKey: resolvedApiKey,
-    signal,
-    timeoutMs: 120_000, // 网络层 HTTP 请求超时（2 分钟），防止 LLM 调用无限挂起
-  } as Record<string, unknown>);
+  // 5. 调用流函数（fallback 到 streamComplete）
+  const streamFunction: StreamFn = streamFn ?? (streamComplete as unknown as StreamFn);
+  const stream = await streamFunction(
+    model,
+    {
+      systemPrompt: context.systemPrompt,
+      messages: llmMessages,
+      ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
+    },
+    {
+      ...(signal ? { signal } : {}),
+      ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
+      ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
+      timeoutMs: 120_000,
+    }
+  );
 
-  let partialMessage: AssistantMessage | null = null;
+  // 6. 流式状态
   let addedPartial = false;
   let firstDeltaTime = 0;
   let eventCount = 0;
-  const YIELD_INTERVAL = 10; // 每处理 10 个事件用 setImmediate 让出事件循环
+  const YIELD_INTERVAL = 10;
 
-  for await (const event of response) {
-    switch (event.type) {
-      case 'start':
-        partialMessage = event.partial!;
-        context.messages.push(partialMessage);
+  // 按 index 累积内容块
+  const contentBlocks: Array<{
+    type: 'text' | 'tool_use' | 'thinking';
+    text?: string;
+    id?: string;
+    name?: string;
+    partialJson?: string;
+    signature?: string;
+  }> = [];
+
+  let messageModelId = '';
+  let messageProvider = config.model.provider || '';
+  let messageApi = config.model.provider || '';
+  let stopReason: string | undefined;
+  // biome-ignore lint/suspicious/noExplicitAny: usage 字段兼容 pi-ai 格式
+  let usage: Record<string, any> = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+  // 7. 事件处理循环
+  try {
+    for await (const event of stream) {
+      switch (event.type) {
+        case 'message_start': {
+        messageModelId = event.message.model;
+        // 从 message_start 提取 input_tokens
+        if (event.message.usage) {
+          usage.input = event.message.usage.input_tokens ?? 0;
+        }
+        const initialMsg = buildPartialMessage(
+          contentBlocks,
+          usage,
+          stopReason,
+          messageModelId,
+          messageProvider,
+          messageApi
+        );
+        context.messages.push(initialMsg);
         addedPartial = true;
-        await emit({ type: 'message_start', message: partialMessage });
+        await emit({ type: 'message_start', message: initialMsg });
         break;
+      }
 
-      case 'text_start':
-      case 'text_delta':
-      case 'text_end':
-      case 'thinking_start':
-      case 'thinking_delta':
-      case 'thinking_end':
-      case 'toolcall_start':
-      case 'toolcall_delta':
-      case 'toolcall_end':
+      case 'content_block_start': {
+        const block = event.content_block;
+        if (block.type === 'text') {
+          contentBlocks[event.index] = { type: 'text', text: block.text ?? '' };
+        } else if (block.type === 'tool_use') {
+          contentBlocks[event.index] = {
+            type: 'tool_use',
+            id: block.id,
+            name: block.name,
+            partialJson: '',
+          };
+        } else if (block.type === 'thinking') {
+          const thinkingBlock = block as unknown as { type: 'thinking'; thinking: string; signature?: string };
+          contentBlocks[event.index] = {
+            type: 'thinking',
+            text: thinkingBlock.thinking ?? '',
+            ...(thinkingBlock.signature ? { signature: thinkingBlock.signature } : {}),
+          };
+        }
+        if (addedPartial) {
+          const partial = buildPartialMessage(
+            contentBlocks,
+            usage,
+            stopReason,
+            messageModelId,
+            messageProvider,
+            messageApi
+          );
+          context.messages[context.messages.length - 1] = partial;
+          await emit({ type: 'message_update', assistantMessageEvent: event, message: partial });
+        }
+        break;
+      }
+
+      case 'content_block_delta': {
         if (!firstDeltaTime) {
           firstDeltaTime = Date.now();
         }
-        if (partialMessage) {
-          partialMessage = event.partial!;
-          context.messages[context.messages.length - 1] = partialMessage;
-          await emit({
-            type: 'message_update',
-            assistantMessageEvent: event,
-            message: partialMessage,
-          });
+        const block = contentBlocks[event.index];
+        if (block) {
+          const delta = event.delta;
+          if (delta.type === 'text_delta') {
+            block.text = (block.text ?? '') + delta.text;
+          } else if (delta.type === 'input_json_delta') {
+            block.partialJson = (block.partialJson ?? '') + delta.partial_json;
+          } else if (delta.type === 'thinking_delta') {
+            block.text = (block.text ?? '') + delta.thinking;
+          }
+        }
+        if (addedPartial) {
+          const partial = buildPartialMessage(
+            contentBlocks,
+            usage,
+            stopReason,
+            messageModelId,
+            messageProvider,
+            messageApi
+          );
+          context.messages[context.messages.length - 1] = partial;
+          await emit({ type: 'message_update', assistantMessageEvent: event, message: partial });
         }
         break;
+      }
 
-      case 'done':
-      case 'error': {
-        const finalMessage = await response.result();
+      case 'content_block_stop': {
+        if (addedPartial) {
+          const partial = buildPartialMessage(
+            contentBlocks,
+            usage,
+            stopReason,
+            messageModelId,
+            messageProvider,
+            messageApi
+          );
+          context.messages[context.messages.length - 1] = partial;
+        }
+        break;
+      }
+
+      case 'message_delta': {
+        stopReason = event.delta.stop_reason ?? undefined;
+        if (event.usage) {
+          usage.output = event.usage.output_tokens ?? 0;
+        }
+        break;
+      }
+
+      case 'message_stop': {
+        const finalMessage = buildFinalMessage(
+          contentBlocks,
+          usage,
+          stopReason,
+          messageModelId,
+          messageProvider,
+          messageApi
+        );
         if (addedPartial) {
           context.messages[context.messages.length - 1] = finalMessage;
         } else {
           context.messages.push(finalMessage);
-        }
-        if (!addedPartial) {
           await emit({ type: 'message_start', message: finalMessage });
         }
         await emit({ type: 'message_end', message: finalMessage });
@@ -396,14 +512,45 @@ async function streamAssistantResponse(
       }
     }
 
-    // 定期让出事件循环，让 TUI setInterval (spinner/timer) 有机会执行
+    // 定期让出事件循环
     eventCount++;
     if (eventCount % YIELD_INTERVAL === 0) {
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
+  } catch (error) {
+    // 流迭代过程中抛出异常，构建错误消息
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log.warn('LLM 流式调用异常', { error: errorMessage });
 
-  const finalMessage = await response.result();
+    const errorAssistantMessage = buildFinalMessage(
+      contentBlocks,
+      usage,
+      'error',
+      messageModelId || config.model.id,
+      messageProvider,
+      messageApi
+    );
+    (errorAssistantMessage as unknown as Record<string, unknown>).errorMessage = errorMessage;
+    if (addedPartial) {
+      context.messages[context.messages.length - 1] = errorAssistantMessage;
+    } else {
+      context.messages.push(errorAssistantMessage);
+      await emit({ type: 'message_start', message: errorAssistantMessage });
+    }
+    await emit({ type: 'message_end', message: errorAssistantMessage });
+    return errorAssistantMessage;
+  }
+
+  // 8. Fallthrough（流未正常结束——没有收到 message_stop）
+  const finalMessage = buildFinalMessage(
+    contentBlocks,
+    usage,
+    stopReason,
+    messageModelId || config.model.id,
+    messageProvider,
+    messageApi
+  );
   if (addedPartial) {
     context.messages[context.messages.length - 1] = finalMessage;
   } else {
@@ -412,15 +559,161 @@ async function streamAssistantResponse(
   }
   await emit({ type: 'message_end', message: finalMessage });
 
-  const toolCalls =
-    finalMessage.content?.filter((c): c is AgentToolCall => c.type === 'toolCall') ?? [];
-  log.info('LLM 流式调用完成（无事件结束标记）', {
+  log.info('LLM 流式调用完成（无 message_stop 事件）', {
     duration: Date.now() - startTime,
     stopReason: finalMessage.stopReason,
-    toolCallCount: toolCalls.length,
     inputMessageCount: llmMessages.length,
   });
   return finalMessage;
+}
+
+// ============ 流式事件辅助函数 ============
+
+/**
+ * 从累积的 contentBlocks 构建部分 AssistantMessage
+ */
+function buildPartialMessage(
+  contentBlocks: Array<{
+    type: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    partialJson?: string;
+    signature?: string;
+  }>,
+  // biome-ignore lint/suspicious/noExplicitAny: usage 兼容 pi-ai 格式
+  usage: Record<string, any>,
+  stopReason: string | undefined,
+  model: string,
+  provider: string,
+  api: string
+): AssistantMessage {
+  return {
+    role: 'assistant',
+    content: contentBlocksToAssistantContent(contentBlocks),
+    usage: {
+      input: usage.input ?? 0,
+      output: usage.output ?? 0,
+      cacheRead: usage.cacheRead ?? 0,
+      cacheWrite: usage.cacheWrite ?? 0,
+    },
+    stopReason,
+    model,
+    provider,
+    api,
+    timestamp: Date.now(),
+  } as AssistantMessage;
+}
+
+/**
+ * 从累积的 contentBlocks 构建最终 AssistantMessage
+ */
+function buildFinalMessage(
+  contentBlocks: Array<{
+    type: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    partialJson?: string;
+    signature?: string;
+  }>,
+  // biome-ignore lint/suspicious/noExplicitAny: usage 兼容 pi-ai 格式
+  usage: Record<string, any>,
+  stopReason: string | undefined,
+  model: string,
+  provider: string,
+  api: string
+): AssistantMessage {
+  return {
+    role: 'assistant',
+    content: contentBlocksToAssistantContent(contentBlocks),
+    usage: {
+      input: usage.input ?? 0,
+      output: usage.output ?? 0,
+      cacheRead: usage.cacheRead ?? 0,
+      cacheWrite: usage.cacheWrite ?? 0,
+    },
+    stopReason: mapStopReason(stopReason),
+    model: model || api,
+    provider,
+    api,
+    timestamp: Date.now(),
+  } as AssistantMessage;
+}
+
+/**
+ * 将累积的 Anthropic 内容块转为 pi-ai AssistantMessage 兼容的 content 数组
+ */
+function contentBlocksToAssistantContent(
+  blocks: Array<{
+    type: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    partialJson?: string;
+    signature?: string;
+  }>
+): AssistantMessage['content'] {
+  const content: Array<Record<string, unknown>> = [];
+  for (const block of blocks) {
+    if (block.type === 'text') {
+      if (block.text) {
+        content.push({ type: 'text', text: block.text });
+      }
+    } else if (block.type === 'thinking') {
+      if (block.text) {
+        const thinkingBlock: Record<string, unknown> = {
+          type: 'thinking',
+          thinking: block.text,
+        };
+        if (block.signature) {
+          thinkingBlock.signature = block.signature;
+        }
+        content.push(thinkingBlock);
+      }
+    } else if (block.type === 'tool_use') {
+      let args: Record<string, unknown> = {};
+      if (block.partialJson) {
+        try {
+          args = JSON.parse(block.partialJson);
+        } catch {
+          args = {};
+        }
+      }
+      content.push({
+        type: 'toolCall',
+        id: block.id ?? '',
+        name: block.name ?? '',
+        arguments: args,
+      });
+    }
+  }
+  // 确保至少有一个 text 块（即使内容为空）
+  if (content.length === 0 && blocks.some((b) => b.type === 'text' || b.type === 'thinking')) {
+    content.push({ type: 'text', text: '' });
+  }
+  return content as unknown as AssistantMessage['content'];
+}
+
+/**
+ * 映射 Anthropic SDK stop_reason 到 pi-ai 兼容的 stopReason
+ */
+function mapStopReason(reason: string | undefined): string | undefined {
+  switch (reason) {
+    case 'end_turn':
+      return 'stop';
+    case 'max_tokens':
+      return 'max_tokens';
+    case 'stop_sequence':
+      return 'stop_sequence';
+    case 'tool_use':
+      return 'tool_use';
+    case null:
+    case undefined:
+      return undefined;
+    default:
+      return reason;
+  }
 }
 
 // ============ 工具调用执行 ============

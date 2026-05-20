@@ -7,8 +7,9 @@
  * @module core/agent-runtime/agent
  */
 
-import { streamSimple } from '@earendil-works/pi-ai';
+import type Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@/infra/logger';
+import type { ResolvedModel } from '@/llm/provider-types';
 import { runAgentLoop, runAgentLoopContinue } from './agent-loop';
 import type {
   AfterToolCallContext,
@@ -27,12 +28,9 @@ import type {
 } from './agent-types';
 import type {
   ImageContent,
-  Message,
-  Model,
   TextContent,
   ThinkingBudgets,
   ThinkingLevel,
-  Transport,
 } from './pi-ai-compat-types';
 
 // ============ 默认值 ============
@@ -46,26 +44,64 @@ const EMPTY_USAGE = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-const DEFAULT_MODEL: Model = {
+const DEFAULT_MODEL: ResolvedModel = {
   id: 'unknown',
-  name: 'unknown',
-  api: 'unknown',
   provider: 'unknown',
-  baseUrl: '',
-  reasoning: false,
-  input: [],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 0,
-  maxTokens: 0,
 };
 
 // ============ 默认消息转换 ============
 
-function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
-  return messages.filter(
-    (message): message is Message =>
-      message.role === 'user' || message.role === 'assistant' || message.role === 'toolResult'
-  );
+function defaultConvertToLlm(messages: AgentMessage[]): Anthropic.MessageParam[] {
+  const result: Anthropic.MessageParam[] = [];
+  for (const msg of messages) {
+    const raw = msg as Record<string, unknown>;
+    const role = raw.role as string;
+    const content = raw.content;
+
+    if (role === 'user') {
+      if (typeof content === 'string') {
+        result.push({ role: 'user', content });
+      } else if (Array.isArray(content)) {
+        const textParts = content
+          .filter((c: Record<string, unknown>) => c.type === 'text' || c.type === 'thinking')
+          .map((c: Record<string, unknown>) => String(c.text ?? c.thinking ?? ''));
+        result.push({ role: 'user', content: textParts.join('\n') });
+      }
+    } else if (role === 'assistant') {
+      const assistantContent: Anthropic.ContentBlockParam[] = [];
+      if (Array.isArray(content)) {
+        for (const block of content as Array<Record<string, unknown>>) {
+          if (block.type === 'text') {
+            assistantContent.push({ type: 'text', text: String(block.text ?? '') });
+          } else if (block.type === 'thinking') {
+            assistantContent.push({
+              type: 'thinking',
+              thinking: String((block as Record<string, unknown>).thinking ?? ''),
+              signature: String((block as Record<string, unknown>).signature ?? ''),
+            });
+          } else if (block.type === 'toolCall') {
+            assistantContent.push({
+              type: 'tool_use',
+              id: String(block.id ?? ''),
+              name: String(block.name ?? ''),
+              input: (block.arguments as Record<string, unknown>) ?? {},
+            });
+          }
+        }
+      }
+      result.push({ role: 'assistant', content: assistantContent });
+    } else if (role === 'toolResult') {
+      const toolContent: Anthropic.ContentBlockParam[] = [
+        {
+          type: 'tool_result',
+          tool_use_id: String(raw.toolCallId ?? ''),
+          content: typeof content === 'string' ? content : '',
+        },
+      ];
+      result.push({ role: 'user', content: toolContent });
+    }
+  }
+  return result;
 }
 
 // ============ 队列模式 ============
@@ -171,7 +207,9 @@ export class Agent {
   private readonly steeringQueue: PendingMessageQueue;
   private readonly followUpQueue: PendingMessageQueue;
 
-  public convertToLlm: ((messages: AgentMessage[]) => Message[] | Promise<Message[]>) | undefined;
+  public convertToLlm:
+    | ((messages: AgentMessage[]) => Anthropic.MessageParam[] | Promise<Anthropic.MessageParam[]>)
+    | undefined;
   public transformContext:
     | ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>)
     | undefined;
@@ -196,7 +234,6 @@ export class Agent {
   public sessionId: string | undefined;
   public cacheRetention: 'none' | 'short' | 'long' | undefined;
   public thinkingBudgets: ThinkingBudgets | undefined;
-  public transport: Transport | undefined;
   public maxRetryDelayMs: number | undefined;
   public toolExecution: ToolExecutionMode | undefined;
 
@@ -207,7 +244,7 @@ export class Agent {
     this.convertToLlm = (options.convertToLlm ?? defaultConvertToLlm) as never;
     this.cacheRetention = options.cacheRetention as never;
     this.transformContext = options.transformContext as never;
-    this.streamFn = (options.streamFn ?? streamSimple) as never;
+    this.streamFn = options.streamFn as StreamFn | undefined;
     this.getApiKey = options.getApiKey as never;
     this.beforeToolCall = options.beforeToolCall as never;
     this.afterToolCall = options.afterToolCall as never;
@@ -215,7 +252,6 @@ export class Agent {
     this.followUpQueue = new PendingMessageQueue(options.followUpMode ?? 'one-at-a-time');
     this.sessionId = options.sessionId as never;
     this.thinkingBudgets = options.thinkingBudgets as never;
-    this.transport = (options.transport ?? 'auto') as never;
     this.maxRetryDelayMs = options.maxRetryDelayMs as never;
     this.toolExecution = options.toolExecution ?? 'parallel';
   }
@@ -478,10 +514,7 @@ export class Agent {
       maxTokens: undefined as never,
       temperature: undefined as never,
       thinkingBudgets: this.thinkingBudgets as never,
-      transport: this.transport as never,
       maxRetryDelayMs: this.maxRetryDelayMs as never,
-      onPayload: undefined as never,
-      onResponse: undefined as never,
     } as AgentLoopConfig;
   }
 
@@ -540,7 +573,7 @@ export class Agent {
     const failureMessage: AgentMessage = {
       role: 'assistant',
       content: [{ type: 'text', text: '' }],
-      api: this._state.model.api,
+      api: this._state.model.provider,
       provider: this._state.model.provider,
       model: this._state.model.id,
       usage: EMPTY_USAGE,
