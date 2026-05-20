@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.16.0](https://github.com/shenjingnan/zapmyco/compare/v0.15.0...v0.16.0) (2026-05-20)
+
+### Features
+
+* **agent-team:** 添加 Coordinator 模式支持 ([#147](https://github.com/shenjingnan/zapmyco/issues/147)) ([a7e89ba](https://github.com/shenjingnan/zapmyco/commit/a7e89bab12781432947f9e50607004232c840a48))
+* **cli:** Agent 工具调用历史记录与输出阶段优化 ([#140](https://github.com/shenjingnan/zapmyco/issues/140)) ([6ba3eba](https://github.com/shenjingnan/zapmyco/commit/6ba3eba0e1a007e86b99ba52b16c141cc8f00e11))
+* **llm:** 增强提供商支持并重构Agent运行时事件系统 ([#161](https://github.com/shenjingnan/zapmyco/issues/161)) ([146ffc0](https://github.com/shenjingnan/zapmyco/commit/146ffc0d954f2500a81f5995f58e10b35742a368))
+* **llm:** 集成 Anthropic SDK 作为新的 LLM 提供商 ([#158](https://github.com/shenjingnan/zapmyco/issues/158)) ([0844d54](https://github.com/shenjingnan/zapmyco/commit/0844d54ab9e69436955295f8fbcbc357324ff38e))
+* **repl:** 使用 AnimationManager 替代 setInterval 驱动动画 ([#154](https://github.com/shenjingnan/zapmyco/issues/154)) ([cb436cb](https://github.com/shenjingnan/zapmyco/commit/cb436cb816357ddd8490f64e281bfced2551b7b8))
+* **repl:** 将打开外部编辑器快捷键改为 Ctrl+G ([#149](https://github.com/shenjingnan/zapmyco/issues/149)) ([9501731](https://github.com/shenjingnan/zapmyco/commit/95017311410d873c1e1507fb1ed72c7d0d52a98a))
+
+### Bug Fixes
+
+* **lsp:** 修复 isStopping 标志设置过早导致退出通知未发送的问题 ([#141](https://github.com/shenjingnan/zapmyco/issues/141)) ([4a72179](https://github.com/shenjingnan/zapmyco/commit/4a721794e2937ba736402e591e97dd64bb2dc6ad))
+* **repl:** /clear 命令增加清空任务列表逻辑 ([#152](https://github.com/shenjingnan/zapmyco/issues/152)) ([4d9b771](https://github.com/shenjingnan/zapmyco/commit/4d9b77133e65227289c003888e3d8ad3d5c25aef))
+
+### Performance Improvements
+
+* **agent-runtime:** 定期让出事件循环以优化 TUI 响应 ([#153](https://github.com/shenjingnan/zapmyco/issues/153)) ([b9ee8de](https://github.com/shenjingnan/zapmyco/commit/b9ee8de7912a109dd8855b5d3cc260eaf473aaed))
+
+### Code Refactoring
+
+* **core:** 剥离 pi-ai 依赖，使用本地 Model 类型替代 ([#163](https://github.com/shenjingnan/zapmyco/issues/163)) ([3a09121](https://github.com/shenjingnan/zapmyco/commit/3a09121c5a65a04fe6642eb951bee6cfc7036e67))
+* **core:** 提取工具参数验证为独立模块 ([#155](https://github.com/shenjingnan/zapmyco/issues/155)) ([0abe05a](https://github.com/shenjingnan/zapmyco/commit/0abe05af5f7b1c564b17a1506358983fb4b4a703))
+* **core:** 替换 pi-ai complete 为 anthropic-provider ([#159](https://github.com/shenjingnan/zapmyco/issues/159)) ([91019ff](https://github.com/shenjingnan/zapmyco/commit/91019ff4b0ea8b18026529c9af0e6dda1c743407))
+* **core:** 替换 pi-ai 外部类型依赖为本地兼容类型 ([#160](https://github.com/shenjingnan/zapmyco/issues/160)) ([90d0e0c](https://github.com/shenjingnan/zapmyco/commit/90d0e0c4b9fea7aa106e92b217845b0c7f5c4a9a))
+* **llm:** 移除 pi-ai 运行时依赖，改用内置模型注册表 ([#162](https://github.com/shenjingnan/zapmyco/issues/162)) ([8bfafce](https://github.com/shenjingnan/zapmyco/commit/8bfafce66f1280c02f057a9a5d71497ff5cda191))
+* **repl:** 简化 UI 键盘快捷键，移除冗余切换功能 ([#148](https://github.com/shenjingnan/zapmyco/issues/148)) ([8f7c227](https://github.com/shenjingnan/zapmyco/commit/8f7c22775f9a2507ff9927c4b40dac57d02e642e))
+* **ui:** 优化 Agent 状态栏图标与活动描述 ([#150](https://github.com/shenjingnan/zapmyco/issues/150)) ([13f3b60](https://github.com/shenjingnan/zapmyco/commit/13f3b603832edaad94256ba9aea82c2f16e7316b))
+
 ## [0.15.0](https://github.com/shenjingnan/zapmyco/compare/v0.14.0...v0.15.0) (2026-05-18)
 
 ### Features
