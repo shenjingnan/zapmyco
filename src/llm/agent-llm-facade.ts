@@ -11,8 +11,8 @@
  * - 故障转移（获取备选 Model + Key）
  */
 
-import type { Model } from '@earendil-works/pi-ai';
 import type { LlmConfig } from '@/config/types';
+import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
 import type { RoutingContext } from '@/llm/model-router';
 import { ModelRouter } from '@/llm/model-router';
 import type { ModelInfo } from '@/llm/provider-registry';
@@ -34,9 +34,8 @@ export class AgentLlmFacade {
    * 替代 session.ts 的 resolveModelForAgent()。
    * 如果传入 modelKey 则使用指定模型，否则使用默认模型。
    */
-  // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-  resolvePiModel(modelKey?: string): Model<any> {
-    return this.registry.resolvePiModel(modelKey);
+  resolvePiModel(modelKey?: string): Model {
+    return this.registry.resolvePiModel(modelKey) as unknown as Model;
   }
 
   /**
@@ -131,14 +130,13 @@ export class AgentLlmFacade {
    *
    * 支持 'analysis' | 'light' | 'vision' 三种语义名称
    */
-  // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-  resolveSemanticPiModel(semanticName: 'analysis' | 'light' | 'vision'): Model<any> {
+  resolveSemanticPiModel(semanticName: 'analysis' | 'light' | 'vision'): Model {
     const modelInfo = this.registry.resolveSemanticModel(semanticName);
     if (!modelInfo) {
       // 全部 fallback 失败，使用默认模型
       return this.resolvePiModel();
     }
-    return this.registry.resolvePiModel(modelInfo.key);
+    return this.registry.resolvePiModel(modelInfo.key) as unknown as Model;
   }
 
   /**

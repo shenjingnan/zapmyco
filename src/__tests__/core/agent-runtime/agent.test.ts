@@ -4,10 +4,13 @@
  * 直接测试 Agent 类（不 mock），使用 mock streamFn 控制 LLM 响应。
  */
 
-import type { AssistantMessage, AssistantMessageEvent } from '@earendil-works/pi-ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
+import type {
+  AssistantMessage,
+  AssistantMessageEvent,
+} from '@/core/agent-runtime/pi-ai-compat-types';
 
 // ============ Mock EventStream ============
 

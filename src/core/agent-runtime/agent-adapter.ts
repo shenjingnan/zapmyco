@@ -9,7 +9,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import type { ThinkingLevel } from '@earendil-works/pi-ai';
 import { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import {
@@ -35,6 +34,7 @@ import type {
 import type { Capability } from '@/protocol/capability';
 import { createDoomLoopDetector, type DoomLoopDetector } from '@/security/doom-loop-detector';
 import { createEventBridgeListener } from './event-bridge';
+import type { ThinkingLevel } from './pi-ai-compat-types';
 import { type ToolRegistration, toAgentTools } from './tool-bridge';
 import { ToolSchemaCache } from './tool-schema-cache';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';

@@ -7,16 +7,7 @@
  * @module core/agent-runtime/agent
  */
 
-import type { ThinkingLevel } from '@earendil-works/pi-ai';
-import {
-  type ImageContent,
-  type Message,
-  type Model,
-  streamSimple,
-  type TextContent,
-  type ThinkingBudgets,
-  type Transport,
-} from '@earendil-works/pi-ai';
+import { streamSimple } from '@earendil-works/pi-ai';
 import { logger } from '@/infra/logger';
 import { runAgentLoop, runAgentLoopContinue } from './agent-loop';
 import type {
@@ -34,6 +25,15 @@ import type {
   StreamFn,
   ToolExecutionMode,
 } from './agent-types';
+import type {
+  ImageContent,
+  Message,
+  Model,
+  TextContent,
+  ThinkingBudgets,
+  ThinkingLevel,
+  Transport,
+} from './pi-ai-compat-types';
 
 // ============ 默认值 ============
 
@@ -46,7 +46,7 @@ const EMPTY_USAGE = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-const DEFAULT_MODEL: Model<any> = {
+const DEFAULT_MODEL: Model = {
   id: 'unknown',
   name: 'unknown',
   api: 'unknown',

@@ -5,7 +5,6 @@
  * 使用 mock streamFn 模拟 LLM 响应，不依赖真实 API。
  */
 
-import type { AssistantMessage, AssistantMessageEvent } from '@earendil-works/pi-ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runAgentLoop, runAgentLoopContinue } from '@/core/agent-runtime/agent-loop';
 import type {
@@ -14,6 +13,10 @@ import type {
   AgentLoopConfig,
   AgentMessage,
 } from '@/core/agent-runtime/agent-types';
+import type {
+  AssistantMessage,
+  AssistantMessageEvent,
+} from '@/core/agent-runtime/pi-ai-compat-types';
 
 // ============ Mock AssistantMessageEventStream (支持多轮) ============
 
@@ -160,7 +163,7 @@ const DEFAULT_CONFIG: AgentLoopConfig = {
   transformContext: undefined,
   convertToLlm: (messages: AgentMessage[]) =>
     messages.filter(
-      (m): m is import('@earendil-works/pi-ai').Message =>
+      (m): m is import('@/core/agent-runtime/pi-ai-compat-types').PiMessage =>
         m.role === 'user' || m.role === 'assistant' || m.role === 'toolResult'
     ),
   getApiKey: undefined,

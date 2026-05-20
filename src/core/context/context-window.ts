@@ -7,7 +7,7 @@
  * @module core/context
  */
 
-import type { Model } from '@earendil-works/pi-ai';
+import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
 import type { ContextWindowInfo } from './types';
 
 /** 默认上下文窗口大小（当无法从模型获取时） */
@@ -38,8 +38,8 @@ const KNOWN_CONTEXT_WINDOWS: Record<string, number> = {
  * @param model - pi-ai Model 实例
  * @returns 上下文窗口信息
  */
-// biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束
-export function resolveContextWindow(model: Model<any>): ContextWindowInfo {
+// biome-ignore lint/suspicious/noExplicitAny: 兼容 pi-ai Model 的泛型约束
+export function resolveContextWindow(model: Model): ContextWindowInfo {
   const contextWindow =
     model.contextWindow || KNOWN_CONTEXT_WINDOWS[model.id] || DEFAULT_CONTEXT_WINDOW;
 

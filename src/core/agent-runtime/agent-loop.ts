@@ -7,12 +7,7 @@
  * @module core/agent-runtime/agent-loop
  */
 
-import {
-  type AssistantMessage,
-  type Context,
-  streamSimple,
-  type ToolResultMessage,
-} from '@earendil-works/pi-ai';
+import { streamSimple } from '@earendil-works/pi-ai';
 import { logger } from '@/infra/logger';
 import { validateToolCallArguments } from '@/llm/tool-validator';
 import type {
@@ -25,6 +20,7 @@ import type {
   AgentToolResult,
   StreamFn,
 } from './agent-types';
+import type { AssistantMessage, Context, ToolResultMessage } from './pi-ai-compat-types';
 
 const log = logger.child('agent-loop');
 
@@ -323,7 +319,7 @@ async function streamAssistantResponse(
     tools: context.tools as Context['tools'],
   } as Context;
 
-  const streamFunction = streamFn || streamSimple;
+  const streamFunction = (streamFn || streamSimple) as unknown as StreamFn;
 
   // 解析 API Key
   const resolvedApiKey =
@@ -345,10 +341,10 @@ async function streamAssistantResponse(
   for await (const event of response) {
     switch (event.type) {
       case 'start':
-        partialMessage = event.partial;
+        partialMessage = event.partial!;
         context.messages.push(partialMessage);
         addedPartial = true;
-        await emit({ type: 'message_start', message: { ...partialMessage } });
+        await emit({ type: 'message_start', message: partialMessage });
         break;
 
       case 'text_start':
@@ -364,12 +360,12 @@ async function streamAssistantResponse(
           firstDeltaTime = Date.now();
         }
         if (partialMessage) {
-          partialMessage = event.partial;
+          partialMessage = event.partial!;
           context.messages[context.messages.length - 1] = partialMessage;
           await emit({
             type: 'message_update',
             assistantMessageEvent: event,
-            message: { ...partialMessage },
+            message: partialMessage,
           });
         }
         break;
@@ -383,7 +379,7 @@ async function streamAssistantResponse(
           context.messages.push(finalMessage);
         }
         if (!addedPartial) {
-          await emit({ type: 'message_start', message: { ...finalMessage } });
+          await emit({ type: 'message_start', message: finalMessage });
         }
         await emit({ type: 'message_end', message: finalMessage });
 
@@ -412,7 +408,7 @@ async function streamAssistantResponse(
     context.messages[context.messages.length - 1] = finalMessage;
   } else {
     context.messages.push(finalMessage);
-    await emit({ type: 'message_start', message: { ...finalMessage } });
+    await emit({ type: 'message_start', message: finalMessage });
   }
   await emit({ type: 'message_end', message: finalMessage });
 

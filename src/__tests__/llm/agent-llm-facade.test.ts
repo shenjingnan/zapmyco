@@ -2,9 +2,9 @@
  * AgentLlmFacade 测试
  */
 
-import type { Model } from '@earendil-works/pi-ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlmConfig } from '@/config/types';
+import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';
 
 // Mock ProviderRegistry
@@ -75,7 +75,7 @@ describe('AgentLlmFacade', () => {
       modelKey: 'anthropic/claude-sonnet-4-20250514',
       provider: 'anthropic',
       apiKey: 'sk-ant-test',
-      model: {} as Model<never>,
+      model: {} as Model,
       apiKeyMasked: 'sk-a***est',
       fallbackChain: [],
     } as never);
@@ -84,7 +84,7 @@ describe('AgentLlmFacade', () => {
 
   describe('resolvePiModel', () => {
     it('应委托给 registry.resolvePiModel', () => {
-      const mockModel = { name: 'test' } as Model<never>;
+      const mockModel = { name: 'test' } as Model;
       mockResolvePiModel.mockReturnValue(mockModel);
       const facade = new AgentLlmFacade(baseConfig);
       const result = facade.resolvePiModel('anthropic/test');
@@ -92,7 +92,7 @@ describe('AgentLlmFacade', () => {
     });
 
     it('不传 modelKey 时应使用默认模型', () => {
-      const mockModel = { name: 'default' } as Model<never>;
+      const mockModel = { name: 'default' } as Model;
       mockResolvePiModel.mockReturnValue(mockModel);
       const facade = new AgentLlmFacade(baseConfig);
       expect(facade.resolvePiModel()).toBe(mockModel);

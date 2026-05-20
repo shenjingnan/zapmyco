@@ -7,9 +7,9 @@
  * @module core/agent-team
  */
 
-import type { Model } from '@earendil-works/pi-ai';
 import type { ThinkingLevelOption } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
+import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import type {
   AgentInstance,
@@ -277,11 +277,7 @@ function shareParentResources(
  * @param parentAgent - 父 Agent（用于获取 AgentLlmFacade）
  * @returns 解析后的 pi-ai Model 对象，解析失败返回 undefined
  */
-function resolveModelForDefinition(
-  model: string,
-  parentAgent: LlmBasedAgent
-  // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-): Model<any> | undefined {
+function resolveModelForDefinition(model: string, parentAgent: LlmBasedAgent): Model | undefined {
   const facade = parentAgent.llmFacade;
   if (!facade) return undefined;
 

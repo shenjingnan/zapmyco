@@ -7,6 +7,7 @@
  * @module core/agent-runtime/agent-types
  */
 
+import type { Static, TSchema } from 'typebox';
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -22,8 +23,7 @@ import type {
   Tool,
   ToolResultMessage,
   Transport,
-} from '@earendil-works/pi-ai';
-import type { Static, TSchema } from 'typebox';
+} from './pi-ai-compat-types';
 
 // ============ 消息类型 ============
 
@@ -103,7 +103,7 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
  */
 export interface AgentState {
   systemPrompt: string;
-  model: Model<any>;
+  model: Model;
   thinkingLevel: ThinkingLevel;
   set tools(tools: AgentTool[]);
   get tools(): AgentTool[];
@@ -204,7 +204,7 @@ export interface ShouldStopAfterTurnContext {
 
 /** Agent 循环配置 */
 export interface AgentLoopConfig {
-  model: Model<any>;
+  model: Model;
   reasoning: ThinkingLevel | undefined;
   sessionId: string | undefined;
   cacheRetention?: 'none' | 'short' | 'long';
@@ -275,7 +275,7 @@ export interface AgentOptions {
 
 /** Agent 循环使用的流函数 */
 export type StreamFn = (
-  model: Model<any>,
+  model: Model,
   context: Context,
   options?: Record<string, unknown>
 ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
