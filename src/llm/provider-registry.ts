@@ -2,15 +2,44 @@
  * ProviderRegistry — 提供商 + 模型统一注册中心
  *
  * 从 LlmConfig 构建，提供模型解析、故障转移链构建、按能力筛选等功能。
- * 依赖 pi-ai 的 getModel() 进行懒加载 Model 对象创建。
+ * 使用内置模型注册表而非外部依赖进行模型发现。
  */
 
-import type { KnownProvider, Model } from '@earendil-works/pi-ai';
-import { getModel, getModels } from '@earendil-works/pi-ai';
 import type { LlmConfig, LlmFallbackConfig, LlmRoutingConfig } from '@/config/types';
+import type { PiModel } from '@/core/agent-runtime/pi-ai-compat-types';
 import { logger } from '@/infra/logger';
 import { CredentialPoolManager } from '@/llm/credential-pool-manager';
 import type { ResolvedModel } from '@/llm/provider-types';
+
+// ============ 内置模型注册表 ============
+
+/**
+ * 内置提供商默认模型列表
+ *
+ * 替代 pi-ai 的内置注册表，为已知提供商提供默认模型 ID 和输入类型，
+ * 用于自动填充配置中未显式声明模型的提供商。
+ */
+const BUILTIN_PROVIDER_MODELS: Record<string, { id: string; input?: string[] }[]> = {
+  anthropic: [
+    { id: 'claude-sonnet-4-20250514', input: ['text', 'image'] },
+    { id: 'claude-3-5-haiku-latest', input: ['text', 'image'] },
+    { id: 'claude-3-opus-latest', input: ['text', 'image'] },
+  ],
+  deepseek: [
+    { id: 'deepseek-v4-pro', input: ['text'] },
+    { id: 'deepseek-v4-flash', input: ['text'] },
+  ],
+  glm: [
+    { id: 'glm-4', input: ['text'] },
+    { id: 'glm-4v', input: ['text', 'image'] },
+  ],
+  kimi: [
+    { id: 'moonshot-v1-8k', input: ['text'] },
+    { id: 'moonshot-v1-32k', input: ['text'] },
+  ],
+  minimax: [{ id: 'minimax-text-01', input: ['text'] }],
+};
+
 // ============ 类型定义 ============
 
 /**
@@ -131,8 +160,8 @@ export class ProviderRegistry {
           registry.addModelFromConfig(providerName, modelName, modelConfig, providerConfig.baseUrl);
         }
       } else {
-        // 无显式模型 → 从 pi-ai 内置注册表自动填充
-        registry.populateFromPiAi(providerName, providerConfig.baseUrl);
+        // 无显式模型 → 从内置注册表自动填充
+        registry.populateBuiltinModels(providerName, providerConfig.baseUrl);
       }
     }
 
@@ -229,37 +258,37 @@ export class ProviderRegistry {
     return capabilities;
   }
 
-  /** 从 pi-ai 内置注册表自动填充模型 */
-  private populateFromPiAi(providerName: string, providerBaseUrl?: string): void {
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束
-      const piModels = getModels(providerName as any);
-      for (const piModel of piModels) {
-        const modelKey = `${providerName}/${piModel.id}`;
-        if (this.models.has(modelKey)) continue;
-
-        const modelInfo: ModelInfo = {
-          id: piModel.id,
-          provider: providerName,
-          key: modelKey,
-          input: [...piModel.input],
-        };
-
-        // 用户 provider 级别的 baseUrl 覆盖 pi-ai 内置值
-        if (providerBaseUrl) {
-          modelInfo.baseUrl = providerBaseUrl;
-        }
-
-        // 自动推导能力标签
-        modelInfo.capabilities = this.deriveCapabilities(modelInfo.id, modelInfo.input);
-
-        this.models.set(modelKey, modelInfo);
-        this.providers.get(providerName)?.models.push(modelInfo);
-      }
-      logger.debug(`从 pi-ai 自动填充 ${piModels.length} 个模型 [${providerName}]`);
-    } catch {
-      logger.debug(`pi-ai 中没有提供商 [${providerName}] 的模型数据`);
+  /** 从内置注册表自动填充模型 */
+  private populateBuiltinModels(providerName: string, providerBaseUrl?: string): void {
+    const builtinModels = BUILTIN_PROVIDER_MODELS[providerName];
+    if (!builtinModels || builtinModels.length === 0) {
+      logger.debug(`内置注册表中没有提供商 [${providerName}] 的模型数据`);
+      return;
     }
+
+    for (const builtin of builtinModels) {
+      const modelKey = `${providerName}/${builtin.id}`;
+      if (this.models.has(modelKey)) continue;
+
+      const modelInfo: ModelInfo = {
+        id: builtin.id,
+        provider: providerName,
+        key: modelKey,
+        ...(builtin.input ? { input: [...builtin.input] } : {}),
+      };
+
+      // 用户 provider 级别的 baseUrl 覆盖内置值
+      if (providerBaseUrl) {
+        modelInfo.baseUrl = providerBaseUrl;
+      }
+
+      // 自动推导能力标签
+      modelInfo.capabilities = this.deriveCapabilities(modelInfo.id, modelInfo.input);
+
+      this.models.set(modelKey, modelInfo);
+      this.providers.get(providerName)?.models.push(modelInfo);
+    }
+    logger.debug(`从内置注册表自动填充 ${builtinModels.length} 个模型 [${providerName}]`);
   }
 
   /** 确保 defaultModel 在注册表中 */
@@ -272,29 +301,7 @@ export class ProviderRegistry {
     this.ensureProvider(parsed.provider);
     const providerConfig = config.providers[parsed.provider];
 
-    // 尝试从 pi-ai 获取
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束
-      const piModel = getModel(parsed.provider as any, parsed.modelId as any);
-      if (piModel) {
-        const modelInfo: ModelInfo = {
-          id: piModel.id,
-          provider: parsed.provider,
-          key: config.defaultModel,
-          input: [...piModel.input],
-        };
-        if (providerConfig?.baseUrl) {
-          modelInfo.baseUrl = providerConfig.baseUrl;
-        }
-        this.models.set(config.defaultModel, modelInfo);
-        this.providers.get(parsed.provider)?.models.push(modelInfo);
-        return;
-      }
-    } catch {
-      // pi-ai 中没有，使用手动兜底
-    }
-
-    // 兜底：手动注册最小模型信息
+    // 直接注册最小模型信息（不依赖 pi-ai 的 getModel）
     const modelInfo: ModelInfo = {
       id: parsed.modelId,
       provider: parsed.provider,
@@ -395,16 +402,14 @@ export class ProviderRegistry {
     }
   }
 
-  // ============ pi-ai Model 对象 ============
-
+  // ============ pi-ai 兼容 Model 对象 ============
   /**
-   * 懒加载创建 pi-ai Model 对象
+   * 解析 pi-ai 兼容 Model 对象
    *
-   * 与 PiAiProvider.resolveModel() 逻辑相同，但通过 ProviderRegistry 管理。
-   * 复用 parseModelKey + getModel + 属性覆盖的解析策略。
+   * 返回与 pi-ai Model 结构兼容的本地对象，供仍需要使用 pi-ai 格式的代码使用。
+   * 新代码应优先使用 resolveResolvedModel()。
    */
-  // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-  resolvePiModel(modelKey?: string): Model<any> {
+  resolvePiModel(modelKey?: string): PiModel {
     const key = modelKey ?? this.defaultModelKey;
     const modelInfo = this.models.get(key);
     const parsed = parseModelKey(key);
@@ -413,45 +418,30 @@ export class ProviderRegistry {
       throw new Error(`无效的模型标识符格式: ${key}，期望格式为 provider/modelId`);
     }
 
-    const provider = (modelInfo?.provider ?? parsed.provider) as KnownProvider;
+    const provider = modelInfo?.provider ?? parsed.provider;
     const modelId = modelInfo?.id ?? parsed.modelId;
+    const input = modelInfo?.input ?? [];
 
-    // 始终用同 provider 的已知模型作为基础模板
-    const baseModelId = provider === 'anthropic' ? 'claude-sonnet-4-20250514' : modelId;
-
-    // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-    let model: any;
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-      model = getModel(provider as any, baseModelId as any);
-    } catch {
-      logger.warn(`无法获取 ${provider}/${baseModelId}，回退到默认基础模型`);
-      // biome-ignore lint/suspicious/noExplicitAny: pi-ai 泛型约束需要运行时动态类型
-      model = getModel('anthropic' as any, 'claude-sonnet-4-20250514' as any);
-    }
-
-    if (!model) {
-      throw new Error(`无法初始化模型 ${key}：pi-ai 返回了无效的模型对象`);
-    }
-
-    // 覆盖自定义属性
-    model.name = key;
-    model.id = modelId;
-
-    if (modelInfo?.baseUrl) {
-      model.baseUrl = modelInfo.baseUrl;
-    }
-
-    return model;
+    return {
+      id: modelId,
+      name: key,
+      api: provider,
+      provider,
+      baseUrl: modelInfo?.baseUrl ?? '',
+      reasoning: false,
+      input,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 0,
+      maxTokens: 0,
+    };
   }
 
   // ============ ResolvedModel 解析 ============
 
   /**
-   * 解析 ResolvedModel（替代 pi-ai Model 用于 LLM API 调用）
+   * 解析 ResolvedModel（用于 LLM API 调用）
    *
    * 从 ModelInfo + 凭据池创建 ResolvedModel，可直接用于 anthropic-provider 的 API。
-   * 与 resolvePiModel() 不同，不依赖 pi-ai 的 Model 对象。
    */
   resolveResolvedModel(modelKey?: string): ResolvedModel {
     const key = modelKey ?? this.defaultModelKey;

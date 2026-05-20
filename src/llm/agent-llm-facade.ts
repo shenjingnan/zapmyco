@@ -29,10 +29,10 @@ export class AgentLlmFacade {
   }
 
   /**
-   * 解析 pi-ai Model 对象
+   * 解析 pi-ai 兼容 Model 对象
    *
-   * 替代 session.ts 的 resolveModelForAgent()。
-   * 如果传入 modelKey 则使用指定模型，否则使用默认模型。
+   * 返回与 pi-ai Model 结构兼容的本地对象，供仍需 pi-ai 格式的旧代码使用。
+   * 新代码应优先使用 resolveResolvedModel()。
    */
   resolvePiModel(modelKey?: string): Model {
     return this.registry.resolvePiModel(modelKey) as unknown as Model;
@@ -126,7 +126,7 @@ export class AgentLlmFacade {
   }
 
   /**
-   * 解析语义化模型对应的 pi-ai Model 对象
+   * 解析语义化模型对应的兼容 Model 对象
    *
    * 支持 'analysis' | 'light' | 'vision' 三种语义名称
    */
