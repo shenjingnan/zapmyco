@@ -58,7 +58,7 @@ describe('event-bridge', () => {
       });
     });
 
-    it('should convert message_update event (text_delta)', () => {
+    it('should skip message_update events (no subscribers for task:output)', () => {
       const evt = { type: 'text_delta', delta: 'some text' };
       const result = adaptAgentEvent(
         {
@@ -69,83 +69,7 @@ describe('event-bridge', () => {
         'task-1',
         'agent-1'
       );
-      expect(result).toEqual({
-        type: 'message:update',
-        taskId: 'task-1',
-        delta: 'some text',
-      });
-    });
-
-    it('should filter out toolcall_delta from message_update', () => {
-      // toolcall_delta 的 delta 是工具参数 JSON，不应作为文本输出
-      const evt = { type: 'toolcall_delta', delta: '{"file_path":"/a/b"}' };
-      const result = adaptAgentEvent(
-        {
-          type: 'message_update',
-          message: { role: 'assistant', content: [] } as never,
-          assistantMessageEvent: evt as never,
-        },
-        'task-1',
-        'agent-1'
-      );
-      expect(result).toEqual({
-        type: 'message:update',
-        taskId: 'task-1',
-        delta: '', // 空字符串：toolcall_delta 被过滤
-      });
-    });
-
-    it('should extract delta from text_delta event using text_delta field', () => {
-      const evt = { type: 'text_delta', text_delta: 'from text_delta field' };
-      const result = adaptAgentEvent(
-        {
-          type: 'message_update',
-          message: { role: 'assistant', content: [] } as never,
-          assistantMessageEvent: evt as never,
-        },
-        'task-1',
-        'agent-1'
-      );
-      expect(result).toEqual({
-        type: 'message:update',
-        taskId: 'task-1',
-        delta: 'from text_delta field',
-      });
-    });
-
-    it('should return empty delta when assistantMessageEvent is null', () => {
-      const result = adaptAgentEvent(
-        {
-          type: 'message_update',
-          message: { role: 'assistant', content: [] } as never,
-          assistantMessageEvent: null as never,
-        },
-        'task-1',
-        'agent-1'
-      );
-      expect(result).toEqual({
-        type: 'message:update',
-        taskId: 'task-1',
-        delta: '',
-      });
-    });
-
-    it('should return empty delta for unknown event type in message_update', () => {
-      const evt = { type: 'unknown_delta', delta: 'should be ignored' };
-      const result = adaptAgentEvent(
-        {
-          type: 'message_update',
-          message: { role: 'assistant', content: [] } as never,
-          assistantMessageEvent: evt as never,
-        },
-        'task-1',
-        'agent-1'
-      );
-      expect(result).toEqual({
-        type: 'message:update',
-        taskId: 'task-1',
-        delta: '',
-      });
+      expect(result).toBeNull();
     });
 
     it('should convert message_end event', () => {
@@ -261,13 +185,6 @@ describe('event-bridge', () => {
         taskId: 't1',
         result: {},
       });
-      spy.mockRestore();
-    });
-
-    it('should emit task:output for message:update with text', () => {
-      const spy = vi.spyOn(eventBus, 'emit');
-      dispatchToEventBus({ type: 'message:update', taskId: 't1', delta: 'hello' });
-      expect(spy).toHaveBeenCalledWith('task:output', { taskId: 't1', text: 'hello' });
       spy.mockRestore();
     });
 
@@ -443,13 +360,6 @@ describe('event-bridge', () => {
       spy.mockRestore();
     });
 
-    it('should emit task:output for message:update', () => {
-      const spy = vi.spyOn(eventBus, 'emit');
-      dispatchToEventBus({ type: 'message:update', taskId: 't1', delta: 'partial' });
-      expect(spy).toHaveBeenCalledWith('task:output', { taskId: 't1', text: 'partial' });
-      spy.mockRestore();
-    });
-
     it('should emit task:output for message:end', () => {
       const spy = vi.spyOn(eventBus, 'emit');
       dispatchToEventBus({
@@ -537,7 +447,7 @@ describe('event-bridge', () => {
   });
 
   describe('adaptAgentEvent - additional cases', () => {
-    it('should convert message_update event with thinking_delta', () => {
+    it('should skip message_update events (no subscribers for task:output)', () => {
       const result = adaptAgentEvent(
         {
           type: 'message_update',
@@ -547,11 +457,7 @@ describe('event-bridge', () => {
         'task-1',
         'agent-1'
       );
-      expect(result).toMatchObject({
-        type: 'message:update',
-        taskId: 'task-1',
-        delta: 'thinking...',
-      });
+      expect(result).toBeNull();
     });
 
     it('should convert message_end event with full content', () => {

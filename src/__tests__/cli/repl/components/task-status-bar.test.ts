@@ -1,18 +1,25 @@
 /**
  * TaskStatusBar 组件测试
  *
- * 覆盖：构造、toggle、折叠/展开渲染、状态样式、阻塞标记、宽度截断
+ * 覆盖：构造、展开渲染、状态样式、阻塞标记、宽度截断
  *
- * 展开/折叠规则：
- * - 有活跃任务（pending/in_progress）时默认展开
- * - 全部完成（completed/cancelled）时折叠
- * - Ctrl+T 手动切换
+ * 展开规则：
+ * - 有任务时始终展开
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
+
+/** 模拟 AnimationManager — setInterval 已由渲染周期驱动替代，测试中无需真实实现 */
+const mockAnimationManager = {
+  register: () => () => {},
+  bind: () => {},
+  unbind: () => {},
+} as unknown as AnimationManager;
 
 // Mock chalk — 返回纯文本以便断言
 type ChalkFn = (s: string) => string;
+// Mock AnimationManager — 只需满足接口签名，内部方法无需实现
 vi.mock('chalk', () => {
   const plain: ChalkFn = (s: string) => s;
   const chalk = Object.assign(plain, {
@@ -95,68 +102,31 @@ describe('TaskStatusBar', () => {
   // ============ 构造 ============
   describe('construction', () => {
     it('应该能正常实例化', () => {
-      expect(() => new TaskStatusBar(store)).not.toThrow();
+      expect(() => new TaskStatusBar(store, mockAnimationManager)).not.toThrow();
     });
 
     it('无任务时 isExpanded 为 false', () => {
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       expect(bar.isExpanded).toBe(false);
     });
 
     it('有活跃任务时 isExpanded 为 true（默认展开）', () => {
       store.write([{ id: '1', subject: '测试', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       expect(bar.isExpanded).toBe(true);
     });
 
-    it('只有已完成任务时 isExpanded 为 false（默认折叠）', () => {
+    it('只有已完成任务时 isExpanded 为 true（有任务就展开）', () => {
       store.write([{ id: '1', subject: '完成', status: 'completed' }]);
-      const bar = new TaskStatusBar(store);
-      expect(bar.isExpanded).toBe(false);
-    });
-  });
-
-  // ============ toggle ============
-  describe('toggle', () => {
-    it('有任务时可以在展开/折叠间切换', () => {
-      store.write([{ id: '1', subject: '测试', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
-
-      // 默认展开
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       expect(bar.isExpanded).toBe(true);
-
-      // 手动折叠
-      bar.toggle();
-      expect(bar.isExpanded).toBe(false);
-
-      // 再次展开
-      bar.toggle();
-      expect(bar.isExpanded).toBe(true);
-    });
-
-    it('应该调用 invalidate', () => {
-      const bar = new TaskStatusBar(store);
-      const spy = vi.spyOn(bar, 'invalidate');
-
-      bar.toggle();
-
-      expect(spy).toHaveBeenCalledTimes(1);
     });
   });
 
   // ============ render - 无任务 ============
   describe('render - 无任务', () => {
     it('无任务时返回空数组', () => {
-      const bar = new TaskStatusBar(store);
-      const result = bar.render(100);
-
-      expect(result).toEqual([]);
-    });
-
-    it('toggle 后无任务仍返回空数组', () => {
-      const bar = new TaskStatusBar(store);
-      bar.toggle();
-
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       expect(result).toEqual([]);
@@ -167,22 +137,20 @@ describe('TaskStatusBar', () => {
   describe('render - 默认展开（有活跃任务）', () => {
     it('有 pending 任务时默认展开显示任务行', () => {
       store.write([{ id: '1', subject: '测试', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
-      // 展开模式：包含任务行和折叠提示
+      // 展开模式：包含任务行
       expect(result.length).toBeGreaterThan(2);
       expect(result.some((l) => l.includes('#1'))).toBe(true);
-      expect(result.some((l) => l.includes('Ctrl+T collapse'))).toBe(true);
     });
 
     it('有 in_progress 任务时默认展开', () => {
       store.write([{ id: '1', subject: '进行中', status: 'in_progress' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('#1'))).toBe(true);
-      expect(result.some((l) => l.includes('Ctrl+T collapse'))).toBe(true);
     });
 
     it('in_progress 任务排在最前', () => {
@@ -190,7 +158,7 @@ describe('TaskStatusBar', () => {
         { id: '1', subject: '待处理', status: 'pending' },
         { id: '2', subject: '进行中', status: 'in_progress' },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       const lines = result.filter((l) => l.includes('#'));
@@ -203,7 +171,7 @@ describe('TaskStatusBar', () => {
         { id: '2', subject: '已取消', status: 'cancelled' },
         { id: '3', subject: '进行中', status: 'in_progress' },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       const lines = result.filter((l) => l.includes('#'));
@@ -217,7 +185,7 @@ describe('TaskStatusBar', () => {
         { id: '2', subject: '进行中', status: 'in_progress' },
         { id: '3', subject: '已完成', status: 'completed' },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       const fullText = result.join(' ');
@@ -227,61 +195,37 @@ describe('TaskStatusBar', () => {
     });
   });
 
-  // ============ render - 折叠模式（用户手动折叠或全部完成）============
-  describe('render - 折叠模式', () => {
-    it('只有已完成任务时自动折叠显示摘要', () => {
+  // ============ render - 仅已完成/已取消任务（有任务就展开）============
+  describe('render - 全部完成', () => {
+    it('只有已完成任务时也展开显示任务行', () => {
       store.write([
         { id: '1', subject: '已完成', status: 'completed' },
         { id: '2', subject: '已完成2', status: 'completed' },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
-      expect(result).toHaveLength(1);
-      expect(result[0]).toContain('2 completed');
+      expect(result.length).toBeGreaterThan(2);
+      expect(result.some((l) => l.includes('#1'))).toBe(true);
+      expect(result.some((l) => l.includes('#2'))).toBe(true);
     });
 
-    it('只有已取消任务时自动折叠显示摘要', () => {
+    it('只有已取消任务时也展开显示任务行', () => {
       store.write([{ id: '1', subject: '已取消', status: 'cancelled' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
-      expect(result[0]).toContain('1 cancelled');
+      expect(result.length).toBeGreaterThan(2);
+      expect(result.some((l) => l.includes('#1'))).toBe(true);
     });
 
-    it('用户手动折叠后显示折叠摘要', () => {
-      store.write([{ id: '1', subject: '任务', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
-
-      // 默认展开，手动折叠
-      bar.toggle();
-      const result = bar.render(100);
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toContain('1 task');
-      expect(result[0]).toContain('Ctrl+T expand');
-    });
-
-    it('折叠模式输出被截断到指定宽度', () => {
-      store.write([{ id: '1', subject: '测试', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
-      bar.toggle(); // 强制折叠
-      const result = bar.render(10);
-
-      expect(result[0]?.length ?? 0).toBeLessThanOrEqual(10);
-    });
-
-    it('折叠模式数量为 0 的状态不显示', () => {
+    it('显示底部摘要', () => {
       store.write([{ id: '1', subject: '进行中', status: 'in_progress' }]);
-      const bar = new TaskStatusBar(store);
-      bar.toggle(); // 强制折叠
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
-      // 只有 in_progress 非零，其他不显示
-      expect(result[0]).toContain('in_progress');
-      expect(result[0]).not.toContain('completed');
-      expect(result[0]).not.toContain('pending');
-      expect(result[0]).not.toContain('cancelled');
+      // 展开模式应有底部摘要
+      expect(result.some((l) => l.includes('in_progress'))).toBe(true);
     });
   });
 
@@ -292,7 +236,7 @@ describe('TaskStatusBar', () => {
         { id: '1', subject: '基础任务', status: 'pending' },
         { id: '2', subject: '依赖任务', status: 'pending', dependencies: ['1'] },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       // 默认展开，应有 blocked by
@@ -304,7 +248,7 @@ describe('TaskStatusBar', () => {
         { id: '1', subject: '基础任务', status: 'completed' },
         { id: '2', subject: '依赖任务', status: 'pending', dependencies: ['1'] },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('blocked by'))).toBe(false);
@@ -312,7 +256,7 @@ describe('TaskStatusBar', () => {
 
     it('无依赖时不显示 blocked by', () => {
       store.write([{ id: '1', subject: '独立任务', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('blocked by'))).toBe(false);
@@ -323,7 +267,7 @@ describe('TaskStatusBar', () => {
         { id: '1', subject: '基础', status: 'pending' },
         { id: '2', subject: '进行中', status: 'in_progress', dependencies: ['1'] },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('blocked by'))).toBe(false);
@@ -333,7 +277,7 @@ describe('TaskStatusBar', () => {
       store.write([
         { id: '2', subject: '依赖不存在的任务', status: 'pending', dependencies: ['nonexistent'] },
       ]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
       const result = bar.render(100);
 
       expect(result.some((l) => l.includes('blocked by #nonexistent?'))).toBe(true);
@@ -343,7 +287,7 @@ describe('TaskStatusBar', () => {
   // ============ 状态同步 ============
   describe('状态同步', () => {
     it('写入 pending 任务后默认展开', () => {
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
 
       // 初始为空
       expect(bar.render(100)).toEqual([]);
@@ -357,9 +301,9 @@ describe('TaskStatusBar', () => {
       expect(result.some((l) => l.includes('#1'))).toBe(true);
     });
 
-    it('全部完成后自动折叠', () => {
+    it('全部完成后仍展开（有任务就展开）', () => {
       store.write([{ id: '1', subject: '任务', status: 'in_progress' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
 
       // 初始展开
       expect(bar.isExpanded).toBe(true);
@@ -367,79 +311,24 @@ describe('TaskStatusBar', () => {
       // 全部完成
       store.update('1', { status: 'completed' });
 
-      // 自动折叠
-      expect(bar.isExpanded).toBe(false);
+      // 仍有任务，保持展开
+      expect(bar.isExpanded).toBe(true);
       const result = bar.render(100);
-      expect(result).toHaveLength(1);
-      expect(result[0]).toContain('1 completed');
+      expect(result.length).toBeGreaterThan(2);
+      expect(result.some((l) => l.includes('#1'))).toBe(true);
     });
 
-    it('全部完成后新任务出现时自动展开', () => {
+    it('有任务时始终展开', () => {
       store.write([{ id: '1', subject: '旧任务', status: 'completed' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
 
-      // 全部完成，折叠
-      expect(bar.isExpanded).toBe(false);
-
-      // 新活跃任务出现（使用 merge 模式保留已完成任务）
-      store.write(
-        [
-          { id: '1', subject: '旧任务', status: 'completed' },
-          { id: '2', subject: '新任务', status: 'pending' },
-        ],
-        true
-      );
-
-      // 模拟 session.onChange → onTasksChanged
-      bar.onTasksChanged();
-
-      // 自动展开
+      // 有任务就展开
       expect(bar.isExpanded).toBe(true);
-    });
-
-    it('用户手动折叠后新任务出现时自动展开', () => {
-      store.write([{ id: '1', subject: '任务', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
-
-      // 用户手动折叠
-      bar.toggle();
-      expect(bar.isExpanded).toBe(false);
-
-      // 新任务通过 write 写入（模拟 TaskManage write）
-      store.write([
-        { id: '1', subject: '任务', status: 'pending' },
-        { id: '2', subject: '新任务', status: 'pending' },
-      ]);
-
-      // 模拟 session.onChange → onTasksChanged
-      bar.onTasksChanged();
-
-      // 有活跃任务，自动展开（forceCollapsed 被重置）
-      expect(bar.isExpanded).toBe(true);
-    });
-
-    it('用户手动折叠后全部完成不自动展开', () => {
-      store.write([
-        { id: '1', subject: '进行中', status: 'in_progress' },
-        { id: '2', subject: '待处理', status: 'pending' },
-      ]);
-      const bar = new TaskStatusBar(store);
-
-      // 用户手动折叠
-      bar.toggle();
-      expect(bar.isExpanded).toBe(false);
-
-      // 全部完成
-      store.update('1', { status: 'completed' });
-      store.update('2', { status: 'completed' });
-
-      // 全部完成，保持折叠
-      expect(bar.isExpanded).toBe(false);
     });
 
     it('TaskStore clear 后 render 应返回空', () => {
       store.write([{ id: '1', subject: '任务', status: 'pending' }]);
-      const bar = new TaskStatusBar(store);
+      const bar = new TaskStatusBar(store, mockAnimationManager);
 
       store.clear();
       const result = bar.render(100);
