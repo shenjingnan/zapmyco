@@ -57,6 +57,8 @@ export {
   researcherType,
   reviewerType,
 } from './builtin-types';
+// Coordinator 模式系统提示词
+export { getMainCoordinatorSystemPrompt } from './coordinator-prompt';
 export type { ParseResult } from './markdown-agent-parser';
 // Phase 3: 用户自定义 Agent 类型
 export { parseAgentMarkdown, parseAgentMarkdownBatch } from './markdown-agent-parser';

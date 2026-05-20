@@ -273,6 +273,20 @@ describe('AgentInstanceManager', () => {
       expect(await manager.cancel('agent-1')).not.toContain('agent-1');
     });
 
+    it('should handle cancel when agent.cancel rejects', async () => {
+      const manager = getAgentInstanceManager();
+      const agent = createTestAgent('agent-error');
+      // Make inner.abort() reject to trigger the catch block
+      vi.spyOn(agent.innerAgent, 'abort').mockImplementationOnce(() => {
+        throw new Error('cancel failed');
+      });
+      manager.register(mockDef('coder'), agent, makeTask('t1'), null, 1);
+      manager.transition('agent-error', 'running');
+      const cancelled = await manager.cancel('agent-error');
+      expect(cancelled).toContain('agent-error');
+      expect(manager.get('agent-error')?.status).toBe('cancelled');
+    });
+
     it('should return empty for non-existent', async () => {
       expect(await getAgentInstanceManager().cancel('non-existent')).toEqual([]);
     });
@@ -486,6 +500,27 @@ describe('AgentInstanceManager', () => {
       expect(inst?.toolCallHistory).toHaveLength(1);
       expect(inst?.toolCallHistory[0]?.toolName).toBe('ReadFile');
       expect(inst?.toolCallHistory[0]?.status).toBe('running');
+    });
+
+    it('should truncate toolCallHistory at MAX_TOOL_CALL_HISTORY', () => {
+      const manager = getAgentInstanceManager();
+      manager.register(mockDef('coder'), createTestAgent('agent-2'), makeTask('t2'), null, 1);
+      const COUNT = 150;
+
+      for (let i = 0; i < COUNT; i++) {
+        manager.recordToolCall('agent-2', {
+          toolName: `Tool-${i}`,
+          toolCallId: `call-${i}`,
+          status: 'completed',
+          startedAt: Date.now() + i,
+        });
+      }
+
+      const inst = manager.get('agent-2');
+      // MAX_TOOL_CALL_HISTORY is 100 (ring buffer)
+      expect(inst?.toolCallHistory.length).toBeLessThanOrEqual(100);
+      // Should keep the most recent entries
+      expect(inst?.toolCallHistory[0]?.toolName).toBe('Tool-50');
     });
 
     it('should emit instance:toolcall event', () => {

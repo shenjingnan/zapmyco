@@ -175,5 +175,37 @@ describe('createAgentTool', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((result.content?.[0] as any)?.text).toContain('执行失败');
     });
+
+    it('should show success message for successful spawn', async () => {
+      // Mock spawnWorker to return success
+      vi.spyOn(orchestrator, 'spawnWorker').mockResolvedValueOnce({
+        status: 'success',
+        typeId: 'general-purpose',
+        output: 'Task completed successfully',
+        duration: 1500,
+        tokenUsage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          estimatedCostUsd: 0,
+        },
+        taskId: 'task-1',
+        instanceId: 'inst-1',
+        subtaskResults: undefined,
+      } as any);
+
+      const tool = createAgentTool(orchestrator);
+      const result = await tool.execute('call-1', {
+        subagent_type: 'general-purpose',
+        description: 'test task',
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const text = (result.content?.[0] as any)?.text;
+      expect(text).toContain('执行成功');
+      expect(text).toContain('general-purpose');
+      expect(text).toContain('Task completed successfully');
+    });
   });
 });

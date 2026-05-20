@@ -306,17 +306,29 @@ describe('ToolResultPruner', () => {
       expect(content[0]!.text).toBe('[工具执行完成]');
     });
 
+    it('should handle content that is neither string nor array', () => {
+      const pruner = new ToolResultPruner({ protectLastMessages: 0 });
+      const messages: Record<string, unknown>[] = [
+        makeToolResult({ toolName: 'Read', content: 42 as unknown as string }),
+      ];
+      pruner.transform(messages as any);
+
+      const content = messages[0]!.content as Array<{ type: string; text: string }>;
+      // extractResultText returns '' for number content → summary is "[已读取文件，0行]"
+      expect(content[0]!.text).toBe('[已读取文件，0行]');
+    });
+
     it('should truncate summaries exceeding maxSummaryLength', () => {
-      const pruner = new ToolResultPruner({ protectLastMessages: 0, maxSummaryLength: 10 });
+      const pruner = new ToolResultPruner({ protectLastMessages: 0, maxSummaryLength: 5 });
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', content: 'line1\nline2\nline3\nline4\nline5' }),
       ];
       pruner.transform(messages as any);
 
       const content = messages[0]!.content as Array<{ type: string; text: string }>;
-      // Summary would be "[已读取文件，5行]" (10 chars) but with maxSummaryLength=10
-      // expect it to be truncated
-      expect(content[0]!.text.length).toBeLessThanOrEqual(10);
+      // Summary "[已读取文件，5行]" truncated to 5 chars → "[已..." (5 chars)
+      expect(content[0]!.text.length).toBe(5);
+      expect(content[0]!.text).toContain('...');
     });
 
     it('should handle content as array with text blocks', () => {
