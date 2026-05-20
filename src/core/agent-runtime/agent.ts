@@ -1,7 +1,6 @@
 /**
  * Agent 类 — 有状态的 Agent 运行时
  *
- * 替代 @mariozechner/pi-agent-core/Agent，
  * 包装底层 Agent 循环（agent-loop.ts）提供完整生命周期管理。
  *
  * @module core/agent-runtime/agent
@@ -26,12 +25,7 @@ import type {
   StreamFn,
   ToolExecutionMode,
 } from './agent-types';
-import type {
-  ImageContent,
-  TextContent,
-  ThinkingBudgets,
-  ThinkingLevel,
-} from './pi-ai-compat-types';
+import type { ImageContent, TextContent, ThinkingBudgets, ThinkingLevel } from './runtime-types';
 
 // ============ 默认值 ============
 

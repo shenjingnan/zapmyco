@@ -160,7 +160,7 @@
       "listProvidersUsage": "/settings list-providers     — 列出所有已知提供商",
       "listModelsUsage": "/settings list-models <name> — 列出提供商可用的模型",
       "knownProviders": "已知提供商:",
-      "noModelsAvailable": "pi-ai 注册表中没有可用的模型",
+      "noModelsAvailable": "没有可用的模型",
       "hintConfigureFirst": "提示: 使用 /settings 先配置此提供商",
       "availableModels": "可用模型:"
     },

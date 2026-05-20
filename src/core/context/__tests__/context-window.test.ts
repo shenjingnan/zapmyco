@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { Model } from '@/core/agent-runtime/runtime-types';
 import {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_OUTPUT_RESERVE,

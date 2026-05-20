@@ -326,7 +326,7 @@ export class Compactor {
     return Math.min(adjusted, messages.length);
   }
 
-  // ============ 消息格式转换（pi-ai → Anthropic SDK） ============
+  // ============ 消息格式转换（内部 → Anthropic SDK） ============
 
   /**
    * 将内部消息列表转换为 Anthropic SDK 格式
@@ -449,7 +449,7 @@ export class Compactor {
     // 过滤消息，减少无用的内容块
     const simplifiedMessages = messages.map((m) => this.simplifyMessage(m));
 
-    // 过滤掉非标准角色（pi-ai 的 complete 只接受 user/assistant/toolResult）
+    // 过滤掉非标准角色（complete 只接受 user/assistant/toolResult）
     const llmMessages = simplifiedMessages.filter((m) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const role = (m as any).role as string | undefined;

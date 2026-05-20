@@ -415,7 +415,7 @@ export class AgentStatusBar extends Container {
     const modelStr = chalk.cyan(this.#modelName ?? '');
     const separator = chalk.gray(' · ');
 
-    // 在 pi-ai 中：usage.input = 非缓存输入, usage.cacheRead = 缓存命中
+    // usage.input = 非缓存输入, usage.cacheRead = 缓存命中
     // 所以总输入 = input + cacheRead, 缓存未命中 = input
     const totalInput = this.#inputTokens + this.#cacheReadTokens;
     const missTokens = this.#inputTokens; // 非缓存部分

@@ -15,7 +15,7 @@ import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 /**
  * 将单个 MCP Tool 转换为 zapmyco ToolRegistration
  *
- * MCP SDK 的 TextContent / ImageContent 与 pi-ai 对应类型结构兼容
+ * MCP SDK 的 TextContent / ImageContent 与本地类型结构兼容
  * （都是 { type, text/data, mimeType }），因此直接透传 content。
  */
 export function mcpToolToRegistration(

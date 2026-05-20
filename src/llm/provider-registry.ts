@@ -6,7 +6,7 @@
  */
 
 import type { LlmConfig, LlmFallbackConfig, LlmRoutingConfig } from '@/config/types';
-import type { PiModel } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { Model } from '@/core/agent-runtime/runtime-types';
 import { logger } from '@/infra/logger';
 import { CredentialPoolManager } from '@/llm/credential-pool-manager';
 import type { ResolvedModel } from '@/llm/provider-types';
@@ -16,7 +16,7 @@ import type { ResolvedModel } from '@/llm/provider-types';
 /**
  * 内置提供商默认模型列表
  *
- * 替代 pi-ai 的内置注册表，为已知提供商提供默认模型 ID 和输入类型，
+ * 内置模型注册表，为已知提供商提供默认模型 ID 和输入类型，
  * 用于自动填充配置中未显式声明模型的提供商。
  */
 const BUILTIN_PROVIDER_MODELS: Record<string, { id: string; input?: string[] }[]> = {
@@ -301,7 +301,7 @@ export class ProviderRegistry {
     this.ensureProvider(parsed.provider);
     const providerConfig = config.providers[parsed.provider];
 
-    // 直接注册最小模型信息（不依赖 pi-ai 的 getModel）
+    // 直接注册最小模型信息
     const modelInfo: ModelInfo = {
       id: parsed.modelId,
       provider: parsed.provider,
@@ -387,7 +387,7 @@ export class ProviderRegistry {
   }
 
   /**
-   * 解析 pi-ai Model（支持语义模型名称）
+   * 解析语义模型名称
    *
    * 支持特殊名称: 'analysis', 'light', 'vision' 映射到对应槽位
    */
@@ -402,14 +402,14 @@ export class ProviderRegistry {
     }
   }
 
-  // ============ pi-ai 兼容 Model 对象 ============
+  // ============ 本地 Model 对象 ============
   /**
-   * 解析 pi-ai 兼容 Model 对象
+   * 解析本地 Model 对象
    *
-   * 返回与 pi-ai Model 结构兼容的本地对象，供仍需要使用 pi-ai 格式的代码使用。
+   * 返回与 Model 结构兼容的本地对象。
    * 新代码应优先使用 resolveResolvedModel()。
    */
-  resolvePiModel(modelKey?: string): PiModel {
+  resolvePiModel(modelKey?: string): Model {
     const key = modelKey ?? this.defaultModelKey;
     const modelInfo = this.models.get(key);
     const parsed = parseModelKey(key);

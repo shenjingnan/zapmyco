@@ -20,7 +20,7 @@ import { logger } from '@/infra/logger';
 /**
  * 从消息 content 中提取文本内容
  *
- * pi-ai 的消息 content 可能是 string（UserMessage）或 content blocks 数组（AssistantMessage），
+ * 消息 content 可能是 string（UserMessage）或 content blocks 数组（AssistantMessage），
  * 此函数统一处理两种格式，提取所有文本块和 thinking 块并拼接。
  *
  * thinking 内容会被包裹在 <thinking>...</thinking> 标签中以便区分。

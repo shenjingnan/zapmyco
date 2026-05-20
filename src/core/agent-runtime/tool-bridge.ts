@@ -31,7 +31,7 @@ export type ToolExecuteFn<TParameters extends TSchema = TSchema> = (
  * 用于描述一个可被 Agent 调用的具体工具。
  */
 export interface ToolRegistration {
-  /** 工具唯一标识（对应 pi-ai Tool.name） */
+  /** 工具唯一标识 */
   id: string;
   /** 显示名称（用于 UI 展示，对应 AgentTool.label） */
   label: string;

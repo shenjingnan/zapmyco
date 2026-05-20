@@ -9,7 +9,7 @@
 
 import type { ThinkingLevelOption } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
-import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
+import type { Model } from '@/core/agent-runtime/runtime-types';
 import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import type {
   AgentInstance,
@@ -265,7 +265,7 @@ function shareParentResources(
 }
 
 /**
- * 根据 Agent 类型声明的 model 值解析对应的 pi-ai Model 对象
+ * 根据 Agent 类型声明的 model 值解析本地 Model 对象
  *
  * 支持三种格式：
  * - 语义名称: 'analysis' → 指向 analysisModel 槽位
@@ -275,7 +275,7 @@ function shareParentResources(
  *
  * @param model - Agent 类型声明的 model 值
  * @param parentAgent - 父 Agent（用于获取 AgentLlmFacade）
- * @returns 解析后的 pi-ai Model 对象，解析失败返回 undefined
+ * @returns 解析后的本地 Model 对象，解析失败返回 undefined
  */
 function resolveModelForDefinition(model: string, parentAgent: LlmBasedAgent): Model | undefined {
   const facade = parentAgent.llmFacade;

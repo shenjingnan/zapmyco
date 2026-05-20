@@ -215,7 +215,7 @@ export class OutputFormatter {
     const providerConfig = config.llm.providers[defaultProvider];
     const modelConfig = providerConfig?.models?.[defaultModelName];
     lines.push(`    ${t('output.config.provider')} ${defaultProvider}`);
-    // 模型 ID：优先从配置读取，否则使用模型名（pi-ai 自动推断）
+    // 模型 ID：优先从配置读取，否则使用模型名
     lines.push(`    ${t('output.config.modelId')} ${modelConfig?.id ?? defaultModelName}`);
     if (modelConfig?.input && modelConfig.input.length > 0) {
       lines.push(`    ${t('output.config.inputType')} ${modelConfig.input.join(', ')}`);
@@ -223,7 +223,7 @@ export class OutputFormatter {
     lines.push(
       `    ${t('output.config.apiKey')} ${providerConfig?.apiKey ? c.gray(t('output.config.apiKeyConfigured')) : c.red(t('output.config.apiKeyNotConfigured'))}`
     );
-    // API 格式从 pi-ai 自动推断，仅当用户显式配置时显示
+    // API 格式仅当用户显式配置时显示
     if (providerConfig?.apiFormat) {
       lines.push(`    ${t('output.config.apiFormat')} ${providerConfig.apiFormat}`);
     }
