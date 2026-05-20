@@ -1,5 +1,5 @@
-import type { Model } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
+import type { PiModel as Model } from '@/core/agent-runtime/pi-ai-compat-types';
 import {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_OUTPUT_RESERVE,
@@ -15,13 +15,13 @@ function createModel(overrides?: {
   provider?: string;
   contextWindow?: number;
   maxTokens?: number;
-}): Model<any> {
+}): Model {
   return {
     id: overrides?.id ?? 'test-model',
     provider: overrides?.provider ?? 'test-provider',
     contextWindow: overrides?.contextWindow,
     maxTokens: overrides?.maxTokens,
-  } as unknown as Model<any>;
+  } as unknown as Model;
 }
 
 describe('resolveContextWindow', () => {

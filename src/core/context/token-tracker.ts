@@ -7,7 +7,7 @@
  * @module core/context
  */
 
-import type { Usage } from '@earendil-works/pi-ai';
+import type { PiUsage as Usage } from '@/core/agent-runtime/pi-ai-compat-types';
 import type { TokenUsageSnapshot } from './types';
 
 /**
