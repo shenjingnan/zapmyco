@@ -11,11 +11,11 @@
 export {
   CombinedAutocompleteProvider,
   Container,
-  Editor,
   getKeybindings,
   ProcessTerminal,
   TUI,
 } from '@earendil-works/pi-tui';
+export { Editor } from './editor';
 // === 本地实现（逐步替换 pi-tui） ===
 export { Input } from './input';
 // === 本地键处理 ===

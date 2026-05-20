@@ -2,10 +2,15 @@
  * 键常量与匹配函数
  *
  * 自建 pi-tui 兼容的 Key 常量和 matchesKey 函数。
- * Key.ctrl('c') 返回 'ctrl+c' 而非对象，与 pi-tui 原始行为不同。
+ * matchesKey 内部使用 pi-tui 的 parseKey 处理原始终端数据，
+ * 支持传统字节、CSI-u (Kitty)、modifyOtherKeys 三种协议。
+ *
+ * 注意：PR 5 将替换 parseKey 为本地实现。
  */
 
-/** 命名键到终端转义序列的映射 */
+import { parseKey } from '@earendil-works/pi-tui';
+
+/** 命名键到终端转义序列的映射（用于反向查找） */
 const NAMED_KEY_MAP: Record<string, string> = {
   escape: '\x1b',
   enter: '\r',
@@ -52,6 +57,9 @@ export const Key = {
 /**
  * 匹配原始终端输入数据与键标识
  *
+ * 委托给 pi-tui 的 parseKey 解析原始数据，再与 keyId 比较。
+ * 同时保留传统字节匹配作为备用（parseKey 可能返回 undefined）。
+ *
  * @param data - 原始终端输入数据（通常来自 stdin 'data' 事件）
  * @param keyId - 键标识（如 'escape', 'ctrl+c', 'up'）
  * @returns 是否匹配
@@ -61,24 +69,39 @@ export const Key = {
  * matchesKey('\r', 'enter')             → true
  * matchesKey('\x03', 'ctrl+c')          → true
  * matchesKey('\x1b[A', 'up')            → true
+ * matchesKey('\x1b[99;5u', 'ctrl+c')    → true (CSI-u 协议，iTerm2)
  */
 export function matchesKey(data: string, keyId: string): boolean {
-  // 1. 匹配命名键（escape, enter, up, down 等）
+  // 1. 用 pi-tui 的 parseKey 解析原始数据
+  //    parseKey 处理所有协议格式，返回类似 'ctrl+c' 的键标识
+  const parsed = parseKey(data);
+  if (parsed === keyId) return true;
+
+  // 2. 如果 parseKey 未识别（返回 undefined），回退到传统匹配
+  if (parsed === undefined) {
+    return legacyMatch(data, keyId);
+  }
+
+  return false;
+}
+
+/** 传统字节级匹配（不使用 parseKey 时的备用方案） */
+function legacyMatch(data: string, keyId: string): boolean {
+  // 命名键匹配
   const namedSequence = NAMED_KEY_MAP[keyId];
   if (namedSequence !== undefined) {
     return data === namedSequence;
   }
 
-  // 2. 匹配 shift+tab（特殊转义序列）
+  // shift+tab
   if (keyId === 'shift+tab') {
     return data === '\x1b[Z';
   }
 
-  // 3. 匹配 Ctrl 组合键：ctrl+X 或 ctrl+shift+X
+  // Ctrl 组合键：ctrl+X → ASCII 控制字符
   const ctrlMatch = keyId.match(/^ctrl(?:\+shift)?\+([a-z])$/i);
   if (ctrlMatch) {
     const charCode = ctrlMatch[1]!.toLowerCase().charCodeAt(0);
-    // Ctrl 组合键对应 ASCII 控制字符：Ctrl+A=0x01, Ctrl+B=0x02, ..., Ctrl+Z=0x1A
     const ctrlCode = charCode - 96;
     return data === String.fromCharCode(ctrlCode);
   }
