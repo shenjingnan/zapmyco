@@ -13,14 +13,14 @@ export {
   Container,
   Editor,
   getKeybindings,
-  Input,
   ProcessTerminal,
-  SelectList,
   TUI,
 } from '@earendil-works/pi-tui';
-
+// === 本地实现（逐步替换 pi-tui） ===
+export { Input } from './input';
 // === 本地键处理 ===
 export { Key, matchesKey } from './key';
+export { SelectList } from './select-list';
 
 // === 本地文本工具 ===
 export { truncateToWidth, wrapTextWithAnsi } from './text-utils';

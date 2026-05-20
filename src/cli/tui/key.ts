@@ -14,6 +14,10 @@ const NAMED_KEY_MAP: Record<string, string> = {
   backspace: '\x7f',
   up: '\x1b[A',
   down: '\x1b[B',
+  left: '\x1b[D',
+  right: '\x1b[C',
+  home: '\x1b[H',
+  end: '\x1b[F',
 };
 
 /**
@@ -29,6 +33,8 @@ export const Key = {
   backspace: 'backspace',
   up: 'up',
   down: 'down',
+  left: 'left',
+  right: 'right',
 
   /**
    * 创建 Ctrl 组合键标识
