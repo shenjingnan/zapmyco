@@ -8,7 +8,7 @@
  * @module cli/repl/components
  */
 
-import { Container, truncateToWidth } from '@mariozechner/pi-tui';
+import { Container, truncateToWidth } from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
 import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manager';

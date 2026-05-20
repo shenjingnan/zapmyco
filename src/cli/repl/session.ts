@@ -1,7 +1,7 @@
 /**
  * REPL 会话核心（pi-tui 版）
  *
- * 使用 @mariozechner/pi-tui 框架替代 readline，
+ * 使用 @earendil-works/pi-tui 框架替代 readline，
  * 实现完整的 TUI 交互式 REPL：
  * - Editor 组件自带上下边框
  * - 差量渲染，无闪烁
@@ -20,7 +20,7 @@ import {
   type SlashCommand,
   TUI,
   wrapTextWithAnsi,
-} from '@mariozechner/pi-tui';
+} from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';

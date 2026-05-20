@@ -35,8 +35,8 @@ const {
   mockHistoryPush: vi.fn().mockReturnValue({ id: 1, timestamp: Date.now(), input: '' }),
 }));
 
-// Mock @mariozechner/pi-tui
-vi.mock('@mariozechner/pi-tui', () => ({
+// Mock @earendil-works/pi-tui
+vi.mock('@earendil-works/pi-tui', () => ({
   TUI: class MockTUI {
     addChild = mockTuiAddChild;
     setFocus = mockTuiSetFocus;

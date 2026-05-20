@@ -13,8 +13,8 @@
  * - 执行中时显示 loading spinner
  */
 
-import type { EditorOptions, EditorTheme, TUI } from '@mariozechner/pi-tui';
-import { Editor, Key, matchesKey, truncateToWidth } from '@mariozechner/pi-tui';
+import type { EditorOptions, EditorTheme, TUI } from '@earendil-works/pi-tui';
+import { Editor, Key, matchesKey, truncateToWidth } from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 import type { AnimationManager } from '@/cli/repl/utils/animation-manager';
 

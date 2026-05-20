@@ -7,7 +7,7 @@ import { ApprovalDialogComponentForTesting } from '@/cli/repl/components/dialogs
 import type { ApprovalRequest } from '@/security/types';
 
 // Mock matchesKey — 在测试中使用解析后的键名（如 'escape', 'enter'）进行比较
-vi.mock('@mariozechner/pi-tui', async (importOriginal) => {
+vi.mock('@earendil-works/pi-tui', async (importOriginal) => {
   const actual = await importOriginal();
   return Object.assign({}, actual, {
     matchesKey: vi.fn((data: string, key: string) => data === key),
