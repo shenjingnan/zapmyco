@@ -77,7 +77,7 @@ My agent system prompt.
         const registry = getAgentTypeRegistry();
         const def = registry.get('my-agent');
         expect(def).toBeDefined();
-        expect(def!.source).toBe('project');
+        expect(def?.source).toBe('project');
       } finally {
         rmSync(projectDir, { recursive: true, force: true });
       }
@@ -136,7 +136,7 @@ Custom researcher prompt.
         const registry = getAgentTypeRegistry();
         const def = registry.get('researcher');
         expect(def).toBeDefined();
-        expect(def!.source).toBe('builtin');
+        expect(def?.source).toBe('builtin');
       } finally {
         rmSync(projectDir, { recursive: true, force: true });
       }

@@ -199,7 +199,8 @@ function makeErrorStream(errorMsg: string): {
   streamFn: ReturnType<typeof vi.fn>;
 } {
   const streamFn = vi.fn().mockImplementation(async () => ({
-    async *[Symbol.asyncIterator](): AsyncIterator<Anthropic.RawMessageStreamEvent> {
+    async *[Symbol.asyncIterator](): AsyncGenerator<Anthropic.RawMessageStreamEvent> {
+      yield { type: 'message_stop' } as unknown as Anthropic.MessageStopEvent;
       throw new Error(errorMsg);
     },
   }));

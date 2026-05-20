@@ -193,7 +193,7 @@ export function isPathWithinWorkdir(resolvedPath: string, workdir: string): bool
   }
 
   // 路径必须以工作区开头
-  if (!normalizedPath.startsWith(normalizedWorkdir + '/') && normalizedPath !== normalizedWorkdir) {
+  if (!normalizedPath.startsWith(`${normalizedWorkdir}/`) && normalizedPath !== normalizedWorkdir) {
     return false;
   }
 

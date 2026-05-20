@@ -146,7 +146,7 @@ export class SubAgentManager {
       //    后台上下文确保 ASK 动作自动降级为 DENY（无用户可交互）
       //    timeout 由 agent.execute() 内部通过 AbortController 处理
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const agent = subAgentInstance!.agent;
+      const agent = subAgentInstance?.agent;
       const execStartTime = Date.now();
 
       // 3a. 启动进度监控定时器（每 60 秒报告一次执行状态）

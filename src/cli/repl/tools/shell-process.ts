@@ -306,5 +306,5 @@ function formatDuration(ms: number): string {
 
 function truncateCommand(command: string, maxLen: number = 80): string {
   if (command.length <= maxLen) return command;
-  return command.slice(0, maxLen - 3) + '...';
+  return `${command.slice(0, maxLen - 3)}...`;
 }

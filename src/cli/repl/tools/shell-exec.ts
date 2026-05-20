@@ -297,7 +297,7 @@ function runForeground(
     childProcess.on('error', (err) => {
       settle({
         stdout: stdoutChunks.join(''),
-        stderr: stderrChunks.join('') + `\n[进程错误: ${err.message}]`,
+        stderr: `${stderrChunks.join('')}\n[进程错误: ${err.message}]`,
         exitCode: -1,
         signal: null,
         timedOut: false,

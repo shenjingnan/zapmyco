@@ -85,8 +85,8 @@ describe('CronStore', () => {
 
       const loaded = await store.load();
       expect(loaded.length).toBe(2);
-      expect(loaded[0]!.id).toBe('valid1');
-      expect(loaded[1]!.id).toBe('valid2');
+      expect(loaded[0]?.id).toBe('valid1');
+      expect(loaded[1]?.id).toBe('valid2');
     });
 
     it('应过滤掉无效条目 —— 缺少必需字段', async () => {
@@ -135,8 +135,8 @@ describe('CronStore', () => {
 
       const loaded = await store.load();
       expect(loaded.length).toBe(2);
-      expect(loaded[0]!.id).toBe('d1');
-      expect(loaded[1]!.id).toBe('d2');
+      expect(loaded[0]?.id).toBe('d1');
+      expect(loaded[1]?.id).toBe('d2');
     });
 
     it('应使用原子写入（tmp + rename）', async () => {
@@ -145,7 +145,7 @@ describe('CronStore', () => {
 
       const loaded = await store.load();
       expect(loaded.length).toBe(1);
-      expect(loaded[0]!.id).toBe('atomic-test');
+      expect(loaded[0]?.id).toBe('atomic-test');
     });
 
     it('应保留可选字段', async () => {
@@ -161,9 +161,9 @@ describe('CronStore', () => {
 
       const loaded = await store.load();
       expect(loaded.length).toBe(1);
-      expect(loaded[0]!.lastFiredAt).toBe(100);
-      expect(loaded[0]!.lastError).toBe('test error');
-      expect(loaded[0]!.maxFires).toBe(5);
+      expect(loaded[0]?.lastFiredAt).toBe(100);
+      expect(loaded[0]?.lastError).toBe('test error');
+      expect(loaded[0]?.maxFires).toBe(5);
     });
   });
 

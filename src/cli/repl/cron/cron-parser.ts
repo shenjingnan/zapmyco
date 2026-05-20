@@ -119,7 +119,7 @@ function parseFieldPart(part: string, spec: CronFieldSpec): FieldMatcher | null 
   // */N 步进
   if (part.startsWith('*/')) {
     const step = parseInt(part.slice(2), 10);
-    if (isNaN(step) || step < 1) return null;
+    if (Number.isNaN(step) || step < 1) return null;
     return new StepMatcher(step, spec.min);
   }
 
@@ -133,14 +133,14 @@ function parseFieldPart(part: string, spec: CronFieldSpec): FieldMatcher | null 
   if (rangeMatch) {
     const start = parseInt(rangeMatch[1] ?? '', 10);
     const end = parseInt(rangeMatch[2] ?? '', 10);
-    if (isNaN(start) || isNaN(end)) return null;
+    if (Number.isNaN(start) || Number.isNaN(end)) return null;
     if (start < spec.min || end > spec.max || start > end) return null;
     return new RangeMatcher(start, end);
   }
 
   // 精确值 N
   const value = parseInt(part, 10);
-  if (!isNaN(value) && value >= spec.min && value <= spec.max) {
+  if (!Number.isNaN(value) && value >= spec.min && value <= spec.max) {
     return new ValueMatcher([value]);
   }
 

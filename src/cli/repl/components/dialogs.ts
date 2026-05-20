@@ -470,14 +470,14 @@ class ApprovalDialogComponent implements Component {
 
     // Enter → 确认当前选项
     if (matchesKey(data, 'enter')) {
-      this.OPTIONS[this.selectedOptionIndex]!.action();
+      this.OPTIONS[this.selectedOptionIndex]?.action();
       return;
     }
 
     // 数字快捷键：1 → 允许本次, 2 → 本次会话始终允许, 3 → 拒绝
-    if (data === '1') this.OPTIONS[0]!.action();
-    else if (data === '2') this.OPTIONS[1]!.action();
-    else if (data === '3') this.OPTIONS[2]!.action();
+    if (data === '1') this.OPTIONS[0]?.action();
+    else if (data === '2') this.OPTIONS[1]?.action();
+    else if (data === '3') this.OPTIONS[2]?.action();
   }
 
   invalidate(): void {
@@ -494,7 +494,7 @@ class ApprovalDialogComponent implements Component {
     if (paramEntries.length > 0) {
       const [, value] = paramEntries[0]!;
       const raw = typeof value === 'string' ? value : JSON.stringify(value);
-      paramSuffix = raw.length > 50 ? raw.slice(0, 47) + '...' : raw;
+      paramSuffix = raw.length > 50 ? `${raw.slice(0, 47)}...` : raw;
     }
     lines.push(
       c.bold(

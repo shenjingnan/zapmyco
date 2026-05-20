@@ -103,7 +103,7 @@ export function createLspServerInstance(config: LspServerInstanceConfig): LspSer
     await ensureRunning();
 
     try {
-      await client!.sendNotification('textDocument/didOpen', {
+      await client?.sendNotification('textDocument/didOpen', {
         textDocument: {
           uri,
           languageId,
@@ -232,7 +232,7 @@ export function createLspServerInstance(config: LspServerInstanceConfig): LspSer
     requestCount++;
 
     try {
-      const result = await client!.sendRequest<T>(method, params);
+      const result = await client?.sendRequest<T>(method, params);
       return result;
     } catch (err) {
       errorCount++;

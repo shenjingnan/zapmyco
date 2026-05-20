@@ -248,9 +248,9 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
   output += '┌';
   for (let i = 0; i < columnCount; i++) {
     const cw = colWidths[i] ?? 3;
-    output += '─'.repeat(cw + 2) + '┬';
+    output += `${'─'.repeat(cw + 2)}┬`;
   }
-  output = output.slice(0, -1) + '┐' + EOL;
+  output = `${output.slice(0, -1)}┐${EOL}`;
 
   // Header
   output += '│ ';
@@ -311,9 +311,9 @@ function formatTable(token: Tokens.Table, colorEnabled: boolean): string {
   output += '└';
   for (let i = 0; i < columnCount; i++) {
     const cw = colWidths[i] ?? 3;
-    output += '─'.repeat(cw + 2) + '┴';
+    output += `${'─'.repeat(cw + 2)}┴`;
   }
-  output = output.slice(0, -1) + '┘' + EOL;
+  output = `${output.slice(0, -1)}┘${EOL}`;
 
   return output + EOL;
 }

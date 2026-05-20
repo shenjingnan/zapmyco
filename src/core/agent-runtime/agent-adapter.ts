@@ -1080,7 +1080,7 @@ function formatToolArgs(args: unknown): string {
   return entries
     .map(([key, value]) => {
       const raw = typeof value === 'string' ? value : JSON.stringify(value);
-      const display = raw.length > 80 ? raw.slice(0, 77) + '...' : raw;
+      const display = raw.length > 80 ? `${raw.slice(0, 77)}...` : raw;
       return `${key}="${display.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
     })
     .join(', ');

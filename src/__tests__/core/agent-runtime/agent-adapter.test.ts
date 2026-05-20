@@ -414,7 +414,7 @@ describe('LlmBasedAgent internal event handling', () => {
     it('should emit formatted progress with args', async () => {
       const { taskId, progressEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'tool_execution_start',
         toolCallId: 'call-1',
         toolName: 'ReadFile',
@@ -437,7 +437,7 @@ describe('LlmBasedAgent internal event handling', () => {
     it('should emit progress with toolName only when args is empty', async () => {
       const { taskId, progressEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'tool_execution_start',
         toolCallId: 'call-1',
         toolName: 'list_files',
@@ -460,7 +460,7 @@ describe('LlmBasedAgent internal event handling', () => {
     it('should emit progress with toolName only when args is null', async () => {
       const { taskId, progressEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'tool_execution_start',
         toolCallId: 'call-1',
         toolName: 'ping',
@@ -484,7 +484,7 @@ describe('LlmBasedAgent internal event handling', () => {
       const { taskId, progressEvents } = await setupAndCapture();
 
       const longStr = 'x'.repeat(100);
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'tool_execution_start',
         toolCallId: 'call-1',
         toolName: 'bash',
@@ -492,15 +492,15 @@ describe('LlmBasedAgent internal event handling', () => {
       });
 
       expect(progressEvents).toHaveLength(1);
-      expect(progressEvents[0]!.message).toContain('...');
-      expect(progressEvents[0]!.message.length).toBeLessThan(longStr.length + 20);
-      expect(progressEvents[0]!.taskId).toBe(taskId);
+      expect(progressEvents[0]?.message).toContain('...');
+      expect(progressEvents[0]?.message.length).toBeLessThan(longStr.length + 20);
+      expect(progressEvents[0]?.taskId).toBe(taskId);
     });
 
     it('should format non-string args with JSON.stringify', async () => {
       const { taskId, progressEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'tool_execution_start',
         toolCallId: 'call-1',
         toolName: 'counter',
@@ -508,8 +508,8 @@ describe('LlmBasedAgent internal event handling', () => {
       });
 
       expect(progressEvents).toHaveLength(1);
-      expect(progressEvents[0]!.message).toBe('counter(count="99", flag="false")');
-      expect(progressEvents[0]!.taskId).toBe(taskId);
+      expect(progressEvents[0]?.message).toBe('counter(count="99", flag="false")');
+      expect(progressEvents[0]?.taskId).toBe(taskId);
     });
   });
 
@@ -517,7 +517,7 @@ describe('LlmBasedAgent internal event handling', () => {
     it('should emit output for content_block_delta text_delta', async () => {
       const { taskId, outputEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'message_update',
         message: {},
         assistantMessageEvent: {
@@ -536,7 +536,7 @@ describe('LlmBasedAgent internal event handling', () => {
     it('should NOT emit output for input_json_delta', async () => {
       const { outputEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'message_update',
         message: {},
         assistantMessageEvent: {
@@ -557,7 +557,7 @@ describe('LlmBasedAgent internal event handling', () => {
       const thinkingEvents: Array<{ taskId: string; text: string }> = [];
       agent.on('thinking', (e) => thinkingEvents.push(e));
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'message_update',
         message: {},
         assistantMessageEvent: {
@@ -568,7 +568,7 @@ describe('LlmBasedAgent internal event handling', () => {
 
       expect(outputEvents).toHaveLength(0);
       expect(thinkingEvents).toHaveLength(1);
-      expect(thinkingEvents[0]!.text).toBe('hmm let me think');
+      expect(thinkingEvents[0]?.text).toBe('hmm let me think');
     });
 
     it('should not emit for unrecognized message_update type', async () => {
@@ -577,7 +577,7 @@ describe('LlmBasedAgent internal event handling', () => {
       const thinkingEvents: Array<{ taskId: string; text: string }> = [];
       agent.on('thinking', (e) => thinkingEvents.push(e));
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'message_update',
         message: {},
         assistantMessageEvent: { type: 'unknown_type', delta: 'data' },
@@ -592,7 +592,7 @@ describe('LlmBasedAgent internal event handling', () => {
     it('should emit progress on tool completion', async () => {
       const { taskId, progressEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'tool_execution_end',
         toolCallId: 'call-1',
         toolName: 'ReadFile',
@@ -619,7 +619,7 @@ describe('LlmBasedAgent internal event handling', () => {
     it('should emit progress on agent completion', async () => {
       const { taskId, progressEvents } = await setupAndCapture();
 
-      capturedSubscriber!({
+      capturedSubscriber?.({
         type: 'agent_end',
         messages: [],
       });

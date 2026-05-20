@@ -233,7 +233,7 @@ export class AuditLogger {
     const entries = this.buffer.splice(0);
     try {
       this.rotateIfNeeded();
-      const lines = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
+      const lines = `${entries.map((e) => JSON.stringify(e)).join('\n')}\n`;
       appendFileSync(this.filePath, lines, 'utf-8');
     } catch (err) {
       log.error('审计日志写入失败', { error: err instanceof Error ? err.message : String(err) });

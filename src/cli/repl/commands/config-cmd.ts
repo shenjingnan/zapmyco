@@ -72,7 +72,7 @@ function updateSettingsFile(path: string, value: string): { success: boolean; me
     }
 
     setByDotPath(config, path, parsedValue);
-    writeFileSync(HOME_CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    writeFileSync(HOME_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
     return { success: true, message: '' };
   } catch (err) {
     return {

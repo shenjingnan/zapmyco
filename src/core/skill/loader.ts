@@ -643,7 +643,7 @@ export async function loadSkills(
     if (agentsStat.isDirectory()) {
       const agentsSkills = await loadSkillsFromSource('project', agentsSkillsDir, config);
       if (skillGroups.has('project')) {
-        skillGroups.get('project')!.push(...agentsSkills);
+        skillGroups.get('project')?.push(...agentsSkills);
       } else {
         skillGroups.set('project', agentsSkills);
       }

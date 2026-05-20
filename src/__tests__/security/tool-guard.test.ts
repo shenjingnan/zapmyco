@@ -177,8 +177,8 @@ describe('ToolGuard', () => {
       const wrapped = guard.wrapAll(tools);
       expect(wrapped).toHaveLength(2);
       // 验证是代理（保留原属性）
-      expect(wrapped[0]!.id).toBe('ReadFile');
-      expect(wrapped[1]!.id).toBe('WriteFile');
+      expect(wrapped[0]?.id).toBe('ReadFile');
+      expect(wrapped[1]?.id).toBe('WriteFile');
     });
   });
 

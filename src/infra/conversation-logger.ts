@@ -129,7 +129,7 @@ export class ConversationLogger {
     this.turnCount++;
     try {
       this.rotateIfNeeded();
-      const line = JSON.stringify({ ...turn, turn: this.turnCount }) + '\n';
+      const line = `${JSON.stringify({ ...turn, turn: this.turnCount })}\n`;
       appendFileSync(this.filePath, line, 'utf-8');
     } catch (err) {
       logger.warn('对话日志写入失败', {

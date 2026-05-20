@@ -54,8 +54,8 @@ capabilities:
       expect(def.baseDir).toBe('/path/to');
       expect(def.hidden).not.toBe(true);
       expect(def.capabilities).toHaveLength(1);
-      expect(def.capabilities[0]!.id).toBe('testing');
-      expect(def.capabilities[0]!.category).toBe('testing');
+      expect(def.capabilities[0]?.id).toBe('testing');
+      expect(def.capabilities[0]?.category).toBe('testing');
     });
 
     it('should generate system prompt from markdown body', () => {
@@ -153,7 +153,7 @@ Just a minimal agent.
       expect(def.maxSpawnDepth).toBe(0);
       expect(def.permissionMode).toBe('restricted');
       expect(def.capabilities).toHaveLength(1);
-      expect(def.capabilities[0]!.category).toBe('generic');
+      expect(def.capabilities[0]?.category).toBe('generic');
     });
 
     it('should parse custom tool list', () => {
@@ -172,7 +172,7 @@ Custom tools agent.
 
       const result = parseAgentMarkdown('/test.md', md, 'user');
       expect(result.errors).toHaveLength(0);
-      expect(result.definition!.toolPolicy).toEqual({
+      expect(result.definition?.toolPolicy).toEqual({
         mode: 'custom',
         tools: ['ReadFile', 'WriteFile', 'Grep'],
       });
@@ -193,9 +193,9 @@ Coordinator prompt.
 
       const result = parseAgentMarkdown('/test.md', md, 'user');
       expect(result.errors).toHaveLength(0);
-      expect(result.definition!.role).toBe('coordinator');
-      expect(result.definition!.toolPolicy).toEqual({ mode: 'full' });
-      expect(result.definition!.maxSpawnDepth).toBe(2);
+      expect(result.definition?.role).toBe('coordinator');
+      expect(result.definition?.toolPolicy).toEqual({ mode: 'full' });
+      expect(result.definition?.maxSpawnDepth).toBe(2);
     });
 
     it('should validate role values', () => {
@@ -256,8 +256,8 @@ No explicit capabilities.
 
       const result = parseAgentMarkdown('/test.md', md, 'user');
       expect(result.errors).toHaveLength(0);
-      expect(result.definition!.capabilities).toHaveLength(1);
-      expect(result.definition!.capabilities[0]!.id).toBe('general');
+      expect(result.definition?.capabilities).toHaveLength(1);
+      expect(result.definition?.capabilities[0]?.id).toBe('general');
     });
 
     it('should handle empty body gracefully', () => {
@@ -283,10 +283,10 @@ whenToUse: testing
 
     it('should set correct source', () => {
       const result = parseAgentMarkdown('/test.md', validMarkdown, 'project');
-      expect(result.definition!.source).toBe('project');
+      expect(result.definition?.source).toBe('project');
 
       const result2 = parseAgentMarkdown('/test.md', validMarkdown, 'user');
-      expect(result2.definition!.source).toBe('user');
+      expect(result2.definition?.source).toBe('user');
     });
   });
 
@@ -333,9 +333,9 @@ Bad agent without required fields.
 
       expect(result.definitions).toHaveLength(2);
       expect(result.errors).toHaveLength(1);
-      expect(result.definitions[0]!.typeId).toBe('agent-a');
-      expect(result.definitions[1]!.typeId).toBe('agent-b');
-      expect(result.errors[0]!.filePath).toBe('/agents/bad.md');
+      expect(result.definitions[0]?.typeId).toBe('agent-a');
+      expect(result.definitions[1]?.typeId).toBe('agent-b');
+      expect(result.errors[0]?.filePath).toBe('/agents/bad.md');
     });
 
     it('should return empty arrays for empty input', () => {

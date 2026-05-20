@@ -331,7 +331,7 @@ export class OutputFormatter {
     lines.push('  分类评分:');
     const bar = (s: number) => {
       const filled = Math.round(s / 10);
-      return c.green('█'.repeat(filled)) + c.gray('░'.repeat(10 - filled)) + ` ${s}/100`;
+      return `${c.green('█'.repeat(filled)) + c.gray('░'.repeat(10 - filled))} ${s}/100`;
     };
     lines.push(`    permissions:  ${bar(report.scores.permissions)}`);
     lines.push(`    shell:        ${bar(report.scores.shell)}`);

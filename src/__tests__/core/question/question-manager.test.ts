@@ -9,7 +9,7 @@ function makeProvider(): QuestionProvider {
   return {
     showQuestions: async (params) => ({
       questions: params.questions,
-      answers: { [params.questions[0]!.question]: 'option1' },
+      answers: { [params.questions[0]?.question]: 'option1' },
     }),
   };
 }
@@ -101,7 +101,7 @@ describe('QuestionManager', () => {
       manager.setProvider({
         showQuestions: async (params) => ({
           questions: params.questions,
-          answers: { [params.questions[0]!.question]: 'answer' },
+          answers: { [params.questions[0]?.question]: 'answer' },
         }),
       });
 

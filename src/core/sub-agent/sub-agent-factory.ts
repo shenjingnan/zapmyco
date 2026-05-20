@@ -145,7 +145,7 @@ export function buildSubAgentSystemPrompt(spec: SubAgentSpec, context?: string):
     '- 只执行分配给你的任务，严格遵守任务范围',
     '- 不要试图与其他 Agent 协调或通信',
     '- 不要在完成主任务后主动探索其他方向',
-    '- 工作目录：' + process.cwd(),
+    `- 工作目录：${process.cwd()}`,
     '- 完成后直接输出你的结论，不要等待进一步指令'
   );
 

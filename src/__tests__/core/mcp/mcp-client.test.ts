@@ -51,9 +51,9 @@ describe('mcp-client', () => {
       const conn = await connectMcpServer(makeConfig());
 
       expect(conn).not.toBeNull();
-      expect(conn!.serverName).toBe('test-server');
-      expect(conn!.tools).toHaveLength(2);
-      expect(conn!.tools[0]!.name).toBe('tool_a');
+      expect(conn?.serverName).toBe('test-server');
+      expect(conn?.tools).toHaveLength(2);
+      expect(conn?.tools[0]?.name).toBe('tool_a');
     });
 
     it('should return null on connection failure', async () => {
@@ -83,7 +83,7 @@ describe('mcp-client', () => {
       const conn = await connectMcpServer(makeConfig());
 
       expect(conn).not.toBeNull();
-      expect(conn!.tools).toHaveLength(0);
+      expect(conn?.tools).toHaveLength(0);
     });
 
     it('should pass transport options correctly', async () => {

@@ -196,7 +196,7 @@ describe('TaskManage', () => {
 
       expect(result.content[0].text).toContain('任务已更新');
       expect(result.content[0].text).toContain('[1]');
-      expect(store.read()[0]!.status).toBe('in_progress');
+      expect(store.read()[0]?.status).toBe('in_progress');
     });
 
     it('应成功完成一个任务并开始下一个', async () => {
@@ -266,9 +266,9 @@ describe('TaskManage', () => {
 
       expect(result.content[0].text).toContain('部分任务更新失败');
       // task 1 应成功
-      expect(store.read().find((t) => t.id === '1')!.status).toBe('in_progress');
+      expect(store.read().find((t) => t.id === '1')?.status).toBe('in_progress');
       // task 2 应保持 completed
-      expect(store.read().find((t) => t.id === '2')!.status).toBe('completed');
+      expect(store.read().find((t) => t.id === '2')?.status).toBe('completed');
     });
   });
 });

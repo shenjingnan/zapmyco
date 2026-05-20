@@ -529,6 +529,7 @@ describe('Agent', () => {
       // streamFn 返回一个会抛出错误的 stream
       agent.streamFn = vi.fn().mockImplementation(async () => ({
         async *[Symbol.asyncIterator]() {
+          yield { type: 'message_stop' } as unknown as Anthropic.MessageStopEvent;
           throw new Error('API error');
         },
       }));

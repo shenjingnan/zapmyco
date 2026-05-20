@@ -5,7 +5,7 @@ import { getMissedOneShotJobs, parseCron } from '@/cli/repl/cron/cron-parser';
 function localDate(spec: string): Date {
   // ISO 字符串无时区后缀时，JS 视为 UTC，这里手动构造本地时间
   const [datePart, timePart] = spec.split('T');
-  const [y, mo, d] = datePart!.split('-').map(Number);
+  const [y, mo, d] = (datePart ? datePart.split('-') : []).map(Number);
   const [h, m, s] = (timePart ?? '00:00:00').split(':').map(Number);
   return new Date(y!, (mo ?? 1) - 1, d ?? 1, h ?? 0, m ?? 0, s ?? 0);
 }
@@ -23,10 +23,10 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T10:30:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getHours()).toBe(10);
-      expect(next!.getMinutes()).toBe(31);
+      expect(next?.getHours()).toBe(10);
+      expect(next?.getMinutes()).toBe(31);
     });
 
     // ========== 精确值 ==========
@@ -35,10 +35,10 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T10:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getHours()).toBe(14);
-      expect(next!.getMinutes()).toBe(30);
+      expect(next?.getHours()).toBe(14);
+      expect(next?.getMinutes()).toBe(30);
     });
 
     it('精确时间在当天已过时应返回次日', () => {
@@ -46,12 +46,12 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T15:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
       // 应该是第二天的 14:30
-      expect(next!.getHours()).toBe(14);
-      expect(next!.getMinutes()).toBe(30);
-      expect(next!.getDate()).toBe(4);
+      expect(next?.getHours()).toBe(14);
+      expect(next?.getMinutes()).toBe(30);
+      expect(next?.getDate()).toBe(4);
     });
 
     // ========== 步进 ==========
@@ -60,10 +60,10 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T10:01:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
       // 下一个 5 分钟整点: 10:05
-      expect(next!.getMinutes()).toBe(5);
+      expect(next?.getMinutes()).toBe(5);
     });
 
     it('*/15 * * * * 每 15 分钟触发', () => {
@@ -71,9 +71,9 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T10:16:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getMinutes()).toBe(30);
+      expect(next?.getMinutes()).toBe(30);
     });
 
     // ========== 范围 ==========
@@ -82,9 +82,9 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T08:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getHours()).toBe(9);
+      expect(next?.getHours()).toBe(9);
     });
 
     it('范围外的时间跳转到次日', () => {
@@ -92,10 +92,10 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T18:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getHours()).toBe(9);
-      expect(next!.getDate()).toBe(4);
+      expect(next?.getHours()).toBe(9);
+      expect(next?.getDate()).toBe(4);
     });
 
     // ========== 列表 ==========
@@ -104,9 +104,9 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T10:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getHours()).toBe(15);
+      expect(next?.getHours()).toBe(15);
     });
 
     // ========== 星期 ==========
@@ -116,10 +116,10 @@ describe('cron-parser', () => {
 
       // 2026-05-03 是周日(0)，下一个工作日是周一(1): 2026-05-04
       const now = localDate('2026-05-03T10:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getDay()).toBe(1); // 周一
-      expect(next!.getHours()).toBe(9);
+      expect(next?.getDay()).toBe(1); // 周一
+      expect(next?.getHours()).toBe(9);
     });
 
     // ========== 月份和日期 ==========
@@ -128,10 +128,10 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-12-03T10:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getMonth()).toBe(0); // 1 月 (0-indexed)
-      expect(next!.getDate()).toBe(1);
+      expect(next?.getMonth()).toBe(0); // 1 月 (0-indexed)
+      expect(next?.getDate()).toBe(1);
     });
 
     // ========== 组合场景 ==========
@@ -141,10 +141,10 @@ describe('cron-parser', () => {
 
       // 2026-05-03 是周日，从 8:00 开始
       const now = localDate('2026-05-03T08:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
-      expect(next!.getDay()).toBe(0); // Sunday
-      expect(next!.getHours()).toBe(9);
+      expect(next?.getDay()).toBe(0); // Sunday
+      expect(next?.getHours()).toBe(9);
     });
 
     // ========== 无效输入 ==========
@@ -172,13 +172,13 @@ describe('cron-parser', () => {
     // ========== 描述 ==========
     it('description 返回可读的中文描述', () => {
       const s1 = parseCron('0 9 * * *');
-      expect(s1!.description).toContain('9');
+      expect(s1?.description).toContain('9');
 
       const s2 = parseCron('*/5 * * * *');
-      expect(s2!.description).toContain('5');
+      expect(s2?.description).toContain('5');
 
       const s3 = parseCron('0 9 * * 1-5');
-      expect(s3!.description).toContain('周');
+      expect(s3?.description).toContain('周');
     });
 
     // ========== 边界 ==========
@@ -188,10 +188,10 @@ describe('cron-parser', () => {
 
       // 4月只有 30 天
       const now = localDate('2026-04-01T10:00:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
       // 应该跳到 5 月 31 日
-      expect(next!.getMonth()).toBe(4); // 5 月 (0-indexed)
+      expect(next?.getMonth()).toBe(4); // 5 月 (0-indexed)
     });
 
     it('从下一秒开始计算（不包含 from 时间本身）', () => {
@@ -199,10 +199,10 @@ describe('cron-parser', () => {
       expect(schedule).not.toBeNull();
 
       const now = localDate('2026-05-03T10:30:00');
-      const next = schedule!.nextFrom(now);
+      const next = schedule?.nextFrom(now);
       expect(next).not.toBeNull();
       // 应该是明天的 10:30，因为当前时间刚好是触发时间
-      expect(next!.getDate()).toBe(4);
+      expect(next?.getDate()).toBe(4);
     });
   });
 
@@ -225,7 +225,7 @@ describe('cron-parser', () => {
 
       const missed = getMissedOneShotJobs(jobs, now);
       expect(missed.length).toBe(1);
-      expect(missed[0]!.id).toBe('test1');
+      expect(missed[0]?.id).toBe('test1');
     });
 
     it('不应返回未来时间的一次性任务', () => {

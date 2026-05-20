@@ -360,7 +360,7 @@ describe('formatMarkdown', () => {
 
     it('长文本不截断', () => {
       const longText = '这是一段比较长的中文内容用于测试';
-      const lines = expectTableAligned(`| A |\n` + `|---|\n` + `| ${longText} |`);
+      const lines = expectTableAligned(`| A |\n|---|\n| ${longText} |`);
       expect(lines[3]).toContain(longText);
     });
 

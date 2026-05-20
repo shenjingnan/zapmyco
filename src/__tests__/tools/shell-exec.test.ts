@@ -40,7 +40,7 @@ describe('shell-exec', () => {
     it('应该执行 echo 命令并返回输出', async () => {
       const result = await tool.execute('test_1', { command: 'echo hello world' });
       expect(result.content[0]?.type).toBe('text');
-      expect(result.content[0]!.text).toContain('hello world');
+      expect(result.content[0]?.text).toContain('hello world');
       expect(result.details.status).toBe('completed');
       expect(result.details.exitCode).toBe(0);
     });
@@ -60,7 +60,7 @@ describe('shell-exec', () => {
     it('应该阻断 rm -rf / 命令', async () => {
       const result = await tool.execute('test_4', { command: 'rm -rf /' });
       expect(result.details.status).toBe('blocked');
-      expect(result.content[0]!.text).toContain('安全检查');
+      expect(result.content[0]?.text).toContain('安全检查');
     });
 
     it('应该阻断 shutdown 命令', async () => {
@@ -81,7 +81,7 @@ describe('shell-exec', () => {
       expect(result.details.status).toBe('running');
       expect(result.details.sessionId).toMatch(/^proc_/);
       expect(result.details.pid).toBeGreaterThan(0);
-      expect(result.content[0]!.text).toContain('后台进程已启动');
+      expect(result.content[0]?.text).toContain('后台进程已启动');
     });
 
     it('应该支持 workdir 参数', async () => {
@@ -90,7 +90,7 @@ describe('shell-exec', () => {
         workdir: '/tmp',
       });
       expect(result.details.status).toBe('completed');
-      expect(result.content[0]!.text).toContain('/tmp');
+      expect(result.content[0]?.text).toContain('/tmp');
     });
 
     it('无效的 workdir 应该返回错误', async () => {
@@ -107,7 +107,7 @@ describe('shell-exec', () => {
         timeout: 0.5,
       });
       expect(result.details.status).toBe('timeout');
-      expect(result.content[0]!.text).toContain('超时');
+      expect(result.content[0]?.text).toContain('超时');
     });
 
     it('应该返回 exitCode 非零的详情', async () => {
