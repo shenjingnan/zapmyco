@@ -90,8 +90,8 @@ import { setLocale, t } from '@/i18n';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';
-import type { ChatMessage } from '@/llm/types';
 import type { ResolvedModel } from '@/llm/provider-types';
+import type { ChatMessage } from '@/llm/types';
 import {
   ApprovalManager,
   createToolInfoResolver,
@@ -1106,7 +1106,7 @@ export class ReplSession {
           if (mainInst) {
             const lastRunning = [...mainInst.toolCallHistory]
               .reverse()
-              .find((t) => t.status === 'running' && t.toolName === event.detail!.toolName);
+              .find((t) => t.status === 'running' && t.toolName === event.detail?.toolName);
             if (lastRunning) {
               lastRunning.status = event.detail.isError ? 'failed' : 'completed';
               lastRunning.endedAt = Date.now();

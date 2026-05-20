@@ -365,87 +365,23 @@ async function streamAssistantResponse(
   }> = [];
 
   let messageModelId = '';
-  let messageProvider = config.model.provider || '';
-  let messageApi = config.model.provider || '';
+  const messageProvider = config.model.provider || '';
+  const messageApi = config.model.provider || '';
   let stopReason: string | undefined;
   // biome-ignore lint/suspicious/noExplicitAny: usage 字段兼容 pi-ai 格式
-  let usage: Record<string, any> = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const usage: Record<string, any> = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
   // 7. 事件处理循环
   try {
     for await (const event of stream) {
       switch (event.type) {
         case 'message_start': {
-        messageModelId = event.message.model;
-        // 从 message_start 提取 input_tokens
-        if (event.message.usage) {
-          usage.input = event.message.usage.input_tokens ?? 0;
-        }
-        const initialMsg = buildPartialMessage(
-          contentBlocks,
-          usage,
-          stopReason,
-          messageModelId,
-          messageProvider,
-          messageApi
-        );
-        context.messages.push(initialMsg);
-        addedPartial = true;
-        await emit({ type: 'message_start', message: initialMsg });
-        break;
-      }
-
-      case 'content_block_start': {
-        const block = event.content_block;
-        if (block.type === 'text') {
-          contentBlocks[event.index] = { type: 'text', text: block.text ?? '' };
-        } else if (block.type === 'tool_use') {
-          contentBlocks[event.index] = {
-            type: 'tool_use',
-            id: block.id,
-            name: block.name,
-            partialJson: '',
-          };
-        } else if (block.type === 'thinking') {
-          const thinkingBlock = block as unknown as { type: 'thinking'; thinking: string; signature?: string };
-          contentBlocks[event.index] = {
-            type: 'thinking',
-            text: thinkingBlock.thinking ?? '',
-            ...(thinkingBlock.signature ? { signature: thinkingBlock.signature } : {}),
-          };
-        }
-        if (addedPartial) {
-          const partial = buildPartialMessage(
-            contentBlocks,
-            usage,
-            stopReason,
-            messageModelId,
-            messageProvider,
-            messageApi
-          );
-          context.messages[context.messages.length - 1] = partial;
-          await emit({ type: 'message_update', assistantMessageEvent: event, message: partial });
-        }
-        break;
-      }
-
-      case 'content_block_delta': {
-        if (!firstDeltaTime) {
-          firstDeltaTime = Date.now();
-        }
-        const block = contentBlocks[event.index];
-        if (block) {
-          const delta = event.delta;
-          if (delta.type === 'text_delta') {
-            block.text = (block.text ?? '') + delta.text;
-          } else if (delta.type === 'input_json_delta') {
-            block.partialJson = (block.partialJson ?? '') + delta.partial_json;
-          } else if (delta.type === 'thinking_delta') {
-            block.text = (block.text ?? '') + delta.thinking;
+          messageModelId = event.message.model;
+          // 从 message_start 提取 input_tokens
+          if (event.message.usage) {
+            usage.input = event.message.usage.input_tokens ?? 0;
           }
-        }
-        if (addedPartial) {
-          const partial = buildPartialMessage(
+          const initialMsg = buildPartialMessage(
             contentBlocks,
             usage,
             stopReason,
@@ -453,15 +389,105 @@ async function streamAssistantResponse(
             messageProvider,
             messageApi
           );
-          context.messages[context.messages.length - 1] = partial;
-          await emit({ type: 'message_update', assistantMessageEvent: event, message: partial });
+          context.messages.push(initialMsg);
+          addedPartial = true;
+          await emit({ type: 'message_start', message: initialMsg });
+          break;
         }
-        break;
-      }
 
-      case 'content_block_stop': {
-        if (addedPartial) {
-          const partial = buildPartialMessage(
+        case 'content_block_start': {
+          const block = event.content_block;
+          if (block.type === 'text') {
+            contentBlocks[event.index] = { type: 'text', text: block.text ?? '' };
+          } else if (block.type === 'tool_use') {
+            contentBlocks[event.index] = {
+              type: 'tool_use',
+              id: block.id,
+              name: block.name,
+              partialJson: '',
+            };
+          } else if (block.type === 'thinking') {
+            const thinkingBlock = block as unknown as {
+              type: 'thinking';
+              thinking: string;
+              signature?: string;
+            };
+            contentBlocks[event.index] = {
+              type: 'thinking',
+              text: thinkingBlock.thinking ?? '',
+              ...(thinkingBlock.signature ? { signature: thinkingBlock.signature } : {}),
+            };
+          }
+          if (addedPartial) {
+            const partial = buildPartialMessage(
+              contentBlocks,
+              usage,
+              stopReason,
+              messageModelId,
+              messageProvider,
+              messageApi
+            );
+            context.messages[context.messages.length - 1] = partial;
+            await emit({ type: 'message_update', assistantMessageEvent: event, message: partial });
+          }
+          break;
+        }
+
+        case 'content_block_delta': {
+          if (!firstDeltaTime) {
+            firstDeltaTime = Date.now();
+          }
+          const block = contentBlocks[event.index];
+          if (block) {
+            const delta = event.delta;
+            if (delta.type === 'text_delta') {
+              block.text = (block.text ?? '') + delta.text;
+            } else if (delta.type === 'input_json_delta') {
+              block.partialJson = (block.partialJson ?? '') + delta.partial_json;
+            } else if (delta.type === 'thinking_delta') {
+              block.text = (block.text ?? '') + delta.thinking;
+            }
+          }
+          if (addedPartial) {
+            const partial = buildPartialMessage(
+              contentBlocks,
+              usage,
+              stopReason,
+              messageModelId,
+              messageProvider,
+              messageApi
+            );
+            context.messages[context.messages.length - 1] = partial;
+            await emit({ type: 'message_update', assistantMessageEvent: event, message: partial });
+          }
+          break;
+        }
+
+        case 'content_block_stop': {
+          if (addedPartial) {
+            const partial = buildPartialMessage(
+              contentBlocks,
+              usage,
+              stopReason,
+              messageModelId,
+              messageProvider,
+              messageApi
+            );
+            context.messages[context.messages.length - 1] = partial;
+          }
+          break;
+        }
+
+        case 'message_delta': {
+          stopReason = event.delta.stop_reason ?? undefined;
+          if (event.usage) {
+            usage.output = event.usage.output_tokens ?? 0;
+          }
+          break;
+        }
+
+        case 'message_stop': {
+          const finalMessage = buildFinalMessage(
             contentBlocks,
             usage,
             stopReason,
@@ -469,55 +495,33 @@ async function streamAssistantResponse(
             messageProvider,
             messageApi
           );
-          context.messages[context.messages.length - 1] = partial;
+          if (addedPartial) {
+            context.messages[context.messages.length - 1] = finalMessage;
+          } else {
+            context.messages.push(finalMessage);
+            await emit({ type: 'message_start', message: finalMessage });
+          }
+          await emit({ type: 'message_end', message: finalMessage });
+
+          const toolCalls =
+            finalMessage.content?.filter((c): c is AgentToolCall => c.type === 'toolCall') ?? [];
+          log.info('LLM 流式调用完成', {
+            duration: Date.now() - startTime,
+            firstDeltaLatency: firstDeltaTime ? firstDeltaTime - startTime : 0,
+            stopReason: finalMessage.stopReason,
+            toolCallCount: toolCalls.length,
+            inputMessageCount: llmMessages.length,
+          });
+          return finalMessage;
         }
-        break;
       }
 
-      case 'message_delta': {
-        stopReason = event.delta.stop_reason ?? undefined;
-        if (event.usage) {
-          usage.output = event.usage.output_tokens ?? 0;
-        }
-        break;
-      }
-
-      case 'message_stop': {
-        const finalMessage = buildFinalMessage(
-          contentBlocks,
-          usage,
-          stopReason,
-          messageModelId,
-          messageProvider,
-          messageApi
-        );
-        if (addedPartial) {
-          context.messages[context.messages.length - 1] = finalMessage;
-        } else {
-          context.messages.push(finalMessage);
-          await emit({ type: 'message_start', message: finalMessage });
-        }
-        await emit({ type: 'message_end', message: finalMessage });
-
-        const toolCalls =
-          finalMessage.content?.filter((c): c is AgentToolCall => c.type === 'toolCall') ?? [];
-        log.info('LLM 流式调用完成', {
-          duration: Date.now() - startTime,
-          firstDeltaLatency: firstDeltaTime ? firstDeltaTime - startTime : 0,
-          stopReason: finalMessage.stopReason,
-          toolCallCount: toolCalls.length,
-          inputMessageCount: llmMessages.length,
-        });
-        return finalMessage;
+      // 定期让出事件循环
+      eventCount++;
+      if (eventCount % YIELD_INTERVAL === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
-
-    // 定期让出事件循环
-    eventCount++;
-    if (eventCount % YIELD_INTERVAL === 0) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-  }
   } catch (error) {
     // 流迭代过程中抛出异常，构建错误消息
     const errorMessage = error instanceof Error ? error.message : String(error);

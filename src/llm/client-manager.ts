@@ -30,13 +30,10 @@ const clients = new Map<string, Anthropic>();
  * @param provider - 提供商名称（用于 baseURL 为空时查找默认值）
  * @returns Anthropic 客户端实例
  */
-export function getClient(
-  baseURL?: string,
-  apiKey?: string,
-  provider?: string
-): Anthropic {
+export function getClient(baseURL?: string, apiKey?: string, provider?: string): Anthropic {
   // baseURL 优先级：显式传入 > provider 默认 > 全局默认（anthropic.com）
-  const effectiveBaseURL = baseURL || (provider && PROVIDER_DEFAULT_BASE_URLS[provider]) || DEFAULT_BASE_URL;
+  const effectiveBaseURL =
+    baseURL || (provider && PROVIDER_DEFAULT_BASE_URLS[provider]) || DEFAULT_BASE_URL;
   const key = `${effectiveBaseURL}|${apiKey || ''}`;
   let client = clients.get(key);
   if (!client) {

@@ -91,13 +91,28 @@ function defaultConvertToLlm(messages: AgentMessage[]): Anthropic.MessageParam[]
       }
       result.push({ role: 'assistant', content: assistantContent });
     } else if (role === 'toolResult') {
-      const toolContent: Anthropic.ContentBlockParam[] = [
-        {
-          type: 'tool_result',
-          tool_use_id: String(raw.toolCallId ?? ''),
-          content: typeof content === 'string' ? content : '',
-        },
-      ];
+      let toolContent: Anthropic.ContentBlockParam[];
+      if (typeof content === 'string') {
+        toolContent = [{ type: 'tool_result', tool_use_id: String(raw.toolCallId ?? ''), content }];
+      } else if (Array.isArray(content)) {
+        const textBlocks: Anthropic.TextBlockParam[] = [];
+        for (const block of content as Array<Record<string, unknown>>) {
+          if (block.type === 'text') {
+            textBlocks.push({ type: 'text', text: String(block.text ?? '') });
+          }
+        }
+        toolContent = [
+          {
+            type: 'tool_result',
+            tool_use_id: String(raw.toolCallId ?? ''),
+            content: textBlocks.length > 0 ? textBlocks : '',
+          },
+        ];
+      } else {
+        toolContent = [
+          { type: 'tool_result', tool_use_id: String(raw.toolCallId ?? ''), content: '' },
+        ];
+      }
       result.push({ role: 'user', content: toolContent });
     }
   }

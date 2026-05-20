@@ -232,9 +232,7 @@ const DEFAULT_CONFIG: AgentLoopConfig = {
   transformContext: undefined,
   convertToLlm: (messages: AgentMessage[]) =>
     messages
-      .filter(
-        (m) => m.role === 'user' || m.role === 'assistant' || m.role === 'toolResult'
-      )
+      .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'toolResult')
       .map((m) => {
         const raw = m as Record<string, unknown>;
         const role = raw.role as string;
@@ -312,8 +310,8 @@ describe('agent-loop', () => {
 
       // 返回 prompt 消息
       expect(result).toHaveLength(2); // prompt + assistant
-      expect(result[0]!.role).toBe('user');
-      expect(result[1]!.role).toBe('assistant');
+      expect(result[0]?.role).toBe('user');
+      expect(result[1]?.role).toBe('assistant');
 
       // 事件序列
       const types = emittedEvents.map((e) => e.type);
@@ -639,7 +637,7 @@ describe('agent-loop', () => {
       );
 
       expect(result).toHaveLength(1);
-      expect(result[0]!.role).toBe('assistant');
+      expect(result[0]?.role).toBe('assistant');
     });
 
     it('should continue from toolResult message', async () => {
@@ -664,7 +662,7 @@ describe('agent-loop', () => {
       );
 
       expect(result).toHaveLength(1);
-      expect(result[0]!.role).toBe('assistant');
+      expect(result[0]?.role).toBe('assistant');
     });
   });
 

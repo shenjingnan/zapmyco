@@ -244,7 +244,9 @@ export interface AgentLoopConfig {
 export interface AgentOptions {
   initialState?: Partial<AgentState>;
   cacheRetention?: 'none' | 'short' | 'long';
-  convertToLlm?: (messages: AgentMessage[]) => Anthropic.MessageParam[] | Promise<Anthropic.MessageParam[]>;
+  convertToLlm?: (
+    messages: AgentMessage[]
+  ) => Anthropic.MessageParam[] | Promise<Anthropic.MessageParam[]>;
   transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
   streamFn?: StreamFn;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
@@ -281,4 +283,6 @@ export type StreamFn = (
     apiKey?: string;
     timeoutMs?: number;
   }
-) => AsyncIterable<Anthropic.RawMessageStreamEvent> | Promise<AsyncIterable<Anthropic.RawMessageStreamEvent>>;
+) =>
+  | AsyncIterable<Anthropic.RawMessageStreamEvent>
+  | Promise<AsyncIterable<Anthropic.RawMessageStreamEvent>>;
