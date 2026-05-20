@@ -363,6 +363,7 @@ export class Compactor {
     });
 
     try {
+      // [TODO Phase 3] 使用 AnthropicProvider.complete() 替换 piComplete
       const response = await piComplete(
         model,
         {
@@ -421,6 +422,7 @@ export class Compactor {
         const isSameModel = fallbackModel.id === model.id;
         if (isSameModel) throw error; // 已经是同一模型，不再重试
 
+        // [TODO Phase 3] 使用 AnthropicProvider.complete() 替换 piComplete（回退路径）
         const retryResponse = await piComplete(
           fallbackModel,
           {
