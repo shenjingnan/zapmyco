@@ -8,7 +8,6 @@
  * - All changes sync to ~/.zapmyco/settings.json in real-time
  */
 
-import { getModels, getProviders } from '@earendil-works/pi-ai';
 import type { SelectItem, TUI } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import { showConfigView, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
@@ -40,6 +39,15 @@ const KNOWN_PROVIDERS: { id: string; label: string; apiFormat?: string }[] = [
   { id: 'opencode', label: 'OpenCode' },
 ];
 
+/** Built-in model IDs for known providers (fallback when not in config) */
+const BUILTIN_MODEL_IDS: Record<string, string[]> = {
+  anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
+  deepseek: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+  glm: ['glm-4', 'glm-4v'],
+  kimi: ['moonshot-v1-8k', 'moonshot-v1-32k'],
+  minimax: ['minimax-text-01'],
+};
+
 /** Supported language locales */
 const SUPPORTED_LOCALES: { value: string; label: string; description: string }[] = [
   { value: 'zh-CN', label: '简体中文', description: 'Chinese (Simplified)' },
@@ -68,7 +76,7 @@ function hasApiKey(config: Record<string, unknown>, providerName: string): boole
   return keyStr.length > 0 && keyStr !== '${}';
 }
 
-/** Get available model IDs for a provider (from config or pi-ai) */
+/** Get available model IDs for a provider (from config or built-in list) */
 function getProviderModels(config: Record<string, unknown>, providerName: string): string[] {
   // 1. Check explicitly declared models in config
   const models = _getByDotPath(config, `llm.providers.${providerName}.models`) as
@@ -78,14 +86,10 @@ function getProviderModels(config: Record<string, unknown>, providerName: string
     return Object.keys(models);
   }
 
-  // 2. Try pi-ai built-in registry
-  try {
-    const piModels = getModels(providerName as never);
-    if (piModels && piModels.length > 0) {
-      return piModels.map((m: { id: string }) => m.id);
-    }
-  } catch {
-    // pi-ai has no model registry for this provider
+  // 2. Fall back to built-in model list
+  const builtinModels = BUILTIN_MODEL_IDS[providerName];
+  if (builtinModels && builtinModels.length > 0) {
+    return builtinModels;
   }
 
   return [];
@@ -265,7 +269,7 @@ async function handleInteractiveMode(
     if (url !== null) {
       const configPath = `llm.providers.${providerName}.baseUrl`;
       if (url.length === 0) {
-        // Clear Base URL → use pi-ai default
+        // Clear Base URL → use provider default
         const settings = readSettings();
         _setByDotPath(settings, configPath, undefined);
         const parent = _getByDotPath(settings, `llm.providers.${providerName}`) as Record<
@@ -365,7 +369,10 @@ async function handleInteractiveMode(
     const configuredProviders = _getByDotPath(state.current, 'llm.providers') as
       | Record<string, unknown>
       | undefined;
-    const allProviders = getProviders();
+    // Merge configured providers + built-in providers (replaces pi-ai getProviders())
+    const configuredProviderNames = configuredProviders ? Object.keys(configuredProviders) : [];
+    const builtinProviderNames = Object.keys(BUILTIN_MODEL_IDS);
+    const allProviders = [...new Set([...configuredProviderNames, ...builtinProviderNames])];
 
     const enabledItems: SelectItem[] = [];
     const disabledItems: SelectItem[] = [];
