@@ -1,16 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Mock pi-tui — 让 ZapmycoEditor 可以正常实例化
-// Key 和 matchesKey 由 @/cli/tui 本地提供，不再走 pi-tui mock
+// Mock pi-tui — 剩余 pi-tui re-export 在后续 PR 替换
+// Editor 已自建，不再需要 mock
+// parseKey 用于 key.ts 的 matchesKey（PR 5 替换为本地实现）
 vi.mock('@earendil-works/pi-tui', () => ({
-  Editor: class MockEditor {
-    getText = vi.fn().mockReturnValue('');
-    // 注意：handleInput 必须是原型方法而非实例属性
-    // 否则会遮蔽 ZapmycoEditor 的 prototype override
-    handleInput(_data: string): void {
-      // no-op
-    }
-  },
+  parseKey: vi.fn((_data: string) => undefined),
 }));
 
 import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
