@@ -5,6 +5,8 @@
  * Provides SelectList and TextInput overlay dialogs.
  */
 
+import chalk from 'chalk';
+import type { Renderer } from '@/cli/repl/types';
 import {
   type Component,
   Input,
@@ -16,9 +18,7 @@ import {
   SelectList,
   type SelectListTheme,
   type TUI,
-} from '@earendil-works/pi-tui';
-import chalk from 'chalk';
-import type { Renderer } from '@/cli/repl/types';
+} from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import { t } from '@/i18n';
 import type { ApprovalRequest, ApprovalResponse } from '@/security/types';

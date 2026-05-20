@@ -1,4 +1,4 @@
-import type { TUI } from '@earendil-works/pi-tui';
+import type { TUI } from '@/cli/tui';
 
 /**
  * 动画帧推进回调

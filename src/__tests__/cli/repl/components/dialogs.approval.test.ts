@@ -6,12 +6,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApprovalDialogComponentForTesting } from '@/cli/repl/components/dialogs';
 import type { ApprovalRequest } from '@/security/types';
 
-// Mock matchesKey — 在测试中使用解析后的键名（如 'escape', 'enter'）进行比较
+// matchesKey 由 @/cli/tui 本地提供，测试使用真实终端控制字符
 vi.mock('@earendil-works/pi-tui', async (importOriginal) => {
   const actual = await importOriginal();
-  return Object.assign({}, actual, {
-    matchesKey: vi.fn((data: string, key: string) => data === key),
-  });
+  return Object.assign({}, actual);
 });
 
 // ============ 辅助函数 ============
@@ -125,7 +123,7 @@ describe('ApprovalDialogComponent', () => {
   describe('handleInput - cancel', () => {
     it('should deny on Escape', () => {
       const { component, onResolve } = createComponent();
-      component.handleInput('escape');
+      component.handleInput('\x1b');
       expect(onResolve).toHaveBeenCalledWith({ approved: false });
     });
 
@@ -140,7 +138,7 @@ describe('ApprovalDialogComponent', () => {
     it('should move selection down with j', () => {
       const { component } = createComponent();
       component.handleInput('j');
-      component.handleInput('enter');
+      component.handleInput('\r');
       // Second option selected → 'session' scope
     });
 
@@ -153,24 +151,24 @@ describe('ApprovalDialogComponent', () => {
 
     it('should cycle selection with Tab', () => {
       const { component } = createComponent();
-      component.handleInput('tab');
-      component.handleInput('tab');
-      component.handleInput('tab');
+      component.handleInput('\t');
+      component.handleInput('\t');
+      component.handleInput('\t');
       // Should cycle through all 3 options without crash
     });
 
     it('should not wrap below zero on up arrow', () => {
       const { component } = createComponent();
-      component.handleInput('up');
-      component.handleInput('up');
+      component.handleInput('\x1b[A');
+      component.handleInput('\x1b[A');
       // Should stay at 0 without crash
     });
 
     it('should not wrap beyond last on down arrow', () => {
       const { component } = createComponent();
-      component.handleInput('down');
-      component.handleInput('down');
-      component.handleInput('down');
+      component.handleInput('\x1b[B');
+      component.handleInput('\x1b[B');
+      component.handleInput('\x1b[B');
       // Should stay at last without crash
     });
   });
@@ -178,14 +176,14 @@ describe('ApprovalDialogComponent', () => {
   describe('handleInput - Enter confirmation', () => {
     it('should allow once when Enter on first option', () => {
       const { component, onResolve } = createComponent();
-      component.handleInput('enter');
+      component.handleInput('\r');
       expect(onResolve).toHaveBeenCalledWith({ approved: true, scope: 'once' });
     });
 
     it('should allow session when Enter on second option', () => {
       const { component, onResolve } = createComponent();
       component.handleInput('j'); // Move to second option
-      component.handleInput('enter');
+      component.handleInput('\r');
       expect(onResolve).toHaveBeenCalledWith({ approved: true, scope: 'session' });
     });
 
@@ -193,7 +191,7 @@ describe('ApprovalDialogComponent', () => {
       const { component, onResolve } = createComponent();
       component.handleInput('j');
       component.handleInput('j'); // Move to third option
-      component.handleInput('enter');
+      component.handleInput('\r');
       expect(onResolve).toHaveBeenCalledWith({ approved: false });
     });
   });
