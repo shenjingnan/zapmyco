@@ -24,12 +24,11 @@ vi.mock('@mariozechner/pi-tui', () => ({
       if (k.shift) {
         return data === k.name.toUpperCase();
       }
-      // 只对 Ctrl+T / Ctrl+Y / Ctrl+O 返回 true（避免 Ctrl+D 等 Handler 截断流程）
+      // 只对 Ctrl+T / Ctrl+Y / Ctrl+E / Ctrl+B 返回 true（避免 Ctrl+D 等 Handler 截断流程）
       // 同时验证 data 字符与键名一致，避免误匹配
       const ctrlChar = String.fromCharCode(k.name.charCodeAt(0) - 96);
       if (data !== ctrlChar) return false;
-      if (k.name === 't' || k.name === 'y' || k.name === 'o' || k.name === 'e' || k.name === 'b')
-        return true;
+      if (k.name === 't' || k.name === 'y' || k.name === 'g' || k.name === 'b') return true;
       return false;
     }
     return false;
@@ -87,18 +86,6 @@ describe('ZapmycoEditor', () => {
       const cb = vi.fn();
       editor.onToggleThinking = cb;
       expect(editor.onToggleThinking).toBe(cb);
-    });
-
-    it('onToggleAgentBar 初始值应为 undefined', () => {
-      const editor = createEditor();
-      expect(editor.onToggleAgentBar).toBeUndefined();
-    });
-
-    it('应可设置和读取 onToggleAgentBar', () => {
-      const editor = createEditor();
-      const cb = vi.fn();
-      editor.onToggleAgentBar = cb;
-      expect(editor.onToggleAgentBar).toBe(cb);
     });
   });
 
@@ -166,87 +153,20 @@ describe('ZapmycoEditor', () => {
     });
   });
 
-  describe('handleInput — Ctrl+O', () => {
-    it('Ctrl+O 应触发 onToggleAgentBar', () => {
-      const editor = createEditor();
-      const toggleBar = vi.fn();
-      editor.onToggleAgentBar = toggleBar;
-
-      editor.handleInput('\x0f'); // Ctrl+O
-
-      expect(toggleBar).toHaveBeenCalledTimes(1);
-    });
-
-    it('Ctrl+O 应忽略 onOpenEditor（不再优先调用）', () => {
-      const editor = createEditor();
-      const toggleBar = vi.fn();
-      const openEditor = vi.fn();
-      editor.onToggleAgentBar = toggleBar;
-      editor.onOpenEditor = openEditor;
-
-      editor.handleInput('\x0f'); // Ctrl+O
-
-      expect(toggleBar).toHaveBeenCalledTimes(1);
-      expect(openEditor).not.toHaveBeenCalled();
-    });
-
-    it('两者都未设置时 Ctrl+O 不应抛出', () => {
-      const editor = createEditor();
-      expect(() => editor.handleInput('\x0f')).not.toThrow();
-    });
-  });
-
-  describe('handleInput — Ctrl+E', () => {
-    it('Ctrl+E 应触发 onOpenEditor', () => {
+  describe('handleInput — Ctrl+G', () => {
+    it('Ctrl+G 应触发 onOpenEditor', () => {
       const editor = createEditor();
       const openEditor = vi.fn();
       editor.onOpenEditor = openEditor;
 
-      editor.handleInput('\x05'); // Ctrl+E
+      editor.handleInput('\x07'); // Ctrl+G
 
       expect(openEditor).toHaveBeenCalledTimes(1);
     });
 
-    it('onOpenEditor 未设置时 Ctrl+E 不应抛出', () => {
+    it('onOpenEditor 未设置时 Ctrl+G 不应抛出', () => {
       const editor = createEditor();
-      expect(() => editor.handleInput('\x05')).not.toThrow();
-    });
-  });
-
-  describe('handleInput — Ctrl+Shift+O', () => {
-    it('Ctrl+Shift+O 应触发 onToggleAgentDetails', () => {
-      const editor = createEditor();
-      const toggleDetails = vi.fn();
-      editor.onToggleAgentDetails = toggleDetails;
-
-      editor.handleInput('O'); // Ctrl+Shift+O（mock 中以大写字母模拟）
-
-      expect(toggleDetails).toHaveBeenCalledTimes(1);
-    });
-
-    it('onToggleAgentDetails 未设置时 Ctrl+Shift+O 不应抛出', () => {
-      const editor = createEditor();
-      expect(() => editor.handleInput('O')).not.toThrow();
-    });
-
-    it('Ctrl+Shift+O 不应触发 onOpenEditor', () => {
-      const editor = createEditor();
-      const openEditor = vi.fn();
-      editor.onOpenEditor = openEditor;
-
-      editor.handleInput('O'); // Ctrl+Shift+O
-
-      expect(openEditor).not.toHaveBeenCalled();
-    });
-
-    it('Ctrl+Shift+O 不应触发 onToggleAgentBar', () => {
-      const editor = createEditor();
-      const toggleBar = vi.fn();
-      editor.onToggleAgentBar = toggleBar;
-
-      editor.handleInput('O'); // Ctrl+Shift+O
-
-      expect(toggleBar).not.toHaveBeenCalled();
+      expect(() => editor.handleInput('\x07')).not.toThrow();
     });
   });
 

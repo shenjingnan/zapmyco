@@ -230,6 +230,15 @@ describe('builtin agent types', () => {
       expect(prompt).toContain('现状分析');
       expect(prompt).toContain('方案设计');
     });
+
+    it('should include context when provided', () => {
+      const prompt = plannerType.getSystemPrompt({
+        taskDescription: 'Design auth system',
+        workdir: '/project',
+        context: 'Using TypeScript and Node.js 22',
+      });
+      expect(prompt).toContain('Using TypeScript and Node.js 22');
+    });
   });
 
   describe('general-purpose', () => {
@@ -262,6 +271,27 @@ describe('builtin agent types', () => {
 
     it('should be the last type in BUILTIN_AGENT_TYPES (default fallback)', () => {
       expect(BUILTIN_AGENT_TYPES.at(-1)?.typeId).toBe('general-purpose');
+    });
+  });
+
+  describe('reviewer', () => {
+    it('should be a worker with safe tool policy', () => {
+      expect(reviewerType.typeId).toBe('reviewer');
+      expect(reviewerType.role).toBe('worker');
+      expect(reviewerType.toolPolicy).toEqual({ mode: 'safe' });
+    });
+
+    it('should have restricted permission mode', () => {
+      expect(reviewerType.permissionMode).toBe('restricted');
+    });
+
+    it('should include context when provided', () => {
+      const prompt = reviewerType.getSystemPrompt({
+        taskDescription: 'Review code quality',
+        workdir: '/project',
+        context: 'Code review for auth module',
+      });
+      expect(prompt).toContain('Code review for auth module');
     });
   });
 

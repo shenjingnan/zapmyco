@@ -129,6 +129,30 @@ vi.mock('@/core/sub-agent', () => ({
   SubAgentManager: vi.fn(),
 }));
 
+vi.mock('@/core/agent-team/agent-orchestrator', () => ({
+  AgentOrchestrator: vi.fn().mockImplementation(() => ({
+    spawnWorker: vi.fn(),
+    spawnTeam: vi.fn(),
+    spawnFlat: vi.fn(),
+  })),
+}));
+
+vi.mock('@/core/agent-team/agent-background-manager', () => ({
+  getBackgroundAgentManager: vi.fn(() => ({
+    setOrchestrator: vi.fn(),
+    restore: vi.fn(),
+  })),
+}));
+
+vi.mock('@/cli/repl/tools/agent-tool', () => ({
+  createAgentTool: vi.fn(() => ({
+    id: 'AgentTool',
+    label: '创建 Agent',
+    description: '创建子 Agent 描述',
+    execute: vi.fn(),
+  })),
+}));
+
 vi.mock('@/cli/repl/tools/file-security', () => ({
   readStateTracker: { recordRead: vi.fn() },
 }));
@@ -405,6 +429,52 @@ describe('createReplBuiltinTools', () => {
     it('未传 parentAgent 时应排除 SpawnSubAgents', () => {
       const config = makeSubAgentConfig({ enabled: true });
       const tools = createReplBuiltinTools(undefined, undefined, undefined, undefined, config);
+      expect(tools.some((t) => t.id === 'SpawnSubAgents')).toBe(false);
+    });
+
+    it('agentTeam.enabled 时应包含 AgentTool 而非 SpawnSubAgents', () => {
+      const mockAgent = { id: 'parent' } as any;
+      const config = makeSubAgentConfig({ enabled: true });
+      const teamConfig = {
+        enabled: true,
+        defaultMode: 'flat' as const,
+        maxGlobalDepth: 2,
+        messageTimeoutMs: 60000,
+        maxAggregateOutputChars: 20000,
+      };
+      const tools = createReplBuiltinTools(
+        undefined,
+        undefined,
+        undefined,
+        mockAgent,
+        config,
+        undefined,
+        teamConfig
+      );
+      expect(tools.some((t) => t.id === 'AgentTool')).toBe(true);
+      expect(tools.some((t) => t.id === 'SpawnSubAgents')).toBe(false);
+    });
+
+    it('agentTeam.enabled 时应包含 AgentTool 而非 SpawnSubAgents（coordinator 模式）', () => {
+      const mockAgent = { id: 'parent' } as any;
+      const config = makeSubAgentConfig({ enabled: true });
+      const teamConfig = {
+        enabled: true,
+        defaultMode: 'coordinator' as const,
+        maxGlobalDepth: 2,
+        messageTimeoutMs: 60000,
+        maxAggregateOutputChars: 20000,
+      };
+      const tools = createReplBuiltinTools(
+        undefined,
+        undefined,
+        undefined,
+        mockAgent,
+        config,
+        undefined,
+        teamConfig
+      );
+      expect(tools.some((t) => t.id === 'AgentTool')).toBe(true);
       expect(tools.some((t) => t.id === 'SpawnSubAgents')).toBe(false);
     });
   });

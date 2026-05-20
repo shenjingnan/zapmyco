@@ -126,6 +126,19 @@ const mockStats: SessionStats = {
 };
 
 describe('Renderer', () => {
+  it('getFormatter 应返回 OutputFormatter 实例', () => {
+    const r = createRenderer();
+    const formatter = r.getFormatter();
+    expect(formatter).toBeDefined();
+    expect(typeof formatter.formatWelcome).toBe('function');
+  });
+
+  it('格式化器应包含 formatError', () => {
+    const r = createRenderer();
+    const formatter = r.getFormatter();
+    expect(typeof formatter.formatError).toBe('function');
+  });
+
   it('renderWelcome 应返回欢迎信息行数组', () => {
     const r = createRenderer();
     const lines = r.renderWelcome('1.0.0');

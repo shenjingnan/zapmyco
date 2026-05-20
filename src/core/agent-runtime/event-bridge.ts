@@ -46,14 +46,9 @@ export function adaptAgentEvent(
         textPreview: extractTextContent(agentEvent.message).slice(0, 100),
       };
 
-    case 'message_update': {
-      const delta = extractDelta(agentEvent.assistantMessageEvent);
-      return {
-        type: 'message:update',
-        taskId,
-        delta,
-      };
-    }
+    case 'message_update':
+      // task:output 无订阅者，跳过高频率的流式 delta 处理以避免浪费 CPU
+      return null;
 
     case 'message_end':
       return {
@@ -110,23 +105,6 @@ function extractTextContent(message: unknown): string {
       )
       .map((block) => block.text ?? '')
       .join('');
-  }
-  return '';
-}
-
-/**
- * 从 AssistantMessageEvent 中提取 delta 文本
- */
-function extractDelta(event: unknown): string {
-  if (!event || typeof event !== 'object') return '';
-  const evt = event as Record<string, unknown>;
-  if (evt.type === 'text_delta') {
-    if (typeof evt.delta === 'string') return evt.delta;
-    if (typeof evt.text_delta === 'string') return evt.text_delta;
-  }
-  if (evt.type === 'thinking_delta') {
-    if (typeof evt.delta === 'string') return evt.delta;
-    if (typeof evt.thinking_delta === 'string') return evt.thinking_delta;
   }
   return '';
 }
@@ -189,14 +167,9 @@ export function dispatchToEventBus(event: AdaptedAgentEvent): void {
       break;
 
     case 'message:start':
-    case 'message:update':
     case 'message:end': {
       const text =
-        event.type === 'message:update'
-          ? event.delta
-          : event.type === 'message:end'
-            ? event.fullMessage
-            : `[开始生成] ${event.textPreview}`;
+        event.type === 'message:end' ? event.fullMessage : `[开始生成] ${event.textPreview}`;
       if (text) {
         eventBus.emit('task:output', { taskId: event.taskId, text });
       }
