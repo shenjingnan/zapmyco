@@ -96,7 +96,7 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
  * 赋值时会复制顶层数组。
  */
 export interface AgentState {
-  systemPrompt: string;
+  systemPrompt: string | Anthropic.TextBlockParam[];
   model: ResolvedModel;
   thinkingLevel: ThinkingLevel;
   set tools(tools: AgentTool[]);
@@ -151,7 +151,7 @@ export type AgentEvent =
 
 /** Agent 上下文快照 */
 export interface AgentContext {
-  systemPrompt: string;
+  systemPrompt: string | Anthropic.TextBlockParam[];
   messages: AgentMessage[];
   tools?: AgentTool[];
 }
@@ -271,7 +271,7 @@ export interface AgentOptions {
 export type StreamFn = (
   model: ResolvedModel,
   params: {
-    systemPrompt?: string;
+    systemPrompt?: string | Anthropic.TextBlockParam[];
     messages: Anthropic.MessageParam[];
     tools?: Anthropic.Tool[];
     cacheRetention?: 'none' | 'short' | 'long';

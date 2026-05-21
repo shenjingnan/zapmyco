@@ -13,8 +13,14 @@ import type { ResolvedModel } from '@/llm/provider-types';
 
 /** 非流式补全调用参数 */
 export interface CompleteParams {
-  /** 系统提示词 */
-  systemPrompt?: string;
+  /**
+   * 系统提示词
+   *
+   * 支持两种格式：
+   * - `string`: 传统纯文本格式，provider 内部包装为可缓存 block
+   * - `Anthropic.TextBlockParam[]`: 预拆分的多 block 格式，每个 block 可独立设置 cache_control
+   */
+  systemPrompt?: string | Anthropic.TextBlockParam[];
   /** 消息列表（Anthropic SDK 原生格式） */
   messages: Anthropic.MessageParam[];
   /** 工具定义列表 */
@@ -58,15 +64,7 @@ export async function complete(
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       ...(params.systemPrompt && {
-        system: enableCache
-          ? [
-              {
-                type: 'text' as const,
-                text: params.systemPrompt,
-                cache_control: { type: 'ephemeral' as const },
-              },
-            ]
-          : params.systemPrompt,
+        system: buildSystemParam(params.systemPrompt, enableCache, params.cacheRetention),
       }),
       ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
       messages: enableCache ? addCacheControlToLastUserMessage(params.messages) : params.messages,
@@ -103,15 +101,7 @@ export function streamComplete(
       stream: true,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       ...(params.systemPrompt && {
-        system: enableCache
-          ? [
-              {
-                type: 'text' as const,
-                text: params.systemPrompt,
-                cache_control: { type: 'ephemeral' as const },
-              },
-            ]
-          : params.systemPrompt,
+        system: buildSystemParam(params.systemPrompt, enableCache, params.cacheRetention),
       }),
       ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
       messages: enableCache ? addCacheControlToLastUserMessage(params.messages) : params.messages,
@@ -122,6 +112,71 @@ export function streamComplete(
   );
 
   return stream;
+}
+
+/**
+ * 将 cacheRetention 配置映射为 cache_control TTL
+ *
+ * - 'short': 默认 5 分钟，不显式设置（SDK 默认行为）
+ * - 'long': 1 小时
+ */
+function resolveCacheTtl(cacheRetention?: 'none' | 'short' | 'long'): '5m' | '1h' | undefined {
+  if (cacheRetention === 'long') return '1h';
+  return undefined;
+}
+
+/**
+ * 构建 Anthropic SDK system 参数
+ *
+ * 支持两种输入：
+ * - `string`: 旧格式，内部包装为 TextBlockParam 数组（启用缓存时添加 cache_control）
+ * - `TextBlockParam[]`: 预拆分多 block 格式，透传给 SDK
+ *
+ * 启用缓存时，根据 cacheRetention 设置 TTL。
+ * 禁用缓存时，移除所有 cache_control。
+ */
+function buildSystemParam(
+  systemPrompt: string | Anthropic.TextBlockParam[],
+  enableCache: boolean,
+  cacheRetention?: 'none' | 'short' | 'long'
+): string | Anthropic.TextBlockParam[] {
+  if (typeof systemPrompt === 'string') {
+    // 旧格式：包装为单 block
+    if (enableCache) {
+      const ttl = resolveCacheTtl(cacheRetention);
+      return [
+        {
+          type: 'text' as const,
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' as const, ...(ttl ? { ttl } : {}) },
+        },
+      ];
+    }
+    return systemPrompt;
+  }
+
+  // 预拆分多 block 格式
+  if (enableCache) {
+    const ttl = resolveCacheTtl(cacheRetention);
+    return systemPrompt.map((block) => {
+      if (block.type === 'text' && block.cache_control) {
+        return {
+          ...block,
+          cache_control: { ...block.cache_control, ...(ttl ? { ttl } : {}) },
+        };
+      }
+      return block;
+    });
+  }
+
+  // 禁用缓存时移除 cache_control
+  return systemPrompt.map((block) => {
+    if (block.type === 'text' && block.cache_control) {
+      const { cache_control: _, ...rest } = block;
+      return rest as Anthropic.TextBlockParam;
+    }
+    return block;
+  });
 }
 
 /**
