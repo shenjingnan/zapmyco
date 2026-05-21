@@ -22,13 +22,15 @@ const PROVIDER_DEFAULT_BASE_URLS: Record<string, string> = {
 
 const clients = new Map<string, Anthropic>();
 
+// ============ 客户端工厂 ============
+
 /**
  * 获取或创建 Anthropic 客户端实例
  *
  * @param baseURL - API base URL（默认 https://api.anthropic.com）
  * @param apiKey  - API Key
  * @param provider - 提供商名称（用于 baseURL 为空时查找默认值）
- * @param betaHeaders - Beta 请求头（latch 后不变，影响 prompt cache 键一致性）
+ * @param betaHeaders - Beta 请求头
  * @returns Anthropic 客户端实例
  */
 export function getClient(
@@ -40,9 +42,11 @@ export function getClient(
   // baseURL 优先级：显式传入 > provider 默认 > 全局默认（anthropic.com）
   const effectiveBaseURL =
     baseURL || (provider && PROVIDER_DEFAULT_BASE_URLS[provider]) || DEFAULT_BASE_URL;
+
   // 缓存键中包含确定性序列化的 betaHeaders，确保不同 header 使用独立客户端
   const betaKey = betaHeaders ? JSON.stringify(betaHeaders, Object.keys(betaHeaders).sort()) : '';
   const key = `${effectiveBaseURL}|${apiKey || ''}|${betaKey}`;
+
   let client = clients.get(key);
   if (!client) {
     client = new Anthropic({
@@ -57,7 +61,7 @@ export function getClient(
   return client;
 }
 
-/** 清除所有缓存的客户端实例（用于测试） */
+/** 清除所有缓存的客户端实例 */
 export function clearClients(): void {
   clients.clear();
 }

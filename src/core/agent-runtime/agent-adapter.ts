@@ -733,7 +733,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    * 构建稳定系统提示词（仅含稳定内容）
    *
    * 与 buildDynamicContextMessages() 配对使用。
-   * 稳定内容不变，使 Anthropic prompt cache 可命中。
    */
   private buildStableSystemPrompt(request: AgentExecuteRequest): Anthropic.TextBlockParam[] {
     // 子 Agent 等场景使用自定义系统提示词
@@ -759,7 +758,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         `你是 ${this.displayName}，一个专业的 AI 助手。`,
         `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
       ].join('\n'),
-      cache_control: { type: 'ephemeral' },
     });
 
     // Block 1: 记忆管理规范（有 Memory 工具时）
@@ -784,7 +782,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '- 一次性查询的内容',
           '',
         ].join('\n'),
-        cache_control: { type: 'ephemeral' },
       });
     }
 
@@ -804,7 +801,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '3. **保持专注**：同时只有 1 个 "in_progress"。',
           '4. **先读后写**：不确定当前任务时先用 action="read" 查看。',
         ].join('\n'),
-        cache_control: { type: 'ephemeral' },
       });
     }
 
@@ -834,7 +830,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '- ❌ 任务需要修改文件（子 Agent 默认只有只读工具）',
           '',
         ].join('\n'),
-        cache_control: { type: 'ephemeral' },
       });
     }
 
@@ -869,7 +864,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '- 在 Plan Mode 中用 AskUserQuestion 明确需求，用 ExitPlanMode 请求审批',
           '',
         ].join('\n'),
-        cache_control: { type: 'ephemeral' },
       });
     }
 

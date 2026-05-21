@@ -148,14 +148,17 @@ function buildSystemParam(
         {
           type: 'text' as const,
           text: systemPrompt,
-          cache_control: { type: 'ephemeral' as const, ...(ttl ? { ttl } : {}) },
+          cache_control: {
+            type: 'ephemeral' as const,
+            ...(ttl ? { ttl } : {}),
+          },
         },
       ];
     }
     return systemPrompt;
   }
 
-  // 预拆分多 block 格式
+  // 预拆分多 block 格式 —— 只更新 TTL
   if (enableCache) {
     const ttl = resolveCacheTtl(cacheRetention);
     return systemPrompt.map((block) => {
