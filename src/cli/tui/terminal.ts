@@ -6,6 +6,7 @@
  */
 
 import { cursorTo } from 'node:readline';
+import { ENTER_ALT_SCREEN, EXIT_ALT_SCREEN } from './dec';
 
 export class ProcessTerminal {
   readonly stdin = process.stdin;
@@ -24,6 +25,8 @@ export class ProcessTerminal {
   enableRawMode(): void {
     if (this.stdin.isTTY) {
       this.stdin.setRawMode(true);
+      // 进入 Alternate Screen Buffer
+      this.write(ENTER_ALT_SCREEN);
       // 启用鼠标事件追踪：按钮事件（含滚轮）+ SGR 扩展模式
       this.write('\x1b[?1002h\x1b[?1006h');
     }
@@ -63,10 +66,12 @@ export class ProcessTerminal {
     }
   }
 
-  /** 销毁：关闭鼠标追踪、恢复 raw mode、移除 resize 监听 */
+  /** 销毁：关闭鼠标追踪、退出 alt screen、恢复 raw mode、移除 resize 监听 */
   destroy(): void {
     // 关闭鼠标事件追踪
     this.write('\x1b[?1002l\x1b[?1006l');
+    // 退出 Alternate Screen Buffer，恢复主屏幕内容
+    this.write(EXIT_ALT_SCREEN);
     this.disableRawMode();
     if (this.resizeBound) {
       process.stdout.removeListener('resize', this.resizeBound);

@@ -25,6 +25,7 @@
 
 import { writeSync } from 'node:fs';
 import { Container } from './container';
+import { BSU, ESU, EXIT_ALT_SCREEN } from './dec';
 import type { ProcessTerminal } from './terminal';
 import type { Component, OverlayHandle, OverlayMargin, OverlayOptions } from './types';
 
@@ -287,11 +288,11 @@ export class TUI {
   }
 
   /**
-   * 进程退出时的安全网 — 强制恢复光标。
+   * 进程退出时的安全网 — 退出 alt screen、恢复光标。
    * 在 process.on('exit') 中只能使用同步操作。
    */
   readonly #exitHandler = () => {
-    writeSync(1, '\x1b[?25h');
+    writeSync(1, `${EXIT_ALT_SCREEN}\x1b[?25h`);
   };
 
   // ======================================================================
@@ -480,6 +481,8 @@ export class TUI {
 
   /**
    * 差量更新 — 逐行比较 lastOutput 与新输出，仅变更的行
+   *
+   * 输出用 BSU/ESU 包裹以实现原子帧刷新，消除终端撕裂。
    */
   private deltaUpdate(newOutput: string[]): void {
     const oldOutput = this.lastOutput;
@@ -489,58 +492,62 @@ export class TUI {
     }
 
     const maxLen = Math.max(newOutput.length, oldOutput.length);
-    const t = this.terminal;
+    let buf = BSU;
 
     for (let i = 0; i < maxLen; i++) {
       if (i >= newOutput.length) {
         // 行被删除 → 清空
-        t.cursorTo(0, i);
-        t.write('\x1b[2K');
+        buf += `\r\x1b[${i + 1};1H\x1b[2K`;
       } else if (i >= oldOutput.length || newOutput[i] !== oldOutput[i]) {
         // 新行或内容变化 → 覆写后清行尾（确保旧行无残留）
-        t.cursorTo(0, i);
-        t.write(newOutput[i] ?? '');
-        t.write('\x1b[0K');
+        buf += `\r\x1b[${i + 1};1H`;
+        buf += newOutput[i] ?? '';
+        buf += '\x1b[0K';
       }
     }
 
     // 定位硬件光标
-    this.applyCursorPosition();
+    if (this.cursorRow >= 0 && this.cursorCol >= 0) {
+      buf += `\r\x1b[${this.cursorRow + 1};${this.cursorCol + 1}H`;
+    }
+
+    buf += ESU;
+    this.terminal.write(buf);
   }
 
   /**
    * 全量重绘 — 清屏后重新写入所有行
+   *
+   * 输出用 BSU/ESU 包裹以实现原子帧刷新，消除终端撕裂。
    */
   private forceFullRedraw(lines: string[]): void {
-    const t = this.terminal;
-    t.cursorTo(0, 0);
+    let buf = BSU;
+    buf += '\r\x1b[1;1H'; // cursorTo(0, 0) 内联
 
     // 写入所有行，每行后 \r\n（raw mode 下 \n 不回行首）
     for (let i = 0; i < lines.length; i++) {
-      t.write(`${lines[i] ?? ''}\x1b[0K`);
+      buf += `${lines[i] ?? ''}\x1b[0K`;
       if (i < lines.length - 1) {
-        t.write('\r\n');
+        buf += '\r\n';
       }
     }
 
     // 清空多余行
     if (this.lastOutput.length > lines.length) {
       for (let i = lines.length; i < this.lastOutput.length; i++) {
-        t.cursorTo(0, i);
-        t.write('\x1b[2K');
+        buf += `\r\x1b[${i + 1};1H\x1b[2K`;
       }
     }
 
     // 定位硬件光标
-    this.applyCursorPosition();
+    if (this.cursorRow >= 0 && this.cursorCol >= 0) {
+      buf += `\r\x1b[${this.cursorRow + 1};${this.cursorCol + 1}H`;
+    }
+
+    buf += ESU;
+    this.terminal.write(buf);
   }
 
-  /** 定位硬件光标到编辑器光标位置 */
-  private applyCursorPosition(): void {
-    if (this.cursorRow >= 0 && this.cursorCol >= 0) {
-      this.terminal.cursorTo(this.cursorCol, this.cursorRow);
-    }
-  }
 
   /**
    * 获取布局子组件列表
