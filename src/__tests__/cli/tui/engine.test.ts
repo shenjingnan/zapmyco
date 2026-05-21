@@ -53,9 +53,12 @@ type MockTerminal = ReturnType<typeof createMockTerminal>;
 // 辅助函数
 // ---------------------------------------------------------------------------
 
-function createMockComponent(name = 'comp'): Component & { focused?: boolean } {
+function createMockComponent(
+  nameOrLines: string | string[] = 'comp'
+): Component & { focused?: boolean } {
+  const lines = Array.isArray(nameOrLines) ? nameOrLines : [`[${nameOrLines}]`];
   return {
-    render: vi.fn(() => [`[${name}]`]),
+    render: vi.fn(() => lines),
     handleInput: vi.fn(),
     invalidate: vi.fn(),
   };
@@ -349,7 +352,7 @@ describe('TUI', () => {
       const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
       expect(handler).toBeDefined();
 
-      handler(Buffer.from('hello'));
+      handler!(Buffer.from('hello'));
       expect(child.handleInput).toHaveBeenCalledWith('hello');
     });
 
@@ -363,7 +366,7 @@ describe('TUI', () => {
 
       // 获取注册的 stdin handler
       const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
-      handler(Buffer.from('key'));
+      handler!(Buffer.from('key'));
 
       // 焦点组件不应收到输入
       expect(child.handleInput).not.toHaveBeenCalled();
@@ -374,7 +377,7 @@ describe('TUI', () => {
     it('无焦点组件时输入不应报错', () => {
       tui.start();
       const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
-      expect(() => handler(Buffer.from('key'))).not.toThrow();
+      expect(() => handler!(Buffer.from('key'))).not.toThrow();
     });
   });
 

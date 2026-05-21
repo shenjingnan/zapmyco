@@ -41,7 +41,7 @@ describe('ProcessTerminal', () => {
 
   describe('raw mode', () => {
     it('stdin.isTTY 为 true 时应启用 raw mode', () => {
-      const spy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => {});
+      const spy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => process.stdin);
       terminal.enableRawMode();
       expect(spy).toHaveBeenCalledWith(true);
       spy.mockRestore();
@@ -58,7 +58,7 @@ describe('ProcessTerminal', () => {
     });
 
     it('disableRawMode 应调用 setRawMode(false)', () => {
-      const spy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => {});
+      const spy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => process.stdin);
       terminal.disableRawMode();
       expect(spy).toHaveBeenCalledWith(false);
       spy.mockRestore();
@@ -116,7 +116,7 @@ describe('ProcessTerminal', () => {
 
   describe('destroy', () => {
     it('应禁用 raw mode 并移除 resize 监听', () => {
-      const rawSpy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => {});
+      const rawSpy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => process.stdin);
       const removeSpy = vi.spyOn(process.stdout, 'removeListener');
       terminal.onResize(() => {});
       terminal.destroy();
