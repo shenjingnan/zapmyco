@@ -3,6 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Container } from '@/cli/tui/container';
+import { BSU, ESU } from '@/cli/tui/dec';
 import { TUI } from '@/cli/tui/engine';
 import type { Component } from '@/cli/tui/types';
 
@@ -148,8 +149,9 @@ describe('TUI', () => {
       tui.addChild(createMockComponent('x'));
       tui.requestRender(true);
       tui.doRender();
-      // force mode 下会先 cursorTo(0,0) 再逐行写入
-      expect(terminal.cursorTo).toHaveBeenCalledWith(0, 0);
+      // force mode 下写入含光标归位序列（\r\x1b[1;1H）
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain('\x1b[1;1H');
     });
   });
 
@@ -167,20 +169,20 @@ describe('TUI', () => {
       expect(terminal.write).toHaveBeenCalledWith(expect.stringContaining('[hi]'));
     });
 
-    it('差量渲染模式下应使用 cursorTo 定位每行', () => {
+    it('差量渲染模式下输出含光标定位序列', () => {
       const child = createMockComponent('line');
       tui.addChild(child);
       // 第一次渲染：force 模式
       tui.requestRender(true);
       tui.doRender();
-      terminal.cursorTo.mockClear();
       terminal.write.mockClear();
 
       // 第二次渲染：delta 模式
       tui.requestRender();
       tui.doRender();
-      // delta 模式下每行写入前会 cursorTo
-      expect(terminal.cursorTo).toHaveBeenCalled();
+      // delta 模式下光标定位序列内联在 write buffer 中
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain(';1H'); // cursorTo(0, i) 的内联序列
     });
 
     it('差量渲染时行数减少应清空旧行', () => {
@@ -207,9 +209,9 @@ describe('TUI', () => {
       container.addChild(noOutputChild);
       tui.requestRender();
       tui.doRender();
-      // 旧行数 > 新行数，应发送清行指令
-      const clearCalls = terminal.write.mock.calls.filter((c: string[]) => c[0] === '\x1b[2K');
-      expect(clearCalls.length).toBeGreaterThan(0);
+      // 旧行数 > 新行数，输出应含清行指令
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain('\x1b[2K');
     });
   });
 
@@ -339,6 +341,34 @@ describe('TUI', () => {
       terminal.write.mockClear();
       tui.doRender();
       // 实际上 doRender 末尾有 if (this.cursorRow >= 0) 的判断，cursorRow=-1 所以为 false
+    });
+
+    it('差量更新模式输出应包裹 BSU/ESU', () => {
+      const child = createMockComponent('line');
+      tui.addChild(child);
+      // 第一次渲染：force 模式
+      tui.requestRender(true);
+      tui.doRender();
+      terminal.write.mockClear();
+
+      // 第二次渲染：delta 模式
+      tui.requestRender();
+      tui.doRender();
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain(BSU);
+      expect(writeCall).toContain(ESU);
+      // BSU 应在 ESU 之前
+      expect(writeCall.indexOf(BSU)).toBeLessThan(writeCall.indexOf(ESU));
+    });
+
+    it('全量重绘模式输出应包裹 BSU/ESU', () => {
+      const child = createMockComponent('full');
+      tui.addChild(child);
+      tui.requestRender(true);
+      tui.doRender();
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain(BSU);
+      expect(writeCall).toContain(ESU);
     });
   });
 

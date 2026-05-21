@@ -2,6 +2,7 @@
  * ProcessTerminal 单元测试
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ENTER_ALT_SCREEN, EXIT_ALT_SCREEN } from '@/cli/tui/dec';
 import { ProcessTerminal } from '@/cli/tui/terminal';
 
 describe('ProcessTerminal', () => {
@@ -40,11 +41,14 @@ describe('ProcessTerminal', () => {
   });
 
   describe('raw mode', () => {
-    it('stdin.isTTY 为 true 时应启用 raw mode', () => {
-      const spy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => process.stdin);
+    it('stdin.isTTY 为 true 时应启用 raw mode 并进入 alt screen', () => {
+      const rawSpy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => process.stdin);
+      const writeSpy = vi.spyOn(terminal, 'write');
       terminal.enableRawMode();
-      expect(spy).toHaveBeenCalledWith(true);
-      spy.mockRestore();
+      expect(rawSpy).toHaveBeenCalledWith(true);
+      expect(writeSpy).toHaveBeenCalledWith(ENTER_ALT_SCREEN);
+      rawSpy.mockRestore();
+      writeSpy.mockRestore();
     });
 
     it('stdin.isTTY 为 false 时应跳过 setRawMode', () => {
@@ -115,14 +119,17 @@ describe('ProcessTerminal', () => {
   });
 
   describe('destroy', () => {
-    it('应禁用 raw mode 并移除 resize 监听', () => {
+    it('应禁用 raw mode、退出 alt screen 并移除 resize 监听', () => {
       const rawSpy = vi.spyOn(process.stdin, 'setRawMode').mockImplementation(() => process.stdin);
+      const writeSpy = vi.spyOn(terminal, 'write');
       const removeSpy = vi.spyOn(process.stdout, 'removeListener');
       terminal.onResize(() => {});
       terminal.destroy();
       expect(rawSpy).toHaveBeenCalledWith(false);
+      expect(writeSpy).toHaveBeenCalledWith(EXIT_ALT_SCREEN);
       expect(removeSpy).toHaveBeenCalledWith('resize', expect.any(Function));
       rawSpy.mockRestore();
+      writeSpy.mockRestore();
       removeSpy.mockRestore();
     });
 
