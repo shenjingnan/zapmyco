@@ -8,6 +8,10 @@
 export interface Component {
   render(width: number): string[];
   handleInput?(data: string): void;
+  /** 处理鼠标滚轮滚动事件 */
+  handleScroll?(direction: 'up' | 'down', lines?: number): void;
+  /** 当前滚动偏移量（0 = 底部），用于引擎层切片 */
+  readonly scrollOffset?: number;
   invalidate(): void;
 }
 

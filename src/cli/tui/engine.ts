@@ -137,9 +137,34 @@ export class TUI {
       this.dirty = true;
     });
 
-    // stdin 读取 — 分发给 overlay 或焦点组件
+    // stdin 读取 — 分发给 overlay 或焦点组件（含鼠标事件支持）
     this.terminal.stdin.on('data', (chunk: Buffer) => {
-      const data = chunk.toString();
+      let data = chunk.toString();
+
+      // 检测并消费 SGR 编码的鼠标事件：ESC[<btn;col;rowM 或 ESC[<btn;col;rowm
+      // 移除了 $ 锚点以支持同一 chunk 中包含多个事件（如 press + release）
+      const SGR_MOUSE_RE = new RegExp('^\\x1b\\[<(\\d+);(\\d+);(\\d+)([Mm])');
+      let sgrMouseMatch: RegExpMatchArray | null;
+      let hadMouseEvent = false;
+
+      while (true) {
+        sgrMouseMatch = data.match(SGR_MOUSE_RE);
+        if (!sgrMouseMatch) break;
+        hadMouseEvent = true;
+        const btn = Number.parseInt(sgrMouseMatch[1]!, 10);
+        // 仅处理滚轮事件（64=up, 65=down），忽略按钮释放等事件
+        if (btn === 64 || btn === 65) {
+          this.handleSgrMouseEvent(btn);
+        }
+        // 消费已匹配的 SGR 序列
+        data = data.slice(sgrMouseMatch[0].length);
+      }
+
+      // 如果 chunk 仅包含鼠标事件，不再转发给键盘处理器
+      if (hadMouseEvent && data.length === 0) {
+        return;
+      }
+
       if (this.overlayStack.length > 0) {
         // Overlay 模式：顶层 overlay 接收输入
         const top = this.overlayStack[this.overlayStack.length - 1]!;
@@ -274,7 +299,37 @@ export class TUI {
   // ======================================================================
 
   /**
+   * 处理 SGR 编码的鼠标事件
+   * @returns true 如果事件已处理
+   */
+  private handleSgrMouseEvent(btn: number): boolean {
+    // 64 = wheel up, 65 = wheel down
+    if (btn === 64 || btn === 65) {
+      const direction: 'up' | 'down' = btn === 64 ? 'up' : 'down';
+      // 优先分发给焦点组件
+      if (this.focused?.handleScroll) {
+        this.focused.handleScroll(direction);
+        this.requestRender();
+        return true;
+      }
+      // 其次查找根容器中的可滚动子组件
+      const scrollableChildren = this.getLayoutChildren();
+      for (const child of scrollableChildren) {
+        if (child.handleScroll) {
+          child.handleScroll(direction);
+          this.requestRender();
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
    * 计算完整输出 — 渲染组件树 → 应用 overlay → 限制行数
+   *
+   * 当有组件处于滚动状态（scrollOffset > 0）时，切片会保留更多历史内容，
+   * 而非仅保留末尾 height 行。
    */
   private computeOutput(): string[] {
     const width = this.terminal.columns;
@@ -282,12 +337,43 @@ export class TUI {
     this.cursorRow = -1;
     this.cursorCol = -1;
 
-    // 1. 渲染根组件树
-    let lines = this.root.render(width);
+    // 1. 获取实际布局子组件（跳过 Container 包装层）
+    const children = this.getLayoutChildren();
 
-    // 2. 限制总行数 ≤ terminal.rows
+    const outputs: { lines: string[]; scrollable: boolean }[] = [];
+    let scrollOffset = 0;
+    let fixedHeight = 0;
+
+    for (const child of children) {
+      const childLines = child.render(width);
+      const isScrollable = child.scrollOffset !== undefined;
+      if (isScrollable) {
+        scrollOffset = child.scrollOffset;
+      } else {
+        fixedHeight += childLines.length;
+      }
+      outputs.push({ lines: childLines, scrollable: isScrollable });
+    }
+
+    // 2. 计算可滚动区域可用行数
+    const scrollableHeight = Math.max(1, height - fixedHeight);
+
+    // 3. 按顺序组装输出，可滚动组件按 scrollOffset 切片
+    let lines: string[] = [];
+    for (const entry of outputs) {
+      if (entry.scrollable && entry.lines.length > scrollableHeight) {
+        // 有滚动偏移时从更早位置切片
+        const maxStart = entry.lines.length - scrollableHeight;
+        const start = Math.max(0, maxStart - scrollOffset);
+        lines.push(...entry.lines.slice(start, start + scrollableHeight));
+      } else {
+        lines.push(...entry.lines);
+      }
+    }
+
+    // 安全网：确保总行数不超过终端高度
     if (lines.length > height) {
-      lines = lines.slice(lines.length - height);
+      lines = lines.slice(0, height);
     }
 
     // 3. 应用 overlay（从底向上，栈顶在最上面）
@@ -454,6 +540,20 @@ export class TUI {
     if (this.cursorRow >= 0 && this.cursorCol >= 0) {
       this.terminal.cursorTo(this.cursorCol, this.cursorRow);
     }
+  }
+
+  /**
+   * 获取布局子组件列表
+   *
+   * TUI.root 可能只有一层包装容器（如 ReplSession 创建的根 Container），
+   * 实际渲染组件在包装容器的 children 中。此方法解一层包装直接获取实际子组件。
+   */
+  private getLayoutChildren(): Component[] {
+    const outerChildren = this.root.getChildren();
+    if (outerChildren.length === 1 && outerChildren[0] instanceof Container) {
+      return outerChildren[0].getChildren();
+    }
+    return outerChildren;
   }
 }
 
