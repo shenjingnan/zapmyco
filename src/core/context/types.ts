@@ -60,6 +60,8 @@ export interface CompactionConfig {
   antiThrashEnabled: boolean;
   /** 是否通知用户压缩状态（默认 true） */
   notifyUser: boolean;
+  /** 缓存保留期（传给 LLM 调用，启用 prompt caching） */
+  cacheRetention?: 'none' | 'short' | 'long';
 }
 
 /** 默认压缩配置 */
