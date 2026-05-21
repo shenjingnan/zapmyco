@@ -12,6 +12,8 @@ export interface Usage {
   input: number;
   output: number;
   totalTokens?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
   cost?: {
     input: number;
     output: number;

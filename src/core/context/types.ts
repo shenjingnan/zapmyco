@@ -14,6 +14,10 @@ export interface TokenUsageSnapshot {
   outputTokens: number;
   /** 累积总 tokens（input + output） */
   totalTokens: number;
+  /** 估算的缓存读取 tokens */
+  cacheReadTokens: number;
+  /** 估算的缓存写入 tokens */
+  cacheWriteTokens: number;
   /** 当前消息列表的长度 */
   messageCount: number;
   /** 时间戳 */

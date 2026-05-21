@@ -1207,6 +1207,7 @@ export class ReplSession {
         const usage = (this.agent as LlmBasedAgent).tokenTracker.getUsage();
         this.agentStatusBar.updateTokenStats(
           usage.inputTokens,
+          usage.cacheReadTokens,
           usage.outputTokens,
           Date.now() - startTime
         );
@@ -1465,6 +1466,8 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -1599,6 +1602,8 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -1619,6 +1624,7 @@ export class ReplSession {
       const finalUsage = (this.agent as LlmBasedAgent).tokenTracker.getUsage();
       this.agentStatusBar.updateTokenStats(
         finalUsage.inputTokens,
+        finalUsage.cacheReadTokens,
         finalUsage.outputTokens,
         Date.now() - startTime
       );
