@@ -61,8 +61,6 @@ describe('core types', () => {
       inputTokens: 100,
       outputTokens: 200,
       totalTokens: 300,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
       estimatedCostUsd: 0.003,
     };
     expect(usage.totalTokens).toBe(300);

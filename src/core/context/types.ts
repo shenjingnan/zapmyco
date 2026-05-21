@@ -12,12 +12,8 @@ export interface TokenUsageSnapshot {
   inputTokens: number;
   /** 最后一次 API 调用返回的 output tokens */
   outputTokens: number;
-  /** 累积总 tokens（input + output，不含 cache） */
+  /** 累积总 tokens（input + output） */
   totalTokens: number;
-  /** 估算的缓存读取 tokens */
-  cacheReadTokens: number;
-  /** 估算的缓存写入 tokens */
-  cacheWriteTokens: number;
   /** 当前消息列表的长度 */
   messageCount: number;
   /** 时间戳 */
@@ -60,8 +56,6 @@ export interface CompactionConfig {
   antiThrashEnabled: boolean;
   /** 是否通知用户压缩状态（默认 true） */
   notifyUser: boolean;
-  /** 缓存保留期（传给 LLM 调用，启用 prompt caching） */
-  cacheRetention?: 'none' | 'short' | 'long';
 }
 
 /** 默认压缩配置 */

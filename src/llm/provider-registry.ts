@@ -108,8 +108,6 @@ export class ProviderRegistry {
   readonly credentialManager: CredentialPoolManager;
   private fallbackConfig: LlmFallbackConfig | undefined;
   private routingConfig: LlmRoutingConfig | undefined;
-  /** Provider -> Beta 请求头映射 */
-  private providerBetaHeaders: Map<string, Record<string, string>> = new Map();
   private defaultModelKey: string;
   private analysisModelKey: string | undefined;
   private lightModelKey: string | undefined;
@@ -152,11 +150,6 @@ export class ProviderRegistry {
     // 1. 遍历 providers 配置，注册每个提供商及其模型
     for (const [providerName, providerConfig] of Object.entries(config.providers)) {
       registry.ensureProvider(providerName);
-
-      // 读取 provider 级别的 beta headers
-      if (providerConfig.betaHeaders && Object.keys(providerConfig.betaHeaders).length > 0) {
-        registry.providerBetaHeaders.set(providerName, { ...providerConfig.betaHeaders });
-      }
 
       const hasExplicitModels =
         providerConfig.models !== undefined && Object.keys(providerConfig.models).length > 0;
@@ -437,7 +430,7 @@ export class ProviderRegistry {
       baseUrl: modelInfo?.baseUrl ?? '',
       reasoning: false,
       input,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      cost: { input: 0, output: 0 },
       contextWindow: 0,
       maxTokens: 0,
     };
@@ -461,14 +454,12 @@ export class ProviderRegistry {
     const provider = modelInfo?.provider ?? parsed.provider;
     const modelId = modelInfo?.id ?? parsed.modelId;
     const apiKey = this.credentialManager.getKey(provider);
-    const betaHeaders = this.providerBetaHeaders.get(provider);
 
     return {
       id: modelId,
       provider,
       ...(modelInfo?.baseUrl && { baseURL: modelInfo.baseUrl }),
       ...(apiKey && { apiKey }),
-      ...(betaHeaders && { betaHeaders }),
     };
   }
 

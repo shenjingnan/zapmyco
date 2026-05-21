@@ -463,7 +463,6 @@ export class Compactor {
         {
           systemPrompt: prompt,
           messages: anthropicMessages,
-          ...(this.config.cacheRetention ? { cacheRetention: this.config.cacheRetention } : {}),
         },
         {
           maxTokens: 4000,
@@ -508,7 +507,6 @@ export class Compactor {
           {
             systemPrompt: prompt,
             messages: fallbackMessages,
-            ...(this.config.cacheRetention ? { cacheRetention: this.config.cacheRetention } : {}),
           },
           {
             maxTokens: 4000,

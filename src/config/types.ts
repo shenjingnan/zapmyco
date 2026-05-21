@@ -40,15 +40,6 @@ export interface LlmProviderConfig {
   recoveryMs?: number;
   /** 该提供商下的可用模型 */
   models?: Record<string, ModelConfig>;
-  /**
-   * Anthropic Beta 功能请求头
-   *
-   * 在创建 Anthropic HTTP 客户端时作为 defaultHeaders 传入。
-   * Agent 启动时 latch，会话期间不变，确保 prompt cache 键一致。
-   *
-   * 示例：{ "anthropic-beta": "prompt-caching-2025-01-01" }
-   */
-  betaHeaders?: Record<string, string>;
 }
 
 /** LLM 全局默认参数 */
@@ -162,8 +153,6 @@ export interface AgentRuntimeConfig {
   maxTurns?: number;
   /** 推理级别 */
   thinkingLevel?: string;
-  /** Prompt 缓存保留期（none/short/long，影响 Anthropic cache_control TTL） */
-  cacheRetention?: 'none' | 'short' | 'long';
 }
 
 /** Agent 配置 */

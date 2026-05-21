@@ -90,8 +90,7 @@ export class OutputFormatter {
             ? c.yellow(t('output.result.partialSuccess'))
             : c.red(t('output.result.failed'))
       }`,
-      `  │  ${c.gray(t('output.result.duration'))} ${(result.totalDuration / 1000).toFixed(1)}s  ·  ${c.gray(t('output.result.token'))} ${result.totalTokenUsage.totalTokens.toLocaleString()}` +
-        `  ·  ${c.gray(t('output.result.cacheHit'))} ${result.totalTokenUsage.cacheReadTokens.toLocaleString()}  ·  ${c.gray(t('output.result.cacheWrite'))} ${result.totalTokenUsage.cacheWriteTokens.toLocaleString()}`,
+      `  │  ${c.gray(t('output.result.duration'))} ${(result.totalDuration / 1000).toFixed(1)}s  ·  ${c.gray(t('output.result.token'))} ${result.totalTokenUsage.totalTokens.toLocaleString()}`,
       `  │  ${c.gray(t('output.result.cost'))} $${result.totalTokenUsage.estimatedCostUsd.toFixed(4)}`,
     ];
 

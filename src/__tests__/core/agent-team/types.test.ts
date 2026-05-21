@@ -190,8 +190,6 @@ describe('agent-team types', () => {
           inputTokens: 100,
           outputTokens: 50,
           totalTokens: 150,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -215,8 +213,6 @@ describe('agent-team types', () => {
           inputTokens: 200,
           outputTokens: 0,
           totalTokens: 200,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };

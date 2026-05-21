@@ -604,14 +604,12 @@ describe('AgentStatusBar', () => {
       it('有 Token 信息时单独显示 Token 行', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 30000);
+        bar.updateTokenStats(100, 200, 30000);
         const result = bar.render(200);
 
         expect(result).toHaveLength(1);
         expect(result[0]).toContain('test-model');
         expect(result[0]).toContain('IN');
-        expect(result[0]).toContain('HIT');
-        expect(result[0]).toContain('MISS');
         expect(result[0]).toContain('OUT');
       });
 
@@ -622,14 +620,13 @@ describe('AgentStatusBar', () => {
 
         expect(result).toHaveLength(1);
         expect(result[0]).toContain('test-model');
-        // 所有字段都应该有值（0）
-        expect(result[0]).toMatch(/IN\s+0.+HIT\s+0.+MISS\s+0.+OUT\s+0/);
+        expect(result[0]).toMatch(/IN\s+0.+OUT\s+0/);
       });
 
       it('Token 行被截断到指定宽度', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('long-model-name');
-        bar.updateTokenStats(1000, 9000, 500, 30000);
+        bar.updateTokenStats(1000, 500, 30000);
         const result = bar.render(10);
 
         expect(result[0]?.length ?? 0).toBeLessThanOrEqual(13); // "..." 追加
@@ -640,64 +637,39 @@ describe('AgentStatusBar', () => {
       it('大数值使用 M 单位 (>= 1,000,000)', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(500_000, 1_500_000, 200_000, 10000);
+        bar.updateTokenStats(500_000, 200_000, 10000);
 
         const result = bar.render(200);
-        // totalInput = 500K + 1.5M = 2.0M
-        expect(result[0]).toContain('2.0M');
-        // missTokens = inputTokens = 500K
         expect(result[0]).toContain('500.0K');
       });
 
       it('中等数值使用 K 单位 (>= 10,000)', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(5_000, 15_000, 3_000, 10000);
+        bar.updateTokenStats(5_000, 3_000, 10000);
 
         const result = bar.render(200);
-        // totalInput = 5K + 15K = 20K
-        expect(result[0]).toContain('20.0K');
+        expect(result[0]).toContain('5,000');
       });
 
       it('小数值使用千分位格式', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 10000);
+        bar.updateTokenStats(100, 200, 10000);
 
         const result = bar.render(200);
-        // totalInput = 1000
-        expect(result[0]).toContain('1,000');
+        expect(result[0]).toContain('100');
       });
     });
 
-    describe('render - 缓存命中率', () => {
-      it('高缓存率 (>=80%)', () => {
+    describe('render - 零值/边界情况', () => {
+      it('总输入为 0 时显示 0', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 30000);
+        bar.updateTokenStats(0, 0, 0);
 
         const result = bar.render(200);
-        // cacheRate = round(900/1000 * 100) = 90
-        expect(result[0]).toContain('(90%)');
-      });
-
-      it('低缓存率 (<80%)', () => {
-        const bar = new AgentStatusBar(mockAnimationManager);
-        bar.setModelName('test-model');
-        bar.updateTokenStats(500, 500, 200, 10000);
-
-        const result = bar.render(200);
-        // cacheRate = round(500/1000 * 100) = 50
-        expect(result[0]).toContain('(50%)');
-      });
-
-      it('总输入为 0 时缓存率为 0', () => {
-        const bar = new AgentStatusBar(mockAnimationManager);
-        bar.setModelName('test-model');
-        bar.updateTokenStats(0, 0, 0, 0);
-
-        const result = bar.render(200);
-        expect(result[0]).toContain('(0%)');
+        expect(result[0]).toMatch(/IN\s+0/);
       });
     });
 
@@ -705,7 +677,7 @@ describe('AgentStatusBar', () => {
       it('毫秒级 (< 1s)', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 500);
+        bar.updateTokenStats(100, 200, 500);
 
         expect(bar.render(200)[0]).toContain('500ms');
       });
@@ -713,7 +685,7 @@ describe('AgentStatusBar', () => {
       it('秒级 (< 60s)', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 30000);
+        bar.updateTokenStats(100, 200, 30000);
 
         expect(bar.render(200)[0]).toContain('30.0s');
       });
@@ -721,7 +693,7 @@ describe('AgentStatusBar', () => {
       it('分钟级', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 90000);
+        bar.updateTokenStats(100, 200, 90000);
 
         expect(bar.render(200)[0]).toContain('1m30s');
       });
@@ -731,11 +703,11 @@ describe('AgentStatusBar', () => {
       it('不传 durationMs 时保留上一次的值', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 30000);
+        bar.updateTokenStats(100, 200, 30000);
         expect(bar.render(200)[0]).toContain('30.0s');
 
         // 不传 durationMs
-        bar.updateTokenStats(200, 800, 300);
+        bar.updateTokenStats(200, 300);
         expect(bar.render(200)[0]).toContain('30.0s');
       });
     });
@@ -745,7 +717,7 @@ describe('AgentStatusBar', () => {
         mockListActive.mockReturnValue([makeInstance()]);
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 30000);
+        bar.updateTokenStats(100, 200, 30000);
 
         const result = bar.render(100);
         expect(result[result.length - 1]).toContain('test-model');
@@ -756,7 +728,7 @@ describe('AgentStatusBar', () => {
         const bar = new AgentStatusBar(mockAnimationManager);
         bar.toggle(); // 切到折叠模式
         bar.setModelName('test-model');
-        bar.updateTokenStats(100, 900, 200, 30000);
+        bar.updateTokenStats(100, 200, 30000);
 
         const result = bar.render(100);
         expect(result).toHaveLength(2);
@@ -775,7 +747,6 @@ describe('AgentStatusBar', () => {
         // 展开模式：3 行 agent 信息，没有 token 行
         expect(result).toHaveLength(3);
         expect(result[0]).not.toContain('IN');
-        expect(result[0]).not.toContain('HIT');
       });
     });
   });

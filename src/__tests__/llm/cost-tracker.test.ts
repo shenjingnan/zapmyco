@@ -15,8 +15,6 @@ describe('CostTracker', () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-sonnet-4-20250514'
       );
@@ -31,8 +29,6 @@ describe('CostTracker', () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-sonnet-4-20250514'
       );
@@ -48,8 +44,6 @@ describe('CostTracker', () => {
           inputTokens: 2000,
           outputTokens: 1000,
           totalTokens: 3000,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-haiku-4-5-20251001'
       );
@@ -64,8 +58,6 @@ describe('CostTracker', () => {
           inputTokens: 500,
           outputTokens: 200,
           totalTokens: 700,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-opus-4-20250514'
       );
@@ -81,8 +73,6 @@ describe('CostTracker', () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o'
       );
@@ -98,8 +88,6 @@ describe('CostTracker', () => {
           inputTokens: 5000,
           outputTokens: 2000,
           totalTokens: 7000,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o-mini'
       );
@@ -114,8 +102,6 @@ describe('CostTracker', () => {
           inputTokens: 9999,
           outputTokens: 8888,
           totalTokens: 18887,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'unknown-model'
       );
@@ -129,8 +115,6 @@ describe('CostTracker', () => {
           inputTokens: 100,
           outputTokens: 50,
           totalTokens: 150,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-haiku-4-5-20251001'
       );
@@ -146,8 +130,6 @@ describe('CostTracker', () => {
           inputTokens: 100,
           outputTokens: 50,
           totalTokens: 150,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-haiku-4-5-20251001'
       );
@@ -156,8 +138,6 @@ describe('CostTracker', () => {
           inputTokens: 200,
           outputTokens: 100,
           totalTokens: 300,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o'
       );
@@ -183,8 +163,6 @@ describe('CostTracker', () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-sonnet-4-20250514'
       );
@@ -193,8 +171,6 @@ describe('CostTracker', () => {
           inputTokens: 2000,
           outputTokens: 1000,
           totalTokens: 3000,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o'
       );
@@ -217,8 +193,6 @@ describe('CostTracker', () => {
           inputTokens: 1,
           outputTokens: 1,
           totalTokens: 2,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o-mini'
       );
@@ -227,8 +201,6 @@ describe('CostTracker', () => {
           inputTokens: 1,
           outputTokens: 1,
           totalTokens: 2,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o-mini'
       );
@@ -237,8 +209,6 @@ describe('CostTracker', () => {
           inputTokens: 1,
           outputTokens: 1,
           totalTokens: 2,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o-mini'
       );
@@ -253,8 +223,6 @@ describe('CostTracker', () => {
           inputTokens: 100,
           outputTokens: 50,
           totalTokens: 150,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-haiku-4-5-20251001'
       );
@@ -275,8 +243,6 @@ describe('CostTracker', () => {
           inputTokens: 100,
           outputTokens: 50,
           totalTokens: 150,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'claude-haiku-4-5-20251001'
       );
@@ -286,8 +252,6 @@ describe('CostTracker', () => {
           inputTokens: 200,
           outputTokens: 100,
           totalTokens: 300,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o'
       );
@@ -308,8 +272,6 @@ describe('CostTracker', () => {
           inputTokens: 1,
           outputTokens: 1,
           totalTokens: 2,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o-mini'
       );
@@ -319,8 +281,6 @@ describe('CostTracker', () => {
           inputTokens: 1,
           outputTokens: 1,
           totalTokens: 2,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o-mini'
       );
@@ -330,8 +290,6 @@ describe('CostTracker', () => {
           inputTokens: 1,
           outputTokens: 1,
           totalTokens: 2,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
         },
         'gpt-4o-mini'
       );

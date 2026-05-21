@@ -30,31 +30,20 @@ const clients = new Map<string, Anthropic>();
  * @param baseURL - API base URL（默认 https://api.anthropic.com）
  * @param apiKey  - API Key
  * @param provider - 提供商名称（用于 baseURL 为空时查找默认值）
- * @param betaHeaders - Beta 请求头
  * @returns Anthropic 客户端实例
  */
-export function getClient(
-  baseURL?: string,
-  apiKey?: string,
-  provider?: string,
-  betaHeaders?: Record<string, string>
-): Anthropic {
+export function getClient(baseURL?: string, apiKey?: string, provider?: string): Anthropic {
   // baseURL 优先级：显式传入 > provider 默认 > 全局默认（anthropic.com）
   const effectiveBaseURL =
     baseURL || (provider && PROVIDER_DEFAULT_BASE_URLS[provider]) || DEFAULT_BASE_URL;
 
-  // 缓存键中包含确定性序列化的 betaHeaders，确保不同 header 使用独立客户端
-  const betaKey = betaHeaders ? JSON.stringify(betaHeaders, Object.keys(betaHeaders).sort()) : '';
-  const key = `${effectiveBaseURL}|${apiKey || ''}|${betaKey}`;
+  const key = `${effectiveBaseURL}|${apiKey || ''}`;
 
   let client = clients.get(key);
   if (!client) {
     client = new Anthropic({
       apiKey,
       baseURL: effectiveBaseURL,
-      ...(betaHeaders && Object.keys(betaHeaders).length > 0
-        ? { defaultHeaders: betaHeaders }
-        : {}),
     });
     clients.set(key, client);
   }
