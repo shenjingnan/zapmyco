@@ -139,14 +139,28 @@ export class TUI {
 
     // stdin 读取 — 分发给 overlay 或焦点组件（含鼠标事件支持）
     this.terminal.stdin.on('data', (chunk: Buffer) => {
-      const data = chunk.toString();
+      let data = chunk.toString();
 
-      // 检测 SGR 编码的鼠标事件：\x1b[<btn;col;rowM 或 \x1b[<btn;col;rowm
-      const sgrMouseMatch = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
-      if (sgrMouseMatch) {
+      // 检测并消费 SGR 编码的鼠标事件：\x1b[<btn;col;rowM 或 \x1b[<btn;col;rowm
+      // 移除了 $ 锚点以支持同一 chunk 中包含多个事件（如 press + release）
+      const SGR_MOUSE_RE = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])/;
+      let sgrMouseMatch: RegExpMatchArray | null;
+      let hadMouseEvent = false;
+
+      while ((sgrMouseMatch = data.match(SGR_MOUSE_RE))) {
+        hadMouseEvent = true;
         const btn = Number.parseInt(sgrMouseMatch[1]!, 10);
-        const handled = this.handleSgrMouseEvent(btn);
-        if (handled) return;
+        // 仅处理滚轮事件（64=up, 65=down），忽略按钮释放等事件
+        if (btn === 64 || btn === 65) {
+          this.handleSgrMouseEvent(btn);
+        }
+        // 消费已匹配的 SGR 序列
+        data = data.slice(sgrMouseMatch[0].length);
+      }
+
+      // 如果 chunk 仅包含鼠标事件，不再转发给键盘处理器
+      if (hadMouseEvent && data.length === 0) {
+        return;
       }
 
       if (this.overlayStack.length > 0) {
@@ -293,12 +307,15 @@ export class TUI {
       // 优先分发给焦点组件
       if (this.focused?.handleScroll) {
         this.focused.handleScroll(direction);
+        this.requestRender();
         return true;
       }
       // 其次查找根容器中的可滚动子组件
-      for (const child of this.root.getChildren()) {
+      const scrollableChildren = this.getLayoutChildren();
+      for (const child of scrollableChildren) {
         if (child.handleScroll) {
           child.handleScroll(direction);
+          this.requestRender();
           return true;
         }
       }
@@ -318,8 +335,9 @@ export class TUI {
     this.cursorRow = -1;
     this.cursorCol = -1;
 
-    // 1. 分别渲染每个子组件，记录哪些是可滚动的
-    const children = this.root.getChildren();
+    // 1. 获取实际布局子组件（跳过 Container 包装层）
+    const children = this.getLayoutChildren();
+
     const outputs: { lines: string[]; scrollable: boolean }[] = [];
     let scrollOffset = 0;
     let fixedHeight = 0;
@@ -520,6 +538,20 @@ export class TUI {
     if (this.cursorRow >= 0 && this.cursorCol >= 0) {
       this.terminal.cursorTo(this.cursorCol, this.cursorRow);
     }
+  }
+
+  /**
+   * 获取布局子组件列表
+   *
+   * TUI.root 可能只有一层包装容器（如 ReplSession 创建的根 Container），
+   * 实际渲染组件在包装容器的 children 中。此方法解一层包装直接获取实际子组件。
+   */
+  private getLayoutChildren(): Component[] {
+    const outerChildren = this.root.getChildren();
+    if (outerChildren.length === 1 && outerChildren[0] instanceof Container) {
+      return outerChildren[0].getChildren();
+    }
+    return outerChildren;
   }
 }
 
