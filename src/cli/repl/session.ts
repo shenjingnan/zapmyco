@@ -2352,6 +2352,28 @@ export class ReplSession {
         this.tui.requestRender();
       }
     };
+
+    // PageUp: 向上滚动半屏
+    this.editor.onPageUp = () => {
+      const terminalRows = this.tui.terminal.rows;
+      this.outputArea.handleScroll('up', Math.floor(terminalRows / 2));
+    };
+
+    // PageDown: 向下滚动半屏
+    this.editor.onPageDown = () => {
+      const terminalRows = this.tui.terminal.rows;
+      this.outputArea.handleScroll('down', Math.floor(terminalRows / 2));
+    };
+
+    // Ctrl+Home: 滚动到输出区域最顶部
+    this.editor.onScrollToTop = () => {
+      this.outputArea.handleScroll('up', Infinity);
+    };
+
+    // Ctrl+End: 滚动到输出区域最底部
+    this.editor.onScrollToBottom = () => {
+      this.outputArea.scrollToBottom();
+    };
   }
 
   /** 设置信号处理 */

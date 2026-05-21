@@ -19,6 +19,8 @@ const NAMED_KEY_MAP: Record<string, string> = {
   right: '\x1b[C',
   home: '\x1b[H',
   end: '\x1b[F',
+  pageup: '\x1b[5~',
+  pagedown: '\x1b[6~',
 };
 
 /**
@@ -36,6 +38,8 @@ export const Key = {
   down: 'down',
   left: 'left',
   right: 'right',
+  pageup: 'pageup',
+  pagedown: 'pagedown',
 
   /**
    * 创建 Ctrl 组合键标识
@@ -110,6 +114,13 @@ function parseKey(data: string): string | undefined {
  * matchesKey('\x1b[99;5u', 'ctrl+c')    → true (CSI-u 协议，iTerm2)
  */
 export function matchesKey(data: string, keyId: string): boolean {
+  // Pre-check: 在 parseKey 之前处理 Ctrl+Home/Ctrl+End 序列。
+  // CSI-u 协议将 Home 编码为 H(72)、End 编码为 F(70)，
+  // parseKey 会将其解析为 ctrl+h / ctrl+f 导致无法正确匹配 ctrl+home/ctrl+end。
+  if (keyId === 'ctrl+home' || keyId === 'ctrl+end') {
+    if (legacyMatch(data, keyId)) return true;
+  }
+
   const parsed = parseKey(data);
   if (parsed === keyId) return true;
 
@@ -131,6 +142,15 @@ function legacyMatch(data: string, keyId: string): boolean {
   // shift+tab
   if (keyId === 'shift+tab') {
     return data === '\x1b[Z';
+  }
+
+  // Ctrl+Home (xterm modifyOtherKeys: \x1b[1;5H, CSI-u: \x1b[72;5u, modifyOtherKeys mode 2: \x1b[27;5;72~)
+  if (keyId === 'ctrl+home') {
+    return data === '\x1b[1;5H' || data === '\x1b[72;5u' || data === '\x1b[27;5;72~';
+  }
+  // Ctrl+End (xterm modifyOtherKeys: \x1b[1;5F, CSI-u: \x1b[70;5u, modifyOtherKeys mode 2: \x1b[27;5;70~)
+  if (keyId === 'ctrl+end') {
+    return data === '\x1b[1;5F' || data === '\x1b[70;5u' || data === '\x1b[27;5;70~';
   }
 
   // Ctrl 组合键：ctrl+X → ASCII 控制字符
