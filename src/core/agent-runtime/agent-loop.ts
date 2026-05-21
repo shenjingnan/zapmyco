@@ -612,6 +612,8 @@ function buildPartialMessage(
     usage: {
       input: usage.input ?? 0,
       output: usage.output ?? 0,
+      cacheRead: usage.cacheRead ?? 0,
+      cacheWrite: usage.cacheWrite ?? 0,
     },
     stopReason,
     model,
@@ -646,6 +648,8 @@ function buildFinalMessage(
     usage: {
       input: usage.input ?? 0,
       output: usage.output ?? 0,
+      cacheRead: usage.cacheRead ?? 0,
+      cacheWrite: usage.cacheWrite ?? 0,
     },
     stopReason: mapStopReason(stopReason),
     model: model || api,
