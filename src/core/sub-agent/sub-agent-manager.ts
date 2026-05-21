@@ -311,7 +311,7 @@ export class SubAgentManager {
       for (const r of successResults) {
         lines.push(`### ${r.specId}`);
         lines.push('');
-        lines.push(r.output!);
+        lines.push(r.output ?? '');
         lines.push('');
       }
     }

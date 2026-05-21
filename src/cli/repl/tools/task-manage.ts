@@ -121,8 +121,7 @@ export function createTaskManageTool(store: TaskStore) {
       },
     } as const,
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async execute(_toolCallId: string, params: TaskManageParams): Promise<any> {
+    async execute(_toolCallId: string, params: TaskManageParams) {
       const action = params.action ?? 'read';
 
       switch (action) {

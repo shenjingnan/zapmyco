@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Container } from '@/cli/tui/container';
 import { BSU, ESU } from '@/cli/tui/dec';
 import { TUI } from '@/cli/tui/engine';
+import type { ProcessTerminal } from '@/cli/tui/terminal';
 import type { Component } from '@/cli/tui/types';
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ describe('TUI', () => {
 
   beforeEach(() => {
     terminal = createMockTerminal();
-    tui = new TUI(terminal as any);
+    tui = new TUI(terminal as unknown as ProcessTerminal);
   });
 
   describe('constructor', () => {
@@ -379,10 +380,12 @@ describe('TUI', () => {
       tui.start();
 
       // 获取注册的 stdin handler
-      const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
+      const handler = terminal.stdin.on.mock.calls.find(
+        (c: [string, unknown]) => c[0] === 'data'
+      )?.[1];
       expect(handler).toBeDefined();
 
-      handler!(Buffer.from('hello'));
+      handler?.(Buffer.from('hello'));
       expect(child.handleInput).toHaveBeenCalledWith('hello');
     });
 
@@ -395,8 +398,10 @@ describe('TUI', () => {
       tui.showOverlay(overlay);
 
       // 获取注册的 stdin handler
-      const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
-      handler!(Buffer.from('key'));
+      const handler = terminal.stdin.on.mock.calls.find(
+        (c: [string, unknown]) => c[0] === 'data'
+      )?.[1];
+      handler?.(Buffer.from('key'));
 
       // 焦点组件不应收到输入
       expect(child.handleInput).not.toHaveBeenCalled();
@@ -406,8 +411,10 @@ describe('TUI', () => {
 
     it('无焦点组件时输入不应报错', () => {
       tui.start();
-      const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
-      expect(() => handler!(Buffer.from('key'))).not.toThrow();
+      const handler = terminal.stdin.on.mock.calls.find(
+        (c: [string, unknown]) => c[0] === 'data'
+      )?.[1];
+      expect(() => handler?.(Buffer.from('key'))).not.toThrow();
     });
   });
 

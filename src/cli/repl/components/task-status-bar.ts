@@ -131,7 +131,7 @@ export class TaskStatusBar extends Container {
   /** 获取当前 in_progress 的图标（可能为动画帧） */
   #getInProgressIcon(): string {
     const idx = this.#loadingFrame % LOADING_FRAMES.length;
-    return LOADING_FRAMES[idx]!;
+    return LOADING_FRAMES[idx] ?? '';
   }
 
   override render(width: number): string[] {

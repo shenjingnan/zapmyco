@@ -8,13 +8,20 @@ import { ProcessTerminal } from '@/cli/tui/terminal';
 describe('ProcessTerminal', () => {
   let terminal: ProcessTerminal;
 
+  /** 测试辅助类型，用于模拟 process.stdin 的 Node.js 类型缺失属性 */
+  const testStdin = () =>
+    process.stdin as unknown as { setRawMode: ReturnType<typeof vi.fn>; isTTY: boolean };
+  /** 测试辅助类型，用于模拟 process.stdout 的 Node.js 类型缺失属性 */
+  const testStdout = () =>
+    process.stdout as unknown as { rows: number | undefined; columns: number | undefined };
+
   beforeEach(() => {
     // 确保 process.stdin 有 setRawMode 方法
-    if (typeof (process.stdin as any).setRawMode !== 'function') {
-      (process.stdin as any).setRawMode = vi.fn();
+    if (typeof testStdin().setRawMode !== 'function') {
+      testStdin().setRawMode = vi.fn();
     }
-    if ((process.stdin as any).isTTY === undefined) {
-      (process.stdin as any).isTTY = true;
+    if (testStdin().isTTY === undefined) {
+      testStdin().isTTY = true;
     }
     terminal = new ProcessTerminal();
   });
@@ -27,16 +34,16 @@ describe('ProcessTerminal', () => {
 
     it('process.stdout 无 rows 时应返回默认值', () => {
       // 模拟 process.stdout 没有 rows/columns 的情况
-      const origRows = (process.stdout as any).rows;
-      const origColumns = (process.stdout as any).columns;
-      (process.stdout as any).rows = undefined;
-      (process.stdout as any).columns = undefined;
+      const origRows = testStdout().rows;
+      const origColumns = testStdout().columns;
+      testStdout().rows = undefined;
+      testStdout().columns = undefined;
       // 重新创建 terminal 以读取新值
       const t = new ProcessTerminal();
       expect(t.rows).toBe(24);
       expect(t.columns).toBe(80);
-      (process.stdout as any).rows = origRows;
-      (process.stdout as any).columns = origColumns;
+      testStdout().rows = origRows;
+      testStdout().columns = origColumns;
     });
   });
 
@@ -52,13 +59,13 @@ describe('ProcessTerminal', () => {
     });
 
     it('stdin.isTTY 为 false 时应跳过 setRawMode', () => {
-      const origIsTTY = (process.stdin as any).isTTY;
-      (process.stdin as any).isTTY = false;
+      const origIsTTY = testStdin().isTTY;
+      testStdin().isTTY = false;
       const spy = vi.spyOn(process.stdin, 'setRawMode');
       terminal.enableRawMode();
       expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
-      (process.stdin as any).isTTY = origIsTTY;
+      testStdin().isTTY = origIsTTY;
     });
 
     it('disableRawMode 应调用 setRawMode(false)', () => {

@@ -157,12 +157,20 @@ vi.mock('@/cli/repl/tools/file-security', () => ({
   readStateTracker: { recordRead: vi.fn() },
 }));
 
+import type { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { createReplBuiltinTools } from '@/cli/repl/repl-agent-tools';
 import type { SkillConfig, SubAgentConfig, WebConfig } from '@/config/types';
+import type { LlmBasedAgent } from '@/core/agent-runtime/agent-adapter';
+import type { ImageContent, TextContent } from '@/core/agent-runtime/runtime-types';
 import type { TaskStore } from '@/core/task/task-store';
 
-function textOf(result: { content?: Array<{ text?: string }> }): string {
-  return result?.content?.[0]?.text ?? '';
+function textOf(result: { content?: (TextContent | ImageContent)[] } | undefined): string {
+  const first = result?.content?.[0];
+  return first?.type === 'text' ? first.text : '';
+}
+
+function detailsOf(result: { details: unknown } | undefined): Record<string, unknown> {
+  return (result?.details ?? {}) as Record<string, unknown>;
 }
 
 function makeSubAgentConfig(overrides: Partial<SubAgentConfig> = {}): SubAgentConfig {
@@ -210,7 +218,7 @@ describe('createReplBuiltinTools', () => {
     it('应返回本地时间、ISO 时间和时区', async () => {
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'GetCurrentTime');
-      const result = await (tool as any).execute('test', {});
+      const result = await tool?.execute('test', {});
       const text = textOf(result);
       expect(text).toContain('本地时间:');
       expect(text).toContain('ISO (UTC):');
@@ -220,9 +228,9 @@ describe('createReplBuiltinTools', () => {
     it('details 应包含 timestamp 和 timezone', async () => {
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'GetCurrentTime');
-      const result = await (tool as any).execute('test', {});
-      expect((result as any).details.timestamp).toBeTypeOf('number');
-      expect((result as any).details.timezone).toBeTypeOf('string');
+      const result = await tool?.execute('test', {});
+      expect(detailsOf(result).timestamp).toBeTypeOf('number');
+      expect(detailsOf(result).timezone).toBeTypeOf('string');
     });
   });
 
@@ -232,7 +240,7 @@ describe('createReplBuiltinTools', () => {
     it('应返回包含 cwd 的 JSON', async () => {
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'GetWorkdirInfo');
-      const result = await (tool as any).execute('test', {});
+      const result = await tool?.execute('test', {});
       const parsed = JSON.parse(textOf(result));
       expect(parsed.cwd).toBe(process.cwd());
     });
@@ -240,7 +248,7 @@ describe('createReplBuiltinTools', () => {
     it('应返回 platform、arch、nodeVersion', async () => {
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'GetWorkdirInfo');
-      const result = await (tool as any).execute('test', {});
+      const result = await tool?.execute('test', {});
       const parsed = JSON.parse(textOf(result));
       expect(parsed.platform).toBe(process.platform);
       expect(parsed.arch).toBe(process.arch);
@@ -250,9 +258,9 @@ describe('createReplBuiltinTools', () => {
     it('details 应包含 cwd 和 platform', async () => {
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'GetWorkdirInfo');
-      const result = await (tool as any).execute('test', {});
-      expect((result as any).details.cwd).toBe(process.cwd());
-      expect((result as any).details.platform).toBe(process.platform);
+      const result = await tool?.execute('test', {});
+      expect(detailsOf(result).cwd).toBe(process.cwd());
+      expect(detailsOf(result).platform).toBe(process.platform);
     });
   });
 
@@ -275,11 +283,11 @@ describe('createReplBuiltinTools', () => {
 
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'ReadFile');
-      const result = await (tool as any).execute('test', { file_path: filePath });
+      const result = await tool?.execute('test', { file_path: filePath });
       const text = textOf(result);
       expect(text).toContain('Hello World');
       expect(text).toContain('Line 2');
-      expect((result as any).details.path).toBe(filePath);
+      expect(detailsOf(result).path).toBe(filePath);
     });
 
     it('支持 offset 和 limit 分页', async () => {
@@ -289,7 +297,7 @@ describe('createReplBuiltinTools', () => {
 
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'ReadFile');
-      const result = await (tool as any).execute('test', {
+      const result = await tool?.execute('test', {
         file_path: filePath,
         offset: 5,
         limit: 3,
@@ -297,17 +305,17 @@ describe('createReplBuiltinTools', () => {
       const text = textOf(result);
       expect(text).toContain('Line 5');
       expect(text).toContain('Line 7');
-      expect((result as any).details.offset).toBe(5);
-      expect((result as any).details.limit).toBe(3);
-      expect((result as any).details.truncated).toBe(true);
+      expect(detailsOf(result).offset).toBe(5);
+      expect(detailsOf(result).limit).toBe(3);
+      expect(detailsOf(result).truncated).toBe(true);
     });
 
     it('文件不存在时应返回错误', async () => {
       const tools = createReplBuiltinTools();
       const tool = tools.find((t) => t.id === 'ReadFile');
-      const result = await (tool as any).execute('test', { file_path: '/nonexistent/path.txt' });
+      const result = await tool?.execute('test', { file_path: '/nonexistent/path.txt' });
       expect(textOf(result)).toContain('读取失败');
-      expect((result as any).details.error).toBe(true);
+      expect(detailsOf(result).error).toBe(true);
     });
   });
 
@@ -412,14 +420,14 @@ describe('createReplBuiltinTools', () => {
 
   describe('Sub-Agent 工具条件分支', () => {
     it('传入 parentAgent 和 subAgentConfig 时应包含 SpawnSubAgents', () => {
-      const mockAgent = { id: 'parent' } as any;
+      const mockAgent = { id: 'parent' } as unknown as LlmBasedAgent;
       const config = makeSubAgentConfig({ enabled: true });
       const tools = createReplBuiltinTools(undefined, undefined, undefined, mockAgent, config);
       expect(tools.some((t) => t.id === 'SpawnSubAgents')).toBe(true);
     });
 
     it('subAgentConfig.enabled=false 时应排除 SpawnSubAgents', () => {
-      const mockAgent = { id: 'parent' } as any;
+      const mockAgent = { id: 'parent' } as unknown as LlmBasedAgent;
       const config = makeSubAgentConfig({ enabled: false });
       const tools = createReplBuiltinTools(undefined, undefined, undefined, mockAgent, config);
       expect(tools.some((t) => t.id === 'SpawnSubAgents')).toBe(false);
@@ -432,7 +440,7 @@ describe('createReplBuiltinTools', () => {
     });
 
     it('agentTeam.enabled 时应包含 AgentTool 而非 SpawnSubAgents', () => {
-      const mockAgent = { id: 'parent' } as any;
+      const mockAgent = { id: 'parent' } as unknown as LlmBasedAgent;
       const config = makeSubAgentConfig({ enabled: true });
       const teamConfig = {
         enabled: true,
@@ -455,7 +463,7 @@ describe('createReplBuiltinTools', () => {
     });
 
     it('agentTeam.enabled 时应包含 AgentTool 而非 SpawnSubAgents（coordinator 模式）', () => {
-      const mockAgent = { id: 'parent' } as any;
+      const mockAgent = { id: 'parent' } as unknown as LlmBasedAgent;
       const config = makeSubAgentConfig({ enabled: true });
       const teamConfig = {
         enabled: true,
@@ -482,7 +490,7 @@ describe('createReplBuiltinTools', () => {
 
   describe('Cron 工具条件分支', () => {
     it('传入 cronScheduler 时应包含 ScheduledTask', () => {
-      const mockScheduler = {} as any;
+      const mockScheduler = {} as CronScheduler;
       const tools = createReplBuiltinTools(
         undefined,
         undefined,
@@ -505,9 +513,9 @@ describe('createReplBuiltinTools', () => {
   describe('全量工具组合', () => {
     it('传入所有可选参数时应返回完整工具集', () => {
       const mockStore = {} as TaskStore;
-      const mockAgent = { id: 'parent' } as any;
+      const mockAgent = { id: 'parent' } as unknown as LlmBasedAgent;
       const config = makeSubAgentConfig({ enabled: true });
-      const mockScheduler = {} as any;
+      const mockScheduler = {} as CronScheduler;
 
       const tools = createReplBuiltinTools(
         { enabled: true } as WebConfig,

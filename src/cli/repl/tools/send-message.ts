@@ -69,8 +69,7 @@ export function createSendMessageTool(currentAgentInstanceId: string): ToolRegis
       },
       required: ['toAgentId', 'message'],
     } as unknown as import('typebox').TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    execute: async (_toolCallId: string, params: any): Promise<any> => {
+    execute: async (_toolCallId: string, params) => {
       const p = params as SendMessageParams;
       const messageBus = getAgentMessageBus();
 

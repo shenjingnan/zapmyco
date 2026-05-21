@@ -169,6 +169,7 @@ describe('initializeMcpTools', () => {
     expect(registerTools).toHaveBeenCalledTimes(1);
     const registeredTools: unknown[] = registerTools.mock.calls[0]?.[0];
     expect(registeredTools).toHaveLength(1);
+    // biome-ignore lint/style/noNonNullAssertion: length verified above
     expect((registeredTools[0]! as { id: string }).id).toBe('mcp__demo__hello');
     expect(manager).toBeDefined();
   });

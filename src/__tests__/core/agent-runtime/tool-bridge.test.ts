@@ -102,15 +102,15 @@ describe('tool-bridge', () => {
       const reg = makeRegistration('read');
       const tools1 = toAgentTools([reg], cache);
       const tools2 = toAgentTools([reg], cache);
-      expect(tools1[0]!.parameters).toBe(tools2[0]!.parameters);
+      expect(tools1[0]?.parameters).toBe(tools2[0]?.parameters);
     });
 
     it('should return different references without cache', () => {
       const reg = makeRegistration('read');
       const tools1 = toAgentTools([reg]);
       const tools2 = toAgentTools([reg]);
-      expect(tools1[0]!.parameters).not.toBe(tools2[0]!.parameters);
-      expect(tools1[0]!.parameters).toEqual(tools2[0]!.parameters);
+      expect(tools1[0]?.parameters).not.toBe(tools2[0]?.parameters);
+      expect(tools1[0]?.parameters).toEqual(tools2[0]?.parameters);
     });
 
     it('cached tools should use first registration schema', () => {
@@ -122,7 +122,7 @@ describe('tool-bridge', () => {
       toAgentTools([reg1], cache);
       const tools2 = toAgentTools([reg2], cache);
 
-      expect(tools2[0]!.description).toBe('Original description');
+      expect(tools2[0]?.description).toBe('Original description');
     });
 
     it('should preserve execute function from each registration', () => {
@@ -133,7 +133,7 @@ describe('tool-bridge', () => {
       toAgentTools([{ ...makeRegistration('calc'), execute: fn1 }], cache);
       const tools2 = toAgentTools([{ ...makeRegistration('calc'), execute: fn2 }], cache);
 
-      expect(tools2[0]!.execute).toBe(fn2);
+      expect(tools2[0]?.execute).toBe(fn2);
     });
 
     it('should sort tools by name when cache is used', () => {
@@ -143,9 +143,9 @@ describe('tool-bridge', () => {
         cache
       );
 
-      expect(tools[0]!.name).toBe('a-tool');
-      expect(tools[1]!.name).toBe('m-tool');
-      expect(tools[2]!.name).toBe('z-tool');
+      expect(tools[0]?.name).toBe('a-tool');
+      expect(tools[1]?.name).toBe('m-tool');
+      expect(tools[2]?.name).toBe('z-tool');
     });
 
     it('cache stats should reflect cached tools', () => {

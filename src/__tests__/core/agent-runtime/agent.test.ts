@@ -162,10 +162,10 @@ function createMockStreamForToolCall() {
       output: 20,
       totalTokens: 30,
       cost: { input: 0, output: 0, total: 0 },
-    } as any,
+    } as Record<string, unknown>,
     stopReason: 'stop',
     timestamp: Date.now(),
-  } as AssistantMessage;
+  } as unknown as AssistantMessage;
   return createMultiTurnStreamFn(msg);
 }
 
@@ -228,8 +228,9 @@ describe('Agent', () => {
 
   describe('state getter', () => {
     it('should copy arrays on assignment', () => {
-      const tools: any[] = [];
-      agent.state.tools = tools;
+      const tools: Record<string, unknown>[] = [];
+      // biome-ignore lint/suspicious/noExplicitAny: test assertion, tools 类型不兼容
+      agent.state.tools = tools as any;
       tools.push({ name: 'leaked' });
       expect(agent.state.tools).toHaveLength(0);
     });
@@ -302,6 +303,7 @@ describe('Agent', () => {
       await agent.prompt('Hello');
 
       expect(agent.state.messages.length).toBeGreaterThan(0);
+      // biome-ignore lint/style/noNonNullAssertion: length > 0 已确保有值
       const lastMsg = agent.state.messages[agent.state.messages.length - 1]!;
       expect(lastMsg.role).toBe('assistant');
     });

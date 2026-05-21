@@ -190,8 +190,8 @@ function shareParentResources(subAgent: LlmBasedAgent, parentAgent: LlmBasedAgen
     // 子 Agent 默认使用父 Agent 的模型
     subAgent.innerAgent.state.model = parentInner.state.model;
     // 但通过 facade 获取 Key（支持凭据池轮转）
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (subAgent.innerAgent as any).getApiKey = parentAgent.llmFacade.createGetApiKeyFn();
+    (subAgent.innerAgent as unknown as Record<string, unknown>).getApiKey =
+      parentAgent.llmFacade.createGetApiKeyFn();
     return;
   }
 
@@ -199,14 +199,12 @@ function shareParentResources(subAgent: LlmBasedAgent, parentAgent: LlmBasedAgen
   subAgent.innerAgent.state.model = parentInner.state.model;
 
   // 共享 API Key 解析函数
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parentGetApiKey = (parentInner as any).getApiKey as
+  const parentGetApiKey = (parentInner as unknown as Record<string, unknown>).getApiKey as
     | ((provider: string) => string | undefined)
     | undefined;
 
   if (parentGetApiKey) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (subAgent.innerAgent as any).getApiKey = parentGetApiKey;
+    (subAgent.innerAgent as unknown as Record<string, unknown>).getApiKey = parentGetApiKey;
   }
 }
 

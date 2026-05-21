@@ -431,8 +431,8 @@ export class AgentOrchestrator {
       // 4. Worktree 隔离
       let effectiveOptions = options;
 
-      if (options?.isolation === 'worktree' && getWorktreeManager()) {
-        const wm = getWorktreeManager()!;
+      const wm = getWorktreeManager();
+      if (options?.isolation === 'worktree' && wm) {
         worktreeInfo = await wm.create({
           slug: `${typeId}-${instanceId}`,
           createdBy: instanceId,
@@ -443,11 +443,14 @@ export class AgentOrchestrator {
         effectiveOptions = { ...options };
         effectiveOptions.wrapExecute = (execute) => {
           const inner = innerWrapExecute ? () => innerWrapExecute(execute) : execute;
+          if (!worktreeInfo) {
+            throw new Error('WorktreeInfo 不可用');
+          }
           return runInWorktree(
             {
-              worktreeId: worktreeInfo!.id,
-              worktreePath: worktreeInfo!.worktreePath,
-              originalPath: worktreeInfo!.originalPath,
+              worktreeId: worktreeInfo.id,
+              worktreePath: worktreeInfo.worktreePath,
+              originalPath: worktreeInfo.originalPath,
             },
             inner
           );

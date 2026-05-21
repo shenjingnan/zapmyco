@@ -14,6 +14,26 @@ import { Key, matchesKey } from './key';
 import { truncateToWidth } from './text-utils';
 import type { Component, EditorOptions, EditorTheme } from './types';
 
+/** 自动补全提供者接口 */
+interface AutocompleteProvider {
+  getSuggestions: (
+    buffer: string[],
+    cursorRow: number,
+    cursorCol: number,
+    options?: { signal?: AbortSignal; force?: boolean }
+  ) => Promise<{
+    items: Array<{ label: string; value?: string; description?: string }>;
+    prefix?: string;
+  } | null>;
+  applyCompletion: (
+    buffer: string[],
+    cursorRow: number,
+    cursorCol: number,
+    item: { label: string; value?: string; description?: string },
+    prefix: string
+  ) => { lines: string[]; cursorLine: number; cursorCol: number } | null;
+}
+
 /** APC (Application Program Command) 零宽光标标记 */
 const CURSOR_MARKER = '\u001B_pi:c\u0007';
 
@@ -51,9 +71,9 @@ export class Editor implements Component {
   #theme: EditorTheme;
 
   /** 自动补全提供者 */
-  #acProvider: any = null;
+  #acProvider: unknown = null;
   /** 补全候选项列表（当前活跃时） */
-  #acItems: any[] = [];
+  #acItems: Array<{ label: string; value?: string; description?: string }> = [];
   /** 补全匹配前缀 */
   #acPrefix = '';
   /** 当前选中的补全项索引 */
@@ -160,8 +180,9 @@ export class Editor implements Component {
       // Tab → 应用补全（选中项或第一项）
       if (matchesKey(data, Key.tab)) {
         const idx = this.#acSelected >= 0 ? this.#acSelected : 0;
-        if (idx < this.#acItems.length && this.#acProvider) {
-          this.#applyCompletion(this.#acItems[idx]);
+        const item = this.#acItems[idx];
+        if (item && this.#acProvider) {
+          this.#applyCompletion(item);
           this.#clearAutocomplete();
           this.tui?.requestRender();
         }
@@ -170,8 +191,9 @@ export class Editor implements Component {
       // Enter → 应用补全（同 Tab）
       if (matchesKey(data, Key.enter)) {
         const idx = this.#acSelected >= 0 ? this.#acSelected : 0;
-        if (idx < this.#acItems.length && this.#acProvider) {
-          this.#applyCompletion(this.#acItems[idx]);
+        const item = this.#acItems[idx];
+        if (item && this.#acProvider) {
+          this.#applyCompletion(item);
           this.#clearAutocomplete();
           this.tui?.requestRender();
         }
@@ -207,7 +229,7 @@ export class Editor implements Component {
       this.#handleBackspace();
       // 退格后重新触发 autocomplete（若在 slash context 中）
       if (this.#acProvider) {
-        const line = this.#buffer[this.cursorRow]!;
+        const line = this.#buffer[this.cursorRow] ?? '';
         const before = line.slice(0, this.cursorCol);
         if (/(?:^|\s)[/@#][^\s]*$/.test(before)) {
           void this.#requestAutocomplete(false);
@@ -270,7 +292,7 @@ export class Editor implements Component {
       // 输入后检查是否触发 autocomplete
       if (this.#acProvider) {
         const ch = data;
-        const line = this.#buffer[this.cursorRow]!;
+        const line = this.#buffer[this.cursorRow] ?? '';
         const before = line.slice(0, this.cursorCol);
         // 在行首输入 /、@、# 或在这些符号后继续输入字母时触发
         if ((ch === '/' || ch === '@' || ch === '#') && /(?:^|\s)$/.test(before.slice(0, -1))) {
@@ -307,7 +329,7 @@ export class Editor implements Component {
     let cursorVisualCol = -1;
 
     for (let i = this.#scrollOffset; i < this.#buffer.length; i++) {
-      const line = this.#buffer[i]!;
+      const line = this.#buffer[i] ?? '';
 
       if (line.length <= contentWidth) {
         contentLines.push(line);
@@ -360,7 +382,7 @@ export class Editor implements Component {
 
     // 嵌入光标标记（TUI 引擎在 doRender 中提取此标记来定位硬件光标）
     if (this.focused && cursorVisualLine >= 0) {
-      const line = contentLines[cursorVisualLine]!;
+      const line = contentLines[cursorVisualLine] ?? '';
       const col = Math.min(cursorVisualCol, line.length);
       contentLines[cursorVisualLine] = line.slice(0, col) + CURSOR_MARKER + line.slice(col);
     }
@@ -387,7 +409,7 @@ export class Editor implements Component {
 
   /** 异步请求自动补全 */
   async #requestAutocomplete(force: boolean): Promise<void> {
-    const provider = this.#acProvider;
+    const provider = this.#acProvider as AutocompleteProvider | undefined;
     if (!provider || typeof provider.getSuggestions !== 'function') return;
 
     // 保存快照用于后续判断是否仍有效
@@ -435,8 +457,8 @@ export class Editor implements Component {
   }
 
   /** 应用选中的补全项 */
-  #applyCompletion(item: any): void {
-    const provider = this.#acProvider;
+  #applyCompletion(item: { label: string; value?: string; description?: string }): void {
+    const provider = this.#acProvider as AutocompleteProvider | undefined;
     if (!provider || typeof provider.applyCompletion !== 'function') return;
 
     try {
@@ -471,7 +493,7 @@ export class Editor implements Component {
 
   /** 在当前光标位置插入文本 */
   #insertAtCursor(text: string): void {
-    const line = this.#buffer[this.cursorRow]!;
+    const line = this.#buffer[this.cursorRow] ?? '';
     this.#buffer[this.cursorRow] =
       line.slice(0, this.cursorCol) + text + line.slice(this.cursorCol);
   }
@@ -480,15 +502,15 @@ export class Editor implements Component {
   #handleBackspace(): void {
     if (this.cursorCol > 0) {
       // 行内删除光标前一字符
-      const line = this.#buffer[this.cursorRow]!;
+      const line = this.#buffer[this.cursorRow] ?? '';
       this.#buffer[this.cursorRow] = line.slice(0, this.cursorCol - 1) + line.slice(this.cursorCol);
       this.cursorCol--;
     } else if (this.cursorRow > 0) {
       // 行首退格：合并到上一行
-      const currentLine = this.#buffer[this.cursorRow]!;
+      const currentLine = this.#buffer[this.cursorRow] ?? '';
       const prevRow = this.cursorRow - 1;
       this.cursorCol = this.#buffer[prevRow]?.length ?? 0;
-      this.#buffer[prevRow] = this.#buffer[prevRow]! + currentLine;
+      this.#buffer[prevRow] = (this.#buffer[prevRow] ?? '') + currentLine;
       this.#buffer.splice(this.cursorRow, 1);
       this.cursorRow = prevRow;
     }

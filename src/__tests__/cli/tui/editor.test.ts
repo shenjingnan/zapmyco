@@ -11,6 +11,25 @@ import type { EditorTheme } from '@/cli/tui/types';
 
 // ==================== 测试工具 ====================
 
+/** 测试专用接口，绕过 Editor protected 访问限制 */
+interface EditorTestAccess {
+  tui: { requestRender: ReturnType<typeof vi.fn> };
+}
+
+/** 补全项类型（匹配 Editor 内部期望的格式） */
+interface SuggestionItem {
+  label: string;
+  value?: string;
+  description?: string;
+}
+
+/** 补全应用结果类型 */
+interface CompletionResult {
+  lines: string[];
+  cursorLine: number;
+  cursorCol: number;
+}
+
 /** 创建 mock TUI 实例 */
 function mockTui(requestRender = vi.fn()) {
   return { requestRender, setShowHardwareCursor: vi.fn() };
@@ -48,7 +67,7 @@ describe('Editor 构造函数', () => {
   it('应存储 tui 引用', () => {
     const tui = mockTui();
     const editor = new Editor(tui, defaultTheme);
-    expect((editor as any).tui).toBe(tui);
+    expect((editor as unknown as EditorTestAccess).tui).toBe(tui);
   });
 
   it('应调用 setShowHardwareCursor(true)', () => {
@@ -101,9 +120,9 @@ describe('getText / setText', () => {
     const { editor } = createEditor();
     editor.setText('hello');
     // 修改 scrollOffset 和 historyIndex
-    (editor as any).historyIndex = 5;
+    editor.historyIndex = 5;
     editor.setText('world');
-    expect((editor as any).historyIndex).toBe(-1);
+    expect(editor.historyIndex).toBe(-1);
   });
 });
 
@@ -122,7 +141,7 @@ describe('addToHistory', () => {
     const { editor } = createEditor();
     editor.addToHistory('entry1');
     editor.addToHistory('entry2');
-    expect((editor as any).historyIndex).toBe(-1);
+    expect(editor.historyIndex).toBe(-1);
   });
 
   it('historyIndex 应在 addToHistory 后重置为 -1', () => {
@@ -223,14 +242,20 @@ describe('handleInput — Escape', () => {
 
 describe('handleInput — Autocomplete 活跃', () => {
   /** 创建一个已触发 autocomplete 的编辑器 */
-  async function createEditorWithAC(items: any[] = [{ label: 'a' }, { label: 'b' }]) {
+  async function createEditorWithAC(items: SuggestionItem[] = [{ label: 'a' }, { label: 'b' }]) {
     const { editor, tui } = createEditor();
     const provider = {
       getSuggestions: vi.fn().mockResolvedValue({
         items,
         prefix: '/',
       }),
-      applyCompletion: vi.fn() as any,
+      applyCompletion: vi.fn() as unknown as (
+        buffer: string[],
+        cursorRow: number,
+        cursorCol: number,
+        item: SuggestionItem,
+        prefix: string
+      ) => CompletionResult,
     };
     editor.setAutocompleteProvider(provider);
     editor.handleInput('/');
@@ -592,7 +617,7 @@ describe('render', () => {
     editor.setText('hello');
     const result = editor.render(80);
     // 内容行应包含 CURSOR_MARKER
-    const contentLine = result[1]!;
+    const contentLine = result[1] as string;
     expect(contentLine).toContain('\u001B_pi:c\u0007');
   });
 
@@ -601,7 +626,7 @@ describe('render', () => {
     editor.focused = false;
     editor.setText('hello');
     const result = editor.render(80);
-    const contentLine = result[1]!;
+    const contentLine = result[1] as string;
     expect(contentLine).not.toContain('\u001B_pi:c\u0007');
   });
 

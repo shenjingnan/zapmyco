@@ -492,6 +492,7 @@ class ApprovalDialogComponent implements Component {
     const paramEntries = Object.entries(this.request.params);
     let paramSuffix = '';
     if (paramEntries.length > 0) {
+      // biome-ignore lint/style/noNonNullAssertion: guarded by length check above
       const [, value] = paramEntries[0]!;
       const raw = typeof value === 'string' ? value : JSON.stringify(value);
       paramSuffix = raw.length > 50 ? `${raw.slice(0, 47)}...` : raw;
@@ -506,6 +507,7 @@ class ApprovalDialogComponent implements Component {
     // 操作选项列表（支持方向键/Tab 导航 + 数字键选择）
     const keyLabels = ['1', '2', '3'];
     for (let i = 0; i < this.OPTIONS.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: i < length ensures bounds
       const opt = this.OPTIONS[i]!;
       const isFocused = this.selectedOptionIndex === i;
       const prefix = isFocused ? c.green('❯') : ' ';

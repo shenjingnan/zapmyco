@@ -35,7 +35,7 @@ import type {
 import type { Capability } from '@/protocol/capability';
 import { createDoomLoopDetector, type DoomLoopDetector } from '@/security/doom-loop-detector';
 import { createEventBridgeListener } from './event-bridge';
-import type { ThinkingLevel } from './runtime-types';
+import type { ThinkingLevel, Usage } from './runtime-types';
 import { type ToolRegistration, toAgentTools } from './tool-bridge';
 import { ToolSchemaCache } from './tool-schema-cache';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';
@@ -296,10 +296,11 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
         this.inner.subscribe((event) => {
           // Token 追踪：从 turn_end 事件提取 usage
           if (event.type === 'turn_end' && event.message) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const usage = (event.message as any).usage;
+            const msg = event.message as unknown as { usage?: Usage };
+            const usage = msg.usage;
             if (usage && typeof usage.input === 'number') {
-              this.tokenTracker.recordUsage(usage);
+              // biome-ignore lint/suspicious/noExplicitAny: usage 来自事件消息，运行时结构兼容 Usage
+              this.tokenTracker.recordUsage(usage as any);
             }
           }
 
@@ -352,8 +353,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
             }
           }
           if (event.type === 'tool_execution_end') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const toolResult = (event as any).result;
+            const ev = event as unknown as { result?: { error?: unknown } };
+            const toolResult = ev.result;
             const isSuccess =
               toolResult !== undefined &&
               !(toolResult instanceof Error) &&
@@ -560,8 +561,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
 
       // 如果是上下文溢出，在 error 上附加恢复建议
       if (hadContextOverflowError) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (errorResult.error as any).suggestion =
+        (errorResult.error as unknown as Record<string, unknown>).suggestion =
           '建议使用 /compact 命令手动压缩上下文，或使用更长的上下文窗口模型';
       }
 
@@ -924,16 +924,15 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     const output = lastAssistantMessage ? extractTextFromMessage(lastAssistantMessage) : null;
 
     // 检测真正的错误状态（pi-agent-core 内部 catch 不会向外抛异常）
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stateError = (state as any).errorMessage as string | undefined;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasStreamError = (lastAssistantMessage as any)?.stopReason === 'error';
-    const hasErrorMessage =
-      hasStreamError &&
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      typeof (lastAssistantMessage as any)?.errorMessage === 'string';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const errorText = hasErrorMessage ? (lastAssistantMessage as any).errorMessage : undefined;
+    const stateMessage = state as unknown as { errorMessage?: string };
+    const stateError = stateMessage.errorMessage;
+    const lastAssistant = lastAssistantMessage as unknown as {
+      stopReason?: string;
+      errorMessage?: string;
+    };
+    const hasStreamError = lastAssistant?.stopReason === 'error';
+    const hasErrorMessage = hasStreamError && typeof lastAssistant?.errorMessage === 'string';
+    const errorText = hasErrorMessage ? lastAssistant.errorMessage : undefined;
     const isEmpty = !output || output.trim().length === 0;
 
     if (stateError || hasStreamError || isEmpty) {

@@ -144,7 +144,8 @@ export class TUI {
 
       // 检测并消费 SGR 编码的鼠标事件：ESC[<btn;col;rowM 或 ESC[<btn;col;rowm
       // 移除了 $ 锚点以支持同一 chunk 中包含多个事件（如 press + release）
-      const SGR_MOUSE_RE = new RegExp('^\\x1b\\[<(\\d+);(\\d+);(\\d+)([Mm])');
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI 转义序列需要匹配 \x1b
+      const SGR_MOUSE_RE = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])/;
       let sgrMouseMatch: RegExpMatchArray | null;
       let hadMouseEvent = false;
 
@@ -152,7 +153,7 @@ export class TUI {
         sgrMouseMatch = data.match(SGR_MOUSE_RE);
         if (!sgrMouseMatch) break;
         hadMouseEvent = true;
-        const btn = Number.parseInt(sgrMouseMatch[1]!, 10);
+        const btn = Number.parseInt(sgrMouseMatch[1] ?? '0', 10);
         // 仅处理滚轮事件（64=up, 65=down），忽略按钮释放等事件
         if (btn === 64 || btn === 65) {
           this.handleSgrMouseEvent(btn);
@@ -168,6 +169,7 @@ export class TUI {
 
       if (this.overlayStack.length > 0) {
         // Overlay 模式：顶层 overlay 接收输入
+        // biome-ignore lint/style/noNonNullAssertion: guard ensures length > 0
         const top = this.overlayStack[this.overlayStack.length - 1]!;
         top.component.handleInput?.(data);
       } else if (this.focused) {
@@ -384,7 +386,7 @@ export class TUI {
 
     // 4. 扫描并移除光标标记
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
+      const line = lines[i] ?? '';
       const markerIdx = line.indexOf(CURSOR_MARKER);
       if (markerIdx >= 0) {
         // 移除标记
@@ -417,7 +419,7 @@ export class TUI {
       while (targetRow >= result.length) {
         result.push('');
       }
-      const overlayLine = i < overlayLines.length ? overlayLines[i]! : '';
+      const overlayLine = i < overlayLines.length ? (overlayLines[i] ?? '') : '';
       // 截断或填充到指定宽度
       result[targetRow] = overlayLine.padEnd(rect.width).slice(0, rect.width);
     }
@@ -547,7 +549,6 @@ export class TUI {
     buf += ESU;
     this.terminal.write(buf);
   }
-
 
   /**
    * 获取布局子组件列表

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSendMessageTool } from '@/cli/repl/tools/send-message';
+import type { LlmBasedAgent } from '@/core/agent-runtime';
+import type { TextContent } from '@/core/agent-runtime/runtime-types';
 import {
   getAgentInstanceManager,
   resetAgentInstanceManager,
@@ -49,10 +51,9 @@ describe('createSendMessageTool', () => {
   });
 
   function registerAgent(id: string) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getAgentInstanceManager().register(
       createMockDef('worker'),
-      { agentId: id } as any,
+      { agentId: id } as unknown as LlmBasedAgent,
       {
         taskId: `task-${id}`,
         description: 'test',
@@ -98,10 +99,8 @@ describe('createSendMessageTool', () => {
         messageType: 'question',
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('消息已发送');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('coordinator-1');
+      expect((result.content?.[0] as TextContent)?.text).toContain('消息已发送');
+      expect((result.content?.[0] as TextContent)?.text).toContain('coordinator-1');
 
       const bus = getAgentMessageBus();
       const messages = bus.drainInbox('coordinator-1');

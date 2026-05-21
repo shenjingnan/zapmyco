@@ -40,7 +40,7 @@ describe('file-grep', () => {
       });
 
       expect(result.details.matchCount).toBe(1);
-      expect(result.content[0].text).toContain('import foo');
+      expect((result.content[0] as { text: string }).text).toContain('import foo');
       cleanupTmpDir();
     });
 
@@ -55,8 +55,8 @@ describe('file-grep', () => {
       });
 
       expect(result.details.matchCount).toBe(2);
-      expect(result.content[0].text).toContain('fn1');
-      expect(result.content[0].text).toContain('fn2');
+      expect((result.content[0] as { text: string }).text).toContain('fn1');
+      expect((result.content[0] as { text: string }).text).toContain('fn2');
       cleanupTmpDir();
     });
 
@@ -71,7 +71,7 @@ describe('file-grep', () => {
       });
 
       expect(result.details.matchCount).toBe(0);
-      expect(result.content[0].text).toContain('未找到匹配');
+      expect((result.content[0] as { text: string }).text).toContain('未找到匹配');
       cleanupTmpDir();
     });
 
@@ -86,7 +86,7 @@ describe('file-grep', () => {
 
       cleanupTmpDir();
 
-      expect(result.content[0].text).toContain('无效的正则表达式');
+      expect((result.content[0] as { text: string }).text).toContain('无效的正则表达式');
     });
   });
 
@@ -107,9 +107,9 @@ describe('file-grep', () => {
 
       expect(result.details.outputMode).toBe('files_with_matches');
       expect(result.details.fileCount).toBe(2);
-      expect(result.content[0].text).toContain('foo.ts');
-      expect(result.content[0].text).toContain('baz.ts');
-      expect(result.content[0].text).not.toContain('bar.ts');
+      expect((result.content[0] as { text: string }).text).toContain('foo.ts');
+      expect((result.content[0] as { text: string }).text).toContain('baz.ts');
+      expect((result.content[0] as { text: string }).text).not.toContain('bar.ts');
       cleanupTmpDir();
     });
 
@@ -125,7 +125,7 @@ describe('file-grep', () => {
       });
 
       expect(result.details.fileCount).toBe(0);
-      expect(result.content[0].text).toContain('未找到匹配');
+      expect((result.content[0] as { text: string }).text).toContain('未找到匹配');
       cleanupTmpDir();
     });
   });
@@ -145,8 +145,8 @@ describe('file-grep', () => {
 
       expect(result.details.outputMode).toBe('count');
       expect(result.details.matchCount).toBe(2);
-      expect(result.content[0].text).toContain('2');
-      expect(result.content[0].text).toContain('many.ts');
+      expect((result.content[0] as { text: string }).text).toContain('2');
+      expect((result.content[0] as { text: string }).text).toContain('many.ts');
       cleanupTmpDir();
     });
   });
@@ -198,8 +198,8 @@ describe('file-grep', () => {
       });
 
       expect(result.details.fileCount).toBe(1);
-      expect(result.content[0].text).toContain('code.ts');
-      expect(result.content[0].text).not.toContain('doc.md');
+      expect((result.content[0] as { text: string }).text).toContain('code.ts');
+      expect((result.content[0] as { text: string }).text).not.toContain('doc.md');
       cleanupTmpDir();
     });
   });
@@ -218,9 +218,9 @@ describe('file-grep', () => {
       });
 
       expect(result.details.matchCount).toBe(1);
-      expect(result.content[0].text).toContain('line 2');
-      expect(result.content[0].text).toContain('target');
-      expect(result.content[0].text).toContain('line 4');
+      expect((result.content[0] as { text: string }).text).toContain('line 2');
+      expect((result.content[0] as { text: string }).text).toContain('target');
+      expect((result.content[0] as { text: string }).text).toContain('line 4');
       cleanupTmpDir();
     });
 
@@ -235,7 +235,7 @@ describe('file-grep', () => {
       });
 
       // .png 文件应该被跳过
-      expect(result.content[0].text).not.toContain('image.png');
+      expect((result.content[0] as { text: string }).text).not.toContain('image.png');
       cleanupTmpDir();
     });
   });

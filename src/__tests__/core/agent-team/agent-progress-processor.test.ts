@@ -40,7 +40,7 @@ describe('buildToolCallGroups', () => {
   });
 
   it('包含 null 记录的数组应跳过空值', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: test null record in array
     const records = [makeRecord('ReadFile'), null as any, makeRecord('Exec')];
     const groups = buildToolCallGroups(records);
     expect(groups).toHaveLength(2);

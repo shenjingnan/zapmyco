@@ -117,7 +117,7 @@ export function createAgentTool(orchestrator: AgentOrchestrator): ToolRegistrati
       },
       required: ['description'],
     } as unknown as import('typebox').TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic params from inline JSON Schema
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       const p = params as AgentToolParams & {
         agents?: Array<{ id: string; description: string; allowedTools?: string[] }>;

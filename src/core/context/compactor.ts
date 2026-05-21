@@ -260,8 +260,7 @@ export class Compactor {
   ): number {
     let lastUserIndex = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const msg = messages[i] as any as Record<string, unknown> | undefined;
+      const msg = messages[i] as unknown as Record<string, unknown> | undefined;
       if (msg?.role === 'user') {
         lastUserIndex = i;
         break;
@@ -288,16 +287,14 @@ export class Compactor {
     let adjusted = tailStartIndex;
 
     // 检查尾部第一行是不是 orphan toolResult
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const firstTail = messages[adjusted] as any as Record<string, unknown> | undefined;
+    const firstTail = messages[adjusted] as unknown as Record<string, unknown> | undefined;
     if (firstTail?.role === 'toolResult') {
       const callId = firstTail.toolCallId;
       if (typeof callId === 'string') {
         // 检查其 tool_use 是否在头部
         let foundToolCall = false;
         for (let i = adjusted - 1; i >= 0; i--) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const msg = messages[i] as any as Record<string, unknown> | undefined;
+          const msg = messages[i] as unknown as Record<string, unknown> | undefined;
           if (!msg) continue;
           if (msg.role === 'assistant') {
             const content = msg.content;
@@ -451,8 +448,7 @@ export class Compactor {
 
     // 过滤掉非标准角色（complete 只接受 user/assistant/toolResult）
     const llmMessages = simplifiedMessages.filter((m) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const role = (m as any).role as string | undefined;
+      const role = (m as unknown as Record<string, unknown>).role as string | undefined;
       return role === 'user' || role === 'assistant' || role === 'toolResult';
     });
 
@@ -528,13 +524,11 @@ export class Compactor {
    * 简化消息内容，移除无用的 blocks（如图片、base64 数据等）
    */
   private simplifyMessage(msg: AgentMessage): AgentMessage {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const m = msg as any as Record<string, unknown>;
+    const m = msg as unknown as Record<string, unknown>;
 
     if (!Array.isArray(m.content)) return msg;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const simplified = (m.content as any[]).map((block: unknown) => {
+    const simplified = (m.content as Array<unknown>).map((block: unknown) => {
       if (!block || typeof block !== 'object') return block as Record<string, unknown>;
       const b = block as Record<string, unknown>;
 
@@ -559,8 +553,7 @@ export class Compactor {
       return b;
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return { ...msg, content: simplified } as any as AgentMessage;
+    return { ...msg, content: simplified } as unknown as AgentMessage;
   }
 
   /**

@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ToolRegistration } from '@/core/agent-runtime';
+import type { TextContent } from '@/core/agent-runtime/runtime-types';
 import { ApprovalManager } from '@/security/approval-manager';
 import { resolveConfig } from '@/security/permission-config';
 import { PermissionEngine } from '@/security/permission-engine';
@@ -52,8 +53,7 @@ describe('ToolGuard', () => {
 
       const guarded = guard.wrap(tool);
       const result = await guarded.execute('test-id', {});
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content[0] as any).text).toBe('ok');
+      expect((result.content[0] as TextContent).text).toBe('ok');
     });
 
     it('should ask when tool checkPermission requires approval (auto-deny without provider)', async () => {
@@ -92,8 +92,7 @@ describe('ToolGuard', () => {
 
       const guarded = guard.wrap(tool);
       const result = await guarded.execute('test-id', { command: 'ls' });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content[0] as any).text).toBe('ok');
+      expect((result.content[0] as TextContent).text).toBe('ok');
     });
 
     it('should deny critical tools', async () => {
@@ -281,8 +280,7 @@ describe('ToolGuard with background agent context', () => {
       guarded.execute('test-id', {})
     );
     // Low risk tools should still be allowed
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((result.content[0] as any).text).toBe('ok');
+    expect((result.content[0] as TextContent).text).toBe('ok');
   });
 
   it('should still deny critical tools in background agent context', async () => {

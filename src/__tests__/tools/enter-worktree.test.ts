@@ -69,6 +69,7 @@ describe('EnterWorktree 工具', () => {
       (manager.create as ReturnType<typeof vi.fn>).mockResolvedValue(info);
 
       const tool = createEnterWorktreeTool(manager);
+      // biome-ignore lint/suspicious/noExplicitAny: tool result access in test
       const result: any = await tool.execute('test-1', { name: 'my-worktree' });
 
       expect(manager.create).toHaveBeenCalledWith({
@@ -101,6 +102,7 @@ describe('EnterWorktree 工具', () => {
       );
 
       const tool = createEnterWorktreeTool(manager);
+      // biome-ignore lint/suspicious/noExplicitAny: tool result access in test
       const result: any = await tool.execute('test-3', { name: 'fail' });
 
       expect(result.content[0].text).toContain('创建 worktree 失败');
@@ -113,6 +115,7 @@ describe('EnterWorktree 工具', () => {
       (manager.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('generic error'));
 
       const tool = createEnterWorktreeTool(manager);
+      // biome-ignore lint/suspicious/noExplicitAny: tool result access in test
       const result: any = await tool.execute('test-4', {});
 
       expect(result.content[0].text).toContain('创建 worktree 失败');

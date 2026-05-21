@@ -18,6 +18,14 @@ import type { CronScheduler } from '../cron/cron-scheduler';
 import { CronStore } from '../cron/cron-store';
 import { CRON_CONSTANTS, type CronJob, type CronToolParams } from '../cron/types';
 
+// ============ 类型 ============
+
+/** 工具执行结果 */
+interface CronToolResult {
+  content: Array<{ type: 'text'; text: string }>;
+  details: Record<string, unknown>;
+}
+
 // ============ 工具描述 ============
 
 const CRON_TOOL_DESCRIPTION = `定时任务管理工具 — 创建和管理按 cron 表达式触发的自动化任务。
@@ -70,8 +78,7 @@ const CRON_TOOL_DESCRIPTION = `定时任务管理工具 — 创建和管理按 c
  * 创建 scheduled_task 工具
  * @param scheduler CronScheduler 实例
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createCronTool(scheduler: CronScheduler): any {
+export function createCronTool(scheduler: CronScheduler) {
   return {
     id: 'ScheduledTask' as const,
     label: '定时任务',
@@ -127,8 +134,7 @@ export function createCronTool(scheduler: CronScheduler): any {
       required: ['action'],
     } as const,
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async execute(_toolCallId: string, params: CronToolParams): Promise<any> {
+    async execute(_toolCallId: string, params: CronToolParams): Promise<CronToolResult> {
       const action = params.action ?? 'list';
 
       switch (action) {
@@ -163,8 +169,7 @@ export function createCronTool(scheduler: CronScheduler): any {
 async function buildCreateResult(
   scheduler: CronScheduler,
   params: CronToolParams
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+): Promise<CronToolResult> {
   const cron = params.cron?.trim();
   const prompt = params.prompt?.trim();
 
@@ -266,10 +271,7 @@ async function buildCreateResult(
   };
 }
 
-async function buildListResult(
-  scheduler: CronScheduler
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+async function buildListResult(scheduler: CronScheduler): Promise<CronToolResult> {
   const jobs = scheduler.getJobs();
 
   if (jobs.length === 0) {
@@ -313,8 +315,7 @@ async function buildListResult(
 async function buildUpdateResult(
   scheduler: CronScheduler,
   params: CronToolParams
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+): Promise<CronToolResult> {
   if (!params.job_id) {
     return {
       content: [{ type: 'text', text: '请提供 job_id 参数。' }],
@@ -322,8 +323,7 @@ async function buildUpdateResult(
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const updates: any = {};
+  const updates: Record<string, string | boolean | undefined> = {};
   if (params.new_cron !== undefined) updates.cron = params.new_cron;
   if (params.new_prompt !== undefined) updates.prompt = params.new_prompt;
   if (params.enabled !== undefined) updates.enabled = params.enabled;
@@ -352,8 +352,7 @@ async function buildUpdateResult(
 async function buildRemoveResult(
   scheduler: CronScheduler,
   params: CronToolParams
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+): Promise<CronToolResult> {
   if (!params.job_id) {
     return {
       content: [{ type: 'text', text: '请提供 job_id 参数。' }],
@@ -378,8 +377,7 @@ async function buildRemoveResult(
 async function buildPauseResult(
   scheduler: CronScheduler,
   params: CronToolParams
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+): Promise<CronToolResult> {
   if (!params.job_id) {
     return {
       content: [{ type: 'text', text: '请提供 job_id 参数。' }],
@@ -404,8 +402,7 @@ async function buildPauseResult(
 async function buildResumeResult(
   scheduler: CronScheduler,
   params: CronToolParams
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+): Promise<CronToolResult> {
   if (!params.job_id) {
     return {
       content: [{ type: 'text', text: '请提供 job_id 参数。' }],
@@ -430,8 +427,7 @@ async function buildResumeResult(
 async function buildRunResult(
   scheduler: CronScheduler,
   params: CronToolParams
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+): Promise<CronToolResult> {
   if (!params.job_id) {
     return {
       content: [{ type: 'text', text: '请提供 job_id 参数。' }],
@@ -453,10 +449,7 @@ async function buildRunResult(
   };
 }
 
-async function buildStatusResult(
-  scheduler: CronScheduler
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+async function buildStatusResult(scheduler: CronScheduler): Promise<CronToolResult> {
   const status = await scheduler.getStatus();
   const lines = [
     '调度器状态:',

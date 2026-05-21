@@ -270,6 +270,7 @@ export class AgentStatusBar extends Container {
 
     // 每个 Agent 的详情行
     for (let i = 0; i < instances.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: i < instances.length ensures bounds
       const inst = instances[i]!;
       const isLast = i === instances.length - 1;
       const connector = isLast ? TREE_LAST : TREE_BRANCH;

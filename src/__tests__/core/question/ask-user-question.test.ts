@@ -17,7 +17,7 @@ function makeProvider(answers: Record<string, string>): QuestionProvider {
 }
 
 /** 从工具结果中提取第一个文本内容 */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: tool execute return type is complex but we only need content[0].text
 function getText(result: any): string {
   return result.content[0]?.text ?? '';
 }

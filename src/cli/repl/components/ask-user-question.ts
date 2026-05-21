@@ -93,11 +93,14 @@ export class AskUserQuestionComponent implements Component {
 
   /** 安全获取当前问题 */
   private getCurrentQuestion(): QuestionDefinition {
-    return this.questions[this.currentQuestionIndex]!;
+    const q = this.questions[this.currentQuestionIndex];
+    // biome-ignore lint/style/noNonNullAssertion: index is always within bounds
+    return q!;
   }
 
   /** 安全获取当前问题的状态 */
   private getCurrentState(): QuestionState {
+    // biome-ignore lint/style/noNonNullAssertion: index is always within bounds
     return this.questionStates[this.currentQuestionIndex]!;
   }
 
@@ -278,6 +281,7 @@ export class AskUserQuestionComponent implements Component {
 
   private selectOption(index: number): void {
     const state = this.getCurrentState();
+    // biome-ignore lint/style/noNonNullAssertion: index validated against optionCount
     const option = this.getCurrentQuestion().options[index]!;
 
     if (this.getCurrentQuestion().multiSelect) {
@@ -291,6 +295,7 @@ export class AskUserQuestionComponent implements Component {
 
   private toggleOption(index: number): void {
     const state = this.getCurrentState();
+    // biome-ignore lint/style/noNonNullAssertion: index validated against optionCount
     const option = this.getCurrentQuestion().options[index]!;
     const idx = state.selectedLabels.indexOf(option.label);
     if (idx >= 0) {
@@ -320,8 +325,9 @@ export class AskUserQuestionComponent implements Component {
     const annotations: Record<string, QuestionAnnotation> = {};
 
     for (let i = 0; i < this.questions.length; i++) {
-      const q = this.questions[i]!;
-      const state = this.questionStates[i]!;
+      const q = this.questions[i];
+      const state = this.questionStates[i];
+      if (!q || !state) continue;
 
       if (q.multiSelect) {
         answers[q.question] = [...state.selectedLabels];
@@ -410,7 +416,8 @@ export class AskUserQuestionComponent implements Component {
     const state = this.getCurrentState();
 
     for (let i = 0; i < q.options.length; i++) {
-      const opt = q.options[i]!;
+      const opt = q.options[i];
+      if (!opt) continue;
       const isSelected = q.multiSelect
         ? state.selectedLabels.includes(opt.label)
         : state.selectedLabels[0] === opt.label;
@@ -466,8 +473,9 @@ export class AskUserQuestionComponent implements Component {
     void width; // reserved for future adaptive truncation
 
     for (let i = 0; i < this.questions.length; i++) {
-      const q = this.questions[i]!;
-      const state = this.questionStates[i]!;
+      const q = this.questions[i];
+      const state = this.questionStates[i];
+      if (!q || !state) continue;
       const isAnswered = state.selectedLabels.length > 0;
       const isCurrent = i === this.currentQuestionIndex;
       const header = truncate(q.header, 10);
@@ -505,6 +513,7 @@ export class AskUserQuestionComponent implements Component {
     // 获取当前焦点选项的预览
     const q = this.getCurrentQuestion();
     if (this.selectedOptionIndex < q.options.length) {
+      // biome-ignore lint/style/noNonNullAssertion: guarded by length check above
       const opt = q.options[this.selectedOptionIndex]!;
       if (opt.preview) {
         const previewText = opt.preview;
@@ -564,8 +573,9 @@ export class AskUserQuestionComponent implements Component {
     lines.push('');
 
     for (let i = 0; i < this.questions.length; i++) {
-      const q = this.questions[i]!;
-      const state = this.questionStates[i]!;
+      const q = this.questions[i];
+      const state = this.questionStates[i];
+      if (!q || !state) continue;
       const answer = q.multiSelect
         ? state.selectedLabels.join(', ')
         : (state.selectedLabels[0] ?? c.gray('(未回答)'));

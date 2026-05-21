@@ -91,7 +91,7 @@ export async function getAgentMemorySnapshot(typeId: string): Promise<string> {
 
   // 检查快照缓存
   if (snapshotCache.has(typeId)) {
-    return snapshotCache.get(typeId)!;
+    return snapshotCache.get(typeId) ?? '';
   }
 
   // 首次读取时从磁盘加载并缓存

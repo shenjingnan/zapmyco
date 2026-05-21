@@ -105,7 +105,7 @@ export function createAskUserQuestionTool(): ToolRegistration {
       },
       required: ['questions'],
     } as unknown as import('typebox').TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic params from inline JSON Schema
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       const p = params as AskUserQuestionParams;
 
@@ -129,7 +129,8 @@ export function createAskUserQuestionTool(): ToolRegistration {
       }
 
       for (let i = 0; i < p.questions.length; i++) {
-        const q = p.questions[i]!;
+        const q = p.questions[i];
+        if (!q) continue;
         if (q.options.length < 2) {
           return {
             content: [{ type: 'text', text: `错误: 问题 "${q.header}" 至少需要 2 个选项` }],

@@ -244,7 +244,8 @@ describe('memory 工具', () => {
       const result = await tool.execute('test-1', { action: 'add', type: 'user' });
       const text = result.content?.[0]?.text ?? '';
       expect(text).toContain('请提供 content 参数');
-      expect(result.details.error).toContain('content 参数为空');
+      // biome-ignore lint/suspicious/noExplicitAny: details 是联合类型，测试中简化处理
+      expect((result.details as any).error).toContain('content 参数为空');
     });
 
     it('添加成功应返回保存结果', async () => {
@@ -333,8 +334,8 @@ describe('memory 工具', () => {
   describe('不支持的 action', () => {
     it('应该返回错误', async () => {
       const tool = createTool();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await tool.execute('test-id', { action: 'invalid' as any });
+      // biome-ignore lint/suspicious/noExplicitAny: invalid action for test
+      const result = await tool.execute('test-id', { action: 'invalid' } as any);
       const text = result.content?.[0]?.text ?? '';
       expect(text).toContain('不支持的操作');
     });

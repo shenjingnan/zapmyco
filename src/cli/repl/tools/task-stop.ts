@@ -45,8 +45,7 @@ export function createTaskStopTool(): ToolRegistration {
       },
       required: ['task_id'],
     } as unknown as import('typebox').TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    execute: async (_toolCallId: string, params: any): Promise<any> => {
+    execute: async (_toolCallId: string, params) => {
       const { task_id } = params as { task_id: string };
       const instanceManager = getAgentInstanceManager();
       const instance = instanceManager.get(task_id);

@@ -86,4 +86,4 @@ export interface EditorTheme {
 }
 
 /** Editor 选项（当前预留，后续 PR 扩展） */
-export type EditorOptions = {};
+export type EditorOptions = Record<string, never>;

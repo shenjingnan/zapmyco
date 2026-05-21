@@ -2,13 +2,18 @@
  * permission-engine 单元测试
  */
 import { describe, expect, it } from 'vitest';
+import type { PermissionCheckResult, RiskLevel } from '@/core/agent-runtime/tool-bridge';
 import { resolveConfig } from '@/security/permission-config';
 import type { ToolInfoResolver } from '@/security/permission-engine';
 import { PermissionEngine } from '@/security/permission-engine';
 import { PermissionStore } from '@/security/permission-store';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createResolver(overrides: Record<string, any> = {}): ToolInfoResolver {
+type ToolOverrideValue = {
+  defaultRisk?: RiskLevel;
+  checkPermission?: (params: Record<string, unknown>) => PermissionCheckResult;
+};
+
+function createResolver(overrides: Record<string, ToolOverrideValue> = {}): ToolInfoResolver {
   return (toolId: string) => {
     const override = overrides[toolId];
     if (override) {

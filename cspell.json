@@ -95,7 +95,9 @@
     "unsub",
     "ncdef",
     "hllo",
-    "rowm"
+    "rowm",
+    "decreset",
+    "decset"
   ],
   "ignorePaths": [
     "node_modules",

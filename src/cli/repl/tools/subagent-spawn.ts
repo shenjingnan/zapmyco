@@ -80,8 +80,7 @@ export function createSpawnSubAgentsTool(
       },
       required: ['agents'],
     } as unknown as import('typebox').TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    execute: async (_toolCallId: string, params: any): Promise<any> => {
+    execute: async (_toolCallId: string, params) => {
       const { agents, context } = params as {
         agents: Array<{ id: string; description: string; allowedTools?: string[] }>;
         context?: string;

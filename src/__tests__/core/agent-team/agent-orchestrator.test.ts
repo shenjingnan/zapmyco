@@ -87,16 +87,16 @@ describe('AgentOrchestrator', () => {
 
   function createOrchestrator(overrides?: Partial<AgentTeamConfig>) {
     const config = { ...teamConfig, ...overrides };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parentAgent = {
+    // biome-ignore lint/suspicious/noExplicitAny: mock parent agent for orchestrator constructor
+    const parentAgent: any = {
       agentId: 'parent',
       innerAgent: { state: { model: { provider: 'test', model: 'test-model' } } },
       llmFacade: undefined,
       systemPromptOverride: null,
-    } as any;
+    };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockTools = [
+    // biome-ignore lint/suspicious/noExplicitAny: mock tools for orchestrator constructor
+    const mockTools: any[] = [
       {
         id: 'ReadFile',
         label: 'Read',
@@ -104,7 +104,7 @@ describe('AgentOrchestrator', () => {
         execute: async () => ({ content: [] }),
       },
       { id: 'Glob', label: 'Glob', description: 'Glob', execute: async () => ({ content: [] }) },
-    ] as any;
+    ];
 
     return new AgentOrchestrator(config, flatConfig, parentAgent, mockTools);
   }

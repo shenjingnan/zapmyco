@@ -65,16 +65,16 @@ describe('AgentOrchestrator Integration', () => {
     registry.register(researcherType);
     registry.register(coderType);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parentAgent = {
+    // biome-ignore lint/suspicious/noExplicitAny: mock parent agent for orchestrator constructor
+    const parentAgent: any = {
       agentId: 'parent',
       innerAgent: { state: { model: { provider: 'test', model: 'test-model' } } },
       llmFacade: undefined,
       systemPromptOverride: null,
-    } as any;
+    };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockTools = [
+    // biome-ignore lint/suspicious/noExplicitAny: mock tools for orchestrator constructor
+    const mockTools: any[] = [
       {
         id: 'ReadFile',
         label: 'Read',
@@ -107,7 +107,7 @@ describe('AgentOrchestrator Integration', () => {
         description: 'Edit',
         execute: async () => ({ content: [] }),
       },
-    ] as any;
+    ];
 
     orchestrator = new AgentOrchestrator(teamConfig, flatConfig, parentAgent, mockTools);
   });
@@ -177,13 +177,13 @@ describe('AgentOrchestrator Integration', () => {
 
       // Register parent first
       const parentId = 'my-parent';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const parentAgent = {
+      // biome-ignore lint/suspicious/noExplicitAny: mock parent agent for instance registration
+      const parentAgent: any = {
         agentId: parentId,
         innerAgent: { state: { model: { provider: 'test', model: 'test-model' } } },
         llmFacade: undefined,
         systemPromptOverride: null,
-      } as any;
+      };
 
       instanceManager.register(
         generalPurposeType,

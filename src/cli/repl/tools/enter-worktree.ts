@@ -44,7 +44,7 @@ export function createEnterWorktreeTool(worktreeManager: WorktreeManager): ToolR
       },
       required: [],
     } as unknown as import('typebox').TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic params from inline JSON Schema
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       const name = (params as { name?: string }).name;
 

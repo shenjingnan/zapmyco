@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLspClient, type LspClient } from '@/core/lsp/lsp-client';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: dynamic JSON-RPC response type for test assertions
 type AnyRecord = Record<string, any>;
 
 const FAKE_SERVER_PATH = join(

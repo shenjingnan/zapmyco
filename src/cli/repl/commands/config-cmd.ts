@@ -38,6 +38,7 @@ function setByDotPath(obj: Record<string, unknown>, path: string, value: unknown
   let current: Record<string, unknown> = obj;
 
   for (let i = 0; i < keys.length - 1; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: i < keys.length - 1 ensures bounds
     const key = keys[i]!;
     if (isPrototypePollutionKey(key)) {
       return;
@@ -48,6 +49,7 @@ function setByDotPath(obj: Record<string, unknown>, path: string, value: unknown
     current = current[key] as Record<string, unknown>;
   }
 
+  // biome-ignore lint/style/noNonNullAssertion: split returns at least 1 element
   const lastKey = keys[keys.length - 1]!;
   if (isPrototypePollutionKey(lastKey)) {
     return;

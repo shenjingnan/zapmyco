@@ -311,6 +311,18 @@ import { ReplSession } from '@/cli/repl/session';
 import type { ZapmycoConfig } from '@/config/types';
 import { TaskStore } from '@/core/task/task-store';
 
+/** 测试专用接口，用于绕过 ReplSession 的 private 访问限制 */
+interface ReplSessionTestAccess {
+  agent: {
+    cancel: (...args: unknown[]) => unknown;
+    resetContext: (...args: unknown[]) => unknown;
+  };
+  _state: string;
+  conversationHistory: Array<{ role: string; content: string }>;
+  stats: Record<string, unknown>;
+  outputArea: { lines: unknown[]; clear: () => void };
+}
+
 function createTestConfig(overrides?: Partial<ZapmycoConfig>): ZapmycoConfig {
   return {
     llm: {
@@ -428,11 +440,8 @@ describe('ReplSession', () => {
 
       // 让 LlmBasedAgent.execute 返回模拟结果
       const { LlmBasedAgent } = await import('@/core/agent-runtime');
-      vi.spyOn(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (LlmBasedAgent as any).prototype as any,
-        'execute'
-      ).mockResolvedValueOnce(mockTaskResult);
+      // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
+      vi.spyOn(LlmBasedAgent.prototype as any, 'execute').mockResolvedValueOnce(mockTaskResult);
 
       const result = await session.executeGoal('测试目标');
 
@@ -444,7 +453,7 @@ describe('ReplSession', () => {
 
     it('执行完成后状态应重置为 idle', async () => {
       vi.spyOn(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       ).mockResolvedValueOnce({
@@ -463,7 +472,7 @@ describe('ReplSession', () => {
 
     it('应更新统计信息：totalRequests 和 successCount', async () => {
       vi.spyOn(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       ).mockResolvedValueOnce({
@@ -485,7 +494,7 @@ describe('ReplSession', () => {
 
     it('应发布 goal:submitted 和 goal:completed 事件', async () => {
       vi.spyOn(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       ).mockResolvedValueOnce({
@@ -512,7 +521,7 @@ describe('ReplSession', () => {
     it('长输入应截断 summary', async () => {
       const longOutput = 'a'.repeat(300);
       vi.spyOn(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       ).mockResolvedValueOnce({
@@ -534,7 +543,7 @@ describe('ReplSession', () => {
 
     it('Agent 失败时应返回 failure 状态', async () => {
       vi.spyOn(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       ).mockRejectedValueOnce(new Error('Agent 内部错误'));
@@ -652,6 +661,7 @@ describe('ReplSession', () => {
 
     it('collapse 模式（默认）：thinking → output 事件正常执行', async () => {
       const spy = vi.spyOn(
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       );
@@ -683,6 +693,7 @@ describe('ReplSession', () => {
       );
 
       const spy = vi.spyOn(
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       );
@@ -713,6 +724,7 @@ describe('ReplSession', () => {
       );
 
       const spy = vi.spyOn(
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       );
@@ -736,6 +748,7 @@ describe('ReplSession', () => {
 
     it('progress（工具调用）发生时 thinking 计时器停止', async () => {
       const spy = vi.spyOn(
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       );
@@ -763,6 +776,7 @@ describe('ReplSession', () => {
 
     it('Agent 错误时 thinking 计时器被清理', async () => {
       const spy = vi.spyOn(
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       );
@@ -800,7 +814,7 @@ describe('ReplSession', () => {
 
     it('自然语言输入应执行 goal', async () => {
       vi.spyOn(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-ignore lint/suspicious/noExplicitAny: vi.spyOn 需要松散类型来监视原型方法
         (await import('@/core/agent-runtime')).LlmBasedAgent.prototype as any,
         'execute'
       ).mockResolvedValueOnce({
@@ -860,31 +874,33 @@ describe('ReplSession', () => {
   });
 
   describe('clearAgentContext', () => {
+    const s = () => session as unknown as ReplSessionTestAccess;
+
     it('应调用 taskStore.clear()', () => {
       // agent mock 缺少 cancel 方法，需要手动补充
-      (session as any).agent.cancel = vi.fn();
+      s().agent.cancel = vi.fn();
       const spy = vi.spyOn(TaskStore.prototype, 'clear');
       session.clearAgentContext();
       expect(spy).toHaveBeenCalledTimes(1);
     });
 
     it('应重置会话状态为 idle', () => {
-      (session as any).agent.cancel = vi.fn();
-      (session as any)._state = 'busy';
+      s().agent.cancel = vi.fn();
+      s()._state = 'busy';
       session.clearAgentContext();
       expect(session.currentState).toBe('idle');
     });
 
     it('应清空 conversationHistory', () => {
-      (session as any).agent.cancel = vi.fn();
-      (session as any).conversationHistory = [{ role: 'user', content: 'test' }];
+      s().agent.cancel = vi.fn();
+      s().conversationHistory = [{ role: 'user', content: 'test' }];
       session.clearAgentContext();
-      expect((session as any).conversationHistory).toEqual([]);
+      expect(s().conversationHistory).toEqual([]);
     });
 
     it('应重置会话统计信息', () => {
-      (session as any).agent.cancel = vi.fn();
-      (session as any).stats = {
+      s().agent.cancel = vi.fn();
+      s().stats = {
         totalRequests: 10,
         successCount: 8,
         failureCount: 2,
@@ -893,7 +909,7 @@ describe('ReplSession', () => {
         state: 'busy',
       };
       session.clearAgentContext();
-      expect((session as any).stats).toEqual({
+      expect(s().stats).toEqual({
         totalRequests: 0,
         successCount: 0,
         failureCount: 0,
@@ -904,15 +920,15 @@ describe('ReplSession', () => {
     });
 
     it('应调用 agent.resetContext()', () => {
-      (session as any).agent.cancel = vi.fn();
-      const spy = vi.spyOn((session as any).agent, 'resetContext');
+      s().agent.cancel = vi.fn();
+      const spy = vi.spyOn(s().agent, 'resetContext');
       session.clearAgentContext();
       expect(spy).toHaveBeenCalledTimes(1);
     });
 
     it('应调用 outputArea.clear()', () => {
-      (session as any).agent.cancel = vi.fn();
-      const outputArea = (session as any).outputArea;
+      s().agent.cancel = vi.fn();
+      const outputArea = s().outputArea;
       session.clearAgentContext();
       expect(outputArea.lines).toEqual([]);
     });

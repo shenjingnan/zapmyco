@@ -111,7 +111,7 @@ function getApiKeyErrorHelp(errorMessage: string): string[] {
   const match = errorMessage.match(/No API key for provider: (\w+)/);
   if (!match) return [];
 
-  const providerName = match[1]!;
+  const providerName = match[1] ?? '';
   const envVarName = `${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
 
   return [
@@ -1417,7 +1417,7 @@ export class ReplSession {
             // 检测 "No API key for provider" 错误，提供交互式修复
             const providerMatch = errorMsg.match(/No API key for provider: (\w+)/);
             if (providerMatch) {
-              const providerName = providerMatch[1]!;
+              const providerName = providerMatch[1] ?? '';
 
               this.outputArea.append(['']);
               const choice = await showSelectList(
@@ -1598,7 +1598,7 @@ export class ReplSession {
         // 检测 "No API key for provider" 错误，提供交互式修复
         const providerMatch = err.message.match(/No API key for provider: (\w+)/);
         if (providerMatch) {
-          const providerName = providerMatch[1]!;
+          const providerName = providerMatch[1] ?? '';
 
           this.outputArea.append(['']);
           const choice = await showSelectList(
@@ -1950,7 +1950,7 @@ export class ReplSession {
     agent.innerAgent.state.model = facade.resolveResolvedModel() as unknown as ResolvedModel;
 
     // 注入 getApiKey 函数（支持凭据池轮转）
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: innerAgent is a third-party type, dynamically setting property
     (agent.innerAgent as any).getApiKey = facade.createGetApiKeyFn();
 
     // 存储 facade 引用，供子 Agent 共享
@@ -2484,7 +2484,7 @@ export class ReplSession {
     this.agent.innerAgent.state.model = newFacade.resolvePiModel();
 
     // 重新注入 getApiKey 函数（供 pi-agent-core 每次 LLM 调用时使用）
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: innerAgent is a third-party type, dynamically setting property
     (this.agent.innerAgent as any).getApiKey = newFacade.createGetApiKeyFn();
 
     // 更新 facade 引用（供子 Agent 共享）

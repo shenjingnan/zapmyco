@@ -119,7 +119,7 @@ describe('ProviderRegistry', () => {
       const registry = ProviderRegistry.fromConfig(config);
       const model = registry.resolveModel('anthropic/claude-sonnet-4-20250514');
       expect(model).toBeDefined();
-      expect(model!.id).toBe('claude-sonnet-4-20250514');
+      expect(model?.id).toBe('claude-sonnet-4-20250514');
     });
 
     it('should return undefined for unknown model', () => {

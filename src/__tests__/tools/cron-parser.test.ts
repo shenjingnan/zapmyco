@@ -7,7 +7,7 @@ function localDate(spec: string): Date {
   const [datePart, timePart] = spec.split('T');
   const [y, mo, d] = (datePart ? datePart.split('-') : []).map(Number);
   const [h, m, s] = (timePart ?? '00:00:00').split(':').map(Number);
-  return new Date(y!, (mo ?? 1) - 1, d ?? 1, h ?? 0, m ?? 0, s ?? 0);
+  return new Date(y as number, (mo ?? 1) - 1, d ?? 1, h ?? 0, m ?? 0, s ?? 0);
 }
 
 /**
