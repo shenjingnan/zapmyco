@@ -19,6 +19,8 @@ describe('Key 常量', () => {
     expect(Key.down).toBe('down');
     expect(Key.left).toBe('left');
     expect(Key.right).toBe('right');
+    expect(Key.pageup).toBe('pageup');
+    expect(Key.pagedown).toBe('pagedown');
   });
 });
 
@@ -81,6 +83,11 @@ describe('matchesKey — 命名键匹配', () => {
   it('应匹配 home 和 end', () => {
     expect(matchesKey('\x1b[H', 'home')).toBe(true);
     expect(matchesKey('\x1b[F', 'end')).toBe(true);
+  });
+
+  it('应匹配 pageup 和 pagedown', () => {
+    expect(matchesKey('\x1b[5~', 'pageup')).toBe(true);
+    expect(matchesKey('\x1b[6~', 'pagedown')).toBe(true);
   });
 
   it('命名键不匹配时应返回 false', () => {
@@ -149,6 +156,49 @@ describe('matchesKey — Ctrl 组合键（传统协议）', () => {
 describe('matchesKey — shift+tab', () => {
   it('应匹配 shift+tab', () => {
     expect(matchesKey('\x1b[Z', 'shift+tab')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchesKey — Ctrl+Home / Ctrl+End
+// ---------------------------------------------------------------------------
+
+describe('matchesKey — Ctrl+Home / Ctrl+End', () => {
+  it('应匹配 Ctrl+Home 的 xterm modifyOtherKeys 序列', () => {
+    expect(matchesKey('\x1b[1;5H', 'ctrl+home')).toBe(true);
+  });
+
+  it('应匹配 Ctrl+Home 的 CSI-u 序列', () => {
+    expect(matchesKey('\x1b[72;5u', 'ctrl+home')).toBe(true);
+  });
+
+  it('应匹配 Ctrl+Home 的 modifyOtherKeys mode 2 序列', () => {
+    expect(matchesKey('\x1b[27;5;72~', 'ctrl+home')).toBe(true);
+  });
+
+  it('应匹配 Ctrl+End 的 xterm modifyOtherKeys 序列', () => {
+    expect(matchesKey('\x1b[1;5F', 'ctrl+end')).toBe(true);
+  });
+
+  it('应匹配 Ctrl+End 的 CSI-u 序列', () => {
+    expect(matchesKey('\x1b[70;5u', 'ctrl+end')).toBe(true);
+  });
+
+  it('应匹配 Ctrl+End 的 modifyOtherKeys mode 2 序列', () => {
+    expect(matchesKey('\x1b[27;5;70~', 'ctrl+end')).toBe(true);
+  });
+
+  it('Ctrl+Home 不应匹配普通 Home', () => {
+    expect(matchesKey('\x1b[H', 'ctrl+home')).toBe(false);
+  });
+
+  it('Ctrl+End 不应匹配普通 End', () => {
+    expect(matchesKey('\x1b[F', 'ctrl+end')).toBe(false);
+  });
+
+  it('Ctrl+Home/Ctrl+End 不应匹配其他 Ctrl 组合键', () => {
+    expect(matchesKey('\x03', 'ctrl+home')).toBe(false);
+    expect(matchesKey('\x03', 'ctrl+end')).toBe(false);
   });
 });
 

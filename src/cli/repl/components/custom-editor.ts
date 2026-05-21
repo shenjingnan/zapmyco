@@ -77,6 +77,15 @@ export class ZapmycoEditor extends Editor {
   /** Ctrl+T 回调（展开/折叠 thinking 内容） */
   onToggleThinking: (() => void) | undefined;
 
+  /** PageUp 回调 — 向上滚动输出区域 */
+  onPageUp?: () => void;
+  /** PageDown 回调 — 向下滚动输出区域 */
+  onPageDown?: () => void;
+  /** Ctrl+Home 回调 — 滚动到输出区域最顶部 */
+  onScrollToTop?: () => void;
+  /** Ctrl+End 回调 — 滚动到输出区域最底部 */
+  onScrollToBottom?: () => void;
+
   /** 是否正在执行（用于显示 loading） */
   #executing = false;
 
@@ -154,6 +163,27 @@ export class ZapmycoEditor extends Editor {
       this.onToggleThinking();
       return;
     }
+
+    // PageUp / PageDown — 滚动输出区域
+    if (matchesKey(data, Key.pageup) && this.onPageUp) {
+      this.onPageUp();
+      return;
+    }
+    if (matchesKey(data, Key.pagedown) && this.onPageDown) {
+      this.onPageDown();
+      return;
+    }
+
+    // Ctrl+Home / Ctrl+End — 跳转到输出区域顶部/底部
+    if (matchesKey(data, 'ctrl+home') && this.onScrollToTop) {
+      this.onScrollToTop();
+      return;
+    }
+    if (matchesKey(data, 'ctrl+end') && this.onScrollToBottom) {
+      this.onScrollToBottom();
+      return;
+    }
+
     super.handleInput(data);
   }
 

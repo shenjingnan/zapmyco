@@ -19,6 +19,10 @@ describe('ZapmycoEditor', () => {
       expect(editor.onCtrlC).toBeUndefined();
       expect(editor.onCtrlD).toBeUndefined();
       expect(editor.onToggleThinking).toBeUndefined();
+      expect(editor.onPageUp).toBeUndefined();
+      expect(editor.onPageDown).toBeUndefined();
+      expect(editor.onScrollToTop).toBeUndefined();
+      expect(editor.onScrollToBottom).toBeUndefined();
     });
 
     it('应可设置和读取回调', () => {
@@ -149,6 +153,70 @@ describe('ZapmycoEditor', () => {
     it('onRunInBackground 未设置时 Ctrl+B 不应抛出', () => {
       const editor = createEditor();
       expect(() => editor.handleInput('\x02')).not.toThrow();
+    });
+  });
+
+  describe('handleInput — PageUp / PageDown', () => {
+    it('PageUp 应触发 onPageUp', () => {
+      const editor = createEditor();
+      const cb = vi.fn();
+      editor.onPageUp = cb;
+
+      editor.handleInput('\x1b[5~');
+
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('PageDown 应触发 onPageDown', () => {
+      const editor = createEditor();
+      const cb = vi.fn();
+      editor.onPageDown = cb;
+
+      editor.handleInput('\x1b[6~');
+
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('onPageUp 未设置时 PageUp 不应抛出', () => {
+      const editor = createEditor();
+      expect(() => editor.handleInput('\x1b[5~')).not.toThrow();
+    });
+
+    it('onPageDown 未设置时 PageDown 不应抛出', () => {
+      const editor = createEditor();
+      expect(() => editor.handleInput('\x1b[6~')).not.toThrow();
+    });
+  });
+
+  describe('handleInput — Ctrl+Home / Ctrl+End', () => {
+    it('Ctrl+Home 应触发 onScrollToTop', () => {
+      const editor = createEditor();
+      const cb = vi.fn();
+      editor.onScrollToTop = cb;
+
+      editor.handleInput('\x1b[1;5H');
+
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('Ctrl+End 应触发 onScrollToBottom', () => {
+      const editor = createEditor();
+      const cb = vi.fn();
+      editor.onScrollToBottom = cb;
+
+      editor.handleInput('\x1b[1;5F');
+
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('onScrollToTop 未设置时 Ctrl+Home 不应抛出', () => {
+      const editor = createEditor();
+      expect(() => editor.handleInput('\x1b[1;5H')).not.toThrow();
+    });
+
+    it('onScrollToBottom 未设置时 Ctrl+End 不应抛出', () => {
+      const editor = createEditor();
+      expect(() => editor.handleInput('\x1b[1;5F')).not.toThrow();
     });
   });
 });
