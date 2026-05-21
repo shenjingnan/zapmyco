@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import { ToolResultPruner } from '../tool-result-pruner';
 
 /** Helper to create a mock toolResult AgentMessage */
@@ -67,7 +68,7 @@ describe('ToolResultPruner', () => {
     it('should return messages unchanged when disabled', () => {
       const pruner = new ToolResultPruner({ enabled: false });
       const messages: Record<string, unknown>[] = [makeToolResult({ toolName: 'Read' })];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
       expect(messages[0]?._pruned).toBeUndefined();
     });
 
@@ -84,7 +85,7 @@ describe('ToolResultPruner', () => {
         makeToolResult({ toolName: 'Bash' }),
         makeUserMessage('hello'),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
       // All 3 messages protected, none pruned
       expect(messages[0]?._pruned).toBeUndefined();
       expect(messages[1]?._pruned).toBeUndefined();
@@ -102,7 +103,7 @@ describe('ToolResultPruner', () => {
       // messages[0] is Read toolResult -> should be pruned
       // messages[1] is user -> not toolResult, skipped
       // messages[2] and [3] protected
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       expect(messages[0]?._pruned).toBe(true);
       expect(messages[1]?._pruned).toBeUndefined();
@@ -115,7 +116,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', _pruned: true, content: 'should not change' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
       // Content should remain unchanged because it was already pruned
       expect(messages[0]?.content).toBe('should not change');
     });
@@ -125,7 +126,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', content: 'line1\nline2' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(Array.isArray(content)).toBe(true);
@@ -139,7 +140,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', content: 'data', details: { some: 'info' } }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       expect(messages[0]?.details).toBeUndefined();
     });
@@ -149,7 +150,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', content: 'data', details: undefined }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       expect(messages[0]?.details).toBeUndefined();
     });
@@ -160,7 +161,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', content: 'line1\nline2\nline3' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[已读取文件，3行]');
@@ -171,7 +172,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Bash', content: 'output line', isError: false }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toContain('执行完成');
@@ -183,7 +184,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Bash', content: 'error msg', isError: true }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toContain('执行失败');
@@ -197,7 +198,7 @@ describe('ToolResultPruner', () => {
           content: 'match1\nmatch2\n\n\n',
         }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[搜索完成, 2处匹配]');
@@ -211,7 +212,7 @@ describe('ToolResultPruner', () => {
           content: 'file1.ts\nfile2.ts\n\n\n',
         }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toContain('文件匹配完成');
@@ -222,7 +223,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'UnknownTool', content: 'some result' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[工具执行完成]');
@@ -233,7 +234,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'WebFetch', content: 'web content' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[网页抓取完成]');
@@ -244,7 +245,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'WebSearch', content: 'search results' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[网页搜索完成]');
@@ -255,7 +256,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Write', content: 'file written' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[文件写入完成]');
@@ -266,7 +267,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Edit', content: 'edited' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[文件编辑完成]');
@@ -277,7 +278,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Skill', content: 'skill done' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[技能调用完成]');
@@ -289,7 +290,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read_extra_suffix', content: 'line1\nline2' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toContain('已读取文件');
@@ -300,7 +301,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: '', content: 'data' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[工具执行完成]');
@@ -311,7 +312,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', content: 42 as unknown as string }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       // extractResultText returns '' for number content → summary is "[已读取文件，0行]"
@@ -323,7 +324,7 @@ describe('ToolResultPruner', () => {
       const messages: Record<string, unknown>[] = [
         makeToolResult({ toolName: 'Read', content: 'line1\nline2\nline3\nline4\nline5' }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       // Summary "[已读取文件，5行]" truncated to 5 chars → "[已..." (5 chars)
@@ -342,7 +343,7 @@ describe('ToolResultPruner', () => {
           ],
         }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[已读取文件，2行]');
@@ -356,7 +357,7 @@ describe('ToolResultPruner', () => {
           content: [{ type: 'image' }, { type: 'text', text: 'only text block' }],
         }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[已读取文件，1行]');
@@ -370,7 +371,7 @@ describe('ToolResultPruner', () => {
           content: [{ type: 'image' }],
         }),
       ];
-      pruner.transform(messages as any);
+      pruner.transform(messages as unknown as AgentMessage[]);
 
       const content = messages[0]?.content as Array<{ type: string; text: string }>;
       expect(content[0]?.text).toBe('[已读取文件，0行]');

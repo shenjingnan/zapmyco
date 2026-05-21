@@ -58,8 +58,7 @@ function formatResults(results: SearchResultItem[], query: string, provider: str
 
   const lines: string[] = [`找到 ${results.length} 条搜索结果 (来源: ${provider}):`, ''];
 
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i]!;
+  for (const [i, r] of results.entries()) {
     lines.push(`${i + 1}. **${r.title}**`);
     lines.push(`   ${r.url}`);
     if (r.snippet) {

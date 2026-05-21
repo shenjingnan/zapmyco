@@ -80,6 +80,7 @@ describe('ExitWorktree 工具', () => {
       mockGetWorktreeContext.mockReturnValue(undefined);
 
       const tool = createExitWorktreeTool(createMockManager());
+      // biome-ignore lint/suspicious/noExplicitAny: tool result access in test
       const result: any = await tool.execute('test-1', { action: 'keep' });
 
       expect(result.content[0].text).toContain('不处于 worktree 隔离环境');
@@ -89,6 +90,7 @@ describe('ExitWorktree 工具', () => {
   describe('execute - action="keep"', () => {
     it('应返回保留 worktree 的信息', async () => {
       const tool = createExitWorktreeTool(createMockManager());
+      // biome-ignore lint/suspicious/noExplicitAny: tool result access in test
       const result: any = await tool.execute('test-2', { action: 'keep' });
 
       expect(result.content[0].text).toContain('已退出 worktree 隔离环境');
@@ -104,6 +106,7 @@ describe('ExitWorktree 工具', () => {
       (manager.remove as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
       const tool = createExitWorktreeTool(manager);
+      // biome-ignore lint/suspicious/noExplicitAny: tool result access in test
       const result: any = await tool.execute('test-3', { action: 'remove' });
 
       expect(manager.remove).toHaveBeenCalledWith(mockCtx.worktreeId, undefined);
@@ -127,6 +130,7 @@ describe('ExitWorktree 工具', () => {
       (manager.remove as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('remove failed'));
 
       const tool = createExitWorktreeTool(manager);
+      // biome-ignore lint/suspicious/noExplicitAny: tool result access in test
       const result: any = await tool.execute('test-5', { action: 'remove' });
 
       expect(result.content[0].text).toContain('退出 worktree 失败');

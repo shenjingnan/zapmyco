@@ -218,7 +218,7 @@ describe('CredentialPool', () => {
     it('should filter out empty keys from env var references', () => {
       // 环境变量引用解析为空字符串的凭据应被过滤
       const pool = new CredentialPool('test', [
-        { apiKey: '${NONEXISTENT_VAR_FOR_POOL_TEST}', label: 'empty-env' },
+        { apiKey: `\${NONEXISTENT_VAR_FOR_POOL_TEST}`, label: 'empty-env' },
       ]);
       // 凭据为空被过滤，池中没有可用 key
       expect(pool.totalCount).toBe(0);

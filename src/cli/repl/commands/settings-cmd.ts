@@ -346,6 +346,7 @@ async function handleInteractiveMode(
       session.appendOutput(['', `  ${t('settings.messages.configureFirst')}`, '']);
       return;
     }
+    // biome-ignore lint/style/noNonNullAssertion: checked modelIds.length > 0 above
     const modelKey = `${providerName}/${modelIds[0]!}`;
     setConfigValue(session, 'llm.defaultModel', modelKey);
     session.appendOutput([

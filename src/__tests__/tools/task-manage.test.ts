@@ -50,7 +50,7 @@ describe('TaskManage', () => {
 
     it('parameters 应该包含 action 枚举', () => {
       const tool = createTool();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: deep property access
       const params = tool.parameters as any;
       expect(params.properties.action.enum).toEqual(['read', 'write', 'update']);
     });
@@ -62,14 +62,14 @@ describe('TaskManage', () => {
       const tool = createTool();
       const result = await tool.execute('test_1', { action: 'read' });
 
-      expect(result.content[0].text).toContain('当前没有任务');
+      expect((result.content[0] as { text: string }).text).toContain('当前没有任务');
     });
 
     it('默认 action 应为 read', async () => {
       const tool = createTool();
       const result = await tool.execute('test_1', {});
 
-      expect(result.content[0].text).toContain('当前没有任务');
+      expect((result.content[0] as { text: string }).text).toContain('当前没有任务');
       expect(result.details.action).toBe('read');
     });
 
@@ -83,7 +83,7 @@ describe('TaskManage', () => {
       const tool = createTool();
       const result = await tool.execute('test_1', { action: 'read' });
 
-      const text = result.content[0].text;
+      const text = (result.content[0] as { text: string }).text;
       expect(text).toContain('分析需求');
       expect(text).toContain('编写代码');
       expect(text).toContain('编写测试');
@@ -101,7 +101,7 @@ describe('TaskManage', () => {
       const tool = createTool();
       const result = await tool.execute('test_1', { action: 'read' });
 
-      const text = result.content[0].text;
+      const text = (result.content[0] as { text: string }).text;
       expect(text).toContain('1 待处理');
       expect(text).toContain('1 进行中');
       expect(text).toContain('1 已完成');
@@ -131,7 +131,7 @@ describe('TaskManage', () => {
         ],
       });
 
-      expect(result.content[0].text).toContain('任务列表已更新');
+      expect((result.content[0] as { text: string }).text).toContain('任务列表已更新');
       expect(result.details.summary.total).toBe(2);
     });
 
@@ -154,7 +154,7 @@ describe('TaskManage', () => {
         action: 'write',
       });
 
-      expect(result.content[0].text).toContain('请提供 tasks 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 tasks 参数');
       expect(result.details.error).toBeDefined();
     });
 
@@ -178,7 +178,7 @@ describe('TaskManage', () => {
         ],
       });
 
-      expect(result.content[0].text).toContain('任务更新失败');
+      expect((result.content[0] as { text: string }).text).toContain('任务更新失败');
       expect(result.details.error).toContain('不允许同时有');
     });
   });
@@ -194,8 +194,8 @@ describe('TaskManage', () => {
         tasks: [{ id: '1', subject: '测试', status: 'in_progress' }],
       });
 
-      expect(result.content[0].text).toContain('任务已更新');
-      expect(result.content[0].text).toContain('[1]');
+      expect((result.content[0] as { text: string }).text).toContain('任务已更新');
+      expect((result.content[0] as { text: string }).text).toContain('[1]');
       expect(store.read()[0]?.status).toBe('in_progress');
     });
 
@@ -215,7 +215,7 @@ describe('TaskManage', () => {
         tasks: [{ id: '2', subject: '待处理', status: 'in_progress' }],
       });
 
-      expect(result.content[0].text).toContain('任务已更新');
+      expect((result.content[0] as { text: string }).text).toContain('任务已更新');
     });
 
     it('更新不存在的任务应报告错误', async () => {
@@ -225,7 +225,7 @@ describe('TaskManage', () => {
         tasks: [{ id: 'nonexistent', subject: '不存在', status: 'in_progress' }],
       });
 
-      expect(result.content[0].text).toContain('部分任务更新失败');
+      expect((result.content[0] as { text: string }).text).toContain('部分任务更新失败');
       expect(result.details.error).toBeDefined();
     });
 
@@ -243,10 +243,10 @@ describe('TaskManage', () => {
   describe('错误处理', () => {
     it('不支持的操作应返回错误', async () => {
       const tool = createTool();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await tool.execute('test_1', { action: 'invalid' as any });
+      // biome-ignore lint/suspicious/noExplicitAny: invalid action for test
+      const result = await tool.execute('test_1', { action: 'invalid' } as any);
 
-      expect(result.content[0].text).toContain('不支持的操作');
+      expect((result.content[0] as { text: string }).text).toContain('不支持的操作');
     });
 
     it('update 模式下部分成功部分失败应有明确报告', async () => {
@@ -264,7 +264,7 @@ describe('TaskManage', () => {
         ],
       });
 
-      expect(result.content[0].text).toContain('部分任务更新失败');
+      expect((result.content[0] as { text: string }).text).toContain('部分任务更新失败');
       // task 1 应成功
       expect(store.read().find((t) => t.id === '1')?.status).toBe('in_progress');
       // task 2 应保持 completed

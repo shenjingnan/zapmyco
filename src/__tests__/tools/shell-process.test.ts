@@ -22,14 +22,14 @@ describe('shell-process', () => {
     });
 
     it('parameters 应该包含 action 作为必需参数', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: deep property access
       const params = tool.parameters as any;
       expect(params.properties.action).toBeDefined();
       expect(params.required).toContain('action');
     });
 
     it('action 应该支持所有操作类型', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: deep property access
       const params = tool.parameters as any;
       const actionEnum: string[] = params.properties.action.enum;
       expect(actionEnum).toContain('list');
@@ -55,7 +55,7 @@ describe('shell-process', () => {
 
       const result = await tool.execute('test_2', { action: 'list' });
       expect(result.content[0]?.text).toContain('sleep');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: details type is unknown
       expect((result.details as any).processCount).toBeGreaterThanOrEqual(1);
 
       registry.kill(child.pid ? (registry.list()[0]?.sessionId ?? '') : '');

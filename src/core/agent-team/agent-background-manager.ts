@@ -143,7 +143,12 @@ export class BackgroundAgentManager {
     const runtime = this.runtime.get(taskId);
     if (!runtime) return;
 
-    const orchestrator = this.orchestrator!;
+    const orchestrator = this.orchestrator;
+    if (!orchestrator) {
+      log.error('后台 Agent 执行时 Orchestrator 未注入', { taskId });
+      this.failTask(taskId, 'Orchestrator 未注入');
+      return;
+    }
     const messageBus = getAgentMessageBus();
 
     // 超时定时器

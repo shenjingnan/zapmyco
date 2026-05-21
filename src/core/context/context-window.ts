@@ -38,7 +38,6 @@ const KNOWN_CONTEXT_WINDOWS: Record<string, number> = {
  * @param model - Model 实例
  * @returns 上下文窗口信息
  */
-// biome-ignore lint/suspicious/noExplicitAny: 兼容 Model 的泛型约束
 export function resolveContextWindow(model: Model): ContextWindowInfo {
   const contextWindow =
     model.contextWindow || KNOWN_CONTEXT_WINDOWS[model.id] || DEFAULT_CONTEXT_WINDOW;

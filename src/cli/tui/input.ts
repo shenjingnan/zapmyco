@@ -80,7 +80,7 @@ export class Input implements Component {
   render(width: number): string[] {
     const beforeCursor = this.#value.slice(0, this.#cursorPos);
     const afterCursor = this.#value.slice(this.#cursorPos);
-    const display = beforeCursor + '█' + afterCursor;
+    const display = `${beforeCursor}█${afterCursor}`;
     return [display.slice(0, width)];
   }
 

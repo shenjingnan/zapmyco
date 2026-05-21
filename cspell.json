@@ -95,7 +95,16 @@
     "unsub",
     "ncdef",
     "hllo",
-    "rowm"
+    "rowm",
+    "decreset",
+    "decset",
+    "checkmark",
+    "Mhello",
+    "nllo",
+    "mree",
+    "mreen",
+    "CDEFG",
+    "Worl"
   ],
   "ignorePaths": [
     "node_modules",

@@ -20,9 +20,9 @@ describe('maskApiKey', () => {
 });
 
 describe('isEnvVarReference', () => {
-  it('包含 ${VAR} 语法应返回 true', () => {
-    expect(isEnvVarReference('${API_KEY}')).toBe(true);
-    expect(isEnvVarReference('prefix-${API_KEY}')).toBe(true);
+  it(`包含 \${VAR} 语法应返回 true`, () => {
+    expect(isEnvVarReference(`\${API_KEY}`)).toBe(true);
+    expect(isEnvVarReference(`prefix-\${API_KEY}`)).toBe(true);
   });
 
   it('普通字符串应返回 false', () => {
@@ -43,24 +43,24 @@ describe('resolveApiKey', () => {
 
   it('应解析环境变量引用', () => {
     process.env.TEST_KEY = 'resolved-value';
-    expect(resolveApiKey('${TEST_KEY}')).toBe('resolved-value');
+    expect(resolveApiKey(`\${TEST_KEY}`)).toBe('resolved-value');
     delete process.env.TEST_KEY;
   });
 
   it('不存在的环境变量应替换为空字符串', () => {
-    expect(resolveApiKey('${NONEXISTENT_VAR_12345}')).toBe('');
+    expect(resolveApiKey(`\${NONEXISTENT_VAR_12345}`)).toBe('');
   });
 
   it('混合文本中的环境变量引用', () => {
     process.env.MIX_KEY = 'middle';
-    expect(resolveApiKey('start-${MIX_KEY}-end')).toBe('start-middle-end');
+    expect(resolveApiKey(`start-\${MIX_KEY}-end`)).toBe('start-middle-end');
     delete process.env.MIX_KEY;
   });
 
   it('多个环境变量引用', () => {
     process.env.A = '1';
     process.env.B = '2';
-    expect(resolveApiKey('${A}${B}')).toBe('12');
+    expect(resolveApiKey(`\${A}\${B}`)).toBe('12');
     delete process.env.A;
     delete process.env.B;
   });

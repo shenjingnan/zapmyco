@@ -174,6 +174,7 @@ function createCronSchedule(expr: string): CronSchedule | null {
 
   const parsedFields: FieldMatcher[][] = [];
   for (let i = 0; i < 5; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: FIELD_SPECS has exactly 5 elements
     const matchers = parseField(fields[i] ?? '', FIELD_SPECS[i]!);
     if (!matchers) return null;
     parsedFields.push(matchers);
@@ -234,6 +235,7 @@ function computeNextFrom(from: Date, fields: FieldMatcher[][]): Date | null {
 
     // 快速检查月份
     const month = current.getMonth() + 1;
+    // biome-ignore lint/style/noNonNullAssertion: fields validated to have 5 elements
     if (!matchersAnyMatch(month, fields[3]!)) {
       // 跳到下个月
       current.setMonth(current.getMonth() + 1, 1);
@@ -244,6 +246,7 @@ function computeNextFrom(from: Date, fields: FieldMatcher[][]): Date | null {
     // 快速检查日期
     const dom = current.getDate();
     const maxDom = lastDayOfMonth(current.getFullYear(), month);
+    // biome-ignore lint/style/noNonNullAssertion: fields validated to have 5 elements
     if (dom > maxDom || !matchersAnyMatch(dom <= maxDom ? dom : maxDom, fields[2]!)) {
       // 跳到下一天
       const nextDay = new Date(current);
@@ -262,6 +265,7 @@ function computeNextFrom(from: Date, fields: FieldMatcher[][]): Date | null {
 
     // 快速检查 day-of-week（与 dom 需要同时满足）
     const dow = current.getDay();
+    // biome-ignore lint/style/noNonNullAssertion: fields validated to have 5 elements
     if (!matchersAnyMatch(dow, fields[4]!)) {
       // 跳过一天
       current.setDate(current.getDate() + 1);
@@ -271,6 +275,7 @@ function computeNextFrom(from: Date, fields: FieldMatcher[][]): Date | null {
 
     // 检查小时
     const hour = current.getHours();
+    // biome-ignore lint/style/noNonNullAssertion: fields validated to have 5 elements
     if (!matchersAnyMatch(hour, fields[1]!)) {
       // 跳到下一个可能的小时
       current.setHours(hour + 1, 0, 0, 0);
@@ -279,6 +284,7 @@ function computeNextFrom(from: Date, fields: FieldMatcher[][]): Date | null {
 
     // 检查分钟
     const minute = current.getMinutes();
+    // biome-ignore lint/style/noNonNullAssertion: fields validated to have 5 elements
     if (matchersAnyMatch(minute, fields[0]!)) {
       return new Date(current);
     }

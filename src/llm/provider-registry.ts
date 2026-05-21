@@ -151,12 +151,12 @@ export class ProviderRegistry {
     for (const [providerName, providerConfig] of Object.entries(config.providers)) {
       registry.ensureProvider(providerName);
 
-      const hasExplicitModels =
-        providerConfig.models !== undefined && Object.keys(providerConfig.models).length > 0;
+      const models = providerConfig.models;
+      const hasExplicitModels = models !== undefined && Object.keys(models).length > 0;
 
       if (hasExplicitModels) {
         // 用户显式配置了模型 → 使用用户配置
-        for (const [modelName, modelConfig] of Object.entries(providerConfig.models!)) {
+        for (const [modelName, modelConfig] of Object.entries(models)) {
           registry.addModelFromConfig(providerName, modelName, modelConfig, providerConfig.baseUrl);
         }
       } else {

@@ -4,6 +4,7 @@ import {
   getBackgroundAgentManager,
   resetBackgroundAgentManager,
 } from '@/core/agent-team/agent-background-manager';
+import type { AgentOrchestrator } from '@/core/agent-team/agent-orchestrator';
 
 // Mock 运行时的 spawnWorker 结果
 const mockSpawnWorker = vi.fn();
@@ -90,7 +91,7 @@ describe('BackgroundAgentManager', () => {
 
   describe('setOrchestrator and getStore', () => {
     it('should set orchestrator', () => {
-      const orch = createMockOrchestrator() as any;
+      const orch = createMockOrchestrator() as unknown as AgentOrchestrator;
       manager.setOrchestrator(orch);
       // 不抛错即可
     });
@@ -112,7 +113,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should return taskId and instanceId immediately', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       const { taskId, instanceId } = await manager.executeAsync({
         typeId: 'general-purpose',
@@ -125,7 +126,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should register runtime entry with pending status', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       // 使用延迟 promise，防止 runAsync 自动完成
       const deferred = createDeferred<unknown>();
@@ -144,7 +145,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should call spawnWorker with correct parameters', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       await manager.executeAsync({
         typeId: 'researcher',
@@ -160,6 +161,7 @@ describe('BackgroundAgentManager', () => {
         expect(mockSpawnWorker).toHaveBeenCalled();
       });
 
+      // biome-ignore lint/style/noNonNullAssertion: verified by waitFor above
       const callArgs = mockSpawnWorker.mock.calls[0]!;
       expect(callArgs[0]).toBe('researcher');
       expect(callArgs[1]).toBe('research task');
@@ -172,7 +174,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should use default timeout of 30 minutes', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       await manager.executeAsync({
         typeId: 'general-purpose',
@@ -183,6 +185,7 @@ describe('BackgroundAgentManager', () => {
         expect(mockSpawnWorker).toHaveBeenCalled();
       });
 
+      // biome-ignore lint/style/noNonNullAssertion: verified by waitFor above
       const callArgs = mockSpawnWorker.mock.calls[0]!;
       expect(callArgs[2].timeoutMs).toBe(30 * 60 * 1000);
     });
@@ -190,7 +193,7 @@ describe('BackgroundAgentManager', () => {
 
   describe('background execution lifecycle', () => {
     it('should update runtime to completed when spawnWorker succeeds', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       const { taskId } = await manager.executeAsync({
         typeId: 'general-purpose',
@@ -209,7 +212,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should update storage on completion', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       const { taskId } = await manager.executeAsync({
         typeId: 'general-purpose',
@@ -227,7 +230,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should publish message to parent on completion', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       await manager.executeAsync({
         typeId: 'general-purpose',
@@ -240,6 +243,7 @@ describe('BackgroundAgentManager', () => {
       });
 
       expect(mockMessageBusPublish).toHaveBeenCalled();
+      // biome-ignore lint/style/noNonNullAssertion: verified by waitFor above
       const publishCall = mockMessageBusPublish.mock.calls[0]!;
       expect(publishCall[0]).toBe('inst-test-1');
       expect(publishCall[1]).toBe('parent-1');
@@ -249,7 +253,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should not publish message when no parentInstanceId', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       await manager.executeAsync({
         typeId: 'general-purpose',
@@ -267,7 +271,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should handle spawnWorker failure', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
       mockSpawnWorker.mockRejectedValueOnce(new Error('test error'));
 
       const { taskId } = await manager.executeAsync({
@@ -286,7 +290,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should handle spawnWorker returning error status', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
       mockSpawnWorker.mockResolvedValueOnce({
         instanceId: 'inst-fail-1',
         typeId: 'general-purpose',
@@ -316,7 +320,7 @@ describe('BackgroundAgentManager', () => {
 
   describe('getTask', () => {
     it('should return runtime entry for existing task', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
       const { taskId } = await manager.executeAsync({
         typeId: 'general-purpose',
         description: 'test',
@@ -334,7 +338,7 @@ describe('BackgroundAgentManager', () => {
 
   describe('listActive', () => {
     it('should return only pending and running tasks', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       // 使用延迟 promise 防止后台任务自动完成
       const deferred1 = createDeferred<unknown>();
@@ -355,7 +359,7 @@ describe('BackgroundAgentManager', () => {
 
   describe('listAll', () => {
     it('should return all tasks', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       await manager.executeAsync({ typeId: 'general-purpose', description: 'task 1' });
 
@@ -370,7 +374,7 @@ describe('BackgroundAgentManager', () => {
 
   describe('cancel', () => {
     it('should cancel a pending task (before spawnWorker resolves)', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       // 使用延迟 promise，防止 runAsync 自动完成
       const deferred = createDeferred<unknown>();
@@ -395,7 +399,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should return false for already completed task', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       const { taskId } = await manager.executeAsync({
         typeId: 'general-purpose',
@@ -413,7 +417,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should return false for already failed task', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       const deferred = createDeferred<unknown>();
       deferred.reject(new Error('fail'));
@@ -434,7 +438,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should try to cancel instance via instance manager', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       const deferred = createDeferred<unknown>();
       mockSpawnWorker.mockReturnValueOnce(deferred.promise);
@@ -452,7 +456,7 @@ describe('BackgroundAgentManager', () => {
     });
 
     it('should update store on cancel', async () => {
-      manager.setOrchestrator(createMockOrchestrator() as any);
+      manager.setOrchestrator(createMockOrchestrator() as unknown as AgentOrchestrator);
 
       const deferred = createDeferred<unknown>();
       mockSpawnWorker.mockReturnValueOnce(deferred.promise);

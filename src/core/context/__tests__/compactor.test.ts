@@ -37,18 +37,21 @@ vi.mock('@/llm/anthropic-provider', () => ({
   complete: mockComplete,
 }));
 
+import type { Agent } from '@/core/agent-runtime/agent';
 import { Compactor } from '../compactor';
 import type { ContextWindowInfo } from '../types';
 import { DEFAULT_COMPACTION_CONFIG } from '../types';
 
 // ============ Helpers ============
 
-function createMockAgent(messages?: unknown[]): any {
+function createMockAgent(messages?: unknown[]) {
   return {
     state: {
       messages: messages ?? [],
     },
-  };
+    subscribe: vi.fn(),
+    waitForIdle: vi.fn(),
+  } as unknown as Agent;
 }
 
 function createContextWindowInfo(overrides?: Partial<ContextWindowInfo>): ContextWindowInfo {
@@ -62,8 +65,9 @@ function createContextWindowInfo(overrides?: Partial<ContextWindowInfo>): Contex
   };
 }
 
-function createMockLlmFacade(): any {
-  return {
+function createMockLlmFacade() {
+  // biome-ignore lint/suspicious/noExplicitAny: mock LLM facade for tests
+  const facade: any = {
     resolveResolvedModel: mockResolveResolvedModel.mockReturnValue({
       id: 'test-model',
       provider: 'test-provider',
@@ -71,6 +75,7 @@ function createMockLlmFacade(): any {
     getLightModel: () => undefined,
     getModelInfo: () => ({ key: 'test-provider/test-model' }),
   };
+  return facade;
 }
 
 function makeMessage(
@@ -103,6 +108,7 @@ function makeAssistantWithToolCall(toolCallId: string, toolName: string): Record
 
 describe('Compactor', () => {
   let compactor: Compactor;
+  // biome-ignore lint/suspicious/noExplicitAny: mock LLM facade for tests
   let mockFacade: any;
 
   beforeEach(() => {

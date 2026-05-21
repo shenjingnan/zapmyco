@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentTool } from '@/cli/repl/tools/agent-tool';
 import type { SubAgentConfig } from '@/config/types';
+import type { LlmBasedAgent } from '@/core/agent-runtime';
+import type { TextContent } from '@/core/agent-runtime/runtime-types';
+import type { ToolRegistration } from '@/core/agent-runtime/tool-bridge';
 import {
   getBackgroundAgentManager,
   resetBackgroundAgentManager,
@@ -12,7 +15,7 @@ import {
   resetAgentTypeRegistry,
 } from '@/core/agent-team/agent-type-registry';
 import { generalPurposeType } from '@/core/agent-team/builtin-types/general-purpose';
-import type { AgentTeamConfig } from '@/core/agent-team/types';
+import type { AgentTeamConfig, WorkerResult } from '@/core/agent-team/types';
 
 vi.mock('@/core/agent-runtime/agent', () => ({
   Agent: vi.fn().mockImplementation(() => ({
@@ -63,15 +66,13 @@ describe('createAgentTool', () => {
     resetBackgroundAgentManager();
     getAgentTypeRegistry().register(generalPurposeType);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parentAgent = {
       agentId: 'parent',
       innerAgent: { state: { model: { provider: 'test', model: 'test-model' } } },
       llmFacade: undefined,
       systemPromptOverride: null,
-    } as any;
+    } as unknown as LlmBasedAgent;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mockTools = [
       {
         id: 'ReadFile',
@@ -79,7 +80,7 @@ describe('createAgentTool', () => {
         description: 'Read',
         execute: async () => ({ content: [] }),
       },
-    ] as any;
+    ] as unknown as ToolRegistration[];
 
     orchestrator = new AgentOrchestrator(teamConfig, flatConfig, parentAgent, mockTools);
     getBackgroundAgentManager().setOrchestrator(orchestrator);
@@ -116,8 +117,7 @@ describe('createAgentTool', () => {
         description: 'test',
         run_in_background: true,
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('已作为后台任务启动');
+      expect((result.content?.[0] as TextContent)?.text).toContain('已作为后台任务启动');
       const details = result.details as { taskId: string; instanceId: string; status: string };
       expect(details.status).toBe('async_launched');
       expect(details.taskId).toBeDefined();
@@ -129,8 +129,7 @@ describe('createAgentTool', () => {
         description: 'test',
         run_in_background: true,
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('需要指定 subagent_type');
+      expect((result.content?.[0] as TextContent)?.text).toContain('需要指定 subagent_type');
     });
 
     it('should spawn worker via subagent_type', async () => {
@@ -139,8 +138,7 @@ describe('createAgentTool', () => {
         subagent_type: 'general-purpose',
         description: 'research topic',
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toBeDefined();
+      expect((result.content?.[0] as TextContent)?.text).toBeDefined();
     });
 
     it('should fallback to flat spawn with agents parameter', async () => {
@@ -152,8 +150,7 @@ describe('createAgentTool', () => {
           { id: 'a2', description: 'task 2' },
         ],
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toBeDefined();
+      expect((result.content?.[0] as TextContent)?.text).toBeDefined();
       expect(result.details).toBeDefined();
     });
 
@@ -162,8 +159,7 @@ describe('createAgentTool', () => {
       const result = await tool.execute('call-1', {
         description: 'test',
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('请指定 subagent_type');
+      expect((result.content?.[0] as TextContent)?.text).toContain('请指定 subagent_type');
     });
 
     it('should return error for unknown type', async () => {
@@ -172,8 +168,7 @@ describe('createAgentTool', () => {
         subagent_type: 'nonexistent',
         description: 'test',
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('执行失败');
+      expect((result.content?.[0] as TextContent)?.text).toContain('执行失败');
     });
 
     it('should show success message for successful spawn', async () => {
@@ -192,15 +187,14 @@ describe('createAgentTool', () => {
         taskId: 'task-1',
         instanceId: 'inst-1',
         subtaskResults: undefined,
-      } as any);
+      } as unknown as WorkerResult);
 
       const tool = createAgentTool(orchestrator);
       const result = await tool.execute('call-1', {
         subagent_type: 'general-purpose',
         description: 'test task',
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const text = (result.content?.[0] as any)?.text;
+      const text = (result.content?.[0] as TextContent)?.text;
       expect(text).toContain('执行成功');
       expect(text).toContain('general-purpose');
       expect(text).toContain('Task completed successfully');

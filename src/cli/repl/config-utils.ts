@@ -28,6 +28,7 @@ export function _setByDotPath(obj: Record<string, unknown>, path: string, value:
   let current: Record<string, unknown> = obj;
 
   for (let i = 0; i < keys.length - 1; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: i < keys.length - 1 ensures bounds
     const key = keys[i]!;
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') return;
     if (!(key in current) || typeof current[key] !== 'object' || current[key] === null) {
@@ -36,6 +37,7 @@ export function _setByDotPath(obj: Record<string, unknown>, path: string, value:
     current = current[key] as Record<string, unknown>;
   }
 
+  // biome-ignore lint/style/noNonNullAssertion: split returns at least 1 element
   const lastKey = keys[keys.length - 1]!;
   if (lastKey === '__proto__' || lastKey === 'constructor' || lastKey === 'prototype') return;
   current[lastKey] = value;

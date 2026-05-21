@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Container } from '@/cli/tui/container';
 import { BSU, ESU } from '@/cli/tui/dec';
 import { TUI } from '@/cli/tui/engine';
+import type { ProcessTerminal } from '@/cli/tui/terminal';
 import type { Component } from '@/cli/tui/types';
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ describe('TUI', () => {
 
   beforeEach(() => {
     terminal = createMockTerminal();
-    tui = new TUI(terminal as any);
+    tui = new TUI(terminal as unknown as ProcessTerminal);
   });
 
   describe('constructor', () => {
@@ -130,6 +131,30 @@ describe('TUI', () => {
       const renderSpy = vi.spyOn(tui, 'requestRender');
       tui.setFocus(createMockComponent());
       expect(renderSpy).toHaveBeenCalled();
+    });
+
+    it('同一组件重复设置焦点不报错', () => {
+      const child = createMockComponent();
+      child.focused = false;
+      tui.setFocus(child);
+      expect(child.focused).toBe(true);
+      // 再次设置同一组件
+      tui.setFocus(child);
+      expect(child.focused).toBe(true);
+    });
+
+    it('旧组件没有 focused 属性时切换焦点不应报错', () => {
+      const oldChild = createMockComponent();
+      oldChild.focused = true;
+      tui.setFocus(oldChild);
+
+      const newChild = createMockComponent();
+      // newChild 没有 focused 属性（已删除）
+      delete newChild.focused;
+
+      expect(() => tui.setFocus(newChild)).not.toThrow();
+      // 旧组件的 focused 应被清除
+      expect(oldChild.focused).toBe(false);
     });
   });
 
@@ -253,6 +278,16 @@ describe('TUI', () => {
       tui.requestRender(true);
       tui.doRender();
     });
+
+    it('多次调用 hide 是幂等的', () => {
+      const overlay = createMockComponent();
+      const handle = tui.showOverlay(overlay);
+      handle.hide();
+      // 第二次调用 hide 不应报错
+      expect(() => handle.hide()).not.toThrow();
+      // 第三次调用 hide 仍不应报错
+      expect(() => handle.hide()).not.toThrow();
+    });
   });
 
   describe('setShowHardwareCursor', () => {
@@ -343,6 +378,24 @@ describe('TUI', () => {
       // 实际上 doRender 末尾有 if (this.cursorRow >= 0) 的判断，cursorRow=-1 所以为 false
     });
 
+    it('光标标记定位的行列值应正确传递', () => {
+      // 光标标记 \u001B_pi:c\u0007 前有 3 个可见字符 "❯ "
+      const child: Component = {
+        render: vi.fn(() => ['❯ \u001B_pi:c\u0007' + '|extra']),
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+      };
+      tui.addChild(child);
+      tui.requestRender(true);
+      tui.doRender();
+
+      // 光标标记被移除后内容为 "❯ |extra"，且硬件光标已显示
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain('\x1b[?25h');
+      // 光标标记不应残留
+      expect(writeCall).not.toContain('_pi:c');
+    });
+
     it('差量更新模式输出应包裹 BSU/ESU', () => {
       const child = createMockComponent('line');
       tui.addChild(child);
@@ -379,10 +432,12 @@ describe('TUI', () => {
       tui.start();
 
       // 获取注册的 stdin handler
-      const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
+      const handler = terminal.stdin.on.mock.calls.find(
+        (c: [string, unknown]) => c[0] === 'data'
+      )?.[1];
       expect(handler).toBeDefined();
 
-      handler!(Buffer.from('hello'));
+      handler?.(Buffer.from('hello'));
       expect(child.handleInput).toHaveBeenCalledWith('hello');
     });
 
@@ -395,8 +450,10 @@ describe('TUI', () => {
       tui.showOverlay(overlay);
 
       // 获取注册的 stdin handler
-      const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
-      handler!(Buffer.from('key'));
+      const handler = terminal.stdin.on.mock.calls.find(
+        (c: [string, unknown]) => c[0] === 'data'
+      )?.[1];
+      handler?.(Buffer.from('key'));
 
       // 焦点组件不应收到输入
       expect(child.handleInput).not.toHaveBeenCalled();
@@ -406,8 +463,10 @@ describe('TUI', () => {
 
     it('无焦点组件时输入不应报错', () => {
       tui.start();
-      const handler = terminal.stdin.on.mock.calls.find((c: any[]) => c[0] === 'data')?.[1];
-      expect(() => handler!(Buffer.from('key'))).not.toThrow();
+      const handler = terminal.stdin.on.mock.calls.find(
+        (c: [string, unknown]) => c[0] === 'data'
+      )?.[1];
+      expect(() => handler?.(Buffer.from('key'))).not.toThrow();
     });
   });
 
@@ -480,6 +539,170 @@ describe('TUI', () => {
       // terminal 只有 24 行，应只渲染最后 24 行
       // 但验证至少渲染了
       expect(child.render).toHaveBeenCalledWith(80);
+    });
+  });
+
+  describe('SGR mouse events', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function getStdinHandler(): (chunk: Buffer) => void {
+      // start() 在 stdin.on('data', handler) 中注册
+      const call = terminal.stdin.on.mock.calls.find((c: [string, unknown]) => c[0] === 'data');
+      expect(call).toBeDefined();
+      return (call?.[1] ?? (() => {})) as (chunk: Buffer) => void;
+    }
+
+    it('滚轮向上事件应调用焦点组件的 handleScroll("up")', () => {
+      const scrollable = createMockComponent() as Component & {
+        focused?: boolean;
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      scrollable.handleScroll = vi.fn();
+      scrollable.focused = true;
+      tui.setFocus(scrollable);
+      tui.start();
+
+      const handler = getStdinHandler();
+      handler(Buffer.from('\x1b[<64;10;5M'));
+
+      expect(scrollable.handleScroll).toHaveBeenCalledWith('up');
+    });
+
+    it('滚轮向上事件应触发 requestRender', () => {
+      const renderSpy = vi.spyOn(tui, 'requestRender');
+      const scrollable = createMockComponent() as Component & {
+        focused?: boolean;
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      scrollable.handleScroll = vi.fn();
+      scrollable.focused = true;
+      tui.setFocus(scrollable);
+      tui.start();
+
+      const handler = getStdinHandler();
+      renderSpy.mockClear(); // 清除 start 中的调用
+      handler(Buffer.from('\x1b[<64;10;5M'));
+
+      expect(renderSpy).toHaveBeenCalled();
+    });
+
+    it('滚轮向下事件应调用焦点组件的 handleScroll("down")', () => {
+      const scrollable = createMockComponent() as Component & {
+        focused?: boolean;
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      scrollable.handleScroll = vi.fn();
+      scrollable.focused = true;
+      tui.setFocus(scrollable);
+      tui.start();
+
+      const handler = getStdinHandler();
+      handler(Buffer.from('\x1b[<65;10;5M'));
+
+      expect(scrollable.handleScroll).toHaveBeenCalledWith('down');
+    });
+
+    it('非滚轮鼠标事件不应触发 handleScroll', () => {
+      const scrollable = createMockComponent() as Component & {
+        focused?: boolean;
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      scrollable.handleScroll = vi.fn();
+      scrollable.focused = true;
+      tui.setFocus(scrollable);
+      tui.start();
+
+      const handler = getStdinHandler();
+      // btn=0 = mouse click, 不是滚轮事件
+      handler(Buffer.from('\x1b[<0;10;5M'));
+
+      expect(scrollable.handleScroll).not.toHaveBeenCalled();
+    });
+
+    it('纯鼠标事件不应转发给焦点组件的 handleInput', () => {
+      const focused = createMockComponent();
+      tui.setFocus(focused);
+      tui.start();
+
+      const handler = getStdinHandler();
+      handler(Buffer.from('\x1b[<64;10;5M'));
+
+      expect(focused.handleInput).not.toHaveBeenCalled();
+    });
+
+    it('鼠标事件混合键盘数据应转发剩余数据给焦点组件', () => {
+      const scrollable = createMockComponent() as Component & {
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      scrollable.handleScroll = vi.fn();
+      tui.setFocus(scrollable);
+      tui.start();
+
+      const handler = getStdinHandler();
+      // SGR 事件后跟普通键盘输入
+      handler(Buffer.from('\x1b[<64;10;5Mhello'));
+
+      // 滚轮事件已处理
+      expect(scrollable.handleScroll).toHaveBeenCalledWith('up');
+      // 剩余数据应转发给焦点组件的 handleInput
+      expect(scrollable.handleInput).toHaveBeenCalledWith('hello');
+    });
+
+    it('无焦点组件时通过 getLayoutChildren 查找可滚动子组件', () => {
+      const scrollableChild = createMockComponent() as Component & {
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      scrollableChild.handleScroll = vi.fn();
+      tui.addChild(scrollableChild);
+      // 不设置焦点，focused 为 null
+      tui.start();
+
+      const handler = getStdinHandler();
+      handler(Buffer.from('\x1b[<64;10;5M'));
+
+      // getLayoutChildren 应找到 scrollableChild
+      expect(scrollableChild.handleScroll).toHaveBeenCalledWith('up');
+    });
+
+    it('焦点组件有 handleScroll 时不应查找子组件', () => {
+      const focusedWithScroll = createMockComponent() as Component & {
+        focused?: boolean;
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      focusedWithScroll.handleScroll = vi.fn();
+      focusedWithScroll.focused = true;
+      tui.setFocus(focusedWithScroll);
+
+      const childWithScroll = createMockComponent() as Component & {
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      childWithScroll.handleScroll = vi.fn();
+      tui.addChild(childWithScroll);
+      tui.start();
+
+      const handler = getStdinHandler();
+      handler(Buffer.from('\x1b[<64;10;5M'));
+
+      // 焦点组件有 handleScroll，应使用焦点组件的
+      expect(focusedWithScroll.handleScroll).toHaveBeenCalledWith('up');
+      // 子组件不应被调用
+      expect(childWithScroll.handleScroll).not.toHaveBeenCalled();
+    });
+
+    it('无任何可滚动组件时不报错', () => {
+      tui.addChild(createMockComponent());
+      tui.start();
+
+      const handler = getStdinHandler();
+      expect(() => {
+        handler(Buffer.from('\x1b[<64;10;5M'));
+      }).not.toThrow();
     });
   });
 });

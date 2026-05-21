@@ -10,7 +10,17 @@ export { CombinedAutocompleteProvider } from './autocomplete';
 // === 本地引擎实现 ===
 export { Container } from './container';
 // === DEC 序列管理 ===
-export { BSU, DEC, decreset, decset, ENTER_ALT_SCREEN, ESU, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR } from './dec';
+export {
+  BSU,
+  DEC,
+  decreset,
+  decset,
+  ENTER_ALT_SCREEN,
+  ESU,
+  EXIT_ALT_SCREEN,
+  HIDE_CURSOR,
+  SHOW_CURSOR,
+} from './dec';
 // === 本地 TUI 组件 ===
 export { Editor } from './editor';
 export { TUI } from './engine';

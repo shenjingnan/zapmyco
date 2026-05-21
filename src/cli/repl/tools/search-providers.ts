@@ -316,7 +316,7 @@ class DuckDuckGoProvider implements SearchProvider {
           gt: '>',
           quot: '"',
         };
-        if (token in entityMap) return entityMap[token]!;
+        if (token in entityMap) return entityMap[token] ?? _;
         if (token.startsWith('#x')) {
           const cp = parseInt(token.slice(2), 16);
           return Number.isNaN(cp) ? _ : String.fromCharCode(cp);

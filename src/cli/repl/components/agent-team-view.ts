@@ -147,6 +147,7 @@ export function formatAgentInstanceTree(
 
   // 渲染每棵根树
   for (let i = 0; i < roots.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: i < roots.length ensures bounds
     const root = roots[i]!;
     const isLastRoot = i === roots.length - 1;
     renderTreeNode(root, childrenMap, '', isLastRoot, lines, c);
@@ -207,6 +208,7 @@ function renderTreeNode(
   const childPrefix = prefix + (isLast ? '    ' : '│   ');
 
   for (let i = 0; i < children.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: i < children.length ensures bounds
     const child = children[i]!;
     const isLastChild = i === children.length - 1;
     renderTreeNode(child, childrenMap, childPrefix, isLastChild, lines, c);

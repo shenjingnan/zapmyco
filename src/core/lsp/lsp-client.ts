@@ -182,7 +182,10 @@ export function createLspClient(config: LspClientConfig): LspClient {
     });
 
     // 建立消息写入器（stdin）
-    messageWriter = createMessageWriter(childProcess.stdin!, (msg) => trace('→', msg));
+    if (!childProcess.stdin) {
+      throw new LspError('LSP 子进程 stdin 不可用', 'PROCESS_ERROR');
+    }
+    messageWriter = createMessageWriter(childProcess.stdin, (msg) => trace('→', msg));
   }
 
   // ---- 公开 API ----

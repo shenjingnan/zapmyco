@@ -232,8 +232,7 @@ export function createGrepTool() {
       required: ['pattern'],
     } as const,
 
-    // biome-ignore lint/suspicious/noExplicitAny: tool execute returns flexible result
-    async execute(_toolCallId: string, params: GrepParams): Promise<any> {
+    async execute(_toolCallId: string, params: GrepParams) {
       const startTime = Date.now();
       const searchPath = resolveWorktreePath(params.path ?? process.cwd());
       const outputMode = params.output_mode ?? 'content';
@@ -291,7 +290,7 @@ export function createGrepTool() {
           for (let i = 0; i < lines.length; i++) {
             if (results.length >= MAX_RESULTS) break;
 
-            const currentLine = lines[i]!;
+            const currentLine = lines[i] ?? '';
 
             // 每行单独匹配
             const lineRegex = new RegExp(params.pattern, ignoreCase ? 'i' : '');
@@ -300,10 +299,10 @@ export function createGrepTool() {
               const ctxAfter: string[] = [];
 
               for (let b = Math.max(0, i - contextBefore); b < i; b++) {
-                ctxBefore.push(lines[b]!);
+                ctxBefore.push(lines[b] ?? '');
               }
               for (let a = i + 1; a <= Math.min(lines.length - 1, i + contextAfter); a++) {
-                ctxAfter.push(lines[a]!);
+                ctxAfter.push(lines[a] ?? '');
               }
 
               results.push({

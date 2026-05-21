@@ -91,14 +91,14 @@ describe('CredentialPoolManager', () => {
     it('成功调用应标记 success', () => {
       const manager = CredentialPoolManager.fromConfig(makeConfig());
       const key = manager.getKey('anthropic');
-      expect(() => manager.reportKeyResult('anthropic', key!, true)).not.toThrow();
+      expect(() => manager.reportKeyResult('anthropic', key as string, true)).not.toThrow();
     });
 
     it('失败调用应标记 failed', () => {
       const manager = CredentialPoolManager.fromConfig(makeConfig());
       const key = manager.getKey('anthropic');
       expect(() =>
-        manager.reportKeyResult('anthropic', key!, false, new Error('test error'))
+        manager.reportKeyResult('anthropic', key as string, false, new Error('test error'))
       ).not.toThrow();
     });
 

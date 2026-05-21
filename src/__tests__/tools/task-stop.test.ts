@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTaskStopTool } from '@/cli/repl/tools/task-stop';
+import type { LlmBasedAgent } from '@/core/agent-runtime';
+import type { TextContent } from '@/core/agent-runtime/runtime-types';
 import {
   getAgentInstanceManager,
   resetAgentInstanceManager,
@@ -46,10 +48,9 @@ function registerAgent(
   status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused' = 'running'
 ) {
   const instanceManager = getAgentInstanceManager();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const instance = instanceManager.register(
     createMockDef('worker'),
-    { agentId: id, cancel: vi.fn().mockResolvedValue(undefined) } as any,
+    { agentId: id, cancel: vi.fn().mockResolvedValue(undefined) } as unknown as LlmBasedAgent,
     {
       taskId: `task-${id}`,
       description: 'test',
@@ -98,8 +99,7 @@ describe('createTaskStopTool', () => {
       const tool = createTaskStopTool();
       const result = await tool.execute('call-1', { task_id: 'non-existent' });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('未找到任务');
+      expect((result.content?.[0] as TextContent)?.text).toContain('未找到任务');
       expect(result.details).toEqual({
         taskId: 'non-existent',
         found: false,
@@ -111,8 +111,7 @@ describe('createTaskStopTool', () => {
       const tool = createTaskStopTool();
       const result = await tool.execute('call-1', { task_id: 'agent-completed' });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('无法停止');
+      expect((result.content?.[0] as TextContent)?.text).toContain('无法停止');
       expect(result.details).toEqual({
         taskId: 'agent-completed',
         status: 'completed',
@@ -125,8 +124,7 @@ describe('createTaskStopTool', () => {
       const tool = createTaskStopTool();
       const result = await tool.execute('call-1', { task_id: 'agent-cancelled' });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('无法停止');
+      expect((result.content?.[0] as TextContent)?.text).toContain('无法停止');
       expect(result.details).toEqual({
         taskId: 'agent-cancelled',
         status: 'cancelled',
@@ -139,8 +137,7 @@ describe('createTaskStopTool', () => {
       const tool = createTaskStopTool();
       const result = await tool.execute('call-1', { task_id: 'agent-failed' });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('无法停止');
+      expect((result.content?.[0] as TextContent)?.text).toContain('无法停止');
       expect(result.details).toEqual({
         taskId: 'agent-failed',
         status: 'failed',
@@ -158,8 +155,7 @@ describe('createTaskStopTool', () => {
       const result = await tool.execute('call-1', { task_id: 'agent-running' });
 
       expect(cancelSpy).toHaveBeenCalledWith('task-agent-running');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('已停止');
+      expect((result.content?.[0] as TextContent)?.text).toContain('已停止');
       expect(result.details).toEqual({
         taskId: 'agent-running',
         stopped: true,
@@ -175,8 +171,7 @@ describe('createTaskStopTool', () => {
       const result = await tool.execute('call-1', { task_id: 'agent-idle' });
 
       expect(cancelSpy).toHaveBeenCalled();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.content?.[0] as any)?.text).toContain('已停止');
+      expect((result.content?.[0] as TextContent)?.text).toContain('已停止');
     });
 
     it('should return cancelled count via AgentInstanceManager.cancel', async () => {

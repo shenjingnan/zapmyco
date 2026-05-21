@@ -86,7 +86,7 @@ export function createExecTool() {
           content: [
             {
               type: 'text',
-              text: formatBlockedOutput(params.command, securityResult.reason!),
+              text: formatBlockedOutput(params.command, securityResult.reason ?? '未知原因'),
             },
           ],
           details: {

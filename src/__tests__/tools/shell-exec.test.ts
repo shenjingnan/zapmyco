@@ -20,14 +20,14 @@ describe('shell-exec', () => {
     });
 
     it('parameters 应该包含 command 作为必需参数', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: deep property access
       const params = tool.parameters as any;
       expect(params.properties.command).toBeDefined();
       expect(params.required).toContain('command');
     });
 
     it('parameters 应该包含可选参数', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: deep property access
       const params = tool.parameters as any;
       expect(params.properties.workdir).toBeDefined();
       expect(params.properties.timeout).toBeDefined();

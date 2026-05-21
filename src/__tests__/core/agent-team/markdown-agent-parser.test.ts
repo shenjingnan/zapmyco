@@ -41,6 +41,7 @@ capabilities:
       expect(result.definition).toBeDefined();
       expect(result.filePath).toBe('/path/to/test-expert.md');
 
+      // biome-ignore lint/style/noNonNullAssertion: verified by errors.length check above
       const def = result.definition!;
       expect(def.typeId).toBe('test-expert');
       expect(def.displayName).toBe('测试专家');
@@ -60,6 +61,7 @@ capabilities:
 
     it('should generate system prompt from markdown body', () => {
       const result = parseAgentMarkdown('/test.md', validMarkdown, 'project');
+      // biome-ignore lint/style/noNonNullAssertion: verified by errors.length check above
       const def = result.definition!;
 
       const prompt = def.getSystemPrompt({
@@ -90,6 +92,7 @@ Memory: \${memorySnapshot}
 `;
 
       const result = parseAgentMarkdown('/test.md', md, 'user');
+      // biome-ignore lint/style/noNonNullAssertion: verified by errors.length check above
       const def = result.definition!;
 
       const prompt = def.getSystemPrompt({
@@ -146,6 +149,7 @@ Just a minimal agent.
       expect(result.errors).toHaveLength(0);
       expect(result.definition).toBeDefined();
 
+      // biome-ignore lint/style/noNonNullAssertion: verified by errors.length check above
       const def = result.definition!;
       expect(def.role).toBe('worker');
       expect(def.toolPolicy).toEqual({ mode: 'safe' });
@@ -270,6 +274,7 @@ whenToUse: testing
 
       const result = parseAgentMarkdown('/test.md', md, 'user');
       expect(result.errors).toHaveLength(0);
+      // biome-ignore lint/style/noNonNullAssertion: verified by errors.length check above
       const def = result.definition!;
       const prompt = def.getSystemPrompt({ taskDescription: 'test', workdir: '/' });
       expect(prompt.length).toBeGreaterThan(0);

@@ -65,7 +65,9 @@ function parseKey(data: string): string | undefined {
   const csiURe = new RegExp(`^${ESC}\\[(\\d+);(\\d+)u$`);
   const m = data.match(csiURe);
   if (m) {
+    // biome-ignore lint/style/noNonNullAssertion: regex guarantees group existence
     const charCode = parseInt(m[1]!, 10);
+    // biome-ignore lint/style/noNonNullAssertion: regex guarantees group existence
     const modifier = parseInt(m[2]!, 10);
     const char = String.fromCharCode(charCode).toLowerCase();
     if (modifier === 5) return `ctrl+${char}`;
@@ -77,7 +79,9 @@ function parseKey(data: string): string | undefined {
   const moKRe = new RegExp(`^${ESC}\\[27;(\\d+);(\\d+)~$`);
   const m2 = data.match(moKRe);
   if (m2) {
+    // biome-ignore lint/style/noNonNullAssertion: regex guarantees group existence
     const charCode = parseInt(m2[2]!, 10);
+    // biome-ignore lint/style/noNonNullAssertion: regex guarantees group existence
     const modifier = parseInt(m2[1]!, 10);
     const char = String.fromCharCode(charCode).toLowerCase();
     if (modifier === 5) return `ctrl+${char}`;
@@ -132,7 +136,7 @@ function legacyMatch(data: string, keyId: string): boolean {
   // Ctrl 组合键：ctrl+X → ASCII 控制字符
   const ctrlMatch = keyId.match(/^ctrl(?:\+shift)?\+([a-z])$/i);
   if (ctrlMatch) {
-    const charCode = ctrlMatch[1]!.toLowerCase().charCodeAt(0);
+    const charCode = ctrlMatch[1]?.toLowerCase().charCodeAt(0) ?? 0;
     const ctrlCode = charCode - 96;
     return data === String.fromCharCode(ctrlCode);
   }

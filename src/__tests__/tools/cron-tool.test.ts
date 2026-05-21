@@ -99,6 +99,7 @@ describe('cron-tool', () => {
 
     it('parameters 应包含 8 个 action 枚举', () => {
       const tool = createCronTool(scheduler);
+      // biome-ignore lint/suspicious/noExplicitAny: simplify type for deep property access in assertion
       const params = tool.parameters as any;
       expect(params.required).toContain('action');
       expect(params.properties.action.enum).toEqual([
@@ -115,6 +116,7 @@ describe('cron-tool', () => {
 
     it('parameters 应包含 cron/prompt/job_id 等字段', () => {
       const tool = createCronTool(scheduler);
+      // biome-ignore lint/suspicious/noExplicitAny: simplify type for deep property access in assertion
       const params = tool.parameters as any;
       expect(params.properties.cron).toBeDefined();
       expect(params.properties.prompt).toBeDefined();
@@ -134,14 +136,14 @@ describe('cron-tool', () => {
     it('缺少 cron 参数应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'create' });
-      expect(result.content[0].text).toContain('请提供 cron 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 cron 参数');
       expect(result.details.error).toContain('cron 参数为空');
     });
 
     it('缺少 prompt 参数应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-2', { action: 'create', cron: '0 9 * * *' });
-      expect(result.content[0].text).toContain('请提供 prompt 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 prompt 参数');
       expect(result.details.error).toContain('prompt 参数为空');
     });
 
@@ -153,7 +155,7 @@ describe('cron-tool', () => {
         cron: '0 9 * * *',
         prompt: longPrompt,
       });
-      expect(result.content[0].text).toContain('prompt 过长');
+      expect((result.content[0] as { text: string }).text).toContain('prompt 过长');
       expect(result.details.error).toContain('prompt 过长');
     });
 
@@ -164,7 +166,7 @@ describe('cron-tool', () => {
         cron: 'invalid-expression',
         prompt: '测试任务',
       });
-      expect(result.content[0].text).toContain('无效的 cron 表达式');
+      expect((result.content[0] as { text: string }).text).toContain('无效的 cron 表达式');
     });
 
     it('创建循环任务（默认 recurring=true）应成功', async () => {
@@ -174,8 +176,8 @@ describe('cron-tool', () => {
         cron: '0 9 * * *',
         prompt: '每天早上检查部署状态',
       });
-      expect(result.content[0].text).toContain('已创建循环定时任务');
-      expect(result.content[0].text).toContain('a1b2c3d4');
+      expect((result.content[0] as { text: string }).text).toContain('已创建循环定时任务');
+      expect((result.content[0] as { text: string }).text).toContain('a1b2c3d4');
       expect(result.details.recurring).toBe(true);
       expect(result.details.jobId).toBe('a1b2c3d4');
     });
@@ -188,7 +190,7 @@ describe('cron-tool', () => {
         prompt: '一次性提醒',
         recurring: false,
       });
-      expect(result.content[0].text).toContain('已创建一次性定时任务');
+      expect((result.content[0] as { text: string }).text).toContain('已创建一次性定时任务');
       expect(result.details.recurring).toBe(false);
     });
 
@@ -200,7 +202,7 @@ describe('cron-tool', () => {
         prompt: '持久化任务',
         durable: true,
       });
-      expect(result.content[0].text).toContain('持久化');
+      expect((result.content[0] as { text: string }).text).toContain('持久化');
       expect(result.details.durable).toBe(true);
     });
 
@@ -211,8 +213,8 @@ describe('cron-tool', () => {
         cron: '0 9 * * *',
         prompt: 'trigger-add-error',
       });
-      expect(result.content[0].text).toContain('[创建失败]');
-      expect(result.content[0].text).toContain('模拟添加失败');
+      expect((result.content[0] as { text: string }).text).toContain('[创建失败]');
+      expect((result.content[0] as { text: string }).text).toContain('模拟添加失败');
     });
   });
 
@@ -222,7 +224,7 @@ describe('cron-tool', () => {
     it('无任务时应返回提示', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'list' });
-      expect(result.content[0].text).toContain('暂无定时任务');
+      expect((result.content[0] as { text: string }).text).toContain('暂无定时任务');
     });
 
     it('有任务时应列出详细信息', async () => {
@@ -241,8 +243,8 @@ describe('cron-tool', () => {
       });
 
       const result = await tool.execute('test-2', { action: 'list' });
-      expect(result.content[0].text).toContain('共 2 个定时任务');
-      expect(result.content[0].text).toContain('a1b2c3d4');
+      expect((result.content[0] as { text: string }).text).toContain('共 2 个定时任务');
+      expect((result.content[0] as { text: string }).text).toContain('a1b2c3d4');
       expect(result.details.count).toBe(2);
       expect(result.details.jobs).toHaveLength(2);
     });
@@ -257,7 +259,7 @@ describe('cron-tool', () => {
       });
 
       const result = await tool.execute('test-3', { action: 'list' });
-      expect(result.content[0].text).toContain('...');
+      expect((result.content[0] as { text: string }).text).toContain('...');
     });
   });
 
@@ -276,13 +278,13 @@ describe('cron-tool', () => {
     it('缺少 job_id 应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'update' });
-      expect(result.content[0].text).toContain('请提供 job_id 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 job_id 参数');
     });
 
     it('无更新参数应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-2', { action: 'update', job_id: 'a1b2c3d4' });
-      expect(result.content[0].text).toContain('请提供要更新的参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供要更新的参数');
     });
 
     it('更新 cron 应成功', async () => {
@@ -292,7 +294,7 @@ describe('cron-tool', () => {
         job_id: 'a1b2c3d4',
         new_cron: '5 0 * * *',
       });
-      expect(result.content[0].text).toContain('已更新');
+      expect((result.content[0] as { text: string }).text).toContain('已更新');
     });
 
     it('任务不存在应返回错误', async () => {
@@ -302,7 +304,7 @@ describe('cron-tool', () => {
         job_id: 'nonexistent',
         new_cron: '5 0 * * *',
       });
-      expect(result.content[0].text).toContain('[更新失败]');
+      expect((result.content[0] as { text: string }).text).toContain('[更新失败]');
     });
 
     it('scheduler 返回错误时应传递', async () => {
@@ -312,8 +314,8 @@ describe('cron-tool', () => {
         job_id: 'update-sim-error',
         new_prompt: 'new prompt',
       });
-      expect(result.content[0].text).toContain('[更新失败]');
-      expect(result.content[0].text).toContain('模拟更新失败');
+      expect((result.content[0] as { text: string }).text).toContain('[更新失败]');
+      expect((result.content[0] as { text: string }).text).toContain('模拟更新失败');
     });
   });
 
@@ -332,13 +334,13 @@ describe('cron-tool', () => {
     it('缺少 job_id 应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'remove' });
-      expect(result.content[0].text).toContain('请提供 job_id 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 job_id 参数');
     });
 
     it('成功删除应返回结果', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-2', { action: 'remove', job_id: 'a1b2c3d4' });
-      expect(result.content[0].text).toContain('已删除');
+      expect((result.content[0] as { text: string }).text).toContain('已删除');
     });
 
     it('任务不存在应返回错误', async () => {
@@ -347,8 +349,8 @@ describe('cron-tool', () => {
         action: 'remove',
         job_id: 'nonexistent',
       });
-      expect(result.content[0].text).toContain('[删除失败]');
-      expect(result.content[0].text).toContain('任务未找到');
+      expect((result.content[0] as { text: string }).text).toContain('[删除失败]');
+      expect((result.content[0] as { text: string }).text).toContain('任务未找到');
     });
   });
 
@@ -367,7 +369,7 @@ describe('cron-tool', () => {
     it('缺少 job_id 应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'pause' });
-      expect(result.content[0].text).toContain('请提供 job_id 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 job_id 参数');
     });
 
     it('暂停成功应返回结果', async () => {
@@ -376,7 +378,7 @@ describe('cron-tool', () => {
         action: 'pause',
         job_id: 'a1b2c3d4',
       });
-      expect(result.content[0].text).toContain('已暂停');
+      expect((result.content[0] as { text: string }).text).toContain('已暂停');
     });
 
     it('scheduler 返回错误应传递', async () => {
@@ -385,8 +387,8 @@ describe('cron-tool', () => {
         action: 'pause',
         job_id: 'update-sim-error',
       });
-      expect(result.content[0].text).toContain('[暂停失败]');
-      expect(result.content[0].text).toContain('模拟更新失败');
+      expect((result.content[0] as { text: string }).text).toContain('[暂停失败]');
+      expect((result.content[0] as { text: string }).text).toContain('模拟更新失败');
     });
   });
 
@@ -405,7 +407,7 @@ describe('cron-tool', () => {
     it('缺少 job_id 应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'resume' });
-      expect(result.content[0].text).toContain('请提供 job_id 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 job_id 参数');
     });
 
     it('恢复成功应返回结果', async () => {
@@ -414,7 +416,7 @@ describe('cron-tool', () => {
         action: 'resume',
         job_id: 'a1b2c3d4',
       });
-      expect(result.content[0].text).toContain('已恢复');
+      expect((result.content[0] as { text: string }).text).toContain('已恢复');
     });
 
     it('scheduler 返回错误应传递', async () => {
@@ -423,8 +425,8 @@ describe('cron-tool', () => {
         action: 'resume',
         job_id: 'update-sim-error',
       });
-      expect(result.content[0].text).toContain('[恢复失败]');
-      expect(result.content[0].text).toContain('模拟更新失败');
+      expect((result.content[0] as { text: string }).text).toContain('[恢复失败]');
+      expect((result.content[0] as { text: string }).text).toContain('模拟更新失败');
     });
   });
 
@@ -443,7 +445,7 @@ describe('cron-tool', () => {
     it('缺少 job_id 应返回错误', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'run' });
-      expect(result.content[0].text).toContain('请提供 job_id 参数');
+      expect((result.content[0] as { text: string }).text).toContain('请提供 job_id 参数');
     });
 
     it('触发成功应返回结果', async () => {
@@ -452,7 +454,7 @@ describe('cron-tool', () => {
         action: 'run',
         job_id: 'a1b2c3d4',
       });
-      expect(result.content[0].text).toContain('已触发执行');
+      expect((result.content[0] as { text: string }).text).toContain('已触发执行');
     });
 
     it('scheduler.triggerJob 返回错误应传递', async () => {
@@ -461,8 +463,8 @@ describe('cron-tool', () => {
         action: 'run',
         job_id: 'trigger-sim-error',
       });
-      expect(result.content[0].text).toContain('[执行失败]');
-      expect(result.content[0].text).toContain('模拟触发失败');
+      expect((result.content[0] as { text: string }).text).toContain('[执行失败]');
+      expect((result.content[0] as { text: string }).text).toContain('模拟触发失败');
     });
   });
 
@@ -472,12 +474,13 @@ describe('cron-tool', () => {
     it('应返回调度器运行状态', async () => {
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-1', { action: 'status' });
-      expect(result.content[0].text).toContain('调度器状态');
-      expect(result.content[0].text).toContain('运行中: 是');
+      expect((result.content[0] as { text: string }).text).toContain('调度器状态');
+      expect((result.content[0] as { text: string }).text).toContain('运行中: 是');
       expect(result.details.running).toBe(true);
     });
 
     it('调度器停止时应显示否', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock resolved value for test
       (scheduler.getStatus as any).mockResolvedValue({
         running: false,
         jobCount: 0,
@@ -487,7 +490,7 @@ describe('cron-tool', () => {
       });
       const tool = createCronTool(scheduler);
       const result = await tool.execute('test-2', { action: 'status' });
-      expect(result.content[0].text).toContain('运行中: 否');
+      expect((result.content[0] as { text: string }).text).toContain('运行中: 否');
     });
   });
 
@@ -496,8 +499,9 @@ describe('cron-tool', () => {
   describe('不支持的操作', () => {
     it('传入无效 action 应返回错误提示', async () => {
       const tool = createCronTool(scheduler);
-      const result = await tool.execute('test-1', { action: 'unknown' as any });
-      expect(result.content[0].text).toContain('不支持的操作');
+      // biome-ignore lint/suspicious/noExplicitAny: invalid action for test
+      const result = await tool.execute('test-1', { action: 'unknown' } as any);
+      expect((result.content[0] as { text: string }).text).toContain('不支持的操作');
       expect(result.details.error).toContain('不支持的操作');
     });
   });

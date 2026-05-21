@@ -341,8 +341,7 @@ export function createMemoryTool() {
       },
     } as const,
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async execute(_toolCallId: string, params: MemoryParams): Promise<any> {
+    async execute(_toolCallId: string, params: MemoryParams) {
       const action = params.action ?? 'read';
       const type = params.type ?? 'user';
 

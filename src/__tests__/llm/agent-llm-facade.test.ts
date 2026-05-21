@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlmConfig } from '@/config/types';
 import type { Model } from '@/core/agent-runtime/runtime-types';
 import { AgentLlmFacade } from '@/llm/agent-llm-facade';
+import type { RoutingDecision } from '@/llm/model-router';
 
 // Mock ProviderRegistry
 const mockResolvePiModel = vi.fn();
@@ -143,12 +144,16 @@ describe('AgentLlmFacade', () => {
         apiKey: 'sk-openai',
       });
       const facade = new AgentLlmFacade(baseConfig);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const prev = {
-        modelKey: 'anthropic/claude',
-        provider: 'anthropic',
+      const prev: RoutingDecision = {
+        model: {
+          id: 'claude',
+          provider: 'anthropic',
+          key: 'anthropic/claude',
+        },
         apiKey: 'sk-old',
-      } as any;
+        apiKeyMasked: 'sk-o***ld',
+        fallbackChain: [],
+      };
       const result = await facade.getFallback(prev, new Error('rate limit'));
       expect(result).toBeDefined();
       expect(mockFallback).toHaveBeenCalled();

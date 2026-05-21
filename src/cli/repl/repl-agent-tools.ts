@@ -7,6 +7,7 @@
  * @module cli/repl/repl-agent-tools
  */
 
+import type { TSchema } from 'typebox';
 import type { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
 import { createAgentTool } from '@/cli/repl/tools/agent-tool';
 import { createAskUserQuestionTool } from '@/cli/repl/tools/ask-user-question';
@@ -124,9 +125,8 @@ export function createReplBuiltinTools(
           },
         },
         required: ['file_path'],
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as unknown as TSchema,
+      // biome-ignore lint/suspicious/noExplicitAny: dynamic params from inline JSON Schema
       execute: async (_toolCallId: string, params: any): Promise<any> => {
         const fs = await import('node:fs/promises');
         const resolvedPath = resolveWorktreePath(params.file_path);
@@ -182,43 +182,32 @@ export function createReplBuiltinTools(
   ];
 
   // 文件写入工具（write + edit + glob + grep）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createWriteFileTool() as any);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createEditFileTool() as any);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createGlobTool() as any);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createGrepTool() as any);
+  tools.push(createWriteFileTool() as unknown as ToolRegistration);
+  tools.push(createEditFileTool() as unknown as ToolRegistration);
+  tools.push(createGlobTool() as unknown as ToolRegistration);
+  tools.push(createGrepTool() as unknown as ToolRegistration);
 
   // Shell 执行工具（exec + process）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createExecTool() as any);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createProcessTool() as any);
+  tools.push(createExecTool() as unknown as ToolRegistration);
+  tools.push(createProcessTool() as unknown as ToolRegistration);
 
   // Web 工具（按需启用）
   if (webConfig?.enabled !== false) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createWebFetchTool(webConfig) as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createWebSearchTool(webConfig) as any);
+    tools.push(createWebFetchTool(webConfig) as unknown as ToolRegistration);
+    tools.push(createWebSearchTool(webConfig) as unknown as ToolRegistration);
   }
 
   // 任务管理工具（依赖 TaskStore 实例）
   if (taskStore) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createTaskManageTool(taskStore) as any);
+    tools.push(createTaskManageTool(taskStore) as unknown as ToolRegistration);
   }
 
   // 持久化记忆工具
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createMemoryTool() as any);
+  tools.push(createMemoryTool() as unknown as ToolRegistration);
 
   // Skill 工具
   if (skillConfig?.enabled !== false) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createSkillTool(skillConfig) as any);
+    tools.push(createSkillTool(skillConfig) as unknown as ToolRegistration);
   }
 
   // Sub-Agent 派发工具（依赖父 Agent 实例）
@@ -229,8 +218,7 @@ export function createReplBuiltinTools(
     if (agentTeamConfig?.enabled) {
       orchestrator = new AgentOrchestrator(agentTeamConfig, subAgentConfig, parentAgent, tools);
       // 注册增强版 AgentTool（替代旧版 SpawnSubAgents）
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools.push(createAgentTool(orchestrator) as any);
+      tools.push(createAgentTool(orchestrator) as unknown as ToolRegistration);
 
       // 初始化后台 Agent 管理器（注入 orchestrator 以支持异步执行）
       const bgManager = getBackgroundAgentManager();
@@ -248,35 +236,29 @@ export function createReplBuiltinTools(
 
     if (!agentTeamConfig?.enabled) {
       // 未启用 Agent Team 时，使用旧版 SpawnSubAgents 工具
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools.push(createSpawnSubAgentsTool(manager, subAgentConfig) as any);
+      tools.push(createSpawnSubAgentsTool(manager, subAgentConfig) as unknown as ToolRegistration);
     }
   }
 
   // Worktree 隔离工具
   if (worktreeManager) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createEnterWorktreeTool(worktreeManager) as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createExitWorktreeTool(worktreeManager) as any);
+    tools.push(createEnterWorktreeTool(worktreeManager) as unknown as ToolRegistration);
+    tools.push(createExitWorktreeTool(worktreeManager) as unknown as ToolRegistration);
   }
 
   // 定时任务工具（依赖 CronScheduler 实例）
   if (cronScheduler) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools.push(createCronTool(cronScheduler) as any);
+    tools.push(createCronTool(cronScheduler) as unknown as ToolRegistration);
   }
 
   // AskUserQuestion 交互式提问工具（始终注册）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools.push(createAskUserQuestionTool() as any);
+  tools.push(createAskUserQuestionTool() as unknown as ToolRegistration);
 
   // 为未设置 defaultRisk 的工具补充默认风险等级
   for (const tool of tools) {
     if (!tool.defaultRisk) {
       const mappedRisk = TOOL_RISK_MAP[tool.id];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (tool as any).defaultRisk = (mappedRisk ?? 'medium') as RiskLevel;
+      tool.defaultRisk = (mappedRisk ?? 'medium') as RiskLevel;
     }
   }
 

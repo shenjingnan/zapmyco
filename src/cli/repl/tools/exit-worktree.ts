@@ -48,7 +48,7 @@ export function createExitWorktreeTool(worktreeManager: WorktreeManager): ToolRe
       },
       required: ['action'],
     } as unknown as import('typebox').TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic params from inline JSON Schema
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       const p = params as { action: 'keep' | 'remove'; discard_changes?: boolean };
       const ctx = getWorktreeContext();

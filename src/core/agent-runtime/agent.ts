@@ -514,7 +514,7 @@ export class Agent {
         this._state.thinkingLevel === ('off' as ThinkingLevel)
           ? undefined
           : this._state.thinkingLevel,
-      convertToLlm: this.convertToLlm!,
+      convertToLlm: this.convertToLlm ?? defaultConvertToLlm,
       sessionId: this.sessionId as never,
       transformContext: this.transformContext as never,
       getApiKey: this.getApiKey as never,

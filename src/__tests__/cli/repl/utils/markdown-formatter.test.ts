@@ -413,8 +413,11 @@ describe('formatMarkdown', () => {
       expect(coloredLines.length).toBe(rawLines.length);
       // 数据行显示宽度应一致（ANSI 不计入宽度）
       for (let i = 0; i < rawLines.length; i++) {
-        const rawW = displayWidth(rawLines[i]!);
-        const colW = displayWidth(coloredLines[i]!);
+        const rawLine = rawLines[i];
+        const colLine = coloredLines[i];
+        if (rawLine === undefined || colLine === undefined) continue;
+        const rawW = displayWidth(rawLine);
+        const colW = displayWidth(colLine);
         expect(rawW).toBe(colW);
       }
     });

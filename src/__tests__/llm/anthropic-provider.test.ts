@@ -16,6 +16,7 @@ const { mockCreate, mockStreamFn, mockGetClient } = vi.hoisted(() => {
     },
   };
 
+  // biome-ignore lint/suspicious/noExplicitAny: mock function signature for stream API
   const mockStreamFn = vi.fn<(...args: any[]) => any>(() => mockStream);
   const mockGetClient = vi.fn(() => ({
     messages: { create: mockCreate, stream: mockStreamFn },
@@ -69,7 +70,7 @@ describe('complete', () => {
     );
     expect(mockCreate).toHaveBeenCalledTimes(1);
 
-    const [firstArg] = mockCreate.mock.calls[0]!;
+    const [firstArg] = mockCreate.mock.calls[0] as unknown[];
     expect(firstArg).toMatchObject({
       model: mockModel.id,
       max_tokens: 4096,
@@ -82,7 +83,7 @@ describe('complete', () => {
 
     await complete(mockModel, { ...mockParams, systemPrompt: 'You are helpful.' });
 
-    const [firstArg] = mockCreate.mock.calls[0]!;
+    const [firstArg] = mockCreate.mock.calls[0] as unknown[];
     expect(firstArg).toHaveProperty('system', 'You are helpful.');
   });
 
@@ -91,7 +92,7 @@ describe('complete', () => {
 
     await complete(mockModel, mockParams);
 
-    const [firstArg] = mockCreate.mock.calls[0]!;
+    const [firstArg] = mockCreate.mock.calls[0] as unknown[];
     expect(firstArg).not.toHaveProperty('system');
   });
 
@@ -100,7 +101,7 @@ describe('complete', () => {
 
     await complete(mockModel, mockParams, { temperature: 0.7 });
 
-    const [firstArg] = mockCreate.mock.calls[0]!;
+    const [firstArg] = mockCreate.mock.calls[0] as unknown[];
     expect(firstArg).toHaveProperty('temperature', 0.7);
   });
 
@@ -109,7 +110,7 @@ describe('complete', () => {
 
     await complete(mockModel, mockParams);
 
-    const [firstArg] = mockCreate.mock.calls[0]!;
+    const [firstArg] = mockCreate.mock.calls[0] as unknown[];
     expect(firstArg).not.toHaveProperty('temperature');
   });
 
@@ -119,7 +120,7 @@ describe('complete', () => {
 
     await complete(mockModel, mockParams, { signal: controller.signal });
 
-    const [, secondArg] = mockCreate.mock.calls[0]!;
+    const [, secondArg] = mockCreate.mock.calls[0] as unknown[];
     expect(secondArg).toEqual({ signal: controller.signal });
   });
 
@@ -128,7 +129,7 @@ describe('complete', () => {
 
     await complete(mockModel, mockParams, { maxTokens: 1024 });
 
-    const [firstArg] = mockCreate.mock.calls[0]!;
+    const [firstArg] = mockCreate.mock.calls[0] as unknown[];
     expect(firstArg).toHaveProperty('max_tokens', 1024);
   });
 

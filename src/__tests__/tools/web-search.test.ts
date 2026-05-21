@@ -28,6 +28,8 @@ describe('createWebSearchTool', () => {
   describe('Provider 分发逻辑', () => {
     it('未知的 provider 应该抛出错误', async () => {
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
+      // biome-ignore lint/suspicious/noExplicitAny: invalid provider for test
       config.search!.provider = 'unknown' as any;
       const tool = createWebSearchTool(config);
       await expect(tool.execute('test', { query: 'test' })).rejects.toThrow(/未知搜索引擎/);
@@ -55,6 +57,7 @@ describe('createWebSearchTool', () => {
       });
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.apiKey = 'tvly-test-key';
       const tool = createWebSearchTool(config);
       const result = await tool.execute('test', { query: 'TypeScript' });
@@ -73,6 +76,7 @@ describe('createWebSearchTool', () => {
       });
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.apiKey = 'tvly-test-key';
       const tool = createWebSearchTool(config);
       const result = await tool.execute('test', { query: 'xyznonexistent' });
@@ -89,6 +93,7 @@ describe('createWebSearchTool', () => {
       });
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.apiKey = 'invalid-key';
       const tool = createWebSearchTool(config);
       await expect(tool.execute('test', { query: 'test' })).rejects.toThrow(/API 错误/);
@@ -114,6 +119,7 @@ describe('createWebSearchTool', () => {
       });
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.provider = 'duckduckgo';
       const tool = createWebSearchTool(config);
       const result = await tool.execute('test', { query: 'test search' });
@@ -138,6 +144,7 @@ describe('createWebSearchTool', () => {
       });
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.apiKey = 'tvly-test-key';
       const tool = createWebSearchTool(config);
 
@@ -164,6 +171,7 @@ describe('createWebSearchTool', () => {
       });
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.apiKey = 'tvly-test-key';
       const tool = createWebSearchTool(config);
       const result = await tool.execute('test', { query: 'test', numResults: 3 });
@@ -175,6 +183,7 @@ describe('createWebSearchTool', () => {
   describe('非 Tavily Provider 不可用', () => {
     it('应返回包含 provider label 的自定义错误', async () => {
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.provider = 'serpapi';
       // 不设置 apiKey 导致 SerpAPI isAvailable 返回 false
       const tool = createWebSearchTool(config);
@@ -189,6 +198,7 @@ describe('createWebSearchTool', () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error('API quota exceeded'));
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.apiKey = 'tvly-test-key';
       const tool = createWebSearchTool(config);
       // Tavily provider calls fetch directly and will reject with quota error
@@ -203,6 +213,7 @@ describe('createWebSearchTool', () => {
       });
 
       const config = makeBaseConfig();
+      // biome-ignore lint/style/noNonNullAssertion: search is always set by makeBaseConfig
       config.search!.apiKey = 'tvly-test-key';
       const tool = createWebSearchTool(config);
       await expect(tool.execute('test', { query: 'test query' })).rejects.toThrow(/API 错误/);
