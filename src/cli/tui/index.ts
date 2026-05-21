@@ -7,20 +7,19 @@
  * 后续 PR 逐步将 re-export 替换为本地实现。
  */
 
-// === pi-tui re-export（后续 PR 逐步替换） ===
-export {
-  CombinedAutocompleteProvider,
-  Container,
-  getKeybindings,
-  ProcessTerminal,
-  TUI,
-} from '@earendil-works/pi-tui';
+// === pi-tui re-export（后续 PR 5 替换） ===
+export { CombinedAutocompleteProvider, getKeybindings } from '@earendil-works/pi-tui';
+
+// === 本地引擎实现（PR 4） ===
+export { Container } from './container';
+// === 本地 TUI 组件 ===
 export { Editor } from './editor';
-// === 本地实现（逐步替换 pi-tui） ===
+export { TUI } from './engine';
 export { Input } from './input';
 // === 本地键处理 ===
 export { Key, matchesKey } from './key';
 export { SelectList } from './select-list';
+export { ProcessTerminal } from './terminal';
 
 // === 本地文本工具 ===
 export { truncateToWidth, wrapTextWithAnsi } from './text-utils';
