@@ -50,6 +50,9 @@ export const Key = {
   ctrlShift: (key: string): string => `ctrl+shift+${key}`,
 } as const;
 
+/** ESC 控制字符，用于匹配终端转义序列 */
+const ESC = String.fromCharCode(0x1b);
+
 /**
  * 本地 parseKey 实现
  *
@@ -59,7 +62,7 @@ export const Key = {
 function parseKey(data: string): string | undefined {
   // CSI-u: ESC [ <charCode> ; <modifier> u
   // modifier: 5=Ctrl, 6=Ctrl+Shift
-  const csiURe = /^\x1b\[(\d+);(\d+)u$/;
+  const csiURe = new RegExp(`^${ESC}\\[(\\d+);(\\d+)u$`);
   const m = data.match(csiURe);
   if (m) {
     const charCode = parseInt(m[1]!, 10);
@@ -71,7 +74,7 @@ function parseKey(data: string): string | undefined {
   }
 
   // modifyOtherKeys: ESC [ 27 ; <modifier> ; <charCode> ~
-  const moKRe = /^\x1b\[27;(\d+);(\d+)~$/;
+  const moKRe = new RegExp(`^${ESC}\\[27;(\\d+);(\\d+)~$`);
   const m2 = data.match(moKRe);
   if (m2) {
     const charCode = parseInt(m2[2]!, 10);

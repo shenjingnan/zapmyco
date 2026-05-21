@@ -28,7 +28,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
   constructor(
     private readonly slashCommands: SlashCommand[],
     _cwd: string,
-    private readonly fileProvider: AutocompleteProvider | null,
+    private readonly fileProvider: AutocompleteProvider | null
   ) {
     void _cwd;
   }
@@ -37,8 +37,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
     if (line.startsWith('/')) {
       const input = line.slice(1);
       return this.slashCommands
-        .filter(cmd => cmd.name.startsWith(input))
-        .map(cmd => ({
+        .filter((cmd) => cmd.name.startsWith(input))
+        .map((cmd) => ({
           name: cmd.name,
           ...(cmd.description ? { description: cmd.description } : {}),
         }));
