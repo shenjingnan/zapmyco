@@ -339,6 +339,9 @@ async function streamAssistantResponse(
       systemPrompt: context.systemPrompt,
       messages: llmMessages,
       ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
+      ...(config.cacheRetention && config.cacheRetention !== 'none'
+        ? { cacheRetention: config.cacheRetention }
+        : {}),
     },
     {
       ...(signal ? { signal } : {}),
@@ -377,9 +380,11 @@ async function streamAssistantResponse(
       switch (event.type) {
         case 'message_start': {
           messageModelId = event.message.model;
-          // 从 message_start 提取 input_tokens
+          // 从 message_start 提取 input_tokens 和缓存指标
           if (event.message.usage) {
             usage.input = event.message.usage.input_tokens ?? 0;
+            usage.cacheRead = event.message.usage.cache_read_input_tokens ?? 0;
+            usage.cacheWrite = event.message.usage.cache_creation_input_tokens ?? 0;
           }
           const initialMsg = buildPartialMessage(
             contentBlocks,

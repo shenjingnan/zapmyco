@@ -60,6 +60,10 @@ export class Editor implements Component {
   #acSelected = -1;
   /** 补全是否活跃 */
   #acActive = false;
+  /** 补全列表最大可见项数 */
+  #acMaxVisible = 10;
+  /** 补全列表滚动偏移（视图窗口起始索引） */
+  #acScrollOffset = 0;
 
   constructor(tui: { requestRender: () => void }, theme: EditorTheme, _options?: EditorOptions) {
     this.tui = tui;
@@ -116,8 +120,8 @@ export class Editor implements Component {
   }
 
   /** 设置补全列表最大可见项数 */
-  setAutocompleteMaxVisible(_n: number): void {
-    // 暂不使用
+  setAutocompleteMaxVisible(n: number): void {
+    this.#acMaxVisible = Math.max(4, n);
   }
 
   // ==================== Component 接口 ====================
@@ -143,11 +147,13 @@ export class Editor implements Component {
       // ↑/↓ → 导航补全列表
       if (matchesKey(data, Key.up)) {
         this.#acSelected = Math.max(0, this.#acSelected - 1);
+        this.#adjustAcScrollOffset();
         this.tui?.requestRender();
         return;
       }
       if (matchesKey(data, Key.down)) {
         this.#acSelected = Math.min(this.#acItems.length - 1, this.#acSelected + 1);
+        this.#adjustAcScrollOffset();
         this.tui?.requestRender();
         return;
       }
@@ -337,17 +343,19 @@ export class Editor implements Component {
     // 注意：每行必须截断到 contentWidth 以内，否则 TUI 引擎会抛出
     // "Rendered line exceeds terminal width" 异常
     if (this.#acActive && this.#acItems.length > 0) {
-      const maxVisible = Math.min(this.#acItems.length, 10);
-      for (let i = 0; i < maxVisible; i++) {
+      const maxVisible = Math.min(this.#acItems.length, this.#acMaxVisible);
+      const end = this.#acScrollOffset + maxVisible;
+      for (let i = this.#acScrollOffset; i < end; i++) {
         const item = this.#acItems[i];
         if (!item) continue;
         const selected = i === this.#acSelected ? '❯' : ' ';
         const label = item.label ?? item.value ?? '';
         const desc = item.description ? `  ${item.description}` : '';
-        // 用 truncateToWidth 截断（其 visibleWidth 会高估 CURSOR_MARKER 的宽度，
-        // 但对纯文本 autocomplete 行是准确的，且比终端宽度更窄，保证安全）
         contentLines.push(truncateToWidth(`${selected} ${label}${desc}`, contentWidth));
       }
+    } else if (this.#acActive) {
+      // 无匹配项时显示提示
+      contentLines.push(truncateToWidth('  No matching commands', contentWidth));
     }
 
     // 嵌入光标标记（TUI 引擎在 doRender 中提取此标记来定位硬件光标）
@@ -373,6 +381,7 @@ export class Editor implements Component {
     this.#acItems = [];
     this.#acPrefix = '';
     this.#acSelected = -1;
+    this.#acScrollOffset = 0;
     this.tui?.requestRender();
   }
 
@@ -402,11 +411,20 @@ export class Editor implements Component {
         return;
       }
 
-      if (result && Array.isArray(result.items) && result.items.length > 0) {
-        this.#acItems = result.items;
-        this.#acPrefix = result.prefix ?? '';
-        this.#acSelected = 0;
-        this.#acActive = true;
+      if (result && Array.isArray(result.items)) {
+        if (result.items.length > 0) {
+          this.#acItems = result.items;
+          this.#acPrefix = result.prefix ?? '';
+          this.#acSelected = 0;
+          this.#acScrollOffset = 0;
+          this.#acActive = true;
+        } else {
+          // 无匹配项：保持 autocomplete 活跃（不关闭），显示"无匹配"状态
+          this.#acItems = [];
+          this.#acPrefix = result.prefix ?? '';
+          this.#acSelected = -1;
+          this.#acActive = true;
+        }
       } else {
         this.#clearAutocomplete();
       }
@@ -436,6 +454,16 @@ export class Editor implements Component {
       }
     } catch {
       // 应用失败，静默忽略
+    }
+  }
+
+  /** 调整 autocomplete 滚动偏移，使选中项始终可见 */
+  #adjustAcScrollOffset(): void {
+    const maxVisible = Math.min(this.#acItems.length, this.#acMaxVisible);
+    if (this.#acSelected < this.#acScrollOffset) {
+      this.#acScrollOffset = this.#acSelected;
+    } else if (this.#acSelected >= this.#acScrollOffset + maxVisible) {
+      this.#acScrollOffset = this.#acSelected - maxVisible + 1;
     }
   }
 
