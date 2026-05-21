@@ -137,9 +137,18 @@ export class TUI {
       this.dirty = true;
     });
 
-    // stdin 读取 — 分发给 overlay 或焦点组件
+    // stdin 读取 — 分发给 overlay 或焦点组件（含鼠标事件支持）
     this.terminal.stdin.on('data', (chunk: Buffer) => {
       const data = chunk.toString();
+
+      // 检测 SGR 编码的鼠标事件：\x1b[<btn;col;rowM 或 \x1b[<btn;col;rowm
+      const sgrMouseMatch = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
+      if (sgrMouseMatch) {
+        const btn = Number.parseInt(sgrMouseMatch[1]!, 10);
+        const handled = this.handleSgrMouseEvent(btn);
+        if (handled) return;
+      }
+
       if (this.overlayStack.length > 0) {
         // Overlay 模式：顶层 overlay 接收输入
         const top = this.overlayStack[this.overlayStack.length - 1]!;
@@ -274,7 +283,34 @@ export class TUI {
   // ======================================================================
 
   /**
+   * 处理 SGR 编码的鼠标事件
+   * @returns true 如果事件已处理
+   */
+  private handleSgrMouseEvent(btn: number): boolean {
+    // 64 = wheel up, 65 = wheel down
+    if (btn === 64 || btn === 65) {
+      const direction: 'up' | 'down' = btn === 64 ? 'up' : 'down';
+      // 优先分发给焦点组件
+      if (this.focused?.handleScroll) {
+        this.focused.handleScroll(direction);
+        return true;
+      }
+      // 其次查找根容器中的可滚动子组件
+      for (const child of this.root.getChildren()) {
+        if (child.handleScroll) {
+          child.handleScroll(direction);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
    * 计算完整输出 — 渲染组件树 → 应用 overlay → 限制行数
+   *
+   * 当有组件处于滚动状态（scrollOffset > 0）时，切片会保留更多历史内容，
+   * 而非仅保留末尾 height 行。
    */
   private computeOutput(): string[] {
     const width = this.terminal.columns;
@@ -282,12 +318,42 @@ export class TUI {
     this.cursorRow = -1;
     this.cursorCol = -1;
 
-    // 1. 渲染根组件树
-    let lines = this.root.render(width);
+    // 1. 分别渲染每个子组件，记录哪些是可滚动的
+    const children = this.root.getChildren();
+    const outputs: { lines: string[]; scrollable: boolean }[] = [];
+    let scrollOffset = 0;
+    let fixedHeight = 0;
 
-    // 2. 限制总行数 ≤ terminal.rows
+    for (const child of children) {
+      const childLines = child.render(width);
+      const isScrollable = child.scrollOffset !== undefined;
+      if (isScrollable) {
+        scrollOffset = child.scrollOffset;
+      } else {
+        fixedHeight += childLines.length;
+      }
+      outputs.push({ lines: childLines, scrollable: isScrollable });
+    }
+
+    // 2. 计算可滚动区域可用行数
+    const scrollableHeight = Math.max(1, height - fixedHeight);
+
+    // 3. 按顺序组装输出，可滚动组件按 scrollOffset 切片
+    let lines: string[] = [];
+    for (const entry of outputs) {
+      if (entry.scrollable && entry.lines.length > scrollableHeight) {
+        // 有滚动偏移时从更早位置切片
+        const maxStart = entry.lines.length - scrollableHeight;
+        const start = Math.max(0, maxStart - scrollOffset);
+        lines.push(...entry.lines.slice(start, start + scrollableHeight));
+      } else {
+        lines.push(...entry.lines);
+      }
+    }
+
+    // 安全网：确保总行数不超过终端高度
     if (lines.length > height) {
-      lines = lines.slice(lines.length - height);
+      lines = lines.slice(0, height);
     }
 
     // 3. 应用 overlay（从底向上，栈顶在最上面）
@@ -454,6 +520,19 @@ export class TUI {
     if (this.cursorRow >= 0 && this.cursorCol >= 0) {
       this.terminal.cursorTo(this.cursorCol, this.cursorRow);
     }
+  }
+
+  /**
+   * 获取子组件树中最大的滚动偏移量
+   */
+  private getScrollOffset(): number {
+    let maxOffset = 0;
+    for (const child of this.root.getChildren()) {
+      if (child.scrollOffset && child.scrollOffset > maxOffset) {
+        maxOffset = child.scrollOffset;
+      }
+    }
+    return maxOffset;
   }
 }
 

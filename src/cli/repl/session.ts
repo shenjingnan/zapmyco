@@ -125,6 +125,7 @@ function getApiKeyErrorHelp(errorMessage: string): string[] {
  * 输出区域组件
  *
  * 管理所有输出内容的行缓冲，实现 render 接口。
+ * 支持通过鼠标滚轮滚动查看历史内容。
  */
 class OutputArea extends Container {
   private lines: string[] = [];
@@ -133,6 +134,25 @@ class OutputArea extends Container {
   /** 缓存生成时使用的终端宽度，变化时重建 */
   private cacheWidth = 0;
 
+  /** 滚动偏移量（0 = 底部/最新），单位为换行后显示行 */
+  #scrollOffset = 0;
+  /** 是否跟随底部（追加内容时自动滚动到底部） */
+  #followBottom = true;
+
+  /** 公共只读属性，供引擎层读取 */
+  get scrollOffset(): number {
+    return this.#scrollOffset;
+  }
+
+  /** 是否处于跟随底部模式 */
+  get followBottom(): boolean {
+    return this.#followBottom;
+  }
+
+  /**
+   * 渲染所有行（引擎层根据 scrollOffset 做切片）
+   * 此处返回完整内容，不做截断
+   */
   override render(width: number): string[] {
     // 终端宽度变化 → 所有缓存行失效
     if (width !== this.cacheWidth) {
@@ -152,10 +172,44 @@ class OutputArea extends Container {
     return result;
   }
 
+  /** 处理鼠标滚轮滚动事件（来自 Component 接口） */
+  handleScroll(direction: 'up' | 'down', _lines?: number): void {
+    const step = _lines ?? 3;
+    if (direction === 'up') {
+      this.#scrollOffset += step;
+      this.#followBottom = false;
+    } else {
+      this.#scrollOffset = Math.max(0, this.#scrollOffset - step);
+      if (this.#scrollOffset === 0) {
+        this.#followBottom = true;
+      }
+    }
+    this.invalidate();
+  }
+
+  /** 重置滚动到底部 */
+  scrollToBottom(): void {
+    this.#scrollOffset = 0;
+    this.#followBottom = true;
+    this.invalidate();
+  }
+
   /** 追加多行内容，返回新追加行中第一行的索引 */
   append(lines: string[]): number {
     const index = this.lines.length;
     this.lines.push(...lines);
+    // 追加后如果用户正在查看历史，需调整 scrollOffset 保持视图稳定
+    if (!this.#followBottom) {
+      // 获取每行的换行数来计算新增显示行
+      // 近似：每行用当前 cacheWidth 计算，但 cacheWidth 可能为 0
+      const newWrappedLines = lines.reduce((sum, line) => {
+        if (this.cacheWidth > 0) {
+          return sum + wrapTextWithAnsi(line, this.cacheWidth).length;
+        }
+        return sum + 1; // 近似
+      }, 0);
+      this.#scrollOffset += newWrappedLines;
+    }
     this.invalidate();
     return index;
   }
@@ -168,6 +222,15 @@ class OutputArea extends Container {
       this.lines[this.lines.length - 1] += text;
       // 追加文本后，最后一行缓存失效
       this.lineCache.delete(this.lines.length - 1);
+    }
+    if (!this.#followBottom) {
+      // 如果用户不是在底部，估算新增显示行
+      if (this.cacheWidth > 0) {
+        const newWrapped = wrapTextWithAnsi(text, this.cacheWidth).length;
+        this.#scrollOffset += newWrapped;
+      } else {
+        this.#scrollOffset += 1;
+      }
     }
     this.invalidate();
   }
@@ -206,6 +269,8 @@ class OutputArea extends Container {
   clear(): void {
     this.lines = [];
     this.lineCache.clear();
+    this.#scrollOffset = 0;
+    this.#followBottom = true;
     this.invalidate();
   }
 
