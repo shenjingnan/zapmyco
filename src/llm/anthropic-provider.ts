@@ -19,6 +19,8 @@ export interface CompleteParams {
   messages: Anthropic.MessageParam[];
   /** 工具定义列表 */
   tools?: Anthropic.Tool[];
+  /** 缓存保留期（none = 不启用 prompt caching） */
+  cacheRetention?: 'none' | 'short' | 'long';
 }
 
 /** 补全调用选项 */
@@ -48,14 +50,26 @@ export async function complete(
 ): Promise<Anthropic.Message> {
   const client = getClient(model.baseURL, model.apiKey, model.provider);
 
+  const enableCache = params.cacheRetention !== undefined && params.cacheRetention !== 'none';
+
   return client.messages.create(
     {
       model: model.id,
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
-      ...(params.systemPrompt && { system: params.systemPrompt }),
+      ...(params.systemPrompt && {
+        system: enableCache
+          ? [
+              {
+                type: 'text' as const,
+                text: params.systemPrompt,
+                cache_control: { type: 'ephemeral' as const },
+              },
+            ]
+          : params.systemPrompt,
+      }),
       ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
-      messages: params.messages,
+      messages: enableCache ? addCacheControlToLastUserMessage(params.messages) : params.messages,
     },
     {
       signal: options?.signal,
@@ -80,15 +94,27 @@ export function streamComplete(
 ): AsyncIterable<Anthropic.RawMessageStreamEvent> {
   const client = getClient(model.baseURL, model.apiKey, model.provider);
 
+  const enableCache = params.cacheRetention !== undefined && params.cacheRetention !== 'none';
+
   const stream = client.messages.stream(
     {
       model: model.id,
       max_tokens: options?.maxTokens ?? 4096,
       stream: true,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
-      ...(params.systemPrompt && { system: params.systemPrompt }),
+      ...(params.systemPrompt && {
+        system: enableCache
+          ? [
+              {
+                type: 'text' as const,
+                text: params.systemPrompt,
+                cache_control: { type: 'ephemeral' as const },
+              },
+            ]
+          : params.systemPrompt,
+      }),
       ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
-      messages: params.messages,
+      messages: enableCache ? addCacheControlToLastUserMessage(params.messages) : params.messages,
     },
     {
       signal: options?.signal,
@@ -96,4 +122,52 @@ export function streamComplete(
   );
 
   return stream;
+}
+
+/**
+ * 在最后一条 user 消息的 text content 上添加 cache_control，启用 prompt caching。
+ *
+ * Anthropic 要求：
+ * - system prompt 必须以 content block 数组形式传递，其中最后一个 block 含 cache_control
+ * - 最后一条 user 消息的 text content 需要添加 cache_control 作为缓存断点
+ *
+ * @param messages - Anthropic SDK 格式的消息列表
+ * @returns 添加了 cache_control 的消息列表
+ */
+function addCacheControlToLastUserMessage(
+  messages: Anthropic.MessageParam[]
+): Anthropic.MessageParam[] {
+  if (messages.length === 0) return messages;
+
+  const result: Anthropic.MessageParam[] = [...messages];
+
+  // 从后往前找最后一条 user 消息
+  for (let i = result.length - 1; i >= 0; i--) {
+    const msg: Anthropic.MessageParam | undefined = result[i];
+    if (!msg || msg.role !== 'user') continue;
+
+    const content = msg.content;
+    if (typeof content === 'string') {
+      result[i] = {
+        role: 'user',
+        content: [
+          { type: 'text' as const, text: content, cache_control: { type: 'ephemeral' as const } },
+        ],
+      };
+    } else if (Array.isArray(content) && content.length > 0) {
+      const blocks = [...content];
+      // 在第一个 text block 上添加 cache_control
+      const firstTextIdx = blocks.findIndex((b) => b.type === 'text');
+      if (firstTextIdx >= 0) {
+        blocks[firstTextIdx] = {
+          ...blocks[firstTextIdx],
+          cache_control: { type: 'ephemeral' },
+        } as Anthropic.TextBlockParam & { cache_control: { type: 'ephemeral' } };
+      }
+      result[i] = { role: 'user', content: blocks };
+    }
+    break;
+  }
+
+  return result;
 }

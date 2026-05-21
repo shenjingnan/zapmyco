@@ -274,6 +274,7 @@ export type StreamFn = (
     systemPrompt?: string;
     messages: Anthropic.MessageParam[];
     tools?: Anthropic.Tool[];
+    cacheRetention?: 'none' | 'short' | 'long';
   },
   options?: {
     signal?: AbortSignal;
