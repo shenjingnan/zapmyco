@@ -521,7 +521,6 @@ export class TUI {
       this.terminal.cursorTo(this.cursorCol, this.cursorRow);
     }
   }
-
 }
 
 // ======================================================================
