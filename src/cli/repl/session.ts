@@ -75,7 +75,7 @@ import { getAgentInstanceManager } from '@/core/agent-team/agent-instance-manage
 import { getAgentMessageBus } from '@/core/agent-team/agent-message-bus';
 import { categorizeTool } from '@/core/agent-team/agent-tool-categorizer';
 import type { AgentTypeDefinition } from '@/core/agent-team/types';
-import { DEFAULT_COMPACTION_CONFIG } from '@/core/context';
+import { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from '@/core/context';
 import { createDiagnosticCollector, type DiagnosticCollector } from '@/core/lsp/diagnostics';
 import { resolveLspConfig } from '@/core/lsp/lsp-config';
 import { createLspServerManager, type LspServerManager } from '@/core/lsp/lsp-server-manager';
@@ -1898,8 +1898,12 @@ export class ReplSession {
     // 设置缓存保留期
     agent.innerAgent.cacheRetention = this.config.agentRuntime?.cacheRetention;
 
-    // 应用压缩配置
-    const compactionConfig = this.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
+    // 应用压缩配置（含缓存保留期）
+    const cacheRetention = this.config.agentRuntime?.cacheRetention;
+    const compactionConfig: CompactionConfig = {
+      ...(this.config.compaction ?? DEFAULT_COMPACTION_CONFIG),
+      ...(cacheRetention !== undefined ? { cacheRetention } : {}),
+    };
     agent.compactor.updateConfig(compactionConfig);
     agent.compactor.setLlmFacade(facade);
     agent.toolPruner.updateConfig({

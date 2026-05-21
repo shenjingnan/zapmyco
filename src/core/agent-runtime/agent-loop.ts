@@ -26,6 +26,143 @@ import type { AssistantMessage, ToolResultMessage } from './runtime-types';
 
 const log = logger.child('agent-loop');
 
+// ============ 工具 Schema 缓存（确定性序列化） ============
+
+/**
+ * 工具列表缓存条目
+ */
+interface ToolListCacheEntry {
+  /** 工具列表的内容哈希 */
+  hash: string;
+  /** 转换后的 Anthropic.Tool 列表 */
+  tools: Anthropic.Tool[];
+}
+
+/** 模块级工具列表缓存（同一 Agent session 内复用） */
+let toolListCache: ToolListCacheEntry | undefined;
+
+/**
+ * 计算工具列表的内容哈希
+ *
+ * 用于检测工具定义是否发生变化。如果工具列表字节级一致，
+ * 返回与上次相同的哈希，避免不必要的工具 schema 重建。
+ */
+function hashToolList(tools: AgentTool[]): string {
+  let hash = 0;
+  for (const tool of tools) {
+    const params = tool.parameters ? JSON.stringify(tool.parameters) : '{}';
+    const content = `${tool.name}|${tool.description}|${params}`;
+    for (let i = 0; i < content.length; i++) {
+      hash = ((hash << 5) - hash + content.charCodeAt(i)) | 0;
+    }
+  }
+  return hash.toString(36);
+}
+
+/**
+ * 将 AgentTool 列表转换为 Anthropic.Tool 列表（带缓存）
+ *
+ * 确保工具定义的字节级一致性，避免因工具 schema 重建
+ * 导致的 Anthropic prompt cache 断裂。
+ */
+function toAnthropicTools(tools: AgentTool[]): Anthropic.Tool[] | undefined {
+  if (!tools || tools.length === 0) return undefined;
+
+  const hash = hashToolList(tools);
+  if (toolListCache && toolListCache.hash === hash) {
+    return toolListCache.tools;
+  }
+
+  const result: Anthropic.Tool[] = tools
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters as Anthropic.Tool.InputSchema,
+    }))
+    .filter((t) => Boolean(t.name));
+
+  toolListCache = { hash, tools: result };
+  log.debug('工具 Schema 缓存更新', {
+    toolCount: result.length,
+    toolNames: result.map((t) => t.name),
+    hash,
+  });
+  return result;
+}
+
+// ============ 缓存断裂检测 ============
+
+/** 前一次 LLM 调用的缓存指标（用于断裂检测） */
+interface CacheBreakState {
+  prevCacheRead: number;
+  prevCacheCreation: number;
+  prevInputTokens: number;
+}
+
+let cacheBreakState: CacheBreakState | undefined;
+
+/**
+ * 重置缓存断裂检测状态（新 Agent session 开始时调用）
+ */
+function resetCacheBreakState(): void {
+  cacheBreakState = undefined;
+}
+
+/**
+ * 检查并记录缓存断裂
+ */
+function checkCacheBreak(
+  currentCacheRead: number,
+  currentCacheCreation: number,
+  currentInputTokens: number
+): void {
+  if (!cacheBreakState) {
+    cacheBreakState = {
+      prevCacheRead: currentCacheRead,
+      prevCacheCreation: currentCacheCreation,
+      prevInputTokens: currentInputTokens,
+    };
+    return;
+  }
+
+  const prev = cacheBreakState;
+
+  // 检测 cache_read 的显著下降
+  if (prev.prevCacheRead > 0 && currentCacheRead < prev.prevCacheRead) {
+    const dropRatio = 1 - currentCacheRead / prev.prevCacheRead;
+    const absoluteDrop = prev.prevCacheRead - currentCacheRead;
+
+    if (dropRatio > 0.05 && absoluteDrop > 2000) {
+      log.warn('检测到可能的缓存断裂', {
+        prevCacheRead: prev.prevCacheRead,
+        currentCacheRead,
+        dropRatio: `${(dropRatio * 100).toFixed(1)}%`,
+        absoluteDrop,
+        prevCacheCreation: prev.prevCacheCreation,
+        currentCacheCreation,
+        prevInputTokens: prev.prevInputTokens,
+        currentInputTokens,
+      });
+    }
+  }
+
+  // 检测缓存写入事件（新缓存创建）
+  if (currentCacheCreation > 0 && prev.prevCacheCreation === 0) {
+    log.info('缓存写入事件', {
+      cacheWriteTokens: currentCacheCreation,
+      inputTokens: currentInputTokens,
+      cacheReadTokens: currentCacheRead,
+    });
+  }
+
+  // 更新状态
+  cacheBreakState = {
+    prevCacheRead: currentCacheRead,
+    prevCacheCreation: currentCacheCreation,
+    prevInputTokens: currentInputTokens,
+  };
+}
+
 // ============ 事件接收器类型 ============
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -119,6 +256,10 @@ async function runLoop(
   emit: AgentEventSink,
   streamFn?: StreamFn
 ): Promise<void> {
+  // 重置缓存状态（新 Agent session）
+  toolListCache = undefined;
+  resetCacheBreakState();
+
   let firstTurn = true;
   let turnCount = 0;
   let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
@@ -314,14 +455,8 @@ async function streamAssistantResponse(
   const llmMessages = await config.convertToLlm(messages);
   log.debug('消息格式转换完成', { duration: Date.now() - t1, llmMessageCount: llmMessages.length });
 
-  // 3. 转换工具定义为 Anthropic SDK 格式
-  const anthropicTools: Anthropic.Tool[] | undefined = context.tools
-    ?.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.parameters as Anthropic.Tool.InputSchema,
-    }))
-    .filter((t) => Boolean(t.name));
+  // 3. 转换工具定义为 Anthropic SDK 格式（带缓存，确保字节级一致性）
+  const anthropicTools = toAnthropicTools(context.tools ?? []);
 
   // 4. 解析 API Key 并构建 ResolvedModel
   const resolvedApiKey =
@@ -516,7 +651,11 @@ async function streamAssistantResponse(
             stopReason: finalMessage.stopReason,
             toolCallCount: toolCalls.length,
             inputMessageCount: llmMessages.length,
+            cacheRead: usage.cacheRead,
+            cacheWrite: usage.cacheWrite,
+            uncachedInput: usage.input,
           });
+          checkCacheBreak(usage.cacheRead, usage.cacheWrite, usage.input);
           return finalMessage;
         }
       }
@@ -548,6 +687,7 @@ async function streamAssistantResponse(
       await emit({ type: 'message_start', message: errorAssistantMessage });
     }
     await emit({ type: 'message_end', message: errorAssistantMessage });
+    checkCacheBreak(usage.cacheRead, usage.cacheWrite, usage.input);
     return errorAssistantMessage;
   }
 
@@ -573,6 +713,7 @@ async function streamAssistantResponse(
     stopReason: finalMessage.stopReason,
     inputMessageCount: llmMessages.length,
   });
+  checkCacheBreak(usage.cacheRead, usage.cacheWrite, usage.input);
   return finalMessage;
 }
 
