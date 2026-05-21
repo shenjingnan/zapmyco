@@ -19,4 +19,10 @@ export interface ResolvedModel {
   baseURL?: string;
   /** 已解析的 API Key */
   apiKey?: string;
+  /**
+   * Beta 请求头（latch 后不变）
+   *
+   * Agent 初始化时从配置读取，通过 defaultHeaders 传递到 Anthropic 客户端。
+   */
+  betaHeaders?: Record<string, string>;
 }

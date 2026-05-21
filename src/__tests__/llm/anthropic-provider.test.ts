@@ -65,7 +65,8 @@ describe('complete', () => {
     expect(mockGetClient).toHaveBeenCalledWith(
       mockModel.baseURL,
       mockModel.apiKey,
-      mockModel.provider
+      mockModel.provider,
+      undefined
     );
     expect(mockCreate).toHaveBeenCalledTimes(1);
 
@@ -154,7 +155,8 @@ describe('streamComplete', () => {
     expect(mockGetClient).toHaveBeenCalledWith(
       mockModel.baseURL,
       mockModel.apiKey,
-      mockModel.provider
+      mockModel.provider,
+      undefined
     );
 
     // 验证调用的是 stream 而非 create
