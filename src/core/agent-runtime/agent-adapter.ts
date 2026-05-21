@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import type Anthropic from '@anthropic-ai/sdk';
 import { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import {
@@ -718,67 +719,84 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    * 与 buildDynamicContextMessages() 配对使用。
    * 稳定内容不变，使 Anthropic prompt cache 可命中。
    */
-  private buildStableSystemPrompt(request: AgentExecuteRequest): string {
+  private buildStableSystemPrompt(request: AgentExecuteRequest): Anthropic.TextBlockParam[] {
     // 子 Agent 等场景使用自定义系统提示词
     if (this.systemPromptOverride) {
       const parts = [this.systemPromptOverride];
       if (request.workdir) {
         parts.push(`\n## 工作目录\n${request.workdir}`);
       }
-      return parts.join('\n');
+      return [{ type: 'text', text: parts.join('\n') }];
     }
 
-    const parts: string[] = [
-      `你是 ${this.displayName}，一个专业的 AI 助手。`,
-      `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
-    ];
+    const blocks: Anthropic.TextBlockParam[] = [];
 
-    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'TaskManage');
     const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
+    const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'TaskManage');
     const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'SpawnSubAgents');
     const hasAskUserQuestion = this.toolRegistrations.some((t) => t.id === 'AskUserQuestion');
 
-    // 记忆管理规范（不含记忆快照本身）
+    // Block 0: Agent 身份 + 能力（静态核心，始终存在）
+    blocks.push({
+      type: 'text',
+      text: [
+        `你是 ${this.displayName}，一个专业的 AI 助手。`,
+        `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
+      ].join('\n'),
+      cache_control: { type: 'ephemeral' },
+    });
+
+    // Block 1: 记忆管理规范（有 Memory 工具时）
     if (hasMemory) {
-      parts.push(
-        '',
-        '## 记忆管理规范',
-        '',
-        '你有跨会话的持久化记忆能力。记忆存储在 ~/.zapmyco/memory/ 目录中。',
-        '会话开始时已加载记忆快照到系统提示中，你可以直接使用这些信息。',
-        '',
-        '### 何时保存记忆',
-        '- 用户明确告知偏好、习惯、技术背景时 → 使用 memory add type="user"',
-        '- 项目做出重要决策或约定时 → 使用 memory add type="project"',
-        '- 用户纠正你的行为或给出反馈时 → 使用 memory add type="user"',
-        '- 会话中有值得跨会话保留的结论时 → 使用 memory add type="session"',
-        '',
-        '### 何时不保存',
-        '- 临时任务进度、会话状态（使用 TaskManage 管理）',
-        '- 代码细节（可直接从代码库获取，不需要记忆）',
-        '- 一次性查询的内容',
-        ''
-      );
+      blocks.push({
+        type: 'text',
+        text: [
+          '## 记忆管理规范',
+          '',
+          '你有跨会话的持久化记忆能力。记忆存储在 ~/.zapmyco/memory/ 目录中。',
+          '会话开始时已加载记忆快照到系统提示中，你可以直接使用这些信息。',
+          '',
+          '### 何时保存记忆',
+          '- 用户明确告知偏好、习惯、技术背景时 → 使用 memory add type="user"',
+          '- 项目做出重要决策或约定时 → 使用 memory add type="project"',
+          '- 用户纠正你的行为或给出反馈时 → 使用 memory add type="user"',
+          '- 会话中有值得跨会话保留的结论时 → 使用 memory add type="session"',
+          '',
+          '### 何时不保存',
+          '- 临时任务进度、会话状态（使用 TaskManage 管理）',
+          '- 代码细节（可直接从代码库获取，不需要记忆）',
+          '- 一次性查询的内容',
+          '',
+        ].join('\n'),
+        cache_control: { type: 'ephemeral' },
+      });
     }
 
-    // 任务管理规范
+    // Block 2: 任务管理规范（有 TaskManage 工具时）
     if (hasTaskManage) {
-      parts.push(
-        '## 任务管理规范（最高优先级）',
-        '',
-        '收到用户任务后，第一时间判断是否包含 2 个以上独立步骤。',
-        '如果是，你的**第一个工具调用必须且只能是** `TaskManage` (action="write")，先分解任务列表！',
-        '在任何搜索、读取、写入操作之前完成规划。不得先做再补！',
-        '',
-        '1. **规划优先**：第一个 tool call = TaskManage write。先规划，后执行。',
-        '2. **逐个更新**：完成一个子任务 → 立即 update 为 "completed" → 再开始下一个。绝不批量更新。',
-        '3. **保持专注**：同时只有 1 个 "in_progress"。',
-        '4. **先读后写**：不确定当前任务时先用 action="read" 查看。'
-      );
-
-      if (hasSpawnSubAgents) {
-        parts.push(
+      blocks.push({
+        type: 'text',
+        text: [
+          '## 任务管理规范（最高优先级）',
           '',
+          '收到用户任务后，第一时间判断是否包含 2 个以上独立步骤。',
+          '如果是，你的**第一个工具调用必须且只能**是 `TaskManage` (action="write")，先分解任务列表！',
+          '在任何搜索、读取、写入操作之前完成规划。不得先做再补！',
+          '',
+          '1. **规划优先**：第一个 tool call = TaskManage write。先规划，后执行。',
+          '2. **逐个更新**：完成一个子任务 → 立即 update 为 "completed" → 再开始下一个。绝不批量更新。',
+          '3. **保持专注**：同时只有 1 个 "in_progress"。',
+          '4. **先读后写**：不确定当前任务时先用 action="read" 查看。',
+        ].join('\n'),
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+
+    // Block 3: 并行执行规范（有 TaskManage + SpawnSubAgents 时）
+    if (hasTaskManage && hasSpawnSubAgents) {
+      blocks.push({
+        type: 'text',
+        text: [
           '## 并行执行规范（次高优先级）',
           '',
           '完成 TaskManage write 分解后，识别其中**互不依赖**的独立子任务。',
@@ -798,49 +816,56 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '- ❌ 任务之间有严格的顺序依赖（必须先 A 后 B）',
           '- ❌ 只有 1 个任务时（直接执行即可）',
           '- ❌ 任务需要修改文件（子 Agent 默认只有只读工具）',
-          ''
-        );
-      }
+          '',
+        ].join('\n'),
+        cache_control: { type: 'ephemeral' },
+      });
     }
 
-    // AskUserQuestion 使用引导
+    // Block 4: 提问规范（有 AskUserQuestion 工具时）
     if (hasAskUserQuestion) {
-      parts.push(
-        '',
-        '## 交互式提问规范（AskUserQuestion）',
-        '',
-        '当需要用户决策时，使用 `AskUserQuestion` 工具向用户提问。',
-        '',
-        '### 何时使用',
-        '- 需要在多个可行方案之间做出选择时',
-        '- 需要技术选型、架构决策等需要用户判断的问题',
-        '- 在 Plan Mode 中完成代码分析后需要确认方向时',
-        '- 需要明确用户偏好以实现个性化功能时',
-        '',
-        '### 何时不使用',
-        '- 可以通过代码分析直接确定的结论',
-        '- 简单的确认（直接在回复中询问即可）',
-        '- 已有明确最佳实践的问题',
-        '',
-        '### 提问原则',
-        '- 每个问题提供 2-4 个具体、互斥的选项',
-        '- 选项之间应覆盖所有合理可能',
-        '- header 字段控制在 12 个字符以内',
-        '- 使用 `multiSelect: true` 允许多选',
-        '- 推荐选项放在第一位并加 "(Recommended)" 后缀',
-        '- 如果选项有代码示例/配置对比，可在 `preview` 字段中提供（markdown 格式）',
-        '- 用户始终可以选择 "Other" 输入自定义答案',
-        '- 在 Plan Mode 中用 AskUserQuestion 明确需求，用 ExitPlanMode 请求审批',
-        ''
-      );
+      blocks.push({
+        type: 'text',
+        text: [
+          '## 交互式提问规范（AskUserQuestion）',
+          '',
+          '当需要用户决策时，使用 `AskUserQuestion` 工具向用户提问。',
+          '',
+          '### 何时使用',
+          '- 需要在多个可行方案之间做出选择时',
+          '- 需要技术选型、架构决策等需要用户判断的问题',
+          '- 在 Plan Mode 中完成代码分析后需要确认方向时',
+          '- 需要明确用户偏好以实现个性化功能时',
+          '',
+          '### 何时不使用',
+          '- 可以通过代码分析直接确定的结论',
+          '- 简单的确认（直接在回复中询问即可）',
+          '- 已有明确最佳实践的问题',
+          '',
+          '### 提问原则',
+          '- 每个问题提供 2-4 个具体、互斥的选项',
+          '- 选项之间应覆盖所有合理可能',
+          '- header 字段控制在 12 个字符以内',
+          '- 使用 `multiSelect: true` 允许多选',
+          '- 推荐选项放在第一位并加 "(Recommended)" 后缀',
+          '- 如果选项有代码示例/配置对比，可在 `preview` 字段中提供（markdown 格式）',
+          '- 用户始终可以选择 "Other" 输入自定义答案',
+          '- 在 Plan Mode 中用 AskUserQuestion 明确需求，用 ExitPlanMode 请求审批',
+          '',
+        ].join('\n'),
+        cache_control: { type: 'ephemeral' },
+      });
     }
 
-    // 工作目录
+    // Block 5: 工作目录（动态内容，无 cache_control）
     if (request.workdir) {
-      parts.push('', `## 工作目录\n${request.workdir}`);
+      blocks.push({
+        type: 'text',
+        text: `## 工作目录\n${request.workdir}`,
+      });
     }
 
-    return parts.join('\n');
+    return blocks;
   }
 
   /**
