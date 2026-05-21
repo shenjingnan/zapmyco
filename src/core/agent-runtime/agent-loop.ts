@@ -380,7 +380,7 @@ async function streamAssistantResponse(
   const messageApi = config.model.provider || '';
   let stopReason: string | undefined;
   // biome-ignore lint/suspicious/noExplicitAny: usage 字段使用字符串索引
-  const usage: Record<string, any> = { input: 0, output: 0 };
+  const usage: Record<string, any> = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
   // 7. 事件处理循环
   try {
@@ -391,6 +391,9 @@ async function streamAssistantResponse(
           if (event.message.usage) {
             const msgUsage = event.message.usage as unknown as Record<string, number | undefined>;
             usage.input = msgUsage.input_tokens ?? 0;
+            usage.cacheRead =
+              msgUsage.cache_read_input_tokens ?? msgUsage.prompt_cache_hit_tokens ?? 0;
+            usage.cacheWrite = msgUsage.cache_creation_input_tokens ?? 0;
           }
           const initialMsg = buildPartialMessage(
             contentBlocks,

@@ -188,6 +188,8 @@ describe('TokenTracker', () => {
       inputTokens: 100,
       outputTokens: 50,
       totalTokens: 150,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       estimatedCostUsd: 0,
     });
   });
