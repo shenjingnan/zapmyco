@@ -324,13 +324,17 @@ describe('TUI', () => {
       expect(terminal.onResize).toHaveBeenCalled();
     });
 
-    it('start 后应启动渲染循环', () => {
+    it('requestRender 应通过微任务调度触发渲染', async () => {
       tui.start();
-      expect(terminal.stdin.on).toHaveBeenCalled();
-      // 触发渲染: setInterval 16ms
-      vi.advanceTimersByTime(16);
-      // 默认 dirty=true，应执行 doRender
+      terminal.write.mockClear(); // 清除 start 中的 write 记录
+      tui.requestRender(true); // 设置 dirty=true，调度 flush
+      // flush() 通过 microtask 执行，fake timers 下 performance.now() 返回 0
+      // → elapsed < 16，flush 延迟到 setTimeout 16ms 后
+      await vi.advanceTimersByTimeAsync(0); // 处理 microtask，flush 设置 setTimeout
+      await vi.advanceTimersByTimeAsync(16); // 触发 setTimeout 中的真正渲染
       expect(terminal.write).toHaveBeenCalled();
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain('\x1b[1;1H');
     });
 
     it('stop 应恢复光标、销毁 terminal', () => {
@@ -346,11 +350,64 @@ describe('TUI', () => {
       expect(() => tui.stop()).not.toThrow();
     });
 
-    it('stop 应清理定时器', () => {
+    it('stop 应清理定时器', async () => {
       tui.start();
-      const clearSpy = vi.spyOn(global, 'clearInterval');
+      tui.requestRender(true);
+      await vi.advanceTimersByTimeAsync(0); // 处理 microtask：flush 运行，设置 setTimeout(flush, 16)
+      const clearSpy = vi.spyOn(global, 'clearTimeout');
       tui.stop();
       expect(clearSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('event-driven rendering', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('多次 requestRender 只调度一次 queueMicrotask', () => {
+      const qmSpy = vi.spyOn(globalThis, 'queueMicrotask');
+      tui.requestRender(true);
+      tui.requestRender();
+      tui.requestRender();
+      // 幂等调度：3 次调用应只触发 1 次 queueMicrotask
+      expect(qmSpy).toHaveBeenCalledTimes(1);
+      qmSpy.mockRestore();
+    });
+
+    it('距上次渲染不足 16ms 时应延迟渲染', async () => {
+      tui.start();
+      // 第一次渲染
+      tui.requestRender(true);
+      await vi.advanceTimersByTimeAsync(0); // microtask: flush 延迟到 setTimeout(16)
+      await vi.advanceTimersByTimeAsync(16); // 真正渲染
+
+      terminal.write.mockClear();
+
+      // 立即再次请求渲染（fake timers 下 performance.now 仍接近 0）
+      tui.requestRender(true);
+      await vi.advanceTimersByTimeAsync(0); // microtask: flush 运行，elapsed < 16，设置 setTimeout(16)
+
+      // 渲染应被节流延迟
+      expect(terminal.write).not.toHaveBeenCalled();
+
+      // 推进 16ms，触发节流后的真正渲染
+      await vi.advanceTimersByTimeAsync(16);
+      expect(terminal.write).toHaveBeenCalled();
+    });
+
+    it('stop 后 requestRender 不应触发渲染', async () => {
+      tui.start();
+      tui.stop();
+      terminal.write.mockClear();
+      tui.requestRender(true);
+      // 尝试处理 microtask（不应触发渲染，因为 stop 已清除状态）
+      await Promise.resolve();
+      expect(terminal.write).not.toHaveBeenCalled();
     });
   });
 

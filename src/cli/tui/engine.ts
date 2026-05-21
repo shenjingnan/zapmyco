@@ -2,17 +2,18 @@
  * TUI — 终端 UI 引擎
  *
  * 本地实现的 TUI 引擎。
- * 管理渲染循环（16ms setInterval）、组件树、焦点、Overlay 栈、差量渲染。
+ * 管理渲染循环（事件驱动 + 16ms 节流）、组件树、焦点、Overlay 栈、差量渲染。
  *
  * ### 渲染流程
  * ```
- * 16ms setInterval 驱动:
- *   1. dirty=true 触发 doRender()
- *   2. computeOutput() — 渲染组件树 → 应用 overlay
- *   3. force=true → 清屏全量重写；否则逐行 diff 差量更新
- *   4. 定位硬件光标
- *   5. 保存 lastOutput 供下帧 diff
+ * 组件调用 requestRender() → dirty=true
+ *   → queueMicrotask → flush() 被调度
+ *   → 检查节流（距上次渲染 ≥ 16ms）
+ *   → computeOutput() → deltaUpdate / forceFullRedraw
+ *   → 定位硬件光标
  * ```
+ *
+ * 空闲时无任何定时器运行。
  *
  * ### AnimationManager 兼容
  * doRender 为公共方法，可被 AnimationManager monkey-patch 替换，
@@ -50,9 +51,6 @@ const CURSOR_MARKER = '\u001B_pi:c\u0007';
 // biome-ignore lint/suspicious/noControlCharactersInRegex: CURSOR_MARKER 包含 ESC 和 BEL 控制字符
 const CURSOR_MARKER_RE = /\u001B_pi:c\u0007/g;
 
-/** 默认渲染间隔（ms） */
-const RENDER_INTERVAL = 16;
-
 // ---------------------------------------------------------------------------
 // TUI 引擎
 // ---------------------------------------------------------------------------
@@ -66,14 +64,23 @@ export class TUI {
   /** Overlay 栈（后进先出） */
   private overlayStack: OverlayEntry[] = [];
 
-  /** setInterval 定时器引用 */
-  private intervalId: ReturnType<typeof setInterval> | null = null;
-
   /** 是否有内容变化需要重绘 */
   private dirty = false;
 
   /** 是否强制全量重绘（resize / overlay 切换） */
   private force = false;
+
+  /** 是否有已调度但未执行的 flush */
+  private renderScheduled = false;
+
+  /** 上一次渲染完成的时间戳（performance.now()） */
+  private lastRenderTime = 0;
+
+  /** 节流定时器引用（当 flush 被节流延迟时使用） */
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** 引擎是否已停止 — 防止 flush 在 stop() 后误执行 */
+  private stopped = false;
 
   /** 上一帧的输出行数组，用于逐行 diff */
   private lastOutput: string[] = [];
@@ -116,8 +123,12 @@ export class TUI {
   // 生命周期
   // -----------------------------------------------------------------------
 
-  /** 启动 TUI — 清屏、隐藏光标、启用 raw mode、启动渲染循环 */
+  /** 启动 TUI — 清屏、隐藏光标、启用 raw mode、事件驱动渲染 */
   start(): void {
+    this.stopped = false;
+    this.lastRenderTime = 0;
+    this.renderScheduled = false;
+
     // 启用 raw mode — 使 stdin 逐键送达而非行缓冲
     this.terminal.enableRawMode();
 
@@ -134,8 +145,7 @@ export class TUI {
     // 注册 resize 回调
     this.terminal.onResize(() => {
       // 终端尺寸变化后强制全量重绘
-      this.force = true;
-      this.dirty = true;
+      this.requestRender(true);
     });
 
     // stdin 读取 — 分发给 overlay 或焦点组件（含鼠标事件支持）
@@ -176,22 +186,16 @@ export class TUI {
         this.focused.handleInput?.(data);
       }
     });
-
-    // 渲染循环
-    this.intervalId = setInterval(() => {
-      if (this.dirty) {
-        this.doRender();
-        this.dirty = false;
-        this.force = false;
-      }
-    }, RENDER_INTERVAL);
   }
 
   /** 停止 TUI — 恢复光标、清屏、清理定时器和事件 */
   stop(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    this.stopped = true;
+
+    // 清除待处理的节流定时器
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
 
     process.removeListener('exit', this.#exitHandler);
@@ -205,6 +209,7 @@ export class TUI {
     this.lastOutput = [];
     this.dirty = false;
     this.force = false;
+    this.renderScheduled = false;
   }
 
   // -----------------------------------------------------------------------
@@ -213,6 +218,10 @@ export class TUI {
 
   /**
    * 请求重绘。
+   *
+   * 通过 queueMicrotask 调度 flush()，在同一个微任务边界内多次调用会合并为一次渲染。
+   * flush() 内部有 16ms 节流保障，确保渲染频率不超过 ~60fps。
+   *
    * @param force 设为 true 时强制全量重绘（默认 false，仅差量更新）
    */
   requestRender(force?: boolean): void {
@@ -220,6 +229,10 @@ export class TUI {
     if (force) {
       this.force = true;
     }
+    // 幂等调度：已有待处理的 flush 则不再重复调度
+    if (this.renderScheduled) return;
+    this.renderScheduled = true;
+    queueMicrotask(() => this.flush());
   }
 
   /**
@@ -252,6 +265,43 @@ export class TUI {
     this.lastOutput = lines;
   }
 
+  /**
+   * 执行实际的渲染流程（由 requestRender 通过 queueMicrotask 调度）。
+   *
+   * 节流逻辑：
+   * 1. 检查自上次渲染是否已过去至少 MIN_RENDER_INTERVAL 毫秒
+   * 2. 如果否：用 setTimeout 延迟到剩余时间后重试
+   * 3. 如果是且 dirty=true：执行 doRender()
+   *
+   * flush() 会被以下路径调用：
+   * - requestRender() → queueMicrotask → flush()
+   * - 节流延迟到期 → setTimeout → flush()
+   * - start() 后首次 requestRender()（来自 ReplSession）
+   */
+  private flush(): void {
+    // stop() 后不再执行 — 即使有残留的定时器或 microtask
+    if (this.stopped) return;
+
+    this.renderScheduled = false;
+
+    const now = performance.now();
+    const elapsed = now - this.lastRenderTime;
+
+    if (elapsed < 16) {
+      // 距离上次渲染不足 16ms → 延迟到剩余时间后再检查
+      const delay = 16 - elapsed;
+      this.flushTimer = setTimeout(() => this.flush(), delay);
+      return;
+    }
+
+    if (this.dirty) {
+      this.doRender();
+      this.dirty = false;
+      this.force = false;
+      this.lastRenderTime = performance.now();
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Overlay 系统
   // -----------------------------------------------------------------------
@@ -263,16 +313,14 @@ export class TUI {
   showOverlay(component: Component, options?: OverlayOptions): OverlayHandle {
     const entry: OverlayEntry = { component, options: options ?? {} };
     this.overlayStack.push(entry);
-    this.force = true;
-    this.dirty = true;
+    this.requestRender(true);
     return {
       hide: () => {
         const idx = this.overlayStack.indexOf(entry);
         if (idx >= 0) {
           this.overlayStack.splice(idx, 1);
         }
-        this.force = true;
-        this.dirty = true;
+        this.requestRender(true);
       },
     };
   }
