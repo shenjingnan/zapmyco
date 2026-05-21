@@ -6,6 +6,7 @@ import {
   toAgentTool,
   toAgentTools,
 } from '@/core/agent-runtime/tool-bridge';
+import { ToolSchemaCache } from '@/core/agent-runtime/tool-schema-cache';
 
 describe('tool-bridge', () => {
   describe('toAgentTool', () => {
@@ -82,6 +83,103 @@ describe('tool-bridge', () => {
 
     it('should return empty array for empty input', () => {
       expect(toAgentTools([])).toEqual([]);
+    });
+  });
+
+  describe('toAgentTools with schemaCache', () => {
+    function makeRegistration(id: string, overrides?: Partial<ToolRegistration>): ToolRegistration {
+      return {
+        id,
+        label: id,
+        description: `Tool ${id}`,
+        execute: vi.fn(),
+        ...overrides,
+      };
+    }
+
+    it('should return same parameters reference for same tool name', () => {
+      const cache = new ToolSchemaCache();
+      const reg = makeRegistration('read');
+      const tools1 = toAgentTools([reg], cache);
+      const tools2 = toAgentTools([reg], cache);
+      expect(tools1[0]!.parameters).toBe(tools2[0]!.parameters);
+    });
+
+    it('should return different references without cache', () => {
+      const reg = makeRegistration('read');
+      const tools1 = toAgentTools([reg]);
+      const tools2 = toAgentTools([reg]);
+      expect(tools1[0]!.parameters).not.toBe(tools2[0]!.parameters);
+      expect(tools1[0]!.parameters).toEqual(tools2[0]!.parameters);
+    });
+
+    it('cached tools should use first registration schema', () => {
+      const cache = new ToolSchemaCache();
+      const reg1 = makeRegistration('search', { description: 'Original description' });
+      const reg2 = makeRegistration('search', { description: 'Updated description' });
+
+      // 第一次注册填充缓存，第二次应使用缓存值
+      toAgentTools([reg1], cache);
+      const tools2 = toAgentTools([reg2], cache);
+
+      expect(tools2[0]!.description).toBe('Original description');
+    });
+
+    it('should preserve execute function from each registration', () => {
+      const cache = new ToolSchemaCache();
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
+
+      toAgentTools([{ ...makeRegistration('calc'), execute: fn1 }], cache);
+      const tools2 = toAgentTools([{ ...makeRegistration('calc'), execute: fn2 }], cache);
+
+      expect(tools2[0]!.execute).toBe(fn2);
+    });
+
+    it('should sort tools by name when cache is used', () => {
+      const cache = new ToolSchemaCache();
+      const tools = toAgentTools(
+        [makeRegistration('z-tool'), makeRegistration('a-tool'), makeRegistration('m-tool')],
+        cache
+      );
+
+      expect(tools[0]!.name).toBe('a-tool');
+      expect(tools[1]!.name).toBe('m-tool');
+      expect(tools[2]!.name).toBe('z-tool');
+    });
+
+    it('cache stats should reflect cached tools', () => {
+      const cache = new ToolSchemaCache();
+      toAgentTools([makeRegistration('read'), makeRegistration('write')], cache);
+
+      const stats = cache.getStats();
+      expect(stats.size).toBe(2);
+      expect(stats.tools).toContain('read');
+      expect(stats.tools).toContain('write');
+    });
+
+    it('hasChanged should return false for cached tool with same schema', () => {
+      const cache = new ToolSchemaCache();
+      toAgentTools([makeRegistration('read', { description: 'Read files' })], cache);
+
+      expect(
+        cache.hasChanged('read', {
+          description: 'Read files',
+          parameters: { type: 'object', properties: {} },
+        })
+      ).toBe(false);
+    });
+
+    it('hasChanged should return true for tool with changed schema', () => {
+      const cache = new ToolSchemaCache();
+      toAgentTools([makeRegistration('read', { description: 'Read files' })], cache);
+
+      expect(
+        cache.hasChanged('read', {
+          description: 'Different description',
+          parameters: { type: 'object', properties: {} },
+        })
+      ).toBe(true);
     });
   });
 
