@@ -46,6 +46,34 @@ describe('TokenTracker', () => {
       expect(metrics.lastBreak).not.toBeNull();
       expect(metrics.lastBreak?.broken).toBe(true);
     });
+
+    it('should handle DeepSeek format (cacheWrite=0, input=total)', () => {
+      // DeepSeek 返回 prompt_cache_hit_tokens 映射到 cacheRead
+      // 而没有 cache_creation_input_tokens（即 cacheWrite=0）
+      // input = 总输入 token，cacheRead = 命中的 token
+      // 命中率 = cacheRead / input = 700/1000 = 0.7
+      tracker.recordUsage({ input: 1000, cacheRead: 700, cacheWrite: 0, output: 200 });
+      expect(tracker.getCacheHitRate()).toBe(0.7);
+      expect(tracker.getCacheHitRate()).toBeCloseTo(0.7, 2);
+    });
+
+    it('should handle DeepSeek multi-turn accumulating cache hits', () => {
+      // 模拟多轮对话：随着对话增长，每轮都有部分 cache 命中
+      tracker.recordUsage({ input: 5000, cacheRead: 4000, cacheWrite: 0, output: 200 });
+      tracker.recordUsage({ input: 5200, cacheRead: 4500, cacheWrite: 0, output: 250 });
+      const metrics = tracker.getLatestMetrics();
+      // (4000 + 4500) / (5000 + 5200) = 8500 / 10200 ≈ 0.833
+      expect(metrics.hitRate).toBeCloseTo(0.833, 2);
+    });
+
+    it('should return meaningful cache ratio for DeepSeek format', () => {
+      // DeepSeek 的平均缓存比例 = 各轮 cacheRead/input 的平均值
+      tracker.recordUsage({ input: 1000, cacheRead: 700, cacheWrite: 0, output: 100 });
+      tracker.recordUsage({ input: 1000, cacheRead: 850, cacheWrite: 0, output: 100 });
+      // call 1: 700/1000 = 0.7, call 2: 850/1000 = 0.85
+      // average = (0.7 + 0.85) / 2 = 0.775
+      expect(tracker.getAverageCacheRatio()).toBeCloseTo(0.775, 2);
+    });
   });
 
   describe('getHitRateChange', () => {

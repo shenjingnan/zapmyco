@@ -749,7 +749,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    */
   private latchProviderBetaHeaders(): void {
     const headers: Record<string, string> = {};
-    if (this.config.cacheScope === 'global') {
+    // Beta headers 仅对 Anthropic 官方 API 有效
+    // DeepSeek 等第三方 provider 的兼容 API 明确标注 anthropic-beta 为 Ignored
+    if (this.config.cacheScope === 'global' && this.inner.state.model?.provider === 'anthropic') {
       headers['anthropic-beta'] = PROMPT_CACHING_SCOPE_BETA_HEADER;
     }
     latchBetaHeaders(Object.keys(headers).length > 0 ? headers : undefined);
@@ -895,28 +897,33 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       );
     }
 
+    // Block 5: 工作目录（动态内容）
+    if (request.workdir) {
+      promptBlocks.push(`## 工作目录\n${request.workdir}`);
+    }
+
+    // 非 Anthropic 提供商（如 DeepSeek）：跳过缓存相关逻辑
+    // Anthropic 的 cache_control / beta headers 被 DeepSeek 标注为 Ignored
+    if (this.inner.state.model?.provider !== 'anthropic') {
+      return promptBlocks.map((text) => ({ type: 'text' as const, text }));
+    }
+
+    // ===== Anthropic 专用：分段缓存逻辑 =====
+
     // 边界标记：只有启用 global scope 时才插入
     const enableGlobalScope = this.config.cacheScope === 'global';
     if (enableGlobalScope) {
       promptBlocks.push(SYSTEM_PROMPT_STATIC_BOUNDARY);
     }
 
-    // Block 5: 工作目录（边界标记后，动态内容，不缓存）
-    if (request.workdir) {
-      promptBlocks.push(`## 工作目录\n${request.workdir}`);
-    }
-
-    // ===== 步骤 2: 分段 =====
-
-    // 当存在 MCP 工具时跳过 global cache（MCP 工具 schema 可能动态变化）
+    // 分段为带缓存作用域的 block
     const hasMcpTools = false;
     const segments = splitSystemPrompt(promptBlocks, {
       skipGlobalCache: hasMcpTools,
       enableGlobalScope,
     });
 
-    // ===== 步骤 3: 转换为 TextBlockParam[] =====
-
+    // 转换为 TextBlockParam[]（含 cache_control）
     const enableCache =
       this.config.cacheRetention !== undefined && this.config.cacheRetention !== 'none';
     const cacheTtl = this.config.cacheRetention === 'long' ? ('1h' as const) : undefined;

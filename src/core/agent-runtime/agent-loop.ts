@@ -477,7 +477,10 @@ async function streamAssistantResponse(
       ...(config.cacheRetention && config.cacheRetention !== 'none'
         ? { cacheRetention: config.cacheRetention }
         : {}),
-      ...(config.cacheScope ? { cacheScope: config.cacheScope } : {}),
+      // cacheScope 仅对 Anthropic 官方 API 有效（DeepSeek 忽略 cache_control）
+      ...(config.cacheScope && config.model?.provider === 'anthropic'
+        ? { cacheScope: config.cacheScope }
+        : {}),
     },
     {
       ...(signal ? { signal } : {}),
@@ -518,9 +521,14 @@ async function streamAssistantResponse(
           messageModelId = event.message.model;
           // 从 message_start 提取 input_tokens 和缓存指标
           if (event.message.usage) {
-            usage.input = event.message.usage.input_tokens ?? 0;
-            usage.cacheRead = event.message.usage.cache_read_input_tokens ?? 0;
-            usage.cacheWrite = event.message.usage.cache_creation_input_tokens ?? 0;
+            // 兼容两种缓存指标格式：
+            // Anthropic: cache_read_input_tokens / cache_creation_input_tokens
+            // DeepSeek:  prompt_cache_hit_tokens / prompt_cache_miss_tokens
+            const msgUsage = event.message.usage as unknown as Record<string, number | undefined>;
+            usage.input = msgUsage.input_tokens ?? 0;
+            usage.cacheRead =
+              msgUsage.cache_read_input_tokens ?? msgUsage.prompt_cache_hit_tokens ?? 0;
+            usage.cacheWrite = msgUsage.cache_creation_input_tokens ?? 0;
           }
           const initialMsg = buildPartialMessage(
             contentBlocks,
