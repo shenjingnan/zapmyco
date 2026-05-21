@@ -7,7 +7,13 @@ vi.mock('@anthropic-ai/sdk', () => ({
   default: mockAnthropic,
 }));
 
-import { clearClients, getClient } from '@/llm/client-manager';
+import {
+  clearClients,
+  getClient,
+  getLatchedBetaHeaders,
+  latchBetaHeaders,
+  resetBetaHeaderLatch,
+} from '@/llm/client-manager';
 
 describe('client-manager', () => {
   beforeEach(() => {
@@ -133,6 +139,59 @@ describe('client-manager', () => {
       const client2 = getClient('https://api.anthropic.com', 'key-1', 'anthropic', headers);
       expect(client1).toBe(client2);
       expect(mockAnthropic).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('beta header latching', () => {
+    beforeEach(() => {
+      resetBetaHeaderLatch();
+      clearClients();
+    });
+
+    it('should latch beta headers on first call', () => {
+      latchBetaHeaders({ 'anthropic-beta': 'test-header' });
+      expect(getLatchedBetaHeaders()).toEqual({ 'anthropic-beta': 'test-header' });
+    });
+
+    it('should ignore subsequent latch calls (sticky)', () => {
+      latchBetaHeaders({ 'anthropic-beta': 'first' });
+      latchBetaHeaders({ 'anthropic-beta': 'second' });
+      expect(getLatchedBetaHeaders()).toEqual({ 'anthropic-beta': 'first' });
+    });
+
+    it('should be empty after reset', () => {
+      latchBetaHeaders({ 'anthropic-beta': 'test' });
+      resetBetaHeaderLatch();
+      expect(getLatchedBetaHeaders()).toEqual({});
+    });
+
+    it('should be reset by clearClients()', () => {
+      latchBetaHeaders({ 'anthropic-beta': 'test' });
+      clearClients();
+      expect(getLatchedBetaHeaders()).toEqual({});
+    });
+
+    it('should use latched headers in getClient even if different betaHeaders are passed', () => {
+      latchBetaHeaders({ 'anthropic-beta': 'latched-value' });
+      // getClient should use the latched value, not the passed one
+      getClient('https://api.anthropic.com', 'key-1', 'anthropic', {
+        'anthropic-beta': 'passed-value',
+      });
+      expect(mockAnthropic).toHaveBeenCalledWith({
+        baseURL: 'https://api.anthropic.com',
+        apiKey: 'key-1',
+        defaultHeaders: { 'anthropic-beta': 'latched-value' },
+      });
+    });
+
+    it('should latch empty object when called with undefined', () => {
+      latchBetaHeaders(undefined);
+      expect(getLatchedBetaHeaders()).toEqual({});
+    });
+
+    it('should latch empty object when called with empty headers', () => {
+      latchBetaHeaders({});
+      expect(getLatchedBetaHeaders()).toEqual({});
     });
   });
 });

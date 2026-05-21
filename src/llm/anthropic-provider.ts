@@ -27,6 +27,16 @@ export interface CompleteParams {
   tools?: Anthropic.Tool[];
   /** 缓存保留期（none = 不启用 prompt caching） */
   cacheRetention?: 'none' | 'short' | 'long';
+  /**
+   * 缓存作用域
+   *
+   * - 'org': 组织级别（默认，同 API Key 共享缓存）
+   * - 'global': 全局共享（跨用户/跨组织，需配合 prompt-caching-scope beta header）
+   *
+   * 注意：当 systemPrompt 以 TextBlockParam[] 传入时，每个 block 已自带 scope，
+   * 此字段仅对 string 格式的 systemPrompt 生效。
+   */
+  cacheScope?: 'org' | 'global';
 }
 
 /** 补全调用选项 */
@@ -64,7 +74,12 @@ export async function complete(
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       ...(params.systemPrompt && {
-        system: buildSystemParam(params.systemPrompt, enableCache, params.cacheRetention),
+        system: buildSystemParam(
+          params.systemPrompt,
+          enableCache,
+          params.cacheRetention,
+          params.cacheScope
+        ),
       }),
       ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
       messages: enableCache ? addCacheControlToLastUserMessage(params.messages) : params.messages,
@@ -101,7 +116,12 @@ export function streamComplete(
       stream: true,
       ...(options?.temperature !== undefined && { temperature: options.temperature }),
       ...(params.systemPrompt && {
-        system: buildSystemParam(params.systemPrompt, enableCache, params.cacheRetention),
+        system: buildSystemParam(
+          params.systemPrompt,
+          enableCache,
+          params.cacheRetention,
+          params.cacheScope
+        ),
       }),
       ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
       messages: enableCache ? addCacheControlToLastUserMessage(params.messages) : params.messages,
@@ -138,7 +158,8 @@ function resolveCacheTtl(cacheRetention?: 'none' | 'short' | 'long'): '5m' | '1h
 function buildSystemParam(
   systemPrompt: string | Anthropic.TextBlockParam[],
   enableCache: boolean,
-  cacheRetention?: 'none' | 'short' | 'long'
+  cacheRetention?: 'none' | 'short' | 'long',
+  cacheScope?: 'org' | 'global'
 ): string | Anthropic.TextBlockParam[] {
   if (typeof systemPrompt === 'string') {
     // 旧格式：包装为单 block
@@ -148,14 +169,19 @@ function buildSystemParam(
         {
           type: 'text' as const,
           text: systemPrompt,
-          cache_control: { type: 'ephemeral' as const, ...(ttl ? { ttl } : {}) },
+          cache_control: {
+            type: 'ephemeral' as const,
+            ...(cacheScope === 'global' ? ({ scope: 'global' as const } as const) : {}),
+            ...(ttl ? { ttl } : {}),
+          },
         },
       ];
     }
     return systemPrompt;
   }
 
-  // 预拆分多 block 格式
+  // 预拆分多 block 格式 —— 每个 block 已自带 cache_control（含 scope），
+  // 只更新 TTL，不覆盖已有的 scope 设置
   if (enableCache) {
     const ttl = resolveCacheTtl(cacheRetention);
     return systemPrompt.map((block) => {

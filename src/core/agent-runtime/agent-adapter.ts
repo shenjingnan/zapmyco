@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type Anthropic from '@anthropic-ai/sdk';
+import { PROMPT_CACHING_SCOPE_BETA_HEADER } from '@/constants/betas';
 import { Agent } from '@/core/agent-runtime/agent';
 import type { AgentMessage } from '@/core/agent-runtime/agent-types';
 import {
@@ -26,6 +27,7 @@ import type { ConversationLogger } from '@/infra/conversation-logger';
 import { eventBus } from '@/infra/event-bus';
 import { logger } from '@/infra/logger';
 import type { AgentLlmFacade } from '@/llm/agent-llm-facade';
+import { latchBetaHeaders } from '@/llm/client-manager';
 import type {
   AgentExecuteRequest,
   AgentHealthStatus,
@@ -34,8 +36,10 @@ import type {
 } from '@/protocol/agent';
 import type { Capability } from '@/protocol/capability';
 import { createDoomLoopDetector, type DoomLoopDetector } from '@/security/doom-loop-detector';
+import { SYSTEM_PROMPT_STATIC_BOUNDARY } from './agent-types';
 import { createEventBridgeListener } from './event-bridge';
 import type { ThinkingLevel } from './runtime-types';
+import { buildSystemPromptBlocks, splitSystemPrompt } from './system-prompt-utils';
 import { type ToolRegistration, toAgentTools } from './tool-bridge';
 import { ToolSchemaCache } from './tool-schema-cache';
 import type { AgentAdapterOptions, AgentRuntimeConfig } from './types';
@@ -49,6 +53,8 @@ const DEFAULT_RUNTIME_CONFIG: Required<AgentRuntimeConfig> = {
   toolExecution: 'sequential',
   maxTurns: 50,
   thinkingLevel: 'medium',
+  cacheRetention: 'short',
+  cacheScope: 'org',
 };
 
 // ============ LlmBasedAgent 实现 ============
@@ -157,6 +163,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.inner = new Agent({
       toolExecution: this.config.toolExecution,
       sessionId,
+      cacheRetention: this.config.cacheRetention,
+      cacheScope: this.config.cacheScope,
     });
 
     // 标记 sessionId 到 inner Agent（供 createLoopConfig 传递）
@@ -262,6 +270,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     const cleanupFns: (() => void)[] = [];
     let hadContextOverflowError = false;
     this._agentLoopTurnCount = 0;
+
+    // Latch beta headers（仅首次，后续不变）防止 mid-session header 变化导致缓存断裂
+    this.latchProviderBetaHeaders();
 
     const taskLabel = request.taskDescription.slice(0, 200);
     log.info('Agent 开始执行', {
@@ -730,10 +741,29 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   // ============ 辅助方法 ============
 
   /**
+   * 锁定 beta headers
+   *
+   * 在 execute() 开始时调用，仅首次生效。
+   * 如果配置了 cacheScope='global'，自动添加 prompt-caching-scope beta header。
+   * 参考 Claude Code: claude.ts queryModel() sticky-on latches
+   */
+  private latchProviderBetaHeaders(): void {
+    const headers: Record<string, string> = {};
+    if (this.config.cacheScope === 'global') {
+      headers['anthropic-beta'] = PROMPT_CACHING_SCOPE_BETA_HEADER;
+    }
+    latchBetaHeaders(Object.keys(headers).length > 0 ? headers : undefined);
+  }
+
+  /**
    * 构建稳定系统提示词（仅含稳定内容）
    *
-   * 与 buildDynamicContextMessages() 配对使用。
-   * 稳定内容不变，使 Anthropic prompt cache 可命中。
+   * 改为分段构建流程：
+   * 1. 构建原始文本字符串数组（含边界标记）
+   * 2. 调用 splitSystemPrompt() 拆分为带缓存作用域的分段
+   * 3. 调用 buildSystemPromptBlocks() 转换为 TextBlockParam[]
+   *
+   * 参考 Claude Code: splitSysPromptPrefix() + buildSystemPromptBlocks()
    */
   private buildStableSystemPrompt(request: AgentExecuteRequest): Anthropic.TextBlockParam[] {
     // 子 Agent 等场景使用自定义系统提示词
@@ -745,28 +775,27 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
       return [{ type: 'text', text: parts.join('\n') }];
     }
 
-    const blocks: Anthropic.TextBlockParam[] = [];
+    // ===== 步骤 1: 构建原始文本字符串数组 =====
+
+    const promptBlocks: string[] = [];
 
     const hasMemory = this.toolRegistrations.some((t) => t.id === 'Memory');
     const hasTaskManage = this.toolRegistrations.some((t) => t.id === 'TaskManage');
     const hasSpawnSubAgents = this.toolRegistrations.some((t) => t.id === 'SpawnSubAgents');
     const hasAskUserQuestion = this.toolRegistrations.some((t) => t.id === 'AskUserQuestion');
 
-    // Block 0: Agent 身份 + 能力（静态核心，始终存在）
-    blocks.push({
-      type: 'text',
-      text: [
+    // Block 0: Agent 身份 + 能力（身份前缀，splitSystemPrompt 会识别为 cacheScope=null）
+    promptBlocks.push(
+      [
         `你是 ${this.displayName}，一个专业的 AI 助手。`,
         `你的能力包括：${this.capabilities.map((c) => c.name).join('、')}。`,
-      ].join('\n'),
-      cache_control: { type: 'ephemeral' },
-    });
+      ].join('\n')
+    );
 
     // Block 1: 记忆管理规范（有 Memory 工具时）
     if (hasMemory) {
-      blocks.push({
-        type: 'text',
-        text: [
+      promptBlocks.push(
+        [
           '## 记忆管理规范',
           '',
           '你有跨会话的持久化记忆能力。记忆存储在 ~/.zapmyco/memory/ 目录中。',
@@ -783,16 +812,14 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '- 代码细节（可直接从代码库获取，不需要记忆）',
           '- 一次性查询的内容',
           '',
-        ].join('\n'),
-        cache_control: { type: 'ephemeral' },
-      });
+        ].join('\n')
+      );
     }
 
     // Block 2: 任务管理规范（有 TaskManage 工具时）
     if (hasTaskManage) {
-      blocks.push({
-        type: 'text',
-        text: [
+      promptBlocks.push(
+        [
           '## 任务管理规范（最高优先级）',
           '',
           '收到用户任务后，第一时间判断是否包含 2 个以上独立步骤。',
@@ -803,16 +830,14 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '2. **逐个更新**：完成一个子任务 → 立即 update 为 "completed" → 再开始下一个。绝不批量更新。',
           '3. **保持专注**：同时只有 1 个 "in_progress"。',
           '4. **先读后写**：不确定当前任务时先用 action="read" 查看。',
-        ].join('\n'),
-        cache_control: { type: 'ephemeral' },
-      });
+        ].join('\n')
+      );
     }
 
     // Block 3: 并行执行规范（有 TaskManage + SpawnSubAgents 时）
     if (hasTaskManage && hasSpawnSubAgents) {
-      blocks.push({
-        type: 'text',
-        text: [
+      promptBlocks.push(
+        [
           '## 并行执行规范（次高优先级）',
           '',
           '完成 TaskManage write 分解后，识别其中**互不依赖**的独立子任务。',
@@ -833,16 +858,14 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '- ❌ 只有 1 个任务时（直接执行即可）',
           '- ❌ 任务需要修改文件（子 Agent 默认只有只读工具）',
           '',
-        ].join('\n'),
-        cache_control: { type: 'ephemeral' },
-      });
+        ].join('\n')
+      );
     }
 
     // Block 4: 提问规范（有 AskUserQuestion 工具时）
     if (hasAskUserQuestion) {
-      blocks.push({
-        type: 'text',
-        text: [
+      promptBlocks.push(
+        [
           '## 交互式提问规范（AskUserQuestion）',
           '',
           '当需要用户决策时，使用 `AskUserQuestion` 工具向用户提问。',
@@ -868,20 +891,37 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           '- 用户始终可以选择 "Other" 输入自定义答案',
           '- 在 Plan Mode 中用 AskUserQuestion 明确需求，用 ExitPlanMode 请求审批',
           '',
-        ].join('\n'),
-        cache_control: { type: 'ephemeral' },
-      });
+        ].join('\n')
+      );
     }
 
-    // Block 5: 工作目录（动态内容，无 cache_control）
+    // 边界标记：只有启用 global scope 时才插入
+    const enableGlobalScope = this.config.cacheScope === 'global';
+    if (enableGlobalScope) {
+      promptBlocks.push(SYSTEM_PROMPT_STATIC_BOUNDARY);
+    }
+
+    // Block 5: 工作目录（边界标记后，动态内容，不缓存）
     if (request.workdir) {
-      blocks.push({
-        type: 'text',
-        text: `## 工作目录\n${request.workdir}`,
-      });
+      promptBlocks.push(`## 工作目录\n${request.workdir}`);
     }
 
-    return blocks;
+    // ===== 步骤 2: 分段 =====
+
+    // 当存在 MCP 工具时跳过 global cache（MCP 工具 schema 可能动态变化）
+    const hasMcpTools = false;
+    const segments = splitSystemPrompt(promptBlocks, {
+      skipGlobalCache: hasMcpTools,
+      enableGlobalScope,
+    });
+
+    // ===== 步骤 3: 转换为 TextBlockParam[] =====
+
+    const enableCache =
+      this.config.cacheRetention !== undefined && this.config.cacheRetention !== 'none';
+    const cacheTtl = this.config.cacheRetention === 'long' ? ('1h' as const) : undefined;
+
+    return buildSystemPromptBlocks(segments, enableCache, cacheTtl);
   }
 
   /**

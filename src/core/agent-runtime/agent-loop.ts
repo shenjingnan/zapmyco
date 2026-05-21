@@ -477,6 +477,7 @@ async function streamAssistantResponse(
       ...(config.cacheRetention && config.cacheRetention !== 'none'
         ? { cacheRetention: config.cacheRetention }
         : {}),
+      ...(config.cacheScope ? { cacheScope: config.cacheScope } : {}),
     },
     {
       ...(signal ? { signal } : {}),
