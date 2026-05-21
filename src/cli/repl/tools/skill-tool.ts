@@ -309,7 +309,7 @@ function spawnCommand(
       resolve(result);
     };
 
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       settle({
         stdout: stdoutChunks.join(''),
         stderr: stderrChunks.join(''),
