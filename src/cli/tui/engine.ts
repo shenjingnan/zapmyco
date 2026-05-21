@@ -522,18 +522,6 @@ export class TUI {
     }
   }
 
-  /**
-   * 获取子组件树中最大的滚动偏移量
-   */
-  private getScrollOffset(): number {
-    let maxOffset = 0;
-    for (const child of this.root.getChildren()) {
-      if (child.scrollOffset && child.scrollOffset > maxOffset) {
-        maxOffset = child.scrollOffset;
-      }
-    }
-    return maxOffset;
-  }
 }
 
 // ======================================================================
