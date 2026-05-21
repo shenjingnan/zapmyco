@@ -48,7 +48,7 @@ export async function complete(
   params: CompleteParams,
   options?: CompleteOptions
 ): Promise<Anthropic.Message> {
-  const client = getClient(model.baseURL, model.apiKey, model.provider);
+  const client = getClient(model.baseURL, model.apiKey, model.provider, model.betaHeaders);
 
   const enableCache = params.cacheRetention !== undefined && params.cacheRetention !== 'none';
 
@@ -92,7 +92,7 @@ export function streamComplete(
   params: CompleteParams,
   options?: CompleteOptions
 ): AsyncIterable<Anthropic.RawMessageStreamEvent> {
-  const client = getClient(model.baseURL, model.apiKey, model.provider);
+  const client = getClient(model.baseURL, model.apiKey, model.provider, model.betaHeaders);
 
   const enableCache = params.cacheRetention !== undefined && params.cacheRetention !== 'none';
 

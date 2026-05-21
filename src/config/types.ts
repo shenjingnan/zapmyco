@@ -40,6 +40,15 @@ export interface LlmProviderConfig {
   recoveryMs?: number;
   /** 该提供商下的可用模型 */
   models?: Record<string, ModelConfig>;
+  /**
+   * Anthropic Beta 功能请求头
+   *
+   * 在创建 Anthropic HTTP 客户端时作为 defaultHeaders 传入。
+   * Agent 启动时 latch，会话期间不变，确保 prompt cache 键一致。
+   *
+   * 示例：{ "anthropic-beta": "prompt-caching-2025-01-01" }
+   */
+  betaHeaders?: Record<string, string>;
 }
 
 /** LLM 全局默认参数 */

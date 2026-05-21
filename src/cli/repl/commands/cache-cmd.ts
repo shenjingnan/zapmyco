@@ -58,6 +58,24 @@ export function createCacheCommand(): CommandDefinition {
         lines.push(chalk.gray('  工具 Schema 缓存: ') + chalk.white(`${schemaStats.size} 个工具`));
       }
 
+      // 命中率趋势
+      const trend = agent.tokenTracker.getHitRateTrend(10);
+      if (trend.length >= 2) {
+        lines.push('');
+        lines.push(chalk.gray('  最近命中率趋势:'));
+        const sparkLine = trend
+          .map((t) => {
+            if (t.hitRate > 0.8) return chalk.green('█');
+            if (t.hitRate > 0.5) return chalk.yellow('█');
+            if (t.hitRate > 0) return chalk.red('█');
+            return chalk.gray('█');
+          })
+          .join('');
+        lines.push(`  ${sparkLine}`);
+        const avgTrend = trend.reduce((s, t) => s + t.hitRate, 0) / trend.length;
+        lines.push(chalk.gray(`  平均趋势: ${formatPercent(avgTrend)}`));
+      }
+
       lines.push('');
       replSession.appendOutput(lines);
     },

@@ -98,6 +98,9 @@ export class TokenTracker {
     timestamp: number;
   }> = [];
 
+  /** 命中率历史记录（每次 recordUsage 后追加，用于趋势分析） */
+  private _hitRateHistory: Array<{ hitRate: number; timestamp: number }> = [];
+
   /** 是否已初始化 */
   private _initialized = false;
 
@@ -117,6 +120,12 @@ export class TokenTracker {
       cacheWriteTokens: usage.cacheWrite,
       timestamp: Date.now(),
     });
+    // 记录当前窗口命中率到历史
+    const currentHitRate = this.getCacheHitRate();
+    this._hitRateHistory.push({ hitRate: currentHitRate, timestamp: Date.now() });
+    if (this._hitRateHistory.length > 100) {
+      this._hitRateHistory.splice(0, this._hitRateHistory.length - 100);
+    }
     this._initialized = true;
   }
 
@@ -196,6 +205,50 @@ export class TokenTracker {
   }
 
   /**
+   * 获取最近 N 次调用的完整缓存指标摘要
+   */
+  getLatestMetrics(): {
+    hitRate: number;
+    averageCacheRatio: number;
+    lastBreak: ReturnType<TokenTracker['detectCacheBreak']>;
+    totalCalls: number;
+    totalInputTokens: number;
+    totalCacheReadTokens: number;
+    totalCacheWriteTokens: number;
+  } {
+    return {
+      hitRate: this.getCacheHitRate(),
+      averageCacheRatio: this.getAverageCacheRatio(),
+      lastBreak: this.detectCacheBreak(),
+      totalCalls: this._callMetrics.length,
+      totalInputTokens: this._inputTokens,
+      totalCacheReadTokens: this._cacheReadTokens,
+      totalCacheWriteTokens: this._cacheWriteTokens,
+    };
+  }
+
+  /**
+   * 获取命中率变化幅度（当前 - 上一次）
+   * 正值表示提升，负值表示下降
+   */
+  getHitRateChange(): number {
+    if (this._hitRateHistory.length < 2) return 0;
+    const current = this._hitRateHistory[this._hitRateHistory.length - 1]!.hitRate;
+    const previous = this._hitRateHistory[this._hitRateHistory.length - 2]!.hitRate;
+    return current - previous;
+  }
+
+  /**
+   * 获取命中率历史趋势（最近 N 个数据点）
+   *
+   * @param count - 获取的数据点数量
+   */
+  getHitRateTrend(count = 10): Array<{ hitRate: number; timestamp: number }> {
+    if (count <= 0) return [];
+    return this._hitRateHistory.slice(-count);
+  }
+
+  /**
    * 重置追踪器（压缩后调用）
    */
   reset(): void {
@@ -205,6 +258,7 @@ export class TokenTracker {
     this._cacheWriteTokens = 0;
     this._totalCostUsd = 0;
     this._callMetrics = [];
+    this._hitRateHistory = [];
   }
 
   /** 是否已初始化 */

@@ -135,6 +135,9 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** 工具 Schema 缓存（会话级，防止 mid-session schema 变化导致 cache miss） */
   readonly toolSchemaCache = new ToolSchemaCache();
 
+  /** Agent 循环轮次计数器（用于缓存性能定期报告） */
+  private _agentLoopTurnCount = 0;
+
   /** 上下文窗口信息（首次 execute() 时通过模型解析） */
   private _contextWindowInfo: ContextWindowInfo | null = null;
 
@@ -226,7 +229,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    */
   registerTools(tools: ToolRegistration[]): void {
     this.toolRegistrations.push(...tools);
-    const agentTools = toAgentTools(tools);
+    // 使用 toolSchemaCache 确保同一工具名始终返回相同的 description/parameters 引用
+    const agentTools = toAgentTools(tools, this.toolSchemaCache);
     // 通过 state.tools 设置（AgentState 的 tools 是 getter/setter）
     this.inner.state.tools = [...this.inner.state.tools, ...agentTools];
   }
@@ -256,6 +260,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this._currentLoad++;
     const cleanupFns: (() => void)[] = [];
     let hadContextOverflowError = false;
+    this._agentLoopTurnCount = 0;
 
     const taskLabel = request.taskDescription.slice(0, 200);
     log.info('Agent 开始执行', {
@@ -298,6 +303,17 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
             const usage = (event.message as any).usage;
             if (usage && typeof usage.input === 'number') {
               this.tokenTracker.recordUsage(usage);
+            }
+            // 每 5 轮输出缓存性能摘要
+            this._agentLoopTurnCount++;
+            if (this._agentLoopTurnCount > 0 && this._agentLoopTurnCount % 5 === 0) {
+              const metrics = this.tokenTracker.getLatestMetrics();
+              log.info('缓存性能摘要', {
+                hitRate: metrics.hitRate,
+                averageCacheRatio: metrics.averageCacheRatio,
+                totalCalls: metrics.totalCalls,
+                hasBreak: metrics.lastBreak?.broken,
+              });
             }
           }
 

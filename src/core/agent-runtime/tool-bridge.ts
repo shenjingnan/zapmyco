@@ -9,6 +9,7 @@
 
 import type { Static, TSchema } from 'typebox';
 import type { AgentTool, AgentToolResult } from '@/core/agent-runtime/agent-types';
+import type { ToolSchemaCache } from '@/core/agent-runtime/tool-schema-cache';
 import type { Capability } from '@/protocol/capability';
 
 // ============ 类型定义 ============
@@ -104,9 +105,37 @@ export function toAgentTool(registration: ToolRegistration): AgentTool {
  * 将工具注册列表批量转换为 AgentTool 数组
  *
  * @param registrations - 工具注册列表
- * @returns AgentTool 数组
+ * @param schemaCache - 可选的 ToolSchemaCache 实例。
+ *  提供时，同一工具名始终返回相同的 description 和 parameters 引用，
+ *  避免因 schema 重建导致的 prompt cache 断裂。
+ * @returns AgentTool 数组（按名称排序）
  */
-export function toAgentTools(registrations: ToolRegistration[]): AgentTool[] {
+export function toAgentTools(
+  registrations: ToolRegistration[],
+  schemaCache?: ToolSchemaCache
+): AgentTool[] {
+  if (schemaCache) {
+    return registrations
+      .map((reg) => {
+        const cached = schemaCache.getOrCompute(reg.id, () => ({
+          description: reg.description,
+          parameters: (reg.parameters ?? { type: 'object' as const, properties: {} }) as Record<
+            string,
+            unknown
+          >,
+        }));
+        const tool: AgentTool = {
+          name: cached.name,
+          description: cached.description,
+          label: reg.label,
+          parameters: cached.parameters,
+          execute: reg.execute,
+          ...(reg.executionMode != null ? { executionMode: reg.executionMode } : {}),
+        };
+        return tool;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
   return registrations.map(toAgentTool).sort((a, b) => a.name.localeCompare(b.name));
 }
 

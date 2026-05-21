@@ -8,6 +8,7 @@ describe('createCacheCommand', () => {
   let appendOutput: ReturnType<typeof vi.fn>;
   let mockGetCacheStats: ReturnType<typeof vi.fn>;
   let mockGetSchemaStats: ReturnType<typeof vi.fn>;
+  let mockGetHitRateTrend: ReturnType<typeof vi.fn>;
 
   function mockSession(overrides?: {
     cacheStats?: Partial<{
@@ -32,6 +33,9 @@ describe('createCacheCommand', () => {
             overrides?.schemaStats ?? { size: 0, tools: [] }
           ),
         },
+        tokenTracker: {
+          getHitRateTrend: mockGetHitRateTrend.mockReturnValue([]),
+        },
       },
       appendOutput,
     };
@@ -42,6 +46,7 @@ describe('createCacheCommand', () => {
     appendOutput = vi.fn();
     mockGetCacheStats = vi.fn();
     mockGetSchemaStats = vi.fn();
+    mockGetHitRateTrend = vi.fn();
     cmd = createCacheCommand();
   });
 
