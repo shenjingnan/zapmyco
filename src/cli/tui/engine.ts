@@ -141,13 +141,15 @@ export class TUI {
     this.terminal.stdin.on('data', (chunk: Buffer) => {
       let data = chunk.toString();
 
-      // 检测并消费 SGR 编码的鼠标事件：\x1b[<btn;col;rowM 或 \x1b[<btn;col;rowm
+      // 检测并消费 SGR 编码的鼠标事件：ESC[<btn;col;rowM 或 ESC[<btn;col;rowm
       // 移除了 $ 锚点以支持同一 chunk 中包含多个事件（如 press + release）
-      const SGR_MOUSE_RE = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])/;
+      const SGR_MOUSE_RE = new RegExp('^\\x1b\\[<(\\d+);(\\d+);(\\d+)([Mm])');
       let sgrMouseMatch: RegExpMatchArray | null;
       let hadMouseEvent = false;
 
-      while ((sgrMouseMatch = data.match(SGR_MOUSE_RE))) {
+      while (true) {
+        sgrMouseMatch = data.match(SGR_MOUSE_RE);
+        if (!sgrMouseMatch) break;
         hadMouseEvent = true;
         const btn = Number.parseInt(sgrMouseMatch[1]!, 10);
         // 仅处理滚轮事件（64=up, 65=down），忽略按钮释放等事件
