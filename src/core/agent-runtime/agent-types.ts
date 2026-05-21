@@ -19,27 +19,6 @@ import type {
   ToolResultMessage,
 } from './runtime-types';
 
-// ============ System Prompt 缓存策略 ============
-
-/**
- * System Prompt 静态/动态边界标记
- *
- * 所有在此标记之前的内容可使用 scope:'global' 缓存，
- * 之后的内容不缓存或仅 scope:'org'。
- *
- * 参考 Claude Code: src/constants/prompts.ts SYSTEM_PROMPT_DYNAMIC_BOUNDARY
- */
-export const SYSTEM_PROMPT_STATIC_BOUNDARY = '__SYSTEM_PROMPT_STATIC_BOUNDARY__';
-
-/** 缓存作用域 */
-export type CacheScope = 'global' | 'org' | null;
-
-/** System Prompt 分段定义 */
-export interface SystemPromptSegment {
-  text: string;
-  cacheScope: CacheScope;
-}
-
 // ============ 消息类型 ============
 
 /**
@@ -223,8 +202,6 @@ export interface AgentLoopConfig {
   reasoning: ThinkingLevel | undefined;
   sessionId: string | undefined;
   cacheRetention?: 'none' | 'short' | 'long';
-  /** 缓存作用域（参考 Claude Code splitSysPromptPrefix scope 策略） */
-  cacheScope?: 'org' | 'global';
   transformContext:
     | ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>)
     | undefined;
@@ -266,8 +243,6 @@ export interface AgentLoopConfig {
 export interface AgentOptions {
   initialState?: Partial<AgentState>;
   cacheRetention?: 'none' | 'short' | 'long';
-  /** 缓存作用域 */
-  cacheScope?: 'org' | 'global';
   convertToLlm?: (
     messages: AgentMessage[]
   ) => Anthropic.MessageParam[] | Promise<Anthropic.MessageParam[]>;
@@ -300,8 +275,6 @@ export type StreamFn = (
     messages: Anthropic.MessageParam[];
     tools?: Anthropic.Tool[];
     cacheRetention?: 'none' | 'short' | 'long';
-    /** 缓存作用域 */
-    cacheScope?: 'org' | 'global';
   },
   options?: {
     signal?: AbortSignal;

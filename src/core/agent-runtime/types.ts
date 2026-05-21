@@ -48,15 +48,6 @@ export interface AgentRuntimeConfig {
   maxTurns?: number;
   /** 推理级别 */
   thinkingLevel?: string;
-  /** Prompt 缓存保留期 */
-  cacheRetention?: 'none' | 'short' | 'long';
-  /**
-   * 缓存作用域
-   *
-   * - 'org': 组织级别（默认，同 API Key 共享缓存）
-   * - 'global': 全局共享（跨用户/跨组织）
-   */
-  cacheScope?: 'org' | 'global';
 }
 
 /**

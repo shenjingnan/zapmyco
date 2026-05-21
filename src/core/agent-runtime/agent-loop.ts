@@ -477,10 +477,6 @@ async function streamAssistantResponse(
       ...(config.cacheRetention && config.cacheRetention !== 'none'
         ? { cacheRetention: config.cacheRetention }
         : {}),
-      // cacheScope 仅对 Anthropic 官方 API 有效（DeepSeek 忽略 cache_control）
-      ...(config.cacheScope && config.model?.provider === 'anthropic'
-        ? { cacheScope: config.cacheScope }
-        : {}),
     },
     {
       ...(signal ? { signal } : {}),

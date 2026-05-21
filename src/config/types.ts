@@ -164,15 +164,6 @@ export interface AgentRuntimeConfig {
   thinkingLevel?: string;
   /** Prompt 缓存保留期（none/short/long，影响 Anthropic cache_control TTL） */
   cacheRetention?: 'none' | 'short' | 'long';
-  /**
-   * 缓存作用域
-   *
-   * - 'org': 组织级别（默认，同 API Key 共享缓存）
-   * - 'global': 全局共享（跨用户/跨组织，需要启用 prompt-caching-scope beta header）
-   *
-   * 参考 Claude Code: splitSysPromptPrefix() 的 scope:'global' 策略
-   */
-  cacheScope?: 'org' | 'global';
 }
 
 /** Agent 配置 */

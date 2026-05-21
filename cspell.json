@@ -94,8 +94,7 @@
     "unreg",
     "unsub",
     "ncdef",
-    "hllo",
-    "SYSPROMPT"
+    "hllo"
   ],
   "ignorePaths": [
     "node_modules",
