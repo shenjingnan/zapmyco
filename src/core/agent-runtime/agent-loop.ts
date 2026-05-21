@@ -47,7 +47,7 @@ let toolListCache: ToolListCacheEntry | undefined;
  * 用于检测工具定义是否发生变化。如果工具列表字节级一致，
  * 返回与上次相同的哈希，避免不必要的工具 schema 重建。
  */
-function hashToolList(tools: AgentTool[]): string {
+export function hashToolList(tools: AgentTool[]): string {
   let hash = 0;
   for (const tool of tools) {
     const params = tool.parameters ? JSON.stringify(tool.parameters) : '{}';
@@ -65,7 +65,7 @@ function hashToolList(tools: AgentTool[]): string {
  * 确保工具定义的字节级一致性，避免因工具 schema 重建
  * 导致的 Anthropic prompt cache 断裂。
  */
-function toAnthropicTools(tools: AgentTool[]): Anthropic.Tool[] | undefined {
+export function toAnthropicTools(tools: AgentTool[]): Anthropic.Tool[] | undefined {
   if (!tools || tools.length === 0) return undefined;
 
   const hash = hashToolList(tools);
@@ -104,14 +104,14 @@ let cacheBreakState: CacheBreakState | undefined;
 /**
  * 重置缓存断裂检测状态（新 Agent session 开始时调用）
  */
-function resetCacheBreakState(): void {
+export function resetCacheBreakState(): void {
   cacheBreakState = undefined;
 }
 
 /**
  * 检查并记录缓存断裂
  */
-function checkCacheBreak(
+export function checkCacheBreak(
   currentCacheRead: number,
   currentCacheCreation: number,
   currentInputTokens: number
