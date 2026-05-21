@@ -201,7 +201,6 @@ export interface AgentLoopConfig {
   model: ResolvedModel;
   reasoning: ThinkingLevel | undefined;
   sessionId: string | undefined;
-  cacheRetention?: 'none' | 'short' | 'long';
   transformContext:
     | ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>)
     | undefined;
@@ -242,7 +241,6 @@ export interface AgentLoopConfig {
 /** Agent 构造函数选项 */
 export interface AgentOptions {
   initialState?: Partial<AgentState>;
-  cacheRetention?: 'none' | 'short' | 'long';
   convertToLlm?: (
     messages: AgentMessage[]
   ) => Anthropic.MessageParam[] | Promise<Anthropic.MessageParam[]>;
@@ -274,7 +272,6 @@ export type StreamFn = (
     systemPrompt?: string | Anthropic.TextBlockParam[];
     messages: Anthropic.MessageParam[];
     tools?: Anthropic.Tool[];
-    cacheRetention?: 'none' | 'short' | 'long';
   },
   options?: {
     signal?: AbortSignal;

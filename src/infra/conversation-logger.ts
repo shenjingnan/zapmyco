@@ -63,8 +63,6 @@ export interface ConversationTurn {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
     estimatedCostUsd?: number;
   };
   messages: ConversationMessage[];
@@ -156,8 +154,6 @@ export class ConversationLogger {
       inputTokens: number;
       outputTokens: number;
       totalTokens: number;
-      cacheReadTokens: number;
-      cacheWriteTokens: number;
       estimatedCostUsd?: number;
     },
     durationMs?: number

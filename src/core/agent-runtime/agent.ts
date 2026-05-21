@@ -32,10 +32,8 @@ import type { ImageContent, TextContent, ThinkingBudgets, ThinkingLevel } from '
 const EMPTY_USAGE = {
   input: 0,
   output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
   totalTokens: 0,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  cost: { input: 0, output: 0, total: 0 },
 };
 
 const DEFAULT_MODEL: ResolvedModel = {
@@ -256,7 +254,6 @@ export class Agent {
 
   private activeRun: ActiveRun | undefined;
   public sessionId: string | undefined;
-  public cacheRetention: 'none' | 'short' | 'long' | undefined;
   public thinkingBudgets: ThinkingBudgets | undefined;
   public maxRetryDelayMs: number | undefined;
   public toolExecution: ToolExecutionMode | undefined;
@@ -266,7 +263,6 @@ export class Agent {
     // 使用 as any 绕过 exactOptionalPropertyTypes 的严格限制
     // 这些属性在运行时始终正确初始化
     this.convertToLlm = (options.convertToLlm ?? defaultConvertToLlm) as never;
-    this.cacheRetention = options.cacheRetention as never;
     this.transformContext = options.transformContext as never;
     this.streamFn = options.streamFn as StreamFn | undefined;
     this.getApiKey = options.getApiKey as never;
@@ -518,7 +514,6 @@ export class Agent {
           : this._state.thinkingLevel,
       convertToLlm: this.convertToLlm!,
       sessionId: this.sessionId as never,
-      cacheRetention: this.cacheRetention as never,
       transformContext: this.transformContext as never,
       getApiKey: this.getApiKey as never,
       shouldStopAfterTurn: undefined as never,

@@ -321,8 +321,6 @@ export class AgentOrchestrator {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -360,8 +358,6 @@ export class AgentOrchestrator {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -488,8 +484,6 @@ export class AgentOrchestrator {
           inputTokens: number;
           outputTokens: number;
           totalTokens: number;
-          cacheReadTokens: number;
-          cacheWriteTokens: number;
           estimatedCostUsd: number;
         };
         error?: { code: string; message: string; retryable: boolean };
@@ -516,8 +510,6 @@ export class AgentOrchestrator {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -554,8 +546,6 @@ export class AgentOrchestrator {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };

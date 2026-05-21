@@ -80,26 +80,11 @@ export class TokenTracker {
   private _inputTokens = 0;
   /** 累积的 output tokens */
   private _outputTokens = 0;
-  /** 累积的 cache read tokens */
-  private _cacheReadTokens = 0;
-  /** 累积的 cache write tokens */
-  private _cacheWriteTokens = 0;
   /** 累积的预估费用（美元） */
   private _totalCostUsd = 0;
 
   /** 原始用法记录（用于调试） */
   private _usageHistory: Usage[] = [];
-
-  /** 每次调用的缓存指标（用于计算缓存命中率） */
-  private _callMetrics: Array<{
-    inputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-    timestamp: number;
-  }> = [];
-
-  /** 命中率历史记录（每次 recordUsage 后追加，用于趋势分析） */
-  private _hitRateHistory: Array<{ hitRate: number; timestamp: number }> = [];
 
   /** 是否已初始化 */
   private _initialized = false;
@@ -110,22 +95,8 @@ export class TokenTracker {
   recordUsage(usage: Usage): void {
     this._inputTokens += usage.input;
     this._outputTokens += usage.output;
-    this._cacheReadTokens += usage.cacheRead;
-    this._cacheWriteTokens += usage.cacheWrite;
     this._totalCostUsd += usage.cost?.total ?? 0;
     this._usageHistory.push(usage);
-    this._callMetrics.push({
-      inputTokens: usage.input,
-      cacheReadTokens: usage.cacheRead,
-      cacheWriteTokens: usage.cacheWrite,
-      timestamp: Date.now(),
-    });
-    // 记录当前窗口命中率到历史
-    const currentHitRate = this.getCacheHitRate();
-    this._hitRateHistory.push({ hitRate: currentHitRate, timestamp: Date.now() });
-    if (this._hitRateHistory.length > 100) {
-      this._hitRateHistory.splice(0, this._hitRateHistory.length - 100);
-    }
     this._initialized = true;
   }
 
@@ -137,8 +108,6 @@ export class TokenTracker {
       inputTokens: this._inputTokens,
       outputTokens: this._outputTokens,
       totalTokens: this._inputTokens + this._outputTokens,
-      cacheReadTokens: this._cacheReadTokens,
-      cacheWriteTokens: this._cacheWriteTokens,
       messageCount,
       timestamp: Date.now(),
     };
@@ -152,100 +121,8 @@ export class TokenTracker {
       inputTokens: this._inputTokens,
       outputTokens: this._outputTokens,
       totalTokens: this._inputTokens + this._outputTokens,
-      cacheReadTokens: this._cacheReadTokens,
-      cacheWriteTokens: this._cacheWriteTokens,
       estimatedCostUsd: this._totalCostUsd,
     };
-  }
-
-  /**
-   * 获取最近 N 次调用的缓存命中率
-   *
-   * 命中率 = cache_read_tokens / input_tokens
-   * > 80% 为优秀，< 50% 需要优化
-   */
-  getCacheHitRate(windowSize = 5): number {
-    const window = this._callMetrics.slice(-windowSize);
-    if (window.length === 0) return 0;
-    const totalInput = window.reduce((sum, m) => sum + m.inputTokens, 0);
-    const totalCacheRead = window.reduce((sum, m) => sum + m.cacheReadTokens, 0);
-    if (totalInput === 0) return 0;
-    return totalCacheRead / totalInput;
-  }
-
-  /**
-   * 检测缓存断裂
-   *
-   * 当 cache_read 骤降超过 50% 且此前有大量缓存读取时，判定为缓存断裂。
-   */
-  detectCacheBreak(): { broken: boolean; previousRead: number; currentRead: number } | null {
-    if (this._callMetrics.length < 2) return null;
-    const prev = this._callMetrics[this._callMetrics.length - 2]!;
-    const curr = this._callMetrics[this._callMetrics.length - 1]!;
-    if (prev.cacheReadTokens > 2000 && curr.cacheReadTokens < prev.cacheReadTokens * 0.5) {
-      return {
-        broken: true,
-        previousRead: prev.cacheReadTokens,
-        currentRead: curr.cacheReadTokens,
-      };
-    }
-    return { broken: false, previousRead: prev.cacheReadTokens, currentRead: curr.cacheReadTokens };
-  }
-
-  /**
-   * 获取最近 N 次调用的平均缓存读取比例
-   */
-  getAverageCacheRatio(windowSize = 5): number {
-    const window = this._callMetrics.slice(-windowSize);
-    if (window.length === 0) return 0;
-    const validCalls = window.filter((m) => m.inputTokens > 0);
-    if (validCalls.length === 0) return 0;
-    const totalRatio = validCalls.reduce((sum, m) => sum + m.cacheReadTokens / m.inputTokens, 0);
-    return totalRatio / validCalls.length;
-  }
-
-  /**
-   * 获取最近 N 次调用的完整缓存指标摘要
-   */
-  getLatestMetrics(): {
-    hitRate: number;
-    averageCacheRatio: number;
-    lastBreak: ReturnType<TokenTracker['detectCacheBreak']>;
-    totalCalls: number;
-    totalInputTokens: number;
-    totalCacheReadTokens: number;
-    totalCacheWriteTokens: number;
-  } {
-    return {
-      hitRate: this.getCacheHitRate(),
-      averageCacheRatio: this.getAverageCacheRatio(),
-      lastBreak: this.detectCacheBreak(),
-      totalCalls: this._callMetrics.length,
-      totalInputTokens: this._inputTokens,
-      totalCacheReadTokens: this._cacheReadTokens,
-      totalCacheWriteTokens: this._cacheWriteTokens,
-    };
-  }
-
-  /**
-   * 获取命中率变化幅度（当前 - 上一次）
-   * 正值表示提升，负值表示下降
-   */
-  getHitRateChange(): number {
-    if (this._hitRateHistory.length < 2) return 0;
-    const current = this._hitRateHistory[this._hitRateHistory.length - 1]!.hitRate;
-    const previous = this._hitRateHistory[this._hitRateHistory.length - 2]!.hitRate;
-    return current - previous;
-  }
-
-  /**
-   * 获取命中率历史趋势（最近 N 个数据点）
-   *
-   * @param count - 获取的数据点数量
-   */
-  getHitRateTrend(count = 10): Array<{ hitRate: number; timestamp: number }> {
-    if (count <= 0) return [];
-    return this._hitRateHistory.slice(-count);
   }
 
   /**
@@ -254,11 +131,8 @@ export class TokenTracker {
   reset(): void {
     this._inputTokens = 0;
     this._outputTokens = 0;
-    this._cacheReadTokens = 0;
-    this._cacheWriteTokens = 0;
     this._totalCostUsd = 0;
-    this._callMetrics = [];
-    this._hitRateHistory = [];
+    this._usageHistory = [];
   }
 
   /** 是否已初始化 */

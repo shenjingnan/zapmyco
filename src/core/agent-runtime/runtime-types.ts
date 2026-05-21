@@ -11,14 +11,10 @@
 export interface Usage {
   input: number;
   output: number;
-  cacheRead: number;
-  cacheWrite: number;
   totalTokens?: number;
   cost?: {
     input: number;
     output: number;
-    cacheRead: number;
-    cacheWrite: number;
     total: number;
   };
 }
@@ -90,8 +86,6 @@ export type Message =
 export interface ModelCost {
   input: number;
   output: number;
-  cacheRead: number;
-  cacheWrite: number;
 }
 
 export interface Model {

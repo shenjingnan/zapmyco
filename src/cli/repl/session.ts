@@ -14,7 +14,6 @@ import { join } from 'node:path';
 import chalk from 'chalk';
 import { CommandRegistry } from '@/cli/repl/command-registry';
 import { createAgentsCommand } from '@/cli/repl/commands/agents-cmd';
-import { createCacheCommand } from '@/cli/repl/commands/cache-cmd';
 import { createClearCommand } from '@/cli/repl/commands/clear';
 import { createConfigCommand } from '@/cli/repl/commands/config-cmd';
 // 导入内置命令
@@ -1208,7 +1207,6 @@ export class ReplSession {
         const usage = (this.agent as LlmBasedAgent).tokenTracker.getUsage();
         this.agentStatusBar.updateTokenStats(
           usage.inputTokens,
-          usage.cacheReadTokens,
           usage.outputTokens,
           Date.now() - startTime
         );
@@ -1467,8 +1465,6 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -1603,8 +1599,6 @@ export class ReplSession {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
       };
@@ -1625,7 +1619,6 @@ export class ReplSession {
       const finalUsage = (this.agent as LlmBasedAgent).tokenTracker.getUsage();
       this.agentStatusBar.updateTokenStats(
         finalUsage.inputTokens,
-        finalUsage.cacheReadTokens,
         finalUsage.outputTokens,
         Date.now() - startTime
       );
@@ -1826,9 +1819,6 @@ export class ReplSession {
     // 注册 /compact 命令
     this.registry.register(this.createCompactCommand());
 
-    // 注册 /cache 命令
-    this.registry.register(createCacheCommand());
-
     // 设置 autocomplete provider
     this.buildAutocompleteProvider();
   }
@@ -1895,14 +1885,9 @@ export class ReplSession {
     // 存储 facade 引用，供子 Agent 共享
     agent.llmFacade = facade;
 
-    // 设置缓存保留期
-    agent.innerAgent.cacheRetention = this.config.agentRuntime?.cacheRetention;
-
-    // 应用压缩配置（含缓存保留期）
-    const cacheRetention = this.config.agentRuntime?.cacheRetention;
+    // 应用压缩配置
     const compactionConfig: CompactionConfig = {
       ...(this.config.compaction ?? DEFAULT_COMPACTION_CONFIG),
-      ...(cacheRetention !== undefined ? { cacheRetention } : {}),
     };
     agent.compactor.updateConfig(compactionConfig);
     agent.compactor.setLlmFacade(facade);

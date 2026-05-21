@@ -133,11 +133,8 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
   /** Doom Loop 检测器 */
   readonly doomLoop: DoomLoopDetector;
 
-  /** 工具 Schema 缓存（会话级，防止 mid-session schema 变化导致 cache miss） */
+  /** 工具 Schema 缓存（会话级，保持工具定义一致性） */
   readonly toolSchemaCache = new ToolSchemaCache();
-
-  /** Agent 循环轮次计数器（用于缓存性能定期报告） */
-  private _agentLoopTurnCount = 0;
 
   /** 上下文窗口信息（首次 execute() 时通过模型解析） */
   private _contextWindowInfo: ContextWindowInfo | null = null;
@@ -150,7 +147,7 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this.capabilities = options.capabilities;
     this.config = { ...DEFAULT_RUNTIME_CONFIG, ...options.runtimeConfig };
 
-    // 生成会话 ID（用于 prompt cache 亲和性）
+    // 生成会话 ID
     const sessionId = `zapmyco-${options.agentId}-${randomUUID()}`;
 
     // 创建 Agent 实例
@@ -261,7 +258,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
     this._currentLoad++;
     const cleanupFns: (() => void)[] = [];
     let hadContextOverflowError = false;
-    this._agentLoopTurnCount = 0;
 
     const taskLabel = request.taskDescription.slice(0, 200);
     log.info('Agent 开始执行', {
@@ -304,17 +300,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
             const usage = (event.message as any).usage;
             if (usage && typeof usage.input === 'number') {
               this.tokenTracker.recordUsage(usage);
-            }
-            // 每 5 轮输出缓存性能摘要
-            this._agentLoopTurnCount++;
-            if (this._agentLoopTurnCount > 0 && this._agentLoopTurnCount % 5 === 0) {
-              const metrics = this.tokenTracker.getLatestMetrics();
-              log.info('缓存性能摘要', {
-                hitRate: metrics.hitRate,
-                averageCacheRatio: metrics.averageCacheRatio,
-                totalCalls: metrics.totalCalls,
-                hasBreak: metrics.lastBreak?.broken,
-              });
             }
           }
 
@@ -553,8 +538,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
           estimatedCostUsd: 0,
         },
         error: {
@@ -663,25 +646,6 @@ export class LlmBasedAgent extends EventEmitter implements IStreamingAgent {
    */
   getTokenSnapshot() {
     return this.tokenTracker.getSnapshot(this.inner.state.messages.length);
-  }
-
-  /**
-   * 获取缓存性能统计
-   *
-   * 包括命中率、平均缓存读取比例、缓存断裂检测等。
-   */
-  getCacheStats(): {
-    hitRate: number;
-    averageCacheRatio: number;
-    lastBreak: { broken: boolean; previousRead: number; currentRead: number } | null;
-    totalCalls: number;
-  } {
-    return {
-      hitRate: this.tokenTracker.getCacheHitRate(),
-      averageCacheRatio: this.tokenTracker.getAverageCacheRatio(),
-      lastBreak: this.tokenTracker.detectCacheBreak(),
-      totalCalls: this.tokenTracker.turnCount,
-    };
   }
 
   /**

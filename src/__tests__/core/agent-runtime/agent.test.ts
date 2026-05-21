@@ -36,10 +36,8 @@ function makeTextResponse(text: string): AssistantMessage {
     usage: {
       input: 10,
       output: 20,
-      cacheRead: 0,
-      cacheWrite: 0,
       totalTokens: 30,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: { input: 0, output: 0, total: 0 },
     },
     stopReason: 'stop',
     timestamp: Date.now(),
@@ -162,10 +160,8 @@ function createMockStreamForToolCall() {
     usage: {
       input: 10,
       output: 20,
-      cacheRead: 0,
-      cacheWrite: 0,
       totalTokens: 30,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: { input: 0, output: 0, total: 0 },
     } as any,
     stopReason: 'stop',
     timestamp: Date.now(),
