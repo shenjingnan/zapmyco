@@ -1,14 +1,10 @@
 /**
  * 键常量与匹配函数
  *
- * 自建 pi-tui 兼容的 Key 常量和 matchesKey 函数。
- * matchesKey 内部使用 pi-tui 的 parseKey 处理原始终端数据，
+ * Key 常量和 matchesKey 函数。
+ * matchesKey 使用本地 parseKey 处理原始终端数据，
  * 支持传统字节、CSI-u (Kitty)、modifyOtherKeys 三种协议。
- *
- * 注意：PR 5 将替换 parseKey 为本地实现。
  */
-
-import { parseKey } from '@earendil-works/pi-tui';
 
 /** 命名键到终端转义序列的映射（用于反向查找） */
 const NAMED_KEY_MAP: Record<string, string> = {
@@ -55,10 +51,45 @@ export const Key = {
 } as const;
 
 /**
+ * 本地 parseKey 实现
+ *
+ * 处理 CSI-u (kitty/iTerm2) 和 modifyOtherKeys 协议。
+ * 传统终端序列由 legacyMatch 兜底。
+ */
+function parseKey(data: string): string | undefined {
+  // CSI-u: ESC [ <charCode> ; <modifier> u
+  // modifier: 5=Ctrl, 6=Ctrl+Shift
+  const csiURe = /^\x1b\[(\d+);(\d+)u$/;
+  const m = data.match(csiURe);
+  if (m) {
+    const charCode = parseInt(m[1]!, 10);
+    const modifier = parseInt(m[2]!, 10);
+    const char = String.fromCharCode(charCode).toLowerCase();
+    if (modifier === 5) return `ctrl+${char}`;
+    if (modifier === 6) return `ctrl+shift+${char}`;
+    return undefined;
+  }
+
+  // modifyOtherKeys: ESC [ 27 ; <modifier> ; <charCode> ~
+  const moKRe = /^\x1b\[27;(\d+);(\d+)~$/;
+  const m2 = data.match(moKRe);
+  if (m2) {
+    const charCode = parseInt(m2[2]!, 10);
+    const modifier = parseInt(m2[1]!, 10);
+    const char = String.fromCharCode(charCode).toLowerCase();
+    if (modifier === 5) return `ctrl+${char}`;
+    if (modifier === 6) return `ctrl+shift+${char}`;
+    return undefined;
+  }
+
+  return undefined;
+}
+
+/**
  * 匹配原始终端输入数据与键标识
  *
- * 委托给 pi-tui 的 parseKey 解析原始数据，再与 keyId 比较。
- * 同时保留传统字节匹配作为备用（parseKey 可能返回 undefined）。
+ * 先用 parseKey 解析高级协议（CSI-u、modifyOtherKeys），
+ * 再回退到传统字节匹配。
  *
  * @param data - 原始终端输入数据（通常来自 stdin 'data' 事件）
  * @param keyId - 键标识（如 'escape', 'ctrl+c', 'up'）
@@ -72,12 +103,9 @@ export const Key = {
  * matchesKey('\x1b[99;5u', 'ctrl+c')    → true (CSI-u 协议，iTerm2)
  */
 export function matchesKey(data: string, keyId: string): boolean {
-  // 1. 用 pi-tui 的 parseKey 解析原始数据
-  //    parseKey 处理所有协议格式，返回类似 'ctrl+c' 的键标识
   const parsed = parseKey(data);
   if (parsed === keyId) return true;
 
-  // 2. 如果 parseKey 未识别（返回 undefined），回退到传统匹配
   if (parsed === undefined) {
     return legacyMatch(data, keyId);
   }

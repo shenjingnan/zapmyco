@@ -1,7 +1,7 @@
 /**
  * SelectList 组件
  *
- * 可搜索的选择列表组件，替代 pi-tui 的 SelectList 组件。
+ * 可搜索的选择列表组件。
  * 支持方向键/Vim 键导航、Enter 确认、Escape 取消、虚拟滚动、theme 样式。
  */
 

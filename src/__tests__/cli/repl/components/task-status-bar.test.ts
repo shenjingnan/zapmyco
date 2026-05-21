@@ -67,15 +67,6 @@ vi.mock('chalk', () => {
   return { default: chalk, ...chalk };
 });
 
-// Mock pi-tui Container
-vi.mock('@earendil-works/pi-tui', () => ({
-  Container: class MockContainer {
-    invalidate() {
-      /* prototype method for super.invalidate() */
-    }
-  },
-}));
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

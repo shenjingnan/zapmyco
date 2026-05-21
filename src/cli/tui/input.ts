@@ -1,7 +1,7 @@
 /**
  * Input 组件
  *
- * 单行文本输入框，替代 pi-tui 的 Input 组件。
+ * 单行文本输入框。
  * 支持 Enter 提交、Escape 取消、方向键移动光标、Home/End、退格删除。
  */
 

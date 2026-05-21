@@ -2,7 +2,7 @@
  * TaskStatusBar — 任务状态栏组件
  *
  * 显示 TaskManage 创建的任务列表，支持折叠/展开两种模式。
- * 类似 Claude Code 的 TaskListV2，使用 pi-tui Container 实现。
+ * 类似 Claude Code 的 TaskListV2，使用 Container 实现。
  *
  * 有任务时始终展开（多行）:
  *   ⠋ #1 Search files

@@ -6,11 +6,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// Mock pi-tui — parseKey 用于 key.ts 的 matchesKey
-vi.mock('@earendil-works/pi-tui', () => ({
-  parseKey: vi.fn((_data: string) => undefined),
-}));
-
 import { Editor } from '@/cli/tui/editor';
 import type { EditorTheme } from '@/cli/tui/types';
 

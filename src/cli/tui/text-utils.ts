@@ -1,7 +1,7 @@
 /**
  * 终端文本工具函数
  *
- * 自建 pi-tui 兼容的文本处理函数：
+ * 终端文本处理函数：
  * - visibleWidth: 计算字符串在终端中的可见宽度
  * - truncateToWidth: 按可见宽度截断字符串
  * - wrapTextWithAnsi: 按终端宽度换行，保留 ANSI 颜色

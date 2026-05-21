@@ -1,5 +1,5 @@
 /**
- * AskUserQuestion pi-tui UI 组件
+ * AskUserQuestion TUI 组件
  *
  * 在 TUI 中以 Overlay 形式展示多选题，支持：
  * - 单选/多选

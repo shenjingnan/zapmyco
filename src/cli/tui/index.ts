@@ -1,16 +1,17 @@
 /**
  * TUI 模块入口
  *
- * 逐步自建 pi-tui 替代的 barrel 导出文件。
- * 当前版本：本地导出类型 + 工具函数，其余 re-export pi-tui。
- *
- * 后续 PR 逐步将 re-export 替换为本地实现。
+ * 全部自建实现，无外部依赖。
  */
 
-// === pi-tui re-export（后续 PR 5 替换） ===
-export { CombinedAutocompleteProvider, getKeybindings } from '@earendil-works/pi-tui';
+// === 本地自动补全 ===
+export { CombinedAutocompleteProvider } from './autocomplete';
+export type { AutocompleteProvider, Completion } from './autocomplete';
 
-// === 本地引擎实现（PR 4） ===
+// === 本地键绑定 ===
+export { getKeybindings } from './keybindings';
+
+// === 本地引擎实现 ===
 export { Container } from './container';
 // === 本地 TUI 组件 ===
 export { Editor } from './editor';

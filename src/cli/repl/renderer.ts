@@ -1,7 +1,7 @@
 /**
  * 终端输出渲染器（TUI 适配版）
  *
- * 在 pi-tui 架构下，Renderer 不再直接 console.log，
+ * 在 TUI 架构下，Renderer 不再直接 console.log，
  * 而是将格式化后的内容追加到 OutputArea 组件中。
  */
 

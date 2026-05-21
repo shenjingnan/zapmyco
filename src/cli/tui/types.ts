@@ -1,8 +1,7 @@
 /**
  * TUI 类型定义
  *
- * 自建 TUI 组件所需的接口类型，替代 pi-tui 的类型定义。
- * 后续 PR 逐步替换 pi-tui 的类实现。
+ * 自建 TUI 组件所需的接口类型。
  */
 
 /** 组件接口 — 所有 TUI 组件必须实现此接口 */
@@ -12,7 +11,7 @@ export interface Component {
   invalidate(): void;
 }
 
-/** SizeValue 类型 — 与 pi-tui 兼容的尺寸表示（数字或百分比字符串） */
+/** SizeValue 类型（数字或百分比字符串） */
 export type SizeValue = number | `${number}%`;
 
 /** Overlay 锚点位置 */
@@ -60,7 +59,7 @@ export interface SelectItem {
   description?: string;
 }
 
-/** 斜杠命令定义（数据类型，与 pi-tui 兼容） */
+/** 斜杠命令定义 */
 export interface SlashCommand {
   name: string;
   description?: string;
