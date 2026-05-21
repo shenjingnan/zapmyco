@@ -63,22 +63,6 @@ vi.mock('chalk', () => {
   return { default: chalk, ...chalk };
 });
 
-// Mock pi-tui Container
-vi.mock('@earendil-works/pi-tui', () => ({
-  Container: class MockContainer {
-    invalidate() {
-      /* prototype method for super.invalidate() */
-    }
-  },
-  truncateToWidth: (text: string, maxWidth: number) => {
-    if (maxWidth <= 0) return '';
-    if (text.length <= maxWidth) return text;
-    const target = maxWidth - 3;
-    if (target <= 0) return '.'.repeat(maxWidth);
-    return `${text.slice(0, target)}...`;
-  },
-}));
-
 // Mock agent-instance-manager
 const mockListActive = vi.fn();
 vi.mock('@/core/agent-team/agent-instance-manager', () => ({

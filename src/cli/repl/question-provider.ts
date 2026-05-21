@@ -1,7 +1,7 @@
 /**
  * TUI 问题提供者
  *
- * 桥接 QuestionManager 与 pi-tui UI 层。
+ * 桥接 QuestionManager 与 TUI 层。
  * 由 session.ts 在初始化时创建并注入 QuestionManager。
  *
  * @module cli/repl/question-provider

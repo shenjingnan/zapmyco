@@ -1,7 +1,6 @@
 /**
- * REPL 会话核心（pi-tui 版）
+ * REPL 会话核心
  *
- * 使用 @earendil-works/pi-tui 框架替代 readline，
  * 实现完整的 TUI 交互式 REPL：
  * - Editor 组件自带上下边框
  * - 差量渲染，无闪烁
@@ -126,7 +125,7 @@ function getApiKeyErrorHelp(errorMessage: string): string[] {
 /**
  * 输出区域组件
  *
- * 管理所有输出内容的行缓冲，实现 pi-tui 的 render 接口。
+ * 管理所有输出内容的行缓冲，实现 render 接口。
  */
 class OutputArea extends Container {
   private lines: string[] = [];
@@ -771,7 +770,7 @@ export class ReplSession {
     /**
      * 合并渲染请求——在同一个微任务内的多次调用合并为一次 requestRender。
      * 流式事件（OUTPUT/THINKING/PROGRESS）短时间密集到达时，避免为每个事件
-     * 都调用 requestRender（即使 pi-tui 内部有 16ms 去抖，仍可减少调度开销）。
+     * 都调用 requestRender（即使 TUI 内部有 16ms 去抖，仍可减少调度开销）。
      */
     let coalesceRenderPending = false;
     const requestCoalescedRender = () => {
@@ -1834,7 +1833,7 @@ export class ReplSession {
     this.buildAutocompleteProvider();
   }
 
-  /** 构建并设置 autocomplete provider，将命令注册表中的命令接入 pi-tui 补全系统 */
+  /** 构建并设置 autocomplete provider，将命令注册表中的命令接入补全系统 */
   private buildAutocompleteProvider(): void {
     const slashCommands: SlashCommand[] = [];
 

@@ -1,7 +1,7 @@
 /**
  * 自定义编辑器组件
  *
- * 继承自 pi-tui 的 Editor，添加 zapmyco 特有的快捷键处理：
+ * 继承自 Editor，添加 zapmyco 特有的快捷键处理：
  * - Ctrl+C: 取消任务 / 二次退出
  * - Ctrl+D: 退出
  * - Ctrl+G: 打开外部编辑器编辑输入

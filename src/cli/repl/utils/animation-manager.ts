@@ -10,7 +10,7 @@ export type FrameCallback = (timestamp: number) => void;
  * AnimationManager — 将 spinner/计时器动画从 setInterval 迁移到渲染周期驱动
  *
  * 原理：
- * 通过 monkey-patch pi-tui 的 doRender() 方法，在每次实际渲染前统一推进
+ * 通过 monkey-patch TUI 的 doRender() 方法，在每次实际渲染前统一推进
  * 所有已注册的 spinner 帧，从而：
  * 1. 消除对 setInterval (macrotask) 的依赖，避免 Timer 阶段被事件循环饿死
  * 2. 帧推进与渲染同步，视觉上更流畅

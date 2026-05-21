@@ -1,12 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Mock pi-tui — 剩余 pi-tui re-export 在后续 PR 替换
-// Editor 已自建，不再需要 mock
-// parseKey 用于 key.ts 的 matchesKey（PR 5 替换为本地实现）
-vi.mock('@earendil-works/pi-tui', () => ({
-  parseKey: vi.fn((_data: string) => undefined),
-}));
-
 import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 
 describe('ZapmycoEditor', () => {

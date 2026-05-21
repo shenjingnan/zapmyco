@@ -1,5 +1,5 @@
 /**
- * pi-tui 主题配置
+ * 主题配置
  *
  * 定义 zapmyco TUI 的颜色方案和组件样式。
  * 风格：灰色边框 + 简洁配色，与原有 CLI 风格保持一致。
@@ -14,7 +14,7 @@ function makeColor(colorEnabled: boolean): typeof chalk {
 }
 
 /**
- * 创建 zapmyco pi-tui 主题
+ * 创建 zapmyco TUI 主题
  */
 export function createTheme(colorEnabled: boolean) {
   const c = makeColor(colorEnabled);
