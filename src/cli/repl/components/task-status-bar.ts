@@ -61,6 +61,12 @@ export class TaskStatusBar extends Container {
   /** 上次是否有 in_progress 任务（用于启停动画） */
   #hadInProgress = false;
 
+  /**
+   * 摘要是否已 flush 到 OutputArea。
+   * flush 后 render() 返回 [] 以隐藏自身，避免与 OutputArea 中的内容重复。
+   */
+  #flushed = false;
+
   constructor(store: TaskStore, animationManager: AnimationManager) {
     super();
     this.#store = store;
@@ -78,6 +84,28 @@ export class TaskStatusBar extends Container {
    */
   onTasksChanged(): void {
     this.invalidate();
+  }
+
+  /**
+   * 将当前任务摘要 flush 到 OutputArea（由 session 在执行完成后调用）。
+   *
+   * 获取当前渲染行并返回，同时标记 #flushed = true，
+   * 后续 render() 返回 [] 以避免与 OutputArea 中的内容重复。
+   *
+   * @param width - 终端宽度
+   * @returns 当前渲染行（无任务时返回空数组）
+   */
+  flushSummary(width: number): string[] {
+    const lines = this.render(width);
+    if (lines.length > 0) {
+      this.#flushed = true;
+    }
+    return lines;
+  }
+
+  /** 重置 flush 标记（新执行开始时调用，恢复状态栏显示） */
+  resetFlush(): void {
+    this.#flushed = false;
   }
 
   override invalidate(): void {
@@ -135,6 +163,9 @@ export class TaskStatusBar extends Container {
   }
 
   override render(width: number): string[] {
+    // flush 后隐藏自身，避免与 OutputArea 中的摘要重复
+    if (this.#flushed) return [];
+
     const tasks = this.#store.read();
     const summary = this.#store.summary();
 
