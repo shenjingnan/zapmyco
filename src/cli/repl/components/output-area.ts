@@ -9,7 +9,13 @@ import chalk, { Chalk } from 'chalk';
 import { stripAnsi } from '@/cli/repl/tools/shell-security';
 import type { HistoryEntry } from '@/cli/repl/types';
 import type { Rect, Screen, SgrMouseEvent, StylePool } from '@/cli/tui';
-import { Container, renderAnsiLineToScreen, setClipboard, wrapTextWithAnsi } from '@/cli/tui';
+import {
+  Container,
+  type ProcessTerminal,
+  renderAnsiLineToScreen,
+  setClipboard,
+  wrapTextWithAnsi,
+} from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
@@ -483,19 +489,65 @@ export class OutputArea extends Container {
       result.push(...this.getOrCreateWrappedLine(i));
     }
 
-    // 在旧管线中直接渲染选区高亮（作为 ANSI 转义序列写入输出行）
-    if (this.#selection && width > 0) {
-      this.#applySelectionToLines(result, width);
+    return result;
+  }
+
+  /**
+   * 渲染后覆盖层：用独立的光标定位在终端上画选区背景。
+   * 不修改 content 行本身的 ANSI 字符串，避免 ANSI 码相互干扰。
+   */
+  renderOverlay(terminal: ProcessTerminal): void {
+    const sel = this.#selection;
+    if (!sel) return;
+
+    const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
+    const endLine = sel.startLine <= sel.endLine ? sel.endLine : sel.startLine;
+    const rect = this.#areaRect;
+    if (!rect) return;
+
+    // 计算可见窗口（同 renderToScreen 算法）
+    const totalHeight = this.wrappedHeights.reduce((a, b) => a + b, 0);
+    if (totalHeight <= 0) return;
+    const maxScroll = Math.max(0, totalHeight - rect.height);
+    const clampedOffset = Math.min(this.#scrollOffset, maxScroll);
+    const visibleEnd = totalHeight - clampedOffset;
+    const visibleStart = Math.max(0, visibleEnd - rect.height);
+
+    const SEL = '\x1b[48;2;38;79;120m';
+    const RESET = '\x1b[49m';
+
+    let buf = '';
+    let displayRow = 0;
+
+    for (let ll = 0; ll < this.wrappedHeights.length; ll++) {
+      const h = this.wrappedHeights[ll] ?? 1;
+
+      if (ll < startLine || ll > endLine) {
+        displayRow += h;
+        continue;
+      }
+
+      for (let wi = 0; wi < h; wi++) {
+        const globalDl = displayRow + wi;
+        if (globalDl < visibleStart || globalDl >= visibleEnd) {
+          continue;
+        }
+        // 该显示行在屏幕上的位置
+        const screenRow = rect.y + (globalDl - visibleStart);
+        // 写入光标定位 + 选区背景 + 整行空格 + 背景重置
+        buf += `\x1b[${screenRow + 1};1H${SEL}${' '.repeat(rect.width)}${RESET}`;
+      }
+      displayRow += h;
     }
 
-    return result;
+    if (buf) terminal.write(buf);
   }
 
   /**
    * 在 ANSI 行数组中应用选区高亮（旧管线用）。
    * 遍历每一行，将选中字符包裹在选区背景色 ANSI 序列中。
    */
-  #applySelectionToLines(lines: string[], lineWidth: number): void {
+  _applySelectionToLines(lines: string[], lineWidth: number): void {
     const sel = this.#selection;
     if (!sel) return;
 
@@ -579,7 +631,12 @@ export class OutputArea extends Container {
               // 其他 ESC 序列: 跳过 ESC 后的一个字节
               if (i < wrappedLine.length) i++;
             }
-            out += wrappedLine.slice(seqStart, i);
+            const seq = wrappedLine.slice(seqStart, i);
+            out += seq;
+            // 选区内的 SGR 序列（以 m 结尾）可能重置背景色，需要重新应用 SEL_BG
+            if (inSel && seq.endsWith('m')) {
+              out += SEL_BG;
+            }
           } else {
             // 可见字符
             if (!inSel && charPos >= selStart && charPos < selEnd) {
@@ -748,7 +805,7 @@ export class OutputArea extends Container {
   clearSelection(): void {
     this.#selection = null;
     this.#isDragging = false;
-    this.#selectionLocked = false;
+    this.#selectionLocked = true;
     this.invalidate();
   }
 
@@ -830,9 +887,11 @@ export class OutputArea extends Container {
    * - release: 结束拖拽状态，保持选择高亮
    */
   handleMouseEvent(event: SgrMouseEvent): void {
-    // 只处理左键（drag 兼容 button=3：iTerm2 在不按 Option 时截获 press，
-    // 后续 motion 事件的 button 编码为 3 而非 0）
-    if (event.button !== 0 && !(event.action === 'drag' && event.button === 3)) return;
+    // 只处理左键。button=3 表示"无按键"的 motion（DEC 1003），
+    // 只允许在已拖拽状态下延续选择，不可用于开始选择。
+    if (event.button !== 0) {
+      if (!(event.action === 'drag' && event.button === 3 && this.#isDragging)) return;
+    }
 
     switch (event.action) {
       case 'press': {
@@ -856,11 +915,12 @@ export class OutputArea extends Container {
       }
       case 'drag': {
         if (!this.#isDragging) {
-          // 鼠标释放后的 motion 事件（btn=35）不应重新开始选择。
+          // button=3（无按键 motion）不可用于隐式 press。
+          // 若此处是 button=0 且前一次选择已清除/锁定，则忽略。
           if (this.#selection || this.#selectionLocked) return;
           // iTerm2 在不按 Option 时不发送 press 事件（截获用于原生选择），
-          // 直接以 drag 事件开始。这里将首次 drag 视为隐式 press + drag 处理，
-          // 确保选择仍能正常开始。
+          // 直接以 drag 事件开始，但仅限 button=0 的 drag（btn=32）。
+          if (event.button !== 0) return;
           const pos = this.#terminalToLogical(event.col, event.row);
           this.#selection = {
             startLine: pos.line,
