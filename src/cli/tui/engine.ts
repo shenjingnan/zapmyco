@@ -33,6 +33,7 @@
  */
 
 import { writeSync } from 'node:fs';
+import { logger } from '@/infra/logger';
 import { Container } from './container';
 import {
   BSU,
@@ -49,7 +50,6 @@ import { detectDecstbmScroll, diffScreens } from './diff';
 import { Screen } from './screen';
 import { StylePool } from './style-pool';
 import type { ProcessTerminal } from './terminal';
-import { logger } from '@/infra/logger';
 import type {
   Component,
   OverlayHandle,
@@ -768,7 +768,9 @@ export class TUI {
     // 非滚轮事件：构造 SgrMouseEvent 并分发
     const action = terminator === 'm' ? 'release' : (btn & 0x20) !== 0 ? 'drag' : 'press';
 
-    logger.info(`SGR_MOUSE btn=${btn} col=${col} row=${row} action=${action} button=${btn & 3} meta=${(btn & 8) !== 0}`);
+    logger.info(
+      `SGR_MOUSE btn=${btn} col=${col} row=${row} action=${action} button=${btn & 3} meta=${(btn & 8) !== 0}`
+    );
 
     const event: SgrMouseEvent = {
       btn,
@@ -845,7 +847,7 @@ export class TUI {
           (child as { setAreaRect?: (r: typeof rect) => void }).setAreaRect?.(rect);
           y += scrollableHeight;
         } else {
-          y += (outputs[i]?.lines.length ?? 0);
+          y += outputs[i]?.lines.length ?? 0;
         }
       }
     }
