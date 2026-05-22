@@ -1001,4 +1001,313 @@ describe('OutputArea', () => {
       expect(screen.getCell(0, 1).char).not.toBe('');
     });
   });
+
+  // ===========================================================================
+  // 选择管理测试
+  // ===========================================================================
+
+  describe('选择管理', () => {
+    describe('handleMouseEvent + 高亮渲染', () => {
+      it('左键 press+drag 应渲染选中高亮', () => {
+        const area = new OutputArea();
+        area.append(['Hello World']);
+        const pool = createStylePool();
+        const screen = createScreen(5, 40);
+
+        // 首次 render（建立 rect 缓存）
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // press 在 col=1, drag 到 col=6 (选择 "Hello")
+        area.handleMouseEvent({
+          btn: 0,
+          col: 1,
+          row: 1,
+          action: 'press',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        area.handleMouseEvent({
+          btn: 32,
+          col: 6,
+          row: 1,
+          action: 'drag',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+
+        // 第二次 render（应渲染高亮）
+        const screen2 = createScreen(5, 40);
+        area.renderToScreen(screen2, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // 未选中字符 styleId 应为 0（默认）
+        expect(screen2.getCell(5, 0).styleId).toBe(0);
+
+        // 选中范围: char 0-4 (H,e,l,l,o) → 注意 withSelectionBg(0) 内联一个新样式
+        // 验证这些 cell 的 styleId 不为 0（有选中背景）
+        for (let c = 0; c < 5; c++) {
+          const cell = screen2.getCell(c, 0);
+          expect(cell.styleId).not.toBe(0);
+          expect(cell.char).toBe('Hello'[c]);
+        }
+      });
+
+      it('无选择时 styleId 应为 0', () => {
+        const area = new OutputArea();
+        area.append(['Hello']);
+        const pool = createStylePool();
+        const screen = createScreen(5, 40);
+
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // 所有有内容的 cell styleId 应为 0（无样式）
+        for (let c = 0; c < 5; c++) {
+          expect(screen.getCell(c, 0).styleId).toBe(0);
+        }
+      });
+
+      it('选择不应改变 cell 字符内容', () => {
+        const area = new OutputArea();
+        area.append(['Hello World']);
+        const pool = createStylePool();
+        const screen = createScreen(5, 40);
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // 记录正常渲染的字符
+        const charsBefore: string[] = [];
+        for (let c = 0; c < 11; c++) {
+          charsBefore.push(screen.getCell(c, 0).char);
+        }
+
+        // 选择 + 重新渲染
+        area.handleMouseEvent({
+          btn: 0,
+          col: 1,
+          row: 1,
+          action: 'press',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        area.handleMouseEvent({
+          btn: 32,
+          col: 6,
+          row: 1,
+          action: 'drag',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        const screen2 = createScreen(5, 40);
+        area.renderToScreen(screen2, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // 字符内容不应改变
+        for (let c = 0; c < 11; c++) {
+          expect(screen2.getCell(c, 0).char).toBe(charsBefore[c]);
+        }
+      });
+
+      it('release 后再次 press 应更新选择位置', () => {
+        const area = new OutputArea();
+        area.append(['Hello World']);
+        const pool = createStylePool();
+
+        // 第一次选择 "Hello"
+        let screen = createScreen(5, 40);
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+        area.handleMouseEvent({
+          btn: 0,
+          col: 1,
+          row: 1,
+          action: 'press',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        area.handleMouseEvent({
+          btn: 32,
+          col: 6,
+          row: 1,
+          action: 'drag',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        area.handleMouseEvent({
+          btn: 0,
+          col: 6,
+          row: 1,
+          action: 'release',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+
+        // 第二次选择 "World" (col 7-11)
+        area.handleMouseEvent({
+          btn: 0,
+          col: 7,
+          row: 1,
+          action: 'press',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        area.handleMouseEvent({
+          btn: 32,
+          col: 12,
+          row: 1,
+          action: 'drag',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        screen = createScreen(5, 40);
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // "Hello" 不应高亮（旧选择被清除）
+        for (let c = 0; c < 5; c++) {
+          expect(screen.getCell(c, 0).styleId).toBe(0);
+        }
+        // "World" 应高亮
+        for (let c = 6; c < 11; c++) {
+          expect(screen.getCell(c, 0).styleId).not.toBe(0);
+        }
+      });
+
+      it('非左键事件应被忽略（无高亮）', () => {
+        const area = new OutputArea();
+        area.append(['Hello']);
+        const pool = createStylePool();
+        const screen = createScreen(5, 40);
+
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // 右键 press
+        area.handleMouseEvent({
+          btn: 2,
+          col: 1,
+          row: 1,
+          action: 'press',
+          button: 2,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+
+        // 重新渲染
+        const screen2 = createScreen(5, 40);
+        area.renderToScreen(screen2, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+        // 不应有高亮
+        for (let c = 0; c < 5; c++) {
+          expect(screen2.getCell(c, 0).styleId).toBe(0);
+        }
+      });
+
+      it('终端 resize 应清除选择', () => {
+        const area = new OutputArea();
+        area.append(['Hello World']);
+        const pool = createStylePool();
+
+        // 第一次 render（width=40）
+        let screen = createScreen(5, 40);
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+        area.handleMouseEvent({
+          btn: 0,
+          col: 1,
+          row: 1,
+          action: 'press',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        area.handleMouseEvent({
+          btn: 32,
+          col: 6,
+          row: 1,
+          action: 'drag',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+
+        // resize → width 从 40 → 80
+        screen = createScreen(5, 80);
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 80, height: 5 });
+
+        // resize 后不应有高亮
+        for (let c = 0; c < 11; c++) {
+          expect(screen.getCell(c, 0).styleId).toBe(0);
+        }
+      });
+
+      it('选择跨越换行的长文本应正确高亮', () => {
+        const area = new OutputArea();
+        // 30 个字符在 20 列宽下需要 2 个显示行
+        area.append([`${'A'.repeat(15)}${'B'.repeat(15)}`]);
+        const pool = createStylePool();
+
+        // 以 20 列宽渲染
+        const screen = createScreen(5, 20);
+        area.renderToScreen(screen, pool, { x: 0, y: 0, width: 20, height: 5 });
+
+        // 选择第 1 行的后 10 个 A 到第 2 行的前 5 个 B
+        // col 11 = 第 1 行第 11 个字符（0-based: 10），对应 offset 10
+        // col 6 = 第 2 行第 6 个字符（0-based: 5），对应 offset 20+5=25
+        area.handleMouseEvent({
+          btn: 0,
+          col: 11,
+          row: 1,
+          action: 'press',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+        area.handleMouseEvent({
+          btn: 32,
+          col: 6,
+          row: 2,
+          action: 'drag',
+          button: 0,
+          shiftKey: false,
+          metaKey: false,
+          ctrlKey: false,
+        });
+
+        const screen2 = createScreen(5, 20);
+        area.renderToScreen(screen2, pool, { x: 0, y: 0, width: 20, height: 5 });
+
+        // 第 0-9 行: 前 10 个 A 不应高亮
+        for (let c = 0; c < 10; c++) {
+          expect(screen2.getCell(c, 0).styleId).toBe(0);
+        }
+        // 第 10-19 列: 后 5 个 A 应高亮
+        for (let c = 10; c < 15; c++) {
+          expect(screen2.getCell(c, 0).styleId).not.toBe(0);
+        }
+        // 第 1 行 0-4 列: 前 5 个 B 应高亮
+        for (let c = 0; c < 5; c++) {
+          expect(screen2.getCell(c, 1).styleId).not.toBe(0);
+        }
+        // 第 1 行 5-19 列: 后 10 个 B 不应高亮
+        for (let c = 5; c < 20; c++) {
+          expect(screen2.getCell(c, 1).styleId).toBe(0);
+        }
+      });
+    });
+  });
 });
