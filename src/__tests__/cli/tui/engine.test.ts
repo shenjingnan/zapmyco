@@ -8,7 +8,7 @@ import { TUI } from '@/cli/tui/engine';
 import type { Screen } from '@/cli/tui/screen';
 import type { StylePool } from '@/cli/tui/style-pool';
 import type { ProcessTerminal } from '@/cli/tui/terminal';
-import type { Component, Rect } from '@/cli/tui/types';
+import type { Component, Rect, SgrMouseEvent } from '@/cli/tui/types';
 
 // ---------------------------------------------------------------------------
 // Mock ProcessTerminal
@@ -949,6 +949,229 @@ describe('TUI', () => {
       expect(() => {
         handler(Buffer.from('\x1b[<64;10;5M'));
       }).not.toThrow();
+    });
+
+    // -----------------------------------------------------------------------
+    // handleMouseEvent — PR1: SGR 鼠标事件扩展
+    // -----------------------------------------------------------------------
+
+    it('左键按下事件应调用 handleMouseEvent', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      const handler = getStdinHandler();
+      handler(Buffer.from('\x1b[<0;10;5M'));
+
+      expect(comp.handleMouseEvent).toHaveBeenCalledTimes(1);
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.btn).toBe(0);
+      expect(event.col).toBe(10);
+      expect(event.row).toBe(5);
+      expect(event.action).toBe('press');
+      expect(event.button).toBe(0);
+      expect(event.shiftKey).toBe(false);
+      expect(event.metaKey).toBe(false);
+      expect(event.ctrlKey).toBe(false);
+    });
+
+    it('中键按下事件应设置 button===1', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      getStdinHandler()(Buffer.from('\x1b[<1;20;8M'));
+
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.button).toBe(1);
+    });
+
+    it('右键按下事件应设置 button===2', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      getStdinHandler()(Buffer.from('\x1b[<2;15;3M'));
+
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.button).toBe(2);
+    });
+
+    it('左键拖动事件（btn&0x20）应设置 action==="drag"', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      // btn=32 = 左键(0) | 0x20(drag flag)
+      getStdinHandler()(Buffer.from('\x1b[<32;10;5M'));
+
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.action).toBe('drag');
+      expect(event.button).toBe(0);
+    });
+
+    it('左键释放事件（小写 m 终止符）应设置 action==="release"', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      // 小写 m 终止符 = release
+      getStdinHandler()(Buffer.from('\x1b[<0;10;5m'));
+
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.action).toBe('release');
+    });
+
+    it('Shift+左键事件应设置 shiftKey===true', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      // btn=4 = 左键(0) | 0x04(shift)
+      getStdinHandler()(Buffer.from('\x1b[<4;10;5M'));
+
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.shiftKey).toBe(true);
+    });
+
+    it('Meta+左键事件应设置 metaKey===true', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      // btn=8 = 左键(0) | 0x08(mask)
+      getStdinHandler()(Buffer.from('\x1b[<8;10;5M'));
+
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.metaKey).toBe(true);
+    });
+
+    it('Ctrl+左键事件应设置 ctrlKey===true', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      // btn=16 = 左键(0) | 0x10(ctrl)
+      getStdinHandler()(Buffer.from('\x1b[<16;10;5M'));
+
+      const event = comp.handleMouseEvent.mock.calls[0]?.[0] as SgrMouseEvent;
+      expect(event.ctrlKey).toBe(true);
+    });
+
+    it('滚轮事件（btn=64）仍应走 handleScroll 而非 handleMouseEvent', () => {
+      const comp = createMockComponent() as Component & {
+        handleScroll: ReturnType<typeof vi.fn>;
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleScroll = vi.fn();
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      getStdinHandler()(Buffer.from('\x1b[<64;10;5M'));
+
+      expect(comp.handleScroll).toHaveBeenCalledWith('up');
+      expect(comp.handleMouseEvent).not.toHaveBeenCalled();
+    });
+
+    it('滚轮向下事件（btn=65）仍应走 handleScroll', () => {
+      const comp = createMockComponent() as Component & {
+        handleScroll: ReturnType<typeof vi.fn>;
+      };
+      comp.handleScroll = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      getStdinHandler()(Buffer.from('\x1b[<65;10;5M'));
+
+      expect(comp.handleScroll).toHaveBeenCalledWith('down');
+    });
+
+    it('无 handleMouseEvent 的组件接收非滚轮事件不应报错', () => {
+      tui.addChild(createMockComponent());
+      tui.start();
+
+      const handler = getStdinHandler();
+      expect(() => {
+        handler(Buffer.from('\x1b[<0;10;5M'));
+      }).not.toThrow();
+    });
+
+    it('鼠标事件后跟键盘数据应同时触发 handleMouseEvent 和 handleInput', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.setFocus(comp);
+      tui.start();
+
+      const handler = getStdinHandler();
+      handler(Buffer.from('\x1b[<0;10;5Mhello'));
+
+      expect(comp.handleMouseEvent).toHaveBeenCalled();
+      expect(comp.handleInput).toHaveBeenCalledWith('hello');
+    });
+
+    it('焦点组件的 handleMouseEvent 优先于子组件', () => {
+      const focused = createMockComponent() as Component & {
+        focused?: boolean;
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      focused.handleMouseEvent = vi.fn();
+      focused.focused = true;
+      tui.setFocus(focused);
+
+      const child = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      child.handleMouseEvent = vi.fn();
+      tui.addChild(child);
+      tui.start();
+
+      getStdinHandler()(Buffer.from('\x1b[<0;10;5M'));
+
+      expect(focused.handleMouseEvent).toHaveBeenCalled();
+      expect(child.handleMouseEvent).not.toHaveBeenCalled();
+    });
+
+    it('handleMouseEvent 事件应触发 requestRender', () => {
+      const comp = createMockComponent() as Component & {
+        handleMouseEvent: ReturnType<typeof vi.fn>;
+      };
+      comp.handleMouseEvent = vi.fn();
+      tui.addChild(comp);
+      tui.start();
+
+      const renderSpy = vi.spyOn(tui, 'requestRender');
+      renderSpy.mockClear();
+
+      getStdinHandler()(Buffer.from('\x1b[<0;10;5M'));
+
+      expect(renderSpy).toHaveBeenCalled();
     });
   });
 });

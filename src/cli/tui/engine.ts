@@ -49,7 +49,14 @@ import { detectDecstbmScroll, diffScreens } from './diff';
 import { Screen } from './screen';
 import { StylePool } from './style-pool';
 import type { ProcessTerminal } from './terminal';
-import type { Component, OverlayHandle, OverlayMargin, OverlayOptions, Rect } from './types';
+import type {
+  Component,
+  OverlayHandle,
+  OverlayMargin,
+  OverlayOptions,
+  Rect,
+  SgrMouseEvent,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // 导出：ANSI 行 → Screen 缓冲区渲染
@@ -298,10 +305,12 @@ export class TUI {
         if (!sgrMouseMatch) break;
         hadMouseEvent = true;
         const btn = Number.parseInt(sgrMouseMatch[1] ?? '0', 10);
-        // 仅处理滚轮事件（64=up, 65=down），忽略按钮释放等事件
-        if (btn === 64 || btn === 65) {
-          this.handleSgrMouseEvent(btn);
-        }
+        const col = Number.parseInt(sgrMouseMatch[2] ?? '0', 10);
+        const row = Number.parseInt(sgrMouseMatch[3] ?? '0', 10);
+        const terminator = sgrMouseMatch[4] ?? 'M';
+
+        this.#handleSgrMouseEvent(btn, col, row, terminator);
+
         // 消费已匹配的 SGR 序列
         data = data.slice(sgrMouseMatch[0].length);
       }
@@ -728,18 +737,20 @@ export class TUI {
   // ======================================================================
 
   /**
-   * 处理 SGR 编码的鼠标事件
-   * @returns true 如果事件已处理
+   * 解析并分发 SGR 编码的鼠标事件。
+   *
+   * 滚轮事件（btn===64/65）走现有 handleScroll 路径。
+   * 其他事件构造 SgrMouseEvent，通过 handleMouseEvent 分发给组件。
    */
-  private handleSgrMouseEvent(btn: number): boolean {
-    // 64 = wheel up, 65 = wheel down
+  #handleSgrMouseEvent(btn: number, col: number, row: number, terminator: string): void {
+    // 滚轮事件（64=up, 65=down）
     if (btn === 64 || btn === 65) {
       const direction: 'up' | 'down' = btn === 64 ? 'up' : 'down';
       // 优先分发给焦点组件
       if (this.focused?.handleScroll) {
         this.focused.handleScroll(direction);
         this.requestRender();
-        return true;
+        return;
       }
       // 其次查找根容器中的可滚动子组件
       const scrollableChildren = this.getLayoutChildren();
@@ -747,11 +758,42 @@ export class TUI {
         if (child.handleScroll) {
           child.handleScroll(direction);
           this.requestRender();
-          return true;
+          return;
         }
       }
+      return;
     }
-    return false;
+
+    // 非滚轮事件：构造 SgrMouseEvent 并分发
+    const action = terminator === 'm' ? 'release' : (btn & 0x20) !== 0 ? 'drag' : 'press';
+
+    const event: SgrMouseEvent = {
+      btn,
+      col,
+      row,
+      action,
+      button: btn & 3,
+      shiftKey: (btn & 4) !== 0,
+      metaKey: (btn & 8) !== 0,
+      ctrlKey: (btn & 16) !== 0,
+    };
+
+    // 优先分发给焦点组件
+    if (this.focused?.handleMouseEvent) {
+      this.focused.handleMouseEvent(event);
+      this.requestRender();
+      return;
+    }
+
+    // 其次查找子组件
+    const children = this.getLayoutChildren();
+    for (const child of children) {
+      if (child.handleMouseEvent) {
+        child.handleMouseEvent(event);
+        this.requestRender();
+        return;
+      }
+    }
   }
 
   /**

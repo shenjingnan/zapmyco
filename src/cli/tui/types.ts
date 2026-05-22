@@ -15,6 +15,29 @@ export interface Rect {
   height: number;
 }
 
+/** SGR 编码的鼠标事件 */
+export interface SgrMouseEvent {
+  /** SGR button code，包含按钮类型和修饰键标志 */
+  btn: number;
+  /** 1-based 列号（终端坐标） */
+  col: number;
+  /** 1-based 行号（终端坐标） */
+  row: number;
+  /** 事件类型: press=按下, release=释放, drag=拖拽 */
+  action: 'press' | 'release' | 'drag';
+  /**
+   * 按钮类型（从 btn 低 2 位提取）:
+   *   0 = 左键, 1 = 中键, 2 = 右键
+   */
+  button: number;
+  /** Shift 键是否按下（btn & 4） */
+  shiftKey: boolean;
+  /** Meta/Alt 键是否按下（btn & 8） */
+  metaKey: boolean;
+  /** Ctrl 键是否按下（btn & 16） */
+  ctrlKey: boolean;
+}
+
 /** 组件接口 — 所有 TUI 组件必须实现此接口 */
 export interface Component {
   render(width: number): string[];
@@ -24,6 +47,8 @@ export interface Component {
   /** 当前滚动偏移量（0 = 底部），用于引擎层切片 */
   readonly scrollOffset?: number;
   invalidate(): void;
+  /** 处理 SGR 鼠标事件 */
+  handleMouseEvent?(event: SgrMouseEvent): void;
 
   /**
    * 渲染到 Screen 缓冲区（新接口）。

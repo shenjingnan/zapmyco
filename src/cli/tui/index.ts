@@ -53,5 +53,6 @@ export type {
   Rect,
   SelectItem,
   SelectListTheme,
+  SgrMouseEvent,
   SlashCommand,
 } from './types';
