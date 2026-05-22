@@ -10,11 +10,11 @@ import { stripAnsi } from '@/cli/repl/tools/shell-security';
 import type { HistoryEntry } from '@/cli/repl/types';
 import type { Rect, Screen, SgrMouseEvent, StylePool } from '@/cli/tui';
 import { Container, renderAnsiLineToScreen, setClipboard, wrapTextWithAnsi } from '@/cli/tui';
-import { logger } from '@/infra/logger';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
 import { t } from '@/i18n';
+import { logger } from '@/infra/logger';
 import type { AgentRegistration } from '@/protocol/capability';
 
 /**
@@ -500,11 +500,8 @@ export class OutputArea extends Container {
     // 归一化
     const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
     const endLine = sel.startLine <= sel.endLine ? sel.endLine : sel.startLine;
-    const startOff = sel.startLine <= sel.endLine ? sel.startOffset : sel.endOffset;
-    const endOff = sel.startLine <= sel.endLine ? sel.endOffset : sel.startOffset;
-
     // 选区背景色 ANSI 序列
-    const SEL_BG = '\x1b[48;2;58;58;140m';
+    const SEL_BG = '\x1b[48;2;38;79;120m';
     const BG_RESET = '\x1b[49m';
 
     // 遍历逻辑行，累加 wrapped 行偏移
@@ -521,57 +518,92 @@ export class OutputArea extends Container {
       // 处理本逻辑行的每个 wrapped 子行
       for (let wi = 0; wi < h; wi++) {
         if (globalLineIdx >= lines.length) break;
-        const wrappedLine = lines[globalLineIdx]!;
+        const wrappedLine = lines[globalLineIdx] ?? '';
 
         // 计算本子行在逻辑行中的字符范围
-        const wiCharStart = wi * lineWidth;
-        const wiCharEnd = wiCharStart + lineWidth;
-
         // 计算与选区相交的字符范围
         let selStart: number | undefined;
         let selEnd: number | undefined;
 
-        if (ll === startLine && ll === endLine) {
-          // 单行
-          selStart = Math.max(wiCharStart, startOff) - wiCharStart;
-          selEnd = Math.min(wiCharEnd, endOff) - wiCharStart;
-        } else if (ll === startLine) {
-          selStart = Math.max(wiCharStart, startOff) - wiCharStart;
-          selEnd = lineWidth;
-        } else if (ll === endLine) {
-          selStart = 0;
-          selEnd = Math.min(wiCharEnd, endOff) - wiCharStart;
-        } else {
-          selStart = 0;
-          selEnd = lineWidth;
-        }
+        // 所有选中行均使用整行宽度（0 ~ lineWidth），与 claude-code 行为一致。
+        selStart = 0;
+        selEnd = lineWidth;
 
-        if (selStart === undefined || selEnd === undefined || selStart >= selEnd || selStart >= lineWidth) {
+        if (
+          selStart === undefined ||
+          selEnd === undefined ||
+          selStart >= selEnd ||
+          selStart >= lineWidth
+        ) {
           globalLineIdx++;
           continue;
         }
 
         // 在 ANSI 行中按字符位置插入选区背景色
-        // 使用正则拆分 ANSI 序列和普通字符
-        const tokens = wrappedLine.match(/(\x1b\[[0-9;]*[a-zA-Z]|.)/g) ?? [];
+        // 使用逐字符遍历替换正则拆分行，避免 ANSI 序列解析不完整导致
+        // 字符计数偏移（表现为交替选中/不选中的"凹凸"模式）。
         let out = '';
         let charPos = 0;
         let inSel = false;
+        let i = 0;
 
-        for (const t of tokens) {
-          if (t.startsWith('\x1b[')) {
-            out += t;
+        while (i < wrappedLine.length) {
+          const ch = wrappedLine[i]!;
+          if (ch === '\x1b') {
+            // ANSI 转义序列：跳过整个序列（CSI 或 OSC 等），不计入 charPos
+            const seqStart = i;
+            i++; // 跳过 ESC
+            if (i < wrappedLine.length && wrappedLine[i]! === '[') {
+              // CSI 序列: \x1b[ params... final byte
+              i++;
+              while (i < wrappedLine.length && !/[a-zA-Z~]/.test(wrappedLine[i]!)) i++;
+              if (i < wrappedLine.length) i++;
+            } else if (i < wrappedLine.length && wrappedLine[i]! === ']') {
+              // OSC 序列: \x1b]...(\x07|\x1b\\)
+              i++;
+              while (
+                i < wrappedLine.length &&
+                wrappedLine[i]! !== '\x07' &&
+                !(
+                  wrappedLine[i]! === '\x1b' &&
+                  i + 1 < wrappedLine.length &&
+                  wrappedLine[i + 1]! === '\\'
+                )
+              ) {
+                i++;
+              }
+              if (i < wrappedLine.length) i++;
+            } else {
+              // 其他 ESC 序列: 跳过 ESC 后的一个字节
+              if (i < wrappedLine.length) i++;
+            }
+            out += wrappedLine.slice(seqStart, i);
           } else {
-            if (!inSel && charPos >= selStart) {
+            // 可见字符
+            if (!inSel && charPos >= selStart && charPos < selEnd) {
               out += SEL_BG;
               inSel = true;
             } else if (inSel && charPos >= selEnd) {
               out += BG_RESET;
               inSel = false;
             }
-            out += t;
+            out += wrappedLine[i];
             charPos++;
+            i++;
           }
+        }
+
+        // 行内容不足 lineWidth 时补齐空格，确保选区背景覆盖整行
+        while (charPos < lineWidth) {
+          if (!inSel && charPos >= selStart && charPos < selEnd) {
+            out += SEL_BG;
+            inSel = true;
+          } else if (inSel && charPos >= selEnd) {
+            out += BG_RESET;
+            inSel = false;
+          }
+          out += ' ';
+          charPos++;
         }
 
         if (inSel) out += BG_RESET;
@@ -813,11 +845,15 @@ export class OutputArea extends Container {
           endOffset: pos.offset,
         };
         this.#isDragging = true;
-        logger.info(`SEL press set line=${pos.line} offset=${pos.offset} rect=${JSON.stringify(this.#areaRect)}`);
+        logger.info(
+          `SEL press set line=${pos.line} offset=${pos.offset} rect=${JSON.stringify(this.#areaRect)}`
+        );
         break;
       }
       case 'drag': {
         if (!this.#isDragging) {
+          // 释放鼠标后的 motion 事件（btn=35）不应重新开始选择。
+          if (this.#selection) return;
           // iTerm2 在不按 Option 时不发送 press 事件（截获用于原生选择），
           // 直接以 drag 事件开始。这里将首次 drag 视为隐式 press + drag 处理，
           // 确保选择仍能正常开始。
@@ -1068,7 +1104,9 @@ export class OutputArea extends Container {
       logger.info('SEL render no_selection');
       return;
     }
-    logger.info(`SEL render startL=${sel.startLine} startO=${sel.startOffset} endL=${sel.endLine} endO=${sel.endOffset}`);
+    logger.info(
+      `SEL render startL=${sel.startLine} startO=${sel.startOffset} endL=${sel.endLine} endO=${sel.endOffset}`
+    );
 
     // 归一化：保证 start ≤ end
     const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
@@ -1150,11 +1188,9 @@ export class OutputArea extends Container {
         for (let c = colStart; c < colEnd; c++) {
           const screenCol = rect.x + c;
           const cell = screen.getCell(screenCol, screenRow);
-          // 只高亮有内容的单元格
-          if (cell.char !== '') {
-            const newStyleId = stylePool.withSelectionBg(cell.styleId);
-            screen.setCell(screenCol, screenRow, cell.char, newStyleId, cell.width);
-          }
+          // 高亮所有单元格（含空单元格），确保选区背景覆盖整行
+          const newStyleId = stylePool.withSelectionBg(cell.styleId);
+          screen.setCell(screenCol, screenRow, cell.char || ' ', newStyleId, cell.width);
         }
       }
 
