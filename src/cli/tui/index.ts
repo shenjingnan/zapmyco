@@ -21,6 +21,9 @@ export {
   HIDE_CURSOR,
   SHOW_CURSOR,
 } from './dec';
+export type { DiffResult, Patch } from './diff';
+// === Diff 引擎 ===
+export { diffScreens } from './diff';
 // === 本地 TUI 组件 ===
 export { Editor } from './editor';
 export { TUI } from './engine';
@@ -29,9 +32,14 @@ export { Input } from './input';
 export { Key, matchesKey } from './key';
 // === 本地键绑定 ===
 export { getKeybindings } from './keybindings';
+export type { Cell } from './screen';
+// === Screen 缓冲区 ===
+export { Screen } from './screen';
 export { SelectList } from './select-list';
+export type { AnsiCode } from './style-pool';
+// === 样式池 ===
+export { StylePool } from './style-pool';
 export { ProcessTerminal } from './terminal';
-
 // === 本地文本工具 ===
 export { truncateToWidth, wrapTextWithAnsi } from './text-utils';
 // === 本地类型定义 ===
@@ -41,6 +49,7 @@ export type {
   EditorTheme,
   OverlayHandle,
   OverlayOptions,
+  Rect,
   SelectItem,
   SelectListTheme,
   SlashCommand,

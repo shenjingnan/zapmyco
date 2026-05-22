@@ -4,6 +4,17 @@
  * 自建 TUI 组件所需的接口类型。
  */
 
+import type { Screen } from './screen';
+import type { StylePool } from './style-pool';
+
+/** 组件可见矩形区域 */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** 组件接口 — 所有 TUI 组件必须实现此接口 */
 export interface Component {
   render(width: number): string[];
@@ -13,6 +24,18 @@ export interface Component {
   /** 当前滚动偏移量（0 = 底部），用于引擎层切片 */
   readonly scrollOffset?: number;
   invalidate(): void;
+
+  /**
+   * 渲染到 Screen 缓冲区（新接口）。
+   *
+   * 优先于 render(width) 使用。引擎按布局顺序依次调用各组件
+   * 的 renderToScreen，组件将字符和样式写入指定区域的 Screen buffer。
+   *
+   * @param screen    Screen 缓冲区
+   * @param stylePool 样式池（用于 intern 样式）
+   * @param rect      组件在屏幕中的位置和尺寸
+   */
+  renderToScreen?(screen: Screen, stylePool: StylePool, rect: Rect): void;
 }
 
 /** SizeValue 类型（数字或百分比字符串） */

@@ -599,6 +599,70 @@ describe('TUI', () => {
     });
   });
 
+  describe('Screen pipeline', () => {
+    it('enableScreenPipeline 应切换到新管线且不报错', () => {
+      const child = createMockComponent('hello');
+      tui.addChild(child);
+      tui.requestRender(true);
+      tui.doRender(); // 旧管线先渲染一次
+      terminal.write.mockClear();
+
+      expect(() => tui.enableScreenPipeline()).not.toThrow();
+    });
+
+    it('disableScreenPipeline 应切回旧管线', () => {
+      tui.enableScreenPipeline();
+      expect(() => tui.disableScreenPipeline()).not.toThrow();
+    });
+
+    it('Screen 管线渲染不应报错', () => {
+      const child = createMockComponent('test');
+      tui.addChild(child);
+      tui.enableScreenPipeline();
+      // 触发渲染
+      tui.requestRender(true);
+      expect(() => tui.doRender()).not.toThrow();
+    });
+
+    it('Screen 管线输出含 BSU/ESU', () => {
+      const child = createMockComponent('screen-test');
+      tui.addChild(child);
+      tui.enableScreenPipeline();
+      tui.requestRender(true);
+      tui.doRender();
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain(BSU);
+      expect(writeCall).toContain(ESU);
+    });
+
+    it('Screen 管线输出含光标定位序列', () => {
+      const child = createMockComponent('cursor-test');
+      tui.addChild(child);
+      tui.enableScreenPipeline();
+      tui.requestRender(true);
+      tui.doRender();
+      const writeCall = terminal.write.mock.lastCall?.[0] as string;
+      expect(writeCall).toContain(';1H'); // cursorTo(0, row)
+    });
+
+    it('无子组件时 Screen 管线不应报错', () => {
+      tui.enableScreenPipeline();
+      tui.requestRender(true);
+      expect(() => tui.doRender()).not.toThrow();
+    });
+
+    it('Screen 管线在 stop() 后不应报错', () => {
+      tui.enableScreenPipeline();
+      expect(() => tui.stop()).not.toThrow();
+    });
+
+    it('切换管线应触发 requestRender', () => {
+      const renderSpy = vi.spyOn(tui, 'requestRender');
+      tui.enableScreenPipeline();
+      expect(renderSpy).toHaveBeenCalled();
+    });
+  });
+
   describe('SGR mouse events', () => {
     beforeEach(() => {
       vi.useFakeTimers();
