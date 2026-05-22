@@ -7,6 +7,8 @@
 export type { AutocompleteProvider, Completion } from './autocomplete';
 // === 本地自动补全 ===
 export { CombinedAutocompleteProvider } from './autocomplete';
+// === 剪贴板管理 ===
+export { setClipboard } from './clipboard';
 // === 本地引擎实现 ===
 export { Container } from './container';
 // === DEC 序列管理 ===

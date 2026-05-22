@@ -6,9 +6,10 @@
  */
 
 import chalk, { Chalk } from 'chalk';
+import { stripAnsi } from '@/cli/repl/tools/shell-security';
 import type { HistoryEntry } from '@/cli/repl/types';
 import type { Rect, Screen, SgrMouseEvent, StylePool } from '@/cli/tui';
-import { Container, renderAnsiLineToScreen, wrapTextWithAnsi } from '@/cli/tui';
+import { Container, renderAnsiLineToScreen, setClipboard, wrapTextWithAnsi } from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
@@ -592,6 +593,60 @@ export class OutputArea extends Container {
   }
 
   // -------------------------------------------------------------------------
+  // 文本提取
+  // -------------------------------------------------------------------------
+
+  /**
+   * 提取选中文本（纯文本，不含 ANSI 码）。
+   *
+   * 从 #selection 范围遍历逻辑行，提取对应字符偏移区间的文本，
+   * 每行经 stripAnsi 去除 ANSI 码后以 \n 拼接。
+   *
+   * @returns 选中区域的纯文本，无选择时返回空字符串
+   */
+  getSelectedText(): string {
+    const sel = this.#selection;
+    if (!sel) return '';
+
+    // 归一化：保证 startLine ≤ endLine
+    const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
+    const endLine = sel.startLine <= sel.endLine ? sel.endLine : sel.startLine;
+    // 同一行内：取较小偏移为 start，较大为 end
+    const startOffset =
+      startLine === endLine
+        ? Math.min(sel.startOffset, sel.endOffset)
+        : sel.startLine <= sel.endLine
+          ? sel.startOffset
+          : sel.endOffset;
+    const endOffset =
+      startLine === endLine
+        ? Math.max(sel.startOffset, sel.endOffset)
+        : sel.startLine <= sel.endLine
+          ? sel.endOffset
+          : sel.startOffset;
+
+    const lines: string[] = [];
+    for (let i = startLine; i <= endLine; i++) {
+      const rawLine = this.lines[i] ?? '';
+      if (i === startLine && i === endLine) {
+        // 单行选择
+        lines.push(stripAnsi(rawLine.slice(startOffset, endOffset)));
+      } else if (i === startLine) {
+        // 多行选择的首行
+        lines.push(stripAnsi(rawLine.slice(startOffset)));
+      } else if (i === endLine) {
+        // 多行选择的末行
+        lines.push(stripAnsi(rawLine.slice(0, endOffset)));
+      } else {
+        // 中间行：整行
+        lines.push(stripAnsi(rawLine));
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  // -------------------------------------------------------------------------
   // 鼠标事件处理
   // -------------------------------------------------------------------------
 
@@ -632,7 +687,7 @@ export class OutputArea extends Container {
       case 'release': {
         if (this.#isDragging) {
           this.#isDragging = false;
-          // 保持 selection 不变，高亮显示选中的文本
+          this.#copySelection();
         }
         break;
       }
@@ -942,6 +997,16 @@ export class OutputArea extends Container {
       }
 
       accumulated = dlEnd;
+    }
+  }
+
+  /** 复制选中文本到系统剪贴板 */
+  #copySelection(): void {
+    const text = this.getSelectedText();
+    if (!text) return;
+    const seq = setClipboard(text);
+    if (seq) {
+      process.stdout.write(seq);
     }
   }
 
