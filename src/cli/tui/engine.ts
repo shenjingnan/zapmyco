@@ -9,9 +9,17 @@
  * 组件调用 requestRender() → dirty=true
  *   → queueMicrotask → flush() 被调度
  *   → 检查节流（距上次渲染 ≥ 16ms）
- *   → computeOutput() → deltaUpdate / forceFullRedraw
+ *   → [Screen 管线]: renderToScreen → diffScreens → applyPatches
+ *   → [旧管线]:    computeOutput → deltaUpdate / forceFullRedraw
  *   → 定位硬件光标
  * ```
+ *
+ * ### 双管线架构
+ * useScreenPipeline 标志控制使用哪条渲染路径：
+ * - true  (新管线): Screen 缓冲区 + Cell 级 Diff → Patch → applyPatches
+ * - false (旧管线): render(width) → string[] → deltaUpdate（逐行比较）
+ *
+ * 组件逐步迁移到 renderToScreen 新接口后切换标志。
  *
  * 空闲时无任何定时器运行。
  *
@@ -26,9 +34,13 @@
 
 import { writeSync } from 'node:fs';
 import { Container } from './container';
-import { BSU, ESU, EXIT_ALT_SCREEN } from './dec';
+import { BSU, CSI, ESU, EXIT_ALT_SCREEN } from './dec';
+import type { Patch } from './diff';
+import { diffScreens } from './diff';
+import { Screen } from './screen';
+import { StylePool } from './style-pool';
 import type { ProcessTerminal } from './terminal';
-import type { Component, OverlayHandle, OverlayMargin, OverlayOptions } from './types';
+import type { Component, OverlayHandle, OverlayMargin, OverlayOptions, Rect } from './types';
 
 // ---------------------------------------------------------------------------
 // 内部类型
@@ -91,6 +103,19 @@ export class TUI {
   /** 编辑器光标位置（从光标标记解析） */
   private cursorRow = -1;
   private cursorCol = -1;
+
+  // -----------------------------------------------------------------------
+  // Screen 管线字段
+  // -----------------------------------------------------------------------
+
+  /** 上一帧的 Screen 缓冲区（用于差异计算） */
+  private prevScreen: Screen | null = null;
+
+  /** 样式池（跨帧共享） */
+  private stylePool = new StylePool();
+
+  /** 是否使用新 Screen 管线（true = 新管线, false = 旧字符串管线） */
+  private useScreenPipeline = false;
 
   constructor(terminal: ProcessTerminal) {
     this.terminal = terminal;
@@ -210,6 +235,7 @@ export class TUI {
     this.dirty = false;
     this.force = false;
     this.renderScheduled = false;
+    this.prevScreen = null;
   }
 
   // -----------------------------------------------------------------------
@@ -249,6 +275,18 @@ export class TUI {
    * ```
    */
   doRender(): void {
+    if (this.useScreenPipeline) {
+      this.doRenderScreen();
+    } else {
+      this.doRenderLegacy();
+    }
+  }
+
+  /**
+   * 旧版渲染管线（字符串比较）。
+   * 作为新管线的回退。
+   */
+  private doRenderLegacy(): void {
     const lines = this.computeOutput();
 
     if (this.force || this.lastOutput.length === 0) {
@@ -263,6 +301,243 @@ export class TUI {
     }
 
     this.lastOutput = lines;
+  }
+
+  /**
+   * 新版 Screen 管线。
+   *
+   * 流程：
+   * 1. 创建当前帧的 Screen 缓冲区
+   * 2. 组件树渲染到 Screen（优先 renderToScreen，回退 ANSI 解析）
+   * 3. 与上一帧做差异计算
+   * 4. 应用补丁到终端
+   * 5. 帧交换
+   */
+  private doRenderScreen(): void {
+    const width = this.terminal.columns;
+    const height = this.terminal.rows;
+
+    // force=true 或 resize → 丢弃 prevScreen，强制全量渲染
+    if (this.force) {
+      this.prevScreen = null;
+      this.force = false;
+    }
+
+    const screen = new Screen(height, width);
+
+    // 1. 重置光标标记（组件通过 renderToScreen 设置）
+    this.cursorRow = -1;
+    this.cursorCol = -1;
+
+    // 2. 渲染组件树到 Screen
+    this.renderComponentsToScreen(screen);
+
+    // 3. 差异计算
+    const result = diffScreens(this.prevScreen, screen, this.stylePool);
+
+    // 4. 应用补丁
+    this.applyScreenPatches(result.patches);
+
+    // 5. 帧交换（旧帧被 GC 回收）
+    this.prevScreen = screen;
+
+    // 6. 光标定位
+    if (this.cursorRow >= 0) {
+      this.terminal.write('\x1b[?25h');
+    }
+  }
+
+  /**
+   * 将组件树渲染到 Screen 缓冲区。
+   * 优先使用 renderToScreen 新接口，回退到 ANSI 行解析。
+   *
+   * 布局逻辑（与旧的 computeOutput 一致）：
+   * - 可滚动组件（scrollOffset 已定义）占用剩余高度
+   * - 不可滚动组件占用 render(width) 返回的行数
+   */
+  private renderComponentsToScreen(screen: Screen): void {
+    const children = this.getLayoutChildren();
+    const outputs: { lines: string[]; scrollable: boolean }[] = [];
+    let scrollOffset = 0;
+    let fixedHeight = 0;
+
+    for (const child of children) {
+      const childLines = child.render(screen.cols);
+      const isScrollable = child.scrollOffset !== undefined;
+      if (isScrollable) {
+        scrollOffset = child.scrollOffset;
+      } else {
+        fixedHeight += childLines.length;
+      }
+      outputs.push({ lines: childLines, scrollable: isScrollable });
+    }
+
+    // 可滚动区域可用行数
+    const scrollableHeight = Math.max(1, screen.rows - fixedHeight);
+    let y = 0;
+
+    for (let i = 0; i < children.length; i++) {
+      const child =
+        children[i] ??
+        (() => {
+          throw new Error('unreachable');
+        })();
+      const entry =
+        outputs[i] ??
+        (() => {
+          throw new Error('unreachable');
+        })();
+
+      let rect: Rect;
+
+      if (entry.scrollable) {
+        // 可滚动组件：计算 slices 后的可见区域
+        const maxStart = Math.max(0, entry.lines.length - scrollableHeight);
+        const visibleStart = Math.max(0, maxStart - scrollOffset);
+        const visibleCount = Math.min(scrollableHeight, entry.lines.length - visibleStart);
+        // 使用 y=0 并让组件写入到顶行（因为实际切片后的行从 0 开始渲染）
+        rect = { x: 0, y, width: screen.cols, height: visibleCount };
+        y += scrollableHeight;
+      } else {
+        rect = { x: 0, y, width: screen.cols, height: entry.lines.length };
+        y += entry.lines.length;
+      }
+
+      if (child.renderToScreen) {
+        child.renderToScreen(screen, this.stylePool, rect);
+      } else {
+        this.renderChildToScreenFallback(child, screen, rect);
+      }
+    }
+
+    // 应用 overlay（从底向上）
+    for (const entry of this.overlayStack) {
+      this.renderOverlayToScreen(screen, entry);
+    }
+  }
+
+  /**
+   * 旧接口回退：将组件 render(width) 的 ANSI 字符串行解析写入 Screen。
+   */
+  private renderChildToScreenFallback(child: Component, screen: Screen, rect: Rect): void {
+    const lines = child.render(rect.width);
+    for (let i = 0; i < lines.length && i < screen.rows - rect.y; i++) {
+      this.renderAnsiLineToScreen(screen, 0, rect.y + i, lines[i] ?? '');
+    }
+  }
+
+  /**
+   * 将 ANSI 字符串行解析为 Screen 单元格。
+   */
+  private renderAnsiLineToScreen(screen: Screen, x: number, y: number, line: string): void {
+    let styleId = 0;
+    let col = x;
+    let i = 0;
+
+    while (i < line.length) {
+      if (line[i] === '\x1b' && line[i + 1] === '[') {
+        // 查找 ANSI SGR 序列结束
+        const end = line.indexOf('m', i + 2);
+        if (end > 0) {
+          const codeStr = line.slice(i + 2, end);
+          // 重置码 → styleId = 0
+          if (
+            codeStr === '0' ||
+            codeStr === '' ||
+            codeStr.includes('39') ||
+            codeStr.includes('49')
+          ) {
+            styleId = 0;
+          } else if (codeStr.startsWith('38;5;') || codeStr.startsWith('48;5;')) {
+            // 256 色
+            styleId = this.stylePool.intern([codeStr]);
+          } else if (codeStr.startsWith('38;2;') || codeStr.startsWith('48;2;')) {
+            // 真彩色
+            styleId = this.stylePool.intern([codeStr]);
+          } else {
+            styleId = this.stylePool.intern([codeStr]);
+          }
+          i = end + 1;
+          continue;
+        }
+      }
+
+      // 跳过 CURSOR_MARKER（新管线用其他方式定位光标）
+      if (line[i] === '\x1b' && line.slice(i, i + 7) === '\x1b_pi:c\x07') {
+        // 记录光标位置但不写入 screen
+        const markerIdx = line.indexOf('\x07', i);
+        if (markerIdx >= 0) {
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI 序列含 ESC
+          const plainBefore = line.slice(0, i).replace(/\x1b\[[\d;]*m/g, '');
+          this.cursorRow = y;
+          this.cursorCol = plainBefore.length;
+          i = markerIdx + 1;
+          continue;
+        }
+      }
+
+      // 普通字符
+      const ch = line[i] ?? '';
+      if (ch >= ' ') {
+        screen.setCell(col, y, ch, styleId, 1);
+        col++;
+      }
+      i++;
+    }
+  }
+
+  /**
+   * 将 overlay 渲染到 Screen。
+   */
+  private renderOverlayToScreen(screen: Screen, entry: OverlayEntry): void {
+    const width = this.terminal.columns;
+    const overlayLines = entry.component.render(width);
+    const rect = this.calculateOverlayRect(entry, overlayLines.length);
+
+    for (let i = 0; i < overlayLines.length && rect.row + i < screen.rows; i++) {
+      this.renderAnsiLineToScreen(screen, 0, rect.row + i, overlayLines[i] ?? '');
+    }
+  }
+
+  /**
+   * 将 Screen 差异补丁应用到终端。
+   */
+  private applyScreenPatches(patches: Patch[]): void {
+    let buf = BSU;
+
+    for (const patch of patches) {
+      switch (patch.type) {
+        case 'move':
+          buf += `\r${CSI}${patch.y + 1};${patch.x + 1}H`;
+          break;
+        case 'write':
+          buf += patch.text;
+          break;
+        case 'style':
+          buf += patch.style;
+          break;
+        case 'clearLine': {
+          const y = patch.y;
+          const count = patch.count ?? 1;
+          if (count <= 1) {
+            buf += `\r${CSI}${y + 1};1H${CSI}2K`;
+          } else {
+            for (let i = 0; i < count; i++) {
+              buf += `\r${CSI}${y + 1 + i};1H${CSI}2K`;
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    // 硬件光标定位
+    if (this.cursorRow >= 0 && this.cursorCol >= 0) {
+      buf += `\r${CSI}${this.cursorRow + 1};${this.cursorCol + 1}H`;
+    }
+
+    buf += ESU;
+    this.terminal.write(buf);
   }
 
   /**
