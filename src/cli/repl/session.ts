@@ -2159,11 +2159,26 @@ export class ReplSession {
     // 提交输入
     this.editor.onSubmit = (text) => void this.handleSubmit(text);
 
+    // Escape: 清除选中文本
+    this.editor.onClearSelection = () => {
+      if (this.outputArea.hasSelection()) {
+        this.outputArea.clearSelection();
+        this.tui.requestRender();
+      }
+    };
+
     // Ctrl+C
     let ctrlCPressCount = 0;
     let ctrlCTimer: ReturnType<typeof setTimeout> | undefined;
 
     this.editor.onCtrlC = () => {
+      // PR4: 优先复制选中文本
+      if (this.outputArea.hasSelection()) {
+        this.outputArea.copySelection();
+        this.tui.requestRender();
+        return;
+      }
+
       if (this._state === 'executing') {
         // 执行中：取消任务
         this.cancelCurrentTask();

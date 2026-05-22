@@ -572,6 +572,7 @@ export class OutputArea extends Container {
 
   /** 处理键盘/鼠标滚动事件 */
   handleScroll(direction: 'up' | 'down', _lines?: number): void {
+    this.clearSelection(); // PR4: 滚动时清除选择
     const step = _lines ?? 3;
     if (direction === 'up') {
       this.#scrollOffset += step;
@@ -590,6 +591,28 @@ export class OutputArea extends Container {
     this.#scrollOffset = 0;
     this.#followBottom = true;
     this.invalidate();
+  }
+
+  // -------------------------------------------------------------------------
+  // 选择管理（公共 API）
+  // -------------------------------------------------------------------------
+
+  /** 清除当前选择 */
+  clearSelection(): void {
+    this.#selection = null;
+    this.#isDragging = false;
+    this.invalidate();
+  }
+
+  /** 是否有激活的选择 */
+  hasSelection(): boolean {
+    return this.#selection !== null;
+  }
+
+  /** 复制选中文本到剪贴板并清除选择（用于 Cmd+C 触发） */
+  copySelection(): void {
+    this.#copySelection();
+    this.clearSelection();
   }
 
   // -------------------------------------------------------------------------
@@ -664,6 +687,10 @@ export class OutputArea extends Container {
 
     switch (event.action) {
       case 'press': {
+        // PR4: 点击时清除已完成的选择
+        if (this.#selection && !this.#isDragging) {
+          this.#selection = null;
+        }
         const pos = this.#terminalToLogical(event.col, event.row);
         this.#selection = {
           startLine: pos.line,
