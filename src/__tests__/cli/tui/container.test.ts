@@ -3,7 +3,9 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { Container } from '@/cli/tui/container';
-import type { Component } from '@/cli/tui/types';
+import { Screen } from '@/cli/tui/screen';
+import { StylePool } from '@/cli/tui/style-pool';
+import type { Component, Rect } from '@/cli/tui/types';
 
 /** 创建一个 Mock 子组件 */
 function createMockComponent(renderOutput: string[] = []): Component {
@@ -119,6 +121,105 @@ describe('Container', () => {
     it('默认实现不应报错', () => {
       const container = new Container();
       expect(() => container.invalidate()).not.toThrow();
+    });
+  });
+
+  describe('renderToScreen', () => {
+    it('应调用子组件的 renderToScreen', () => {
+      const container = new Container();
+      const renderToScreen = vi.fn();
+      const child = {
+        render: () => [''],
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+        renderToScreen,
+      };
+      container.addChild(child);
+
+      const screen = new Screen(10, 20);
+      const pool = new StylePool();
+      const rect: Rect = { x: 0, y: 0, width: 20, height: 10 };
+
+      container.renderToScreen(screen, pool, rect);
+
+      expect(renderToScreen).toHaveBeenCalledWith(screen, pool, rect);
+    });
+
+    it('子组件没有 renderToScreen 时应静默跳过', () => {
+      const container = new Container();
+      const child = {
+        render: () => [''],
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+        // 没有 renderToScreen
+      };
+      container.addChild(child);
+
+      const screen = new Screen(10, 20);
+      const pool = new StylePool();
+      const rect: Rect = { x: 0, y: 0, width: 20, height: 10 };
+
+      expect(() => container.renderToScreen(screen, pool, rect)).not.toThrow();
+    });
+
+    it('空容器不应报错', () => {
+      const container = new Container();
+      const screen = new Screen(10, 20);
+      const pool = new StylePool();
+      const rect: Rect = { x: 0, y: 0, width: 20, height: 10 };
+
+      expect(() => container.renderToScreen(screen, pool, rect)).not.toThrow();
+    });
+
+    it('多个子组件都应被调用', () => {
+      const container = new Container();
+      const render1 = vi.fn();
+      const render2 = vi.fn();
+      container.addChild({
+        render: () => [''],
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+        renderToScreen: render1,
+      });
+      container.addChild({
+        render: () => [''],
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+        renderToScreen: render2,
+      });
+
+      const screen = new Screen(10, 20);
+      const pool = new StylePool();
+      const rect: Rect = { x: 0, y: 0, width: 20, height: 10 };
+
+      container.renderToScreen(screen, pool, rect);
+
+      expect(render1).toHaveBeenCalled();
+      expect(render2).toHaveBeenCalled();
+    });
+
+    it('混合子组件（部分有 renderToScreen、部分没有）应正常处理', () => {
+      const container = new Container();
+      const renderToScreen = vi.fn();
+      container.addChild({
+        render: () => [''],
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+        renderToScreen,
+      });
+      container.addChild({
+        render: () => [''],
+        handleInput: vi.fn(),
+        invalidate: vi.fn(),
+        // 没有 renderToScreen
+      });
+
+      const screen = new Screen(10, 20);
+      const pool = new StylePool();
+      const rect: Rect = { x: 0, y: 0, width: 20, height: 10 };
+
+      expect(() => container.renderToScreen(screen, pool, rect)).not.toThrow();
+      expect(renderToScreen).toHaveBeenCalled();
     });
   });
 });

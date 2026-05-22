@@ -117,6 +117,20 @@ export class TUI {
   /** 是否使用新 Screen 管线（true = 新管线, false = 旧字符串管线） */
   private useScreenPipeline = false;
 
+  /** 启用 Screen 管线（供测试和逐步迁移使用） */
+  enableScreenPipeline(): void {
+    this.useScreenPipeline = true;
+    this.prevScreen = null;
+    this.force = true;
+    this.requestRender();
+  }
+
+  /** 禁用 Screen 管线，回退到旧字符串管线 */
+  disableScreenPipeline(): void {
+    this.useScreenPipeline = false;
+    this.requestRender();
+  }
+
   constructor(terminal: ProcessTerminal) {
     this.terminal = terminal;
   }
