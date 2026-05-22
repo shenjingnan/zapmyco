@@ -34,9 +34,18 @@
 
 import { writeSync } from 'node:fs';
 import { Container } from './container';
-import { BSU, CSI, ESU, EXIT_ALT_SCREEN } from './dec';
+import {
+  BSU,
+  CSI,
+  ESU,
+  EXIT_ALT_SCREEN,
+  RESET_SCROLL_REGION,
+  scrollDown,
+  scrollUp,
+  setScrollRegion,
+} from './dec';
 import type { Patch } from './diff';
-import { diffScreens } from './diff';
+import { detectDecstbmScroll, diffScreens } from './diff';
 import { Screen } from './screen';
 import { StylePool } from './style-pool';
 import type { ProcessTerminal } from './terminal';
@@ -409,9 +418,10 @@ export class TUI {
    * 流程：
    * 1. 创建当前帧的 Screen 缓冲区
    * 2. 组件树渲染到 Screen（优先 renderToScreen，回退 ANSI 解析）
-   * 3. 与上一帧做差异计算
-   * 4. 应用补丁到终端
-   * 5. 帧交换
+   * 3. 检测并应用 DECSTBM 硬件滚动优化（流式输出场景）
+   * 4. 与上一帧做差异计算（DECSTBM 后仅边缘行不同）
+   * 5. 应用补丁到终端（含 DECSTBM 序列）
+   * 6. 帧交换
    */
   private doRenderScreen(): void {
     const width = this.terminal.columns;
@@ -429,19 +439,43 @@ export class TUI {
     this.cursorRow = -1;
     this.cursorCol = -1;
 
-    // 2. 渲染组件树到 Screen
-    this.renderComponentsToScreen(screen);
+    // 2. 渲染组件树到 Screen，同时获取可滚动区域
+    const scrollableRect = this.renderComponentsToScreen(screen);
 
-    // 3. 差异计算
+    // ==================================================================
+    // 3. DECSTBM 硬件滚动优化（PR 6）
+    //
+    // 当可滚动区域内容发生 uniform shift（流式追加），用硬件滚动
+    // 替换逐 cell 差异输出，减少传输量并提高终端渲染效率。
+    //
+    // 步骤：
+    //   a. detectDecstbmScroll 判断是否 uniform shift
+    //   b. 如果是，shiftRows 同步 prevScreen 缓冲区
+    //   c. 将 scrollOpt 传给 applyScreenPatches 发射 DECSTBM 序列
+    //   d. 后续 diffScreens 因 prevScreen 已同步，只产生边缘行补丁
+    // ==================================================================
+    let scrollOpt: { top: number; bottom: number; delta: number } | undefined;
+    if (this.prevScreen && scrollableRect) {
+      const delta = detectDecstbmScroll(this.prevScreen, screen, scrollableRect);
+      if (delta !== null && delta !== 0) {
+        const { y, height: h } = scrollableRect;
+        // 同步 prevScreen 缓冲区：将 shiftRows 后的 prevScreen 作为 baseline
+        // 使得 diffScreens 只发现边缘行的差异
+        this.prevScreen.shiftRows(y, y + h - 1, delta);
+        scrollOpt = { top: y, bottom: y + h - 1, delta };
+      }
+    }
+
+    // 4. 差异计算（DECSTBM 优化时仅边缘行不同）
     const result = diffScreens(this.prevScreen, screen, this.stylePool);
 
-    // 4. 应用补丁
-    this.applyScreenPatches(result.patches);
+    // 5. 应用补丁（含 DECSTBM 硬件滚动序列）
+    this.applyScreenPatches(result.patches, scrollOpt);
 
-    // 5. 帧交换（旧帧被 GC 回收）
+    // 6. 帧交换（旧帧被 GC 回收）
     this.prevScreen = screen;
 
-    // 6. 光标定位
+    // 7. 光标定位
     if (this.cursorRow >= 0) {
       this.terminal.write('\x1b[?25h');
     }
@@ -457,8 +491,10 @@ export class TUI {
    *
    * 注意：可滚动组件不再调用 render(width) 来测量，避免触发全量换行。
    * 固定组件（StatusBar/Editor）行数极少，调用 render(width) 测量成本可忽略。
+   *
+   * @returns 可滚动组件的矩形区域（如果没有可滚动组件则为 null）
    */
-  private renderComponentsToScreen(screen: Screen): void {
+  private renderComponentsToScreen(screen: Screen): Rect | null {
     const children = this.getLayoutChildren();
 
     // Pass 1: 测量固定高度组件的高度（可滚动组件不测量）
@@ -480,6 +516,7 @@ export class TUI {
     // 可滚动区域可用行数
     const scrollableHeight = Math.max(1, screen.rows - fixedHeight);
     let y = 0;
+    let scrollableRect: Rect | null = null;
 
     // Pass 2: 渲染每个子组件
     for (let i = 0; i < children.length; i++) {
@@ -491,6 +528,7 @@ export class TUI {
       if (isScrollable) {
         // 可滚动组件获得全部剩余高度，组件内部自行管理视口
         rect = { x: 0, y, width: screen.cols, height: scrollableHeight };
+        scrollableRect = rect;
         y += scrollableHeight;
       } else {
         const h = fixedChildHeights[i] ?? 0;
@@ -509,6 +547,8 @@ export class TUI {
     for (const entry of this.overlayStack) {
       this.renderOverlayToScreen(screen, entry);
     }
+
+    return scrollableRect;
   }
 
   /**
@@ -543,9 +583,30 @@ export class TUI {
 
   /**
    * 将 Screen 差异补丁应用到终端。
+   *
+   * @param patches 差异补丁列表
+   * @param scrollOpt 可选，硬件滚动参数 — 在常规补丁之前发射 DECSTBM + SU/SD 序列
    */
-  private applyScreenPatches(patches: Patch[]): void {
+  private applyScreenPatches(
+    patches: Patch[],
+    scrollOpt?: { top: number; bottom: number; delta: number }
+  ): void {
     let buf = BSU;
+
+    // ====================================================================
+    // 前置: DECSTBM 硬件滚动
+    // 在 apply 常规补丁之前发射，使终端先完成行位移。
+    // 配合 doRenderScreen 中的 prevScreen.shiftRows()，使得后续 diff
+    // 只产生边缘行的补丁，大幅减少输出量。
+    // ====================================================================
+    if (scrollOpt && scrollOpt.delta !== 0) {
+      const { top, bottom, delta } = scrollOpt;
+      // 设置滚动区域 → 硬件滚动 → 重置滚动区域 → 光标归位
+      buf += setScrollRegion(top + 1, bottom + 1);
+      buf += delta > 0 ? scrollUp(delta) : scrollDown(-delta);
+      buf += RESET_SCROLL_REGION;
+      buf += `${CSI}H`; // 光标归位
+    }
 
     for (const patch of patches) {
       switch (patch.type) {

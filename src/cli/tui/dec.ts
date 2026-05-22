@@ -48,3 +48,31 @@ export const BSU = decset(DEC.SYNCHRONIZED_UPDATE);
 
 /** 结束同步更新 (DECRESET 2026) — 终端一次性渲染缓存内容 */
 export const ESU = decreset(DEC.SYNCHRONIZED_UPDATE);
+
+// ---------------------------------------------------------------------------
+// 硬件滚动 (DECSTBM + SU/SD) — 用于 PR 6 流式输出优化
+// ---------------------------------------------------------------------------
+
+/**
+ * 设置滚动区域 (DECSTBM): CSI <top>;<bottom>r
+ * top/bottom 为 1-based inclusive，与终端协议一致。
+ * 设置后终端仅在 [top, bottom] 范围内响应 SU/SD 和换行滚动。
+ */
+export const setScrollRegion = (top: number, bottom: number): string => `${CSI}${top};${bottom}r`;
+
+/** 重置滚动区域为全屏 (DECSTBM reset): CSI r */
+export const RESET_SCROLL_REGION = `${CSI}r`;
+
+/**
+ * 向上滚动 n 行 (SU — Scroll Up): CSI <n>S
+ * 在滚动区域内，内容上移 n 行，底部 n 行变为空白。
+ * n=0 时返回空字符串（避免无效输出）。
+ */
+export const scrollUp = (n: number): string => (n === 0 ? '' : `${CSI}${n}S`);
+
+/**
+ * 向下滚动 n 行 (SD — Scroll Down): CSI <n>T
+ * 在滚动区域内，内容下移 n 行，顶部 n 行变为空白。
+ * n=0 时返回空字符串（避免无效输出）。
+ */
+export const scrollDown = (n: number): string => (n === 0 ? '' : `${CSI}${n}T`);
