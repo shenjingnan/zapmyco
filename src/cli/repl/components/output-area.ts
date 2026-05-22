@@ -10,6 +10,7 @@ import { stripAnsi } from '@/cli/repl/tools/shell-security';
 import type { HistoryEntry } from '@/cli/repl/types';
 import type { Rect, Screen, SgrMouseEvent, StylePool } from '@/cli/tui';
 import { Container, renderAnsiLineToScreen, setClipboard, wrapTextWithAnsi } from '@/cli/tui';
+import { logger } from '@/infra/logger';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
@@ -479,12 +480,124 @@ export class OutputArea extends Container {
     for (let i = 0; i < this.lines.length; i++) {
       result.push(...this.getOrCreateWrappedLine(i));
     }
+
+    // 在旧管线中直接渲染选区高亮（作为 ANSI 转义序列写入输出行）
+    if (this.#selection && width > 0) {
+      this.#applySelectionToLines(result, width);
+    }
+
     return result;
+  }
+
+  /**
+   * 在 ANSI 行数组中应用选区高亮（旧管线用）。
+   * 遍历每一行，将选中字符包裹在选区背景色 ANSI 序列中。
+   */
+  #applySelectionToLines(lines: string[], lineWidth: number): void {
+    const sel = this.#selection;
+    if (!sel) return;
+
+    // 归一化
+    const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
+    const endLine = sel.startLine <= sel.endLine ? sel.endLine : sel.startLine;
+    const startOff = sel.startLine <= sel.endLine ? sel.startOffset : sel.endOffset;
+    const endOff = sel.startLine <= sel.endLine ? sel.endOffset : sel.startOffset;
+
+    // 选区背景色 ANSI 序列
+    const SEL_BG = '\x1b[48;2;58;58;140m';
+    const BG_RESET = '\x1b[49m';
+
+    // 遍历逻辑行，累加 wrapped 行偏移
+    let globalLineIdx = 0; // 全局 wrapped 行索引
+    for (let ll = 0; ll < this.wrappedHeights.length; ll++) {
+      const h = this.wrappedHeights[ll] ?? 1;
+
+      // 本逻辑行不在选区范围内 → 跳过
+      if (ll < startLine || ll > endLine) {
+        globalLineIdx += h;
+        continue;
+      }
+
+      // 处理本逻辑行的每个 wrapped 子行
+      for (let wi = 0; wi < h; wi++) {
+        if (globalLineIdx >= lines.length) break;
+        const wrappedLine = lines[globalLineIdx]!;
+
+        // 计算本子行在逻辑行中的字符范围
+        const wiCharStart = wi * lineWidth;
+        const wiCharEnd = wiCharStart + lineWidth;
+
+        // 计算与选区相交的字符范围
+        let selStart: number | undefined;
+        let selEnd: number | undefined;
+
+        if (ll === startLine && ll === endLine) {
+          // 单行
+          selStart = Math.max(wiCharStart, startOff) - wiCharStart;
+          selEnd = Math.min(wiCharEnd, endOff) - wiCharStart;
+        } else if (ll === startLine) {
+          selStart = Math.max(wiCharStart, startOff) - wiCharStart;
+          selEnd = lineWidth;
+        } else if (ll === endLine) {
+          selStart = 0;
+          selEnd = Math.min(wiCharEnd, endOff) - wiCharStart;
+        } else {
+          selStart = 0;
+          selEnd = lineWidth;
+        }
+
+        if (selStart === undefined || selEnd === undefined || selStart >= selEnd || selStart >= lineWidth) {
+          globalLineIdx++;
+          continue;
+        }
+
+        // 在 ANSI 行中按字符位置插入选区背景色
+        // 使用正则拆分 ANSI 序列和普通字符
+        const tokens = wrappedLine.match(/(\x1b\[[0-9;]*[a-zA-Z]|.)/g) ?? [];
+        let out = '';
+        let charPos = 0;
+        let inSel = false;
+
+        for (const t of tokens) {
+          if (t.startsWith('\x1b[')) {
+            out += t;
+          } else {
+            if (!inSel && charPos >= selStart) {
+              out += SEL_BG;
+              inSel = true;
+            } else if (inSel && charPos >= selEnd) {
+              out += BG_RESET;
+              inSel = false;
+            }
+            out += t;
+            charPos++;
+          }
+        }
+
+        if (inSel) out += BG_RESET;
+        lines[globalLineIdx] = out;
+        globalLineIdx++;
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
   // Screen 管线渲染接口（虚拟滚动）
   // -------------------------------------------------------------------------
+
+  /**
+   * 设置区域矩形（供引擎在旧管线中调用，使 #terminalToLogical 能正确转换坐标）。
+   * 在旧字符串管线中，computeOutput 计算布局后调用此方法设置 rect。
+   */
+  setAreaRect(rect: Rect): void {
+    this.#areaRect = rect;
+    // 终端宽度变化 → 清除选择并重建所有缓存
+    if (rect.width !== this.cacheWidth) {
+      this.#selection = null;
+      this.#isDragging = false;
+      this.rebuildAllWraps(rect.width);
+    }
+  }
 
   /**
    * 渲染到 Screen 缓冲区（虚拟滚动）。
@@ -682,8 +795,9 @@ export class OutputArea extends Container {
    * - release: 结束拖拽状态，保持选择高亮
    */
   handleMouseEvent(event: SgrMouseEvent): void {
-    // 只处理左键
-    if (event.button !== 0) return;
+    // 只处理左键（drag 兼容 button=3：iTerm2 在不按 Option 时截获 press，
+    // 后续 motion 事件的 button 编码为 3 而非 0）
+    if (event.button !== 0 && !(event.action === 'drag' && event.button === 3)) return;
 
     switch (event.action) {
       case 'press': {
@@ -699,10 +813,25 @@ export class OutputArea extends Container {
           endOffset: pos.offset,
         };
         this.#isDragging = true;
+        logger.info(`SEL press set line=${pos.line} offset=${pos.offset} rect=${JSON.stringify(this.#areaRect)}`);
         break;
       }
       case 'drag': {
-        if (!this.#isDragging) return;
+        if (!this.#isDragging) {
+          // iTerm2 在不按 Option 时不发送 press 事件（截获用于原生选择），
+          // 直接以 drag 事件开始。这里将首次 drag 视为隐式 press + drag 处理，
+          // 确保选择仍能正常开始。
+          const pos = this.#terminalToLogical(event.col, event.row);
+          this.#selection = {
+            startLine: pos.line,
+            startOffset: pos.offset,
+            endLine: pos.line,
+            endOffset: pos.offset,
+          };
+          this.#isDragging = true;
+          logger.info(`SEL implicit_press line=${pos.line} offset=${pos.offset}`);
+          break;
+        }
         const pos = this.#terminalToLogical(event.col, event.row);
         if (this.#selection) {
           this.#selection.endLine = pos.line;
@@ -714,6 +843,8 @@ export class OutputArea extends Container {
       case 'release': {
         if (this.#isDragging) {
           this.#isDragging = false;
+          const text = this.getSelectedText();
+          logger.info(`SEL release textLen=${text?.length ?? 0} hasText=${!!text}`);
           this.#copySelection();
         }
         break;
@@ -933,7 +1064,11 @@ export class OutputArea extends Container {
    */
   #renderSelectionHighlight(screen: Screen, stylePool: StylePool, rect: Rect): void {
     const sel = this.#selection;
-    if (!sel) return;
+    if (!sel) {
+      logger.info('SEL render no_selection');
+      return;
+    }
+    logger.info(`SEL render startL=${sel.startLine} startO=${sel.startOffset} endL=${sel.endLine} endO=${sel.endOffset}`);
 
     // 归一化：保证 start ≤ end
     const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;

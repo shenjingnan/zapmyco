@@ -27,8 +27,14 @@ export class ProcessTerminal {
       this.stdin.setRawMode(true);
       // 进入 Alternate Screen Buffer
       this.write(ENTER_ALT_SCREEN);
-      // 启用鼠标事件追踪：按钮事件（含滚轮）+ SGR 扩展模式
-      this.write(decset(DEC.MOUSE_BUTTON) + decset(DEC.MOUSE_SGR));
+      // 启用鼠标事件追踪：点击事件 + 按钮拖拽 + 全动追踪 + SGR 扩展模式
+      // 全量启用（1000+1002+1003+1006）确保终端正确转发鼠标事件而非拦截用于原生选择
+      this.write(
+        decset(DEC.MOUSE_NORMAL) +
+          decset(DEC.MOUSE_BUTTON) +
+          decset(DEC.MOUSE_ANY) +
+          decset(DEC.MOUSE_SGR)
+      );
     }
   }
 
@@ -68,8 +74,13 @@ export class ProcessTerminal {
 
   /** 销毁：关闭鼠标追踪、退出 alt screen、恢复 raw mode、移除 resize 监听 */
   destroy(): void {
-    // 关闭鼠标事件追踪
-    this.write(decreset(DEC.MOUSE_BUTTON) + decreset(DEC.MOUSE_SGR));
+    // 关闭鼠标事件追踪（关闭所有已启用的模式）
+    this.write(
+      decreset(DEC.MOUSE_NORMAL) +
+        decreset(DEC.MOUSE_BUTTON) +
+        decreset(DEC.MOUSE_ANY) +
+        decreset(DEC.MOUSE_SGR)
+    );
     // 退出 Alternate Screen Buffer，恢复主屏幕内容
     this.write(EXIT_ALT_SCREEN);
     this.disableRawMode();
