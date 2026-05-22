@@ -14,6 +14,7 @@
 
 import type { Screen } from './screen';
 import type { StylePool } from './style-pool';
+import type { Rect } from './types';
 
 // ---------------------------------------------------------------------------
 // 补丁类型
@@ -354,4 +355,95 @@ function countNonEmptyCells(screen: Screen, row: number, cols: number): number {
     }
   }
   return count;
+}
+
+// ---------------------------------------------------------------------------
+// DECSTBM 硬件滚动检测 — PR 6
+// ---------------------------------------------------------------------------
+
+/**
+ * 检测两帧之间可滚动区域是否存在均匀位移（流式追加内容场景）。
+ *
+ * 算法：在重叠区域内采样前/中/后三行，逐 cell 比较。
+ * 如果 sample 行的全部 cell 在两帧间以指定偏移量匹配，则判定发生了 uniform shift。
+ *
+ * 仅在流式输出追加内容时触发（followBottom=true），
+ * 用户主动滚动（PageUp/鼠标滚轮）时内容非均匀变化，检测会返回 null。
+ *
+ * @param prev  上一帧（不可为 null，调用方保证）
+ * @param next  当前帧
+ * @param rect  可滚动区域（即 OutputArea 的渲染矩形）
+ * @returns delta 值（正数 = 向上滚动），或 null（无优化机会）
+ */
+export function detectDecstbmScroll(prev: Screen, next: Screen, rect: Rect): number | null {
+  const { y, height } = rect;
+
+  // 最小高度检查
+  if (height < 2) return null;
+
+  // 边界检查：两帧都必须能容纳该矩形
+  if (prev.rows < y + height || next.rows < y + height) return null;
+
+  // 尝试最常见的 delta 值（流式输出一般每次追加 1~3 个显示行）
+  const MAX_DELTA = Math.min(3, height - 1);
+
+  for (let delta = 1; delta <= MAX_DELTA; delta++) {
+    if (checkUniformShift(prev, next, rect, delta)) {
+      return delta;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 检查指定 delta 是否构成 uniform shift。
+ * next.row[y + i] 应与 prev.row[y + i + delta] 匹配（对所有在重叠区内的 i）。
+ * 采样 3 行（首、中、尾）加速检查。
+ */
+function checkUniformShift(prev: Screen, next: Screen, rect: Rect, delta: number): boolean {
+  const { y, x, width, height } = rect;
+  const overlapCount = height - delta;
+  if (overlapCount <= 0) return false;
+
+  // 采样索引：首行、1/3处、2/3处（保证覆盖面）
+  const sampleIndices = [
+    0,
+    Math.floor(overlapCount / 3),
+    Math.floor((overlapCount * 2) / 3),
+    overlapCount - 1,
+  ];
+  // 去重
+  const uniqueIndices = [...new Set(sampleIndices)].filter((i) => i >= 0 && i < overlapCount);
+
+  for (const si of uniqueIndices) {
+    const prevRow = y + si + delta;
+    const nextRow = y + si;
+    if (!rowsMatch(prev, next, prevRow, nextRow, x, width)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * 比较两帧中指定行的指定列范围是否完全相同。
+ */
+function rowsMatch(
+  prev: Screen,
+  next: Screen,
+  prevRow: number,
+  nextRow: number,
+  x: number,
+  width: number
+): boolean {
+  for (let c = x; c < x + width; c++) {
+    const pc = prev.getCell(c, prevRow);
+    const nc = next.getCell(c, nextRow);
+    if (pc.char !== nc.char || pc.styleId !== nc.styleId) {
+      return false;
+    }
+  }
+  return true;
 }

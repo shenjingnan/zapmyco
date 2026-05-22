@@ -3,10 +3,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Container } from '@/cli/tui/container';
-import { BSU, ESU } from '@/cli/tui/dec';
+import { BSU, ESU, RESET_SCROLL_REGION, scrollUp, setScrollRegion } from '@/cli/tui/dec';
 import { TUI } from '@/cli/tui/engine';
+import type { Screen } from '@/cli/tui/screen';
+import type { StylePool } from '@/cli/tui/style-pool';
 import type { ProcessTerminal } from '@/cli/tui/terminal';
-import type { Component } from '@/cli/tui/types';
+import type { Component, Rect } from '@/cli/tui/types';
 
 // ---------------------------------------------------------------------------
 // Mock ProcessTerminal
@@ -660,6 +662,129 @@ describe('TUI', () => {
       const renderSpy = vi.spyOn(tui, 'requestRender');
       tui.enableScreenPipeline();
       expect(renderSpy).toHaveBeenCalled();
+    });
+
+    describe('DECSTBM scroll optimization', () => {
+      /** 创建一个可滚动组件，其 renderToScreen 按 renderCount 写入不同内容 */
+      function createStreamingComponent(
+        baseRows: string[],
+        newRows: string[]
+      ): Component & {
+        focused?: boolean;
+        scrollOffset: number;
+        renderToScreen: ReturnType<typeof vi.fn>;
+      } {
+        let renderCount = 0;
+        const renderToScreenFn = vi.fn((screen: Screen, _sp: StylePool, rect: Rect) => {
+          renderCount++;
+          const source =
+            renderCount === 1
+              ? baseRows
+              : [...baseRows.slice(renderCount - 1), ...newRows.slice(0, renderCount - 1)];
+          for (let r = 0; r < source.length && r < rect.height; r++) {
+            const text = source[r] ?? '';
+            for (let c = 0; c < text.length && c < rect.width; c++) {
+              screen.setCell(c, rect.y + r, text[c] ?? '', 0, 1);
+            }
+          }
+        });
+        return {
+          render: vi.fn(() => ['[output]']),
+          handleInput: vi.fn(),
+          invalidate: vi.fn(),
+          scrollOffset: 0,
+          renderToScreen: renderToScreenFn,
+        };
+      }
+
+      it('均匀位移时应发射 DECSTBM 序列', () => {
+        const scrollable = createStreamingComponent(
+          ['row-1', 'row-2', 'row-3', 'row-4', 'row-5'],
+          ['new-1', 'new-2']
+        );
+        tui.addChild(scrollable);
+        tui.enableScreenPipeline();
+
+        // 首次渲染：填充 prevScreen
+        tui.requestRender(true);
+        tui.doRender();
+        terminal.write.mockClear();
+
+        // 第二次渲染：内容上移 1 行（delta=1）
+        tui.requestRender();
+        tui.doRender();
+
+        const output = terminal.write.mock.lastCall?.[0] as string;
+        // 应包含 DECSTBM 序列
+        expect(output).toContain(setScrollRegion(1, 24)); // 1-based row 1-24
+        expect(output).toContain(scrollUp(1));
+        expect(output).toContain(RESET_SCROLL_REGION);
+      });
+
+      it('首次渲染（prevScreen=null）时不应发射 DECSTBM', () => {
+        const scrollable = createStreamingComponent(
+          ['row-1', 'row-2', 'row-3', 'row-4', 'row-5'],
+          ['new-1']
+        );
+        tui.addChild(scrollable);
+        tui.enableScreenPipeline();
+
+        // 首次渲染
+        tui.requestRender(true);
+        tui.doRender();
+
+        const output = terminal.write.mock.lastCall?.[0] as string;
+        // 全量渲染，不应包含 DECSTBM
+        expect(output).not.toContain(setScrollRegion(1, 24));
+        expect(output).not.toContain(scrollUp(1));
+      });
+
+      it('force=true 时（如 resize）不应发射 DECSTBM', () => {
+        const scrollable = createStreamingComponent(
+          ['row-1', 'row-2', 'row-3', 'row-4', 'row-5'],
+          ['new-1']
+        );
+        tui.addChild(scrollable);
+        tui.enableScreenPipeline();
+
+        // 首次渲染
+        tui.requestRender(true);
+        tui.doRender();
+        terminal.write.mockClear();
+
+        // force=true 触发全量重绘
+        tui.requestRender(true);
+        tui.doRender();
+
+        const output = terminal.write.mock.lastCall?.[0] as string;
+        // force 模式下 prevScreen 被置 null，应走全量渲染路径
+        // 不应包含 DECSTBM
+        expect(output).toContain(BSU); // 仍有 BSU/ESU
+        expect(output).not.toContain(scrollUp(1));
+      });
+
+      it('无可滚动组件时不发射 DECSTBM', () => {
+        const child: Component = {
+          render: vi.fn(() => ['hello']),
+          handleInput: vi.fn(),
+          invalidate: vi.fn(),
+        };
+        tui.addChild(child);
+        tui.enableScreenPipeline();
+
+        tui.requestRender(true);
+        tui.doRender();
+        terminal.write.mockClear();
+
+        tui.requestRender();
+        tui.doRender();
+
+        const output = terminal.write.mock.lastCall?.[0] as string;
+        expect(output).toContain(BSU);
+        expect(output).toContain(ESU);
+        // DECSTBM 序列不应出现（无可滚动组件）
+        expect(output).not.toContain(scrollUp(1));
+      });
     });
   });
 
