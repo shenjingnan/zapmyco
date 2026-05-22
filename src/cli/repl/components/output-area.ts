@@ -447,6 +447,8 @@ export class OutputArea extends Container {
   #selection: SelRange | null = null;
   /** 是否正在拖拽选择 */
   #isDragging = false;
+  /** 鼠标左键释放后锁定，防止 btn=35 motion 事件重新触发隐式 press */
+  #selectionLocked = false;
   /** 缓存的渲染区域矩形（从 renderToScreen 获取，供坐标转换使用） */
   #areaRect: Rect | null = null;
 
@@ -746,6 +748,7 @@ export class OutputArea extends Container {
   clearSelection(): void {
     this.#selection = null;
     this.#isDragging = false;
+    this.#selectionLocked = false;
     this.invalidate();
   }
 
@@ -833,7 +836,8 @@ export class OutputArea extends Container {
 
     switch (event.action) {
       case 'press': {
-        // PR4: 点击时清除已完成的选择
+        // 新按下鼠标，解锁 motion 事件并清除已完成的选择
+        this.#selectionLocked = false;
         if (this.#selection && !this.#isDragging) {
           this.#selection = null;
         }
@@ -852,8 +856,8 @@ export class OutputArea extends Container {
       }
       case 'drag': {
         if (!this.#isDragging) {
-          // 释放鼠标后的 motion 事件（btn=35）不应重新开始选择。
-          if (this.#selection) return;
+          // 鼠标释放后的 motion 事件（btn=35）不应重新开始选择。
+          if (this.#selection || this.#selectionLocked) return;
           // iTerm2 在不按 Option 时不发送 press 事件（截获用于原生选择），
           // 直接以 drag 事件开始。这里将首次 drag 视为隐式 press + drag 处理，
           // 确保选择仍能正常开始。
@@ -879,6 +883,17 @@ export class OutputArea extends Container {
       case 'release': {
         if (this.#isDragging) {
           this.#isDragging = false;
+          // 如果 anchor === focus（点击但没有拖拽），清除零宽选区
+          if (
+            this.#selection &&
+            this.#selection.startLine === this.#selection.endLine &&
+            this.#selection.startOffset === this.#selection.endOffset
+          ) {
+            this.#selection = null;
+            this.#selectionLocked = true;
+            this.invalidate();
+            break;
+          }
           const text = this.getSelectedText();
           logger.info(`SEL release textLen=${text?.length ?? 0} hasText=${!!text}`);
           this.#copySelection();
