@@ -26,7 +26,8 @@ export type { DiffResult, Patch } from './diff';
 export { diffScreens } from './diff';
 // === 本地 TUI 组件 ===
 export { Editor } from './editor';
-export { TUI } from './engine';
+export type { CursorMarker } from './engine';
+export { renderAnsiLineToScreen, TUI } from './engine';
 export { Input } from './input';
 // === 本地键处理 ===
 export { Key, matchesKey } from './key';

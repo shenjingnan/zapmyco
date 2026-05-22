@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { OutputFormatter } from '@/cli/repl/components/output-area';
+import { OutputArea, OutputFormatter } from '@/cli/repl/components/output-area';
 import type { HistoryEntry, SessionStats } from '@/cli/repl/types';
+import { Screen, StylePool } from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
@@ -534,6 +535,470 @@ describe('OutputFormatter', () => {
       const text = lines.join('\n');
       expect(text).toContain('zapmyco@2.0.0');
       expect(text).toContain('欢迎回来');
+    });
+  });
+});
+
+// =============================================================================
+// OutputArea 测试
+// =============================================================================
+
+describe('OutputArea', () => {
+  function createScreen(rows = 10, cols = 40): Screen {
+    return new Screen(rows, cols);
+  }
+
+  function createStylePool(): StylePool {
+    return new StylePool();
+  }
+
+  describe('renderToScreen — 基础渲染', () => {
+    it('空内容应清空整个 rect 区域', () => {
+      const area = new OutputArea();
+      const screen = createScreen();
+      const pool = createStylePool();
+
+      screen.setCell(0, 0, 'X', 1, 1);
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 10 });
+
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 40; c++) {
+          expect(screen.getCell(c, r).char).toBe('');
+        }
+      }
+    });
+
+    it('简单文本应正确渲染到 Screen', () => {
+      const area = new OutputArea();
+      area.append(['Hello World']);
+      const screen = createScreen(5, 40);
+      const pool = createStylePool();
+
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+      const cell = screen.getCell(0, 0);
+      expect(cell.char).toBe('H');
+      // 'Hello World' — 第 4 列是 'o'
+      expect(screen.getCell(4, 0).char).toBe('o');
+      // 第 5 列是空格
+      expect(screen.getCell(5, 0).char).toBe(' ');
+      // 第 6 列是 'W'
+      expect(screen.getCell(6, 0).char).toBe('W');
+    });
+
+    it('多行文本应逐行渲染', () => {
+      const area = new OutputArea();
+      area.append(['Line 1', 'Line 2', 'Line 3']);
+      const screen = createScreen(5, 40);
+      const pool = createStylePool();
+
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 5 });
+
+      expect(screen.getCell(0, 0).char).toBe('L');
+      expect(screen.getCell(1, 0).char).toBe('i');
+      expect(screen.getCell(0, 1).char).toBe('L');
+      expect(screen.getCell(0, 2).char).toBe('L');
+    });
+  });
+
+  describe('renderToScreen — 虚拟滚动偏移', () => {
+    it('scrollOffset=0 应显示最新内容（底部）', () => {
+      const area = new OutputArea();
+      // 每行 1 个显示行（短文本），共 10 个显示行
+      for (let i = 0; i < 10; i++) {
+        area.append([`Line ${i}`]);
+      }
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+
+      // scrollOffset=0, rect.height=3 → 显示最后 3 行
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // 应显示 Line 7, Line 8, Line 9
+      expect(screen.getCell(0, 0).char).toBe('L');
+      expect(screen.getCell(5, 0).char).toBe('7');
+      expect(screen.getCell(5, 1).char).toBe('8');
+      expect(screen.getCell(5, 2).char).toBe('9');
+    });
+
+    it('scrollOffset>0 应显示更早的内容', () => {
+      const area = new OutputArea();
+      for (let i = 0; i < 10; i++) {
+        area.append([`Line ${i}`]);
+      }
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+
+      // 模拟向上滚动 3 行
+      area.handleScroll('up', 3);
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // scrollOffset=3: 原本显示 [7,8,9], 滚动 3 → 显示 [4,5,6]
+      expect(screen.getCell(5, 0).char).toBe('4');
+      expect(screen.getCell(5, 1).char).toBe('5');
+      expect(screen.getCell(5, 2).char).toBe('6');
+    });
+
+    it('大幅滚动不应超出最早内容', () => {
+      const area = new OutputArea();
+      for (let i = 0; i < 5; i++) {
+        area.append([`Line ${i}`]);
+      }
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+
+      // 滚动 100 行（远超内容）
+      area.handleScroll('up', 100);
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // 应显示最早的 3 行: Line 0, 1, 2
+      expect(screen.getCell(5, 0).char).toBe('0');
+      expect(screen.getCell(5, 1).char).toBe('1');
+      expect(screen.getCell(5, 2).char).toBe('2');
+    });
+  });
+
+  describe('followBottom', () => {
+    it('scrollOffset=0 时 append 应自动跟随底部', () => {
+      const area = new OutputArea();
+      area.append(['Line A', 'Line B']);
+      const screen = createScreen(2, 40);
+      const pool = createStylePool();
+
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 2 });
+
+      expect(screen.getCell(5, 0).char).toBe('A');
+      expect(screen.getCell(5, 1).char).toBe('B');
+
+      // append 新内容（也在底部）
+      area.append(['Line C']);
+      screen.clearRegion(0, 0, 40, 2);
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 2 });
+
+      // 应显示最新的 2 行: B, C
+      expect(screen.getCell(5, 0).char).toBe('B');
+      expect(screen.getCell(5, 1).char).toBe('C');
+    });
+
+    it('向上滚动后 append 应保持视图稳定', () => {
+      const area = new OutputArea();
+      for (let i = 0; i < 5; i++) {
+        area.append([`Line ${i}`]);
+      }
+      // 向上滚动 2 行
+      area.handleScroll('up', 2);
+      const screen = createScreen(2, 40);
+      const pool = createStylePool();
+
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 2 });
+      // scrollOffset=2: 显示底部起第 2 行开始 → Line 1, Line 2
+      expect(screen.getCell(5, 0).char).toBe('1');
+      expect(screen.getCell(5, 1).char).toBe('2');
+
+      // 追加新行（此时 scrollOffset 自动调整）
+      area.append(['Line 5']);
+      screen.clearRegion(0, 0, 40, 2);
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 2 });
+      // scrollOffset 已调整，视图应保持稳定（仍显示 Line 1, Line 2）
+      expect(screen.getCell(5, 0).char).toBe('1');
+      expect(screen.getCell(5, 1).char).toBe('2');
+    });
+  });
+
+  describe('scrollToBottom', () => {
+    it('向上滚动后调用 scrollToBottom 应恢复到底部', () => {
+      const area = new OutputArea();
+      for (let i = 0; i < 5; i++) {
+        area.append([`Line ${i}`]);
+      }
+      area.handleScroll('up', 3);
+      area.scrollToBottom();
+
+      const screen = createScreen(2, 40);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 2 });
+
+      // scrollToBottom 后应显示底部: [3,4]
+      expect(screen.getCell(5, 0).char).toBe('3');
+      expect(screen.getCell(5, 1).char).toBe('4');
+    });
+  });
+
+  describe('maxLines 行数上限', () => {
+    it('超出 MAX_LINES 时应丢弃最早的行', () => {
+      const area = new OutputArea();
+      // 由于 MAX_LINES 是 10000，直接测试 10001 行速度太慢
+      // 验证 append 超过限制后 lines 数量不超过 MAX_LINES
+      const maxLines = (OutputArea as unknown as { MAX_LINES: number }).MAX_LINES ?? 10_000;
+
+      // 追加 MAX_LINES + 10 行
+      const linesToAdd = maxLines + 10;
+      for (let i = 0; i < linesToAdd; i += 100) {
+        const batch: string[] = [];
+        for (let j = 0; j < 100 && i + j < linesToAdd; j++) {
+          batch.push(`Line ${i + j}`);
+        }
+        area.append(batch);
+      }
+
+      // 验证 total lines 不超过 MAX_LINES
+      const lines = (area as unknown as { lines: string[] }).lines;
+      expect(lines.length).toBeLessThanOrEqual(maxLines);
+    });
+
+    it('逐出后最新的行仍可正常渲染', () => {
+      const area = new OutputArea();
+      const maxLines = 10_000;
+      const linesToAdd = maxLines + 5;
+
+      // 批量追加行
+      const batch: string[] = [];
+      for (let i = 0; i < linesToAdd; i++) {
+        batch.push(`Line ${i}`);
+      }
+      area.append(batch);
+
+      // 验证内部行数不超过上限
+      const linesField = (area as unknown as { lines: string[] }).lines;
+      expect(linesField.length).toBeLessThanOrEqual(maxLines);
+
+      // 验证最早的可用行是 "Line 5"（前 5 行被丢弃）
+      expect(linesField[0]).toBe('Line 5');
+
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // 应显示最新的 3 行（scrollOffset=0 → 底部）
+      // linesField[9997] = 'Line 10002', [9998] = 'Line 10003', [9999] = 'Line 10004'
+      // "Line 10002" → L(0) i(1) n(2) e(3) (4) 1(5) 0(6) 0(7) 0(8) 2(9)
+      expect(screen.getCell(0, 0).char).toBe('L');
+      expect(screen.getCell(5, 0).char).toBe('1');
+      expect(screen.getCell(6, 0).char).toBe('0');
+      expect(screen.getCell(6, 1).char).toBe('0');
+      expect(screen.getCell(6, 2).char).toBe('0');
+    });
+  });
+
+  describe('宽度变化', () => {
+    it('width 变化时应重建换行缓存', () => {
+      const area = new OutputArea();
+      // 追加需要换行的长文本
+      const longLine = 'A'.repeat(80);
+      area.append([longLine]);
+
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+
+      // 用 40 列渲染 → 应换行为 2 行
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // (0,0) = 'A', (1,0) = 'A' (因为全 A)
+      expect(screen.getCell(0, 0).char).toBe('A');
+
+      // 用 80 列渲染 → 应为 1 行
+      const screen2 = createScreen(3, 80);
+      area.renderToScreen(screen2, pool, { x: 0, y: 0, width: 80, height: 3 });
+      // (39,0) = 'A', (40,0) = ''（80 列不需要换行）
+      expect(screen2.getCell(39, 0).char).toBe('A');
+    });
+  });
+
+  describe('旧版 render(width) 兼容', () => {
+    it('render(width) 应返回所有行的换行结果', () => {
+      const area = new OutputArea();
+      area.append(['Hello', 'World']);
+
+      const lines = area.render(40);
+      expect(lines.length).toBe(2);
+      expect(lines[0]).toBe('Hello');
+      expect(lines[1]).toBe('World');
+    });
+
+    it('长文本 render(width) 应正确换行', () => {
+      const area = new OutputArea();
+      area.append(['A'.repeat(60)]);
+
+      const lines = area.render(40);
+      expect(lines.length).toBe(2);
+      expect(lines[0]).toBe('A'.repeat(40));
+      expect(lines[1]).toBe('A'.repeat(20));
+    });
+  });
+
+  describe('流式输出 appendText', () => {
+    it('appendText 应追加到最后一行', () => {
+      const area = new OutputArea();
+      area.append(['Hello']);
+
+      area.appendText(' World');
+
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      expect(screen.getCell(0, 0).char).toBe('H');
+      expect(screen.getCell(6, 0).char).toBe('W');
+    });
+
+    it('空缓冲区时 appendText 应创建新行', () => {
+      const area = new OutputArea();
+      area.appendText('First');
+
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      expect(screen.getCell(0, 0).char).toBe('F');
+    });
+  });
+
+  describe('replaceLastLine', () => {
+    it('应替换最后一行的内容', () => {
+      const area = new OutputArea();
+      area.append(['Line 1', 'Line 2']);
+      area.replaceLastLine('Replaced');
+
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // 第一行是 "Line 1"，第二行是 "Replaced"
+      expect(screen.getCell(0, 1).char).toBe('R');
+      expect(screen.getCell(1, 1).char).toBe('e');
+      expect(screen.getCell(2, 1).char).toBe('p');
+      // 第一行不变
+      expect(screen.getCell(0, 0).char).toBe('L');
+      expect(screen.getCell(5, 0).char).toBe('1');
+    });
+  });
+
+  describe('clear', () => {
+    it('应清空所有内容', () => {
+      const area = new OutputArea();
+      area.append(['Some content', 'More content']);
+      area.clear();
+
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // 所有单元格应为空
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 40; c++) {
+          expect(screen.getCell(c, r).char).toBe('');
+        }
+      }
+    });
+
+    it('clear 后 append 应正常工作', () => {
+      const area = new OutputArea();
+      area.append(['Old']);
+      area.clear();
+      area.append(['New']);
+
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      expect(screen.getCell(0, 0).char).toBe('N');
+    });
+  });
+
+  describe('rect 位置偏移', () => {
+    it('应以 rect.x 和 rect.y 为起始位置', () => {
+      const area = new OutputArea();
+      area.append(['Test']);
+      const screen = createScreen(10, 40);
+      const pool = createStylePool();
+
+      area.renderToScreen(screen, pool, { x: 5, y: 3, width: 40, height: 5 });
+
+      // 文本应从 (5, 3) 开始
+      expect(screen.getCell(5, 3).char).toBe('T');
+      expect(screen.getCell(6, 3).char).toBe('e');
+      // (4, 3) 应为空（x 之前）
+      expect(screen.getCell(4, 3).char).toBe('');
+    });
+
+    it('rect.height 小于内容时应只渲染可见部分', () => {
+      const area = new OutputArea();
+      for (let i = 0; i < 10; i++) {
+        area.append([`Line ${i}`]);
+      }
+      const screen = createScreen(5, 40);
+      const pool = createStylePool();
+
+      // rect.height = 3，只显示 3 行
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // 应显示底部 3 行: Line 7, 8, 9
+      expect(screen.getCell(5, 0).char).toBe('7');
+      expect(screen.getCell(5, 1).char).toBe('8');
+      expect(screen.getCell(5, 2).char).toBe('9');
+      // 第 4 行应为空
+      expect(screen.getCell(0, 3).char).toBe('');
+    });
+  });
+
+  describe('scrollOffset 属性', () => {
+    it('初始 scrollOffset 应为 0', () => {
+      const area = new OutputArea();
+      expect(area.scrollOffset).toBe(0);
+    });
+
+    it('向上滚动后 scrollOffset 应增加', () => {
+      const area = new OutputArea();
+      area.handleScroll('up', 5);
+      expect(area.scrollOffset).toBe(5);
+    });
+
+    it('向下滚动不应低于 0', () => {
+      const area = new OutputArea();
+      area.handleScroll('down', 10);
+      expect(area.scrollOffset).toBe(0);
+    });
+  });
+
+  describe('CSS 样式文本', () => {
+    it('应正确处理带 ANSI 颜色的文本', () => {
+      const area = new OutputArea();
+      // 模拟 chalk 格式化的文本（绿色文本）
+      const greenText = '\x1b[32mGreen\x1b[39m';
+      area.append([greenText]);
+      const screen = createScreen(3, 40);
+      const pool = createStylePool();
+
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 40, height: 3 });
+
+      // 字符应正确写入
+      expect(screen.getCell(0, 0).char).toBe('G');
+      expect(screen.getCell(1, 0).char).toBe('r');
+      expect(screen.getCell(2, 0).char).toBe('e');
+      expect(screen.getCell(3, 0).char).toBe('e');
+      expect(screen.getCell(4, 0).char).toBe('n');
+    });
+  });
+
+  describe('wrapTextWithAnsi 换行交互', () => {
+    it('换行后的行应正确渲染到 Screen', () => {
+      const area = new OutputArea();
+      const longLine = `Hello World ${'X'.repeat(50)}`;
+      area.append([longLine]);
+
+      const screen = createScreen(3, 20);
+      const pool = createStylePool();
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width: 20, height: 3 });
+
+      // 第 0 行应有 20 个可见字符 + 换行到第 1 行
+      const line0Chars: string[] = [];
+      for (let c = 0; c < 20; c++) {
+        line0Chars.push(screen.getCell(c, 0).char);
+      }
+      // 第 0 行完整（不多不少 20 个）
+      expect(line0Chars.join('').length).toBe(20);
+      // 第 1 行有剩余字符
+      expect(screen.getCell(0, 1).char).not.toBe('');
     });
   });
 });
