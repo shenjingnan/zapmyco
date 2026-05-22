@@ -3,6 +3,10 @@
  *
  * 使用 react-reconciler 的 createReconciler() 定义 host config。
  * 每次 React commit 后，resetAfterCommit 触发渲染生命周期。
+ *
+ * PR2 增强：
+ * - hideInstance: 设置 isHidden 标志
+ * - commitUpdate: 同步 style 变更到 Yoga 节点
  */
 
 import { createContext } from 'react';
@@ -10,9 +14,10 @@ import createReconciler from 'react-reconciler';
 import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants.js';
 import type { DOMElement, ElementName, TextNode } from './dom';
 import * as dom from './dom';
+import { applyStyles } from './styles';
 
 // ---------------------------------------------------------------------------
-// 类型参数（匹配 @types/react-reconciler 的 15 个泛型参数）
+// 类型参数
 // ---------------------------------------------------------------------------
 
 type Type = ElementName;
@@ -40,6 +45,7 @@ let currentUpdatePriority: number = DefaultEventPriority;
 // Reconciler 实例
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const reconciler = createReconciler<
   Type,
   Props,
@@ -80,9 +86,15 @@ const reconciler = createReconciler<
       dom.setAttribute(node, key, value);
     }
 
-    // 将 style props 映射到 node.style
+    // 将 style props 映射到 node.style 并同步到 Yoga 节点
     if (newProps.style && typeof newProps.style === 'object') {
-      Object.assign(node.style, newProps.style);
+      const style = newProps.style as Record<string, unknown>;
+      Object.assign(node.style, style);
+
+      // 同步到 Yoga 节点
+      if (node.yogaNode) {
+        applyStyles(style as Parameters<typeof applyStyles>[0], node.yogaNode);
+      }
     }
 
     return node;
@@ -175,9 +187,19 @@ const reconciler = createReconciler<
   },
 
   commitUpdate(node, _type, _oldProps, newProps) {
+    // 同步 style 变更到 node
     for (const [key, value] of Object.entries(newProps)) {
       if (key === 'children') continue;
       dom.setAttribute(node, key, value);
+    }
+
+    // 同步到 Yoga 节点
+    if (newProps.style && typeof newProps.style === 'object') {
+      const style = newProps.style as Record<string, unknown>;
+      Object.assign(node.style, style);
+      if (node.yogaNode) {
+        applyStyles(style as Parameters<typeof applyStyles>[0], node.yogaNode);
+      }
     }
   },
 
@@ -185,12 +207,16 @@ const reconciler = createReconciler<
     dom.setTextNodeValue(node, newText);
   },
 
-  hideInstance() {
-    // PR1: no-op
+  /** 隐藏实例 — 设置 isHidden 标志（PR2 实现） */
+  hideInstance(node: DOMElement): void {
+    node.isHidden = true;
+    dom.markDirty?.(node);
   },
 
-  unhideInstance() {
-    // PR1: no-op
+  /** 取消隐藏 */
+  unhideInstance(node: DOMElement): void {
+    node.isHidden = false;
+    dom.markDirty?.(node);
   },
 
   hideTextInstance(node) {
@@ -220,12 +246,11 @@ const reconciler = createReconciler<
 
   // ---- 暂停/过渡 ----
   NotPendingTransition: undefined as TransitionStatus,
-  // biome-ignore lint/suspicious/noExplicitAny: reconciler 内部类型不匹配 React 公开类型
   HostTransitionContext: createContext(null as unknown as TransitionStatus) as any,
 
   // ---- 表单 ----
   resetFormInstance() {
-    // no-op (FormInstance = never)
+    // no-op
   },
 
   // ---- 渲染后回调 ----

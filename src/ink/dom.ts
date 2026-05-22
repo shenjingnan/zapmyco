@@ -1,3 +1,10 @@
+/**
+ * DOM 节点树 — Ink 的虚拟 DOM
+ *
+ * 定义 React reconciler 使用的 DOM 节点类型和树操作。
+ * 每个 DOMElement 可以关联一个 Yoga 布局节点用于 flexbox 布局。
+ */
+
 import {
   type ELEMENT_BOX,
   type ELEMENT_ROOT,
@@ -5,6 +12,8 @@ import {
   type ELEMENT_VIRTUAL_TEXT,
   TEXT_NODE,
 } from './constants';
+import { createLayoutNode } from './layout/engine';
+import type { LayoutNode } from './layout/node';
 import type { Styles } from './styles';
 
 // ---------------------------------------------------------------------------
@@ -25,9 +34,6 @@ export type NodeName = ElementName | TextName;
 
 /**
  * DOM 元素 — React reconciler 创建和管理的终端 DOM 节点。
- *
- * onComputeLayout / onRender / onImmediateRender 是 Ink class
- * 挂载的生命周期回调，在 reconciler 的 resetAfterCommit 中触发。
  */
 export interface DOMElement {
   nodeName: ElementName;
@@ -35,9 +41,13 @@ export interface DOMElement {
   childNodes: DOMNode[];
   style: Styles;
   parentNode: DOMElement | undefined;
-  yogaNode?: unknown;
+  /** Yoga 布局节点（PR2: 每个 DOM 元素创建时自动关联） */
+  yogaNode?: LayoutNode;
   isStaticDirty?: boolean;
   staticNode?: DOMElement;
+  /** 是否隐藏（由 reconciler hideInstance 设置） */
+  isHidden?: boolean;
+  /** 生命周期回调 — 由 Ink class 挂载 */
   onComputeLayout?: () => void;
   onRender?: () => void;
   onImmediateRender?: () => void;
@@ -57,7 +67,7 @@ export type DOMNode = DOMElement | TextNode;
 // 树操作
 // ---------------------------------------------------------------------------
 
-/** 创建一个 DOM 元素 */
+/** 创建一个 DOM 元素，自动关联 Yoga 布局节点 */
 export function createNode(nodeName: ElementName): DOMElement {
   return {
     nodeName,
@@ -65,6 +75,7 @@ export function createNode(nodeName: ElementName): DOMElement {
     childNodes: [],
     style: {},
     parentNode: undefined,
+    yogaNode: createLayoutNode(),
   };
 }
 
@@ -77,18 +88,26 @@ export function createTextNode(text: string): TextNode {
   };
 }
 
-/** 追加子节点 */
+/** 追加子节点 — 同时维护 Yoga 树结构 */
 export function appendChildNode(parent: DOMElement, child: DOMNode): void {
   child.parentNode = parent;
   parent.childNodes.push(child);
+
+  if ('yogaNode' in child && child.yogaNode && parent.yogaNode) {
+    parent.yogaNode.insertChild(child.yogaNode, parent.childNodes.length - 1);
+  }
 }
 
-/** 移除子节点 */
+/** 移除子节点 — 同时维护 Yoga 树结构 */
 export function removeChildNode(parent: DOMElement, child: DOMNode): void {
   child.parentNode = undefined;
   const idx = parent.childNodes.indexOf(child);
   if (idx !== -1) {
     parent.childNodes.splice(idx, 1);
+  }
+
+  if ('yogaNode' in child && child.yogaNode && parent.yogaNode) {
+    parent.yogaNode.removeChild(child.yogaNode);
   }
 }
 
@@ -105,6 +124,10 @@ export function insertBeforeNode(
   } else {
     parent.childNodes.push(newChild);
   }
+
+  if ('yogaNode' in newChild && newChild.yogaNode && parent.yogaNode) {
+    parent.yogaNode.insertChild(newChild.yogaNode, idx !== -1 ? idx : parent.childNodes.length - 1);
+  }
 }
 
 /** 设置属性 */
@@ -119,4 +142,17 @@ export function setAttribute(node: DOMElement, key: string, value: unknown): voi
 /** 设置文本节点内容 */
 export function setTextNodeValue(node: TextNode, text: string): void {
   node.nodeValue = text;
+}
+
+/**
+ * 标记节点为 dirty（需要重新渲染）。
+ * 向上遍历祖先节点设置 dirty 标记。
+ */
+export function markDirty(node: DOMElement): void {
+  node.attributes['data-dirty'] = true;
+  let current: DOMElement | undefined = node;
+  while (current) {
+    current.attributes['data-dirty'] = true;
+    current = current.parentNode;
+  }
 }
