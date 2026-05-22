@@ -9,11 +9,18 @@ import chalk, { Chalk } from 'chalk';
 import { stripAnsi } from '@/cli/repl/tools/shell-security';
 import type { HistoryEntry } from '@/cli/repl/types';
 import type { Rect, Screen, SgrMouseEvent, StylePool } from '@/cli/tui';
-import { Container, renderAnsiLineToScreen, setClipboard, wrapTextWithAnsi } from '@/cli/tui';
+import {
+  Container,
+  type ProcessTerminal,
+  renderAnsiLineToScreen,
+  setClipboard,
+  wrapTextWithAnsi,
+} from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
 import { t } from '@/i18n';
+import { logger } from '@/infra/logger';
 import type { AgentRegistration } from '@/protocol/capability';
 
 /**
@@ -446,6 +453,8 @@ export class OutputArea extends Container {
   #selection: SelRange | null = null;
   /** 是否正在拖拽选择 */
   #isDragging = false;
+  /** 鼠标左键释放后锁定，防止 btn=35 motion 事件重新触发隐式 press */
+  #selectionLocked = false;
   /** 缓存的渲染区域矩形（从 renderToScreen 获取，供坐标转换使用） */
   #areaRect: Rect | null = null;
 
@@ -479,12 +488,207 @@ export class OutputArea extends Container {
     for (let i = 0; i < this.lines.length; i++) {
       result.push(...this.getOrCreateWrappedLine(i));
     }
+
     return result;
+  }
+
+  /**
+   * 渲染后覆盖层：用独立的光标定位在终端上画选区背景。
+   * 不修改 content 行本身的 ANSI 字符串，避免 ANSI 码相互干扰。
+   */
+  renderOverlay(terminal: ProcessTerminal): void {
+    const sel = this.#selection;
+    if (!sel) return;
+
+    const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
+    const endLine = sel.startLine <= sel.endLine ? sel.endLine : sel.startLine;
+    const rect = this.#areaRect;
+    if (!rect) return;
+
+    // 计算可见窗口（同 renderToScreen 算法）
+    const totalHeight = this.wrappedHeights.reduce((a, b) => a + b, 0);
+    if (totalHeight <= 0) return;
+    const maxScroll = Math.max(0, totalHeight - rect.height);
+    const clampedOffset = Math.min(this.#scrollOffset, maxScroll);
+    const visibleEnd = totalHeight - clampedOffset;
+    const visibleStart = Math.max(0, visibleEnd - rect.height);
+
+    const SEL = '\x1b[48;2;38;79;120m';
+    const RESET = '\x1b[49m';
+
+    let buf = '';
+    let displayRow = 0;
+
+    for (let ll = 0; ll < this.wrappedHeights.length; ll++) {
+      const h = this.wrappedHeights[ll] ?? 1;
+
+      if (ll < startLine || ll > endLine) {
+        displayRow += h;
+        continue;
+      }
+
+      for (let wi = 0; wi < h; wi++) {
+        const globalDl = displayRow + wi;
+        if (globalDl < visibleStart || globalDl >= visibleEnd) {
+          continue;
+        }
+        // 该显示行在屏幕上的位置
+        const screenRow = rect.y + (globalDl - visibleStart);
+        // 写入光标定位 + 选区背景 + 整行空格 + 背景重置
+        buf += `\x1b[${screenRow + 1};1H${SEL}${' '.repeat(rect.width)}${RESET}`;
+      }
+      displayRow += h;
+    }
+
+    if (buf) terminal.write(buf);
+  }
+
+  /**
+   * 在 ANSI 行数组中应用选区高亮（旧管线用）。
+   * 遍历每一行，将选中字符包裹在选区背景色 ANSI 序列中。
+   */
+  _applySelectionToLines(lines: string[], lineWidth: number): void {
+    const sel = this.#selection;
+    if (!sel) return;
+
+    // 归一化
+    const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
+    const endLine = sel.startLine <= sel.endLine ? sel.endLine : sel.startLine;
+    // 选区背景色 ANSI 序列
+    const SEL_BG = '\x1b[48;2;38;79;120m';
+    const BG_RESET = '\x1b[49m';
+
+    // 遍历逻辑行，累加 wrapped 行偏移
+    let globalLineIdx = 0; // 全局 wrapped 行索引
+    for (let ll = 0; ll < this.wrappedHeights.length; ll++) {
+      const h = this.wrappedHeights[ll] ?? 1;
+
+      // 本逻辑行不在选区范围内 → 跳过
+      if (ll < startLine || ll > endLine) {
+        globalLineIdx += h;
+        continue;
+      }
+
+      // 处理本逻辑行的每个 wrapped 子行
+      for (let wi = 0; wi < h; wi++) {
+        if (globalLineIdx >= lines.length) break;
+        const wrappedLine = lines[globalLineIdx] ?? '';
+
+        // 计算本子行在逻辑行中的字符范围
+        // 计算与选区相交的字符范围
+        let selStart: number | undefined;
+        let selEnd: number | undefined;
+
+        // 所有选中行均使用整行宽度（0 ~ lineWidth），与 claude-code 行为一致。
+        selStart = 0;
+        selEnd = lineWidth;
+
+        if (
+          selStart === undefined ||
+          selEnd === undefined ||
+          selStart >= selEnd ||
+          selStart >= lineWidth
+        ) {
+          globalLineIdx++;
+          continue;
+        }
+
+        // 在 ANSI 行中按字符位置插入选区背景色
+        // 使用逐字符遍历替换正则拆分行，避免 ANSI 序列解析不完整导致
+        // 字符计数偏移（表现为交替选中/不选中的"凹凸"模式）。
+        let out = '';
+        let charPos = 0;
+        let inSel = false;
+        let i = 0;
+
+        while (i < wrappedLine.length) {
+          const ch = wrappedLine[i]!;
+          if (ch === '\x1b') {
+            // ANSI 转义序列：跳过整个序列（CSI 或 OSC 等），不计入 charPos
+            const seqStart = i;
+            i++; // 跳过 ESC
+            if (i < wrappedLine.length && wrappedLine[i]! === '[') {
+              // CSI 序列: \x1b[ params... final byte
+              i++;
+              while (i < wrappedLine.length && !/[a-zA-Z~]/.test(wrappedLine[i]!)) i++;
+              if (i < wrappedLine.length) i++;
+            } else if (i < wrappedLine.length && wrappedLine[i]! === ']') {
+              // OSC 序列: \x1b]...(\x07|\x1b\\)
+              i++;
+              while (
+                i < wrappedLine.length &&
+                wrappedLine[i]! !== '\x07' &&
+                !(
+                  wrappedLine[i]! === '\x1b' &&
+                  i + 1 < wrappedLine.length &&
+                  wrappedLine[i + 1]! === '\\'
+                )
+              ) {
+                i++;
+              }
+              if (i < wrappedLine.length) i++;
+            } else {
+              // 其他 ESC 序列: 跳过 ESC 后的一个字节
+              if (i < wrappedLine.length) i++;
+            }
+            const seq = wrappedLine.slice(seqStart, i);
+            out += seq;
+            // 选区内的 SGR 序列（以 m 结尾）可能重置背景色，需要重新应用 SEL_BG
+            if (inSel && seq.endsWith('m')) {
+              out += SEL_BG;
+            }
+          } else {
+            // 可见字符
+            if (!inSel && charPos >= selStart && charPos < selEnd) {
+              out += SEL_BG;
+              inSel = true;
+            } else if (inSel && charPos >= selEnd) {
+              out += BG_RESET;
+              inSel = false;
+            }
+            out += wrappedLine[i];
+            charPos++;
+            i++;
+          }
+        }
+
+        // 行内容不足 lineWidth 时补齐空格，确保选区背景覆盖整行
+        while (charPos < lineWidth) {
+          if (!inSel && charPos >= selStart && charPos < selEnd) {
+            out += SEL_BG;
+            inSel = true;
+          } else if (inSel && charPos >= selEnd) {
+            out += BG_RESET;
+            inSel = false;
+          }
+          out += ' ';
+          charPos++;
+        }
+
+        if (inSel) out += BG_RESET;
+        lines[globalLineIdx] = out;
+        globalLineIdx++;
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
   // Screen 管线渲染接口（虚拟滚动）
   // -------------------------------------------------------------------------
+
+  /**
+   * 设置区域矩形（供引擎在旧管线中调用，使 #terminalToLogical 能正确转换坐标）。
+   * 在旧字符串管线中，computeOutput 计算布局后调用此方法设置 rect。
+   */
+  setAreaRect(rect: Rect): void {
+    this.#areaRect = rect;
+    // 终端宽度变化 → 清除选择并重建所有缓存
+    if (rect.width !== this.cacheWidth) {
+      this.#selection = null;
+      this.#isDragging = false;
+      this.rebuildAllWraps(rect.width);
+    }
+  }
 
   /**
    * 渲染到 Screen 缓冲区（虚拟滚动）。
@@ -572,6 +776,7 @@ export class OutputArea extends Container {
 
   /** 处理键盘/鼠标滚动事件 */
   handleScroll(direction: 'up' | 'down', _lines?: number): void {
+    this.clearSelection(); // PR4: 滚动时清除选择
     const step = _lines ?? 3;
     if (direction === 'up') {
       this.#scrollOffset += step;
@@ -590,6 +795,29 @@ export class OutputArea extends Container {
     this.#scrollOffset = 0;
     this.#followBottom = true;
     this.invalidate();
+  }
+
+  // -------------------------------------------------------------------------
+  // 选择管理（公共 API）
+  // -------------------------------------------------------------------------
+
+  /** 清除当前选择 */
+  clearSelection(): void {
+    this.#selection = null;
+    this.#isDragging = false;
+    this.#selectionLocked = true;
+    this.invalidate();
+  }
+
+  /** 是否有激活的选择 */
+  hasSelection(): boolean {
+    return this.#selection !== null;
+  }
+
+  /** 复制选中文本到剪贴板并清除选择（用于 Cmd+C 触发） */
+  copySelection(): void {
+    this.#copySelection();
+    this.clearSelection();
   }
 
   // -------------------------------------------------------------------------
@@ -659,11 +887,19 @@ export class OutputArea extends Container {
    * - release: 结束拖拽状态，保持选择高亮
    */
   handleMouseEvent(event: SgrMouseEvent): void {
-    // 只处理左键
-    if (event.button !== 0) return;
+    // 只处理左键。button=3 表示"无按键"的 motion（DEC 1003），
+    // 只允许在已拖拽状态下延续选择，不可用于开始选择。
+    if (event.button !== 0) {
+      if (!(event.action === 'drag' && event.button === 3 && this.#isDragging)) return;
+    }
 
     switch (event.action) {
       case 'press': {
+        // 新按下鼠标，解锁 motion 事件并清除已完成的选择
+        this.#selectionLocked = false;
+        if (this.#selection && !this.#isDragging) {
+          this.#selection = null;
+        }
         const pos = this.#terminalToLogical(event.col, event.row);
         this.#selection = {
           startLine: pos.line,
@@ -672,10 +908,30 @@ export class OutputArea extends Container {
           endOffset: pos.offset,
         };
         this.#isDragging = true;
+        logger.info(
+          `SEL press set line=${pos.line} offset=${pos.offset} rect=${JSON.stringify(this.#areaRect)}`
+        );
         break;
       }
       case 'drag': {
-        if (!this.#isDragging) return;
+        if (!this.#isDragging) {
+          // button=3（无按键 motion）不可用于隐式 press。
+          // 若此处是 button=0 且前一次选择已清除/锁定，则忽略。
+          if (this.#selection || this.#selectionLocked) return;
+          // iTerm2 在不按 Option 时不发送 press 事件（截获用于原生选择），
+          // 直接以 drag 事件开始，但仅限 button=0 的 drag（btn=32）。
+          if (event.button !== 0) return;
+          const pos = this.#terminalToLogical(event.col, event.row);
+          this.#selection = {
+            startLine: pos.line,
+            startOffset: pos.offset,
+            endLine: pos.line,
+            endOffset: pos.offset,
+          };
+          this.#isDragging = true;
+          logger.info(`SEL implicit_press line=${pos.line} offset=${pos.offset}`);
+          break;
+        }
         const pos = this.#terminalToLogical(event.col, event.row);
         if (this.#selection) {
           this.#selection.endLine = pos.line;
@@ -687,6 +943,19 @@ export class OutputArea extends Container {
       case 'release': {
         if (this.#isDragging) {
           this.#isDragging = false;
+          // 如果 anchor === focus（点击但没有拖拽），清除零宽选区
+          if (
+            this.#selection &&
+            this.#selection.startLine === this.#selection.endLine &&
+            this.#selection.startOffset === this.#selection.endOffset
+          ) {
+            this.#selection = null;
+            this.#selectionLocked = true;
+            this.invalidate();
+            break;
+          }
+          const text = this.getSelectedText();
+          logger.info(`SEL release textLen=${text?.length ?? 0} hasText=${!!text}`);
           this.#copySelection();
         }
         break;
@@ -906,7 +1175,13 @@ export class OutputArea extends Container {
    */
   #renderSelectionHighlight(screen: Screen, stylePool: StylePool, rect: Rect): void {
     const sel = this.#selection;
-    if (!sel) return;
+    if (!sel) {
+      logger.info('SEL render no_selection');
+      return;
+    }
+    logger.info(
+      `SEL render startL=${sel.startLine} startO=${sel.startOffset} endL=${sel.endLine} endO=${sel.endOffset}`
+    );
 
     // 归一化：保证 start ≤ end
     const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
@@ -988,11 +1263,9 @@ export class OutputArea extends Container {
         for (let c = colStart; c < colEnd; c++) {
           const screenCol = rect.x + c;
           const cell = screen.getCell(screenCol, screenRow);
-          // 只高亮有内容的单元格
-          if (cell.char !== '') {
-            const newStyleId = stylePool.withSelectionBg(cell.styleId);
-            screen.setCell(screenCol, screenRow, cell.char, newStyleId, cell.width);
-          }
+          // 高亮所有单元格（含空单元格），确保选区背景覆盖整行
+          const newStyleId = stylePool.withSelectionBg(cell.styleId);
+          screen.setCell(screenCol, screenRow, cell.char || ' ', newStyleId, cell.width);
         }
       }
 

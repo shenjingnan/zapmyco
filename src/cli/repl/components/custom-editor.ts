@@ -62,6 +62,9 @@ export class ZapmycoEditor extends Editor {
   /** Escape 键回调 */
   onEscape?: () => void;
 
+  /** 清除选择回调（OutputArea 选择相关，优先于 onEscape） */
+  onClearSelection?: () => void;
+
   /** Ctrl+C 回调 */
   onCtrlC?: () => void;
 
@@ -131,9 +134,16 @@ export class ZapmycoEditor extends Editor {
       this.#handleApprovalInput(data);
       return;
     }
-    if (matchesKey(data, Key.escape) && this.onEscape) {
-      this.onEscape();
-      return;
+    if (matchesKey(data, Key.escape)) {
+      // PR4: 优先清除选择
+      if (this.onClearSelection) {
+        this.onClearSelection();
+        return;
+      }
+      if (this.onEscape) {
+        this.onEscape();
+        return;
+      }
     }
     if (matchesKey(data, Key.ctrl('c')) && this.onCtrlC) {
       this.onCtrlC();

@@ -108,7 +108,11 @@
     "Decstbm",
     "DECSTBM",
     "Ptmux",
-    "Seco"
+    "Seco",
+    "focusables",
+    "flexbox",
+    "unclip",
+    "Unclip"
   ],
   "ignorePaths": [
     "node_modules",

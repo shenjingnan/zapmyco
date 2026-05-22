@@ -33,6 +33,7 @@
  */
 
 import { writeSync } from 'node:fs';
+import { logger } from '@/infra/logger';
 import { Container } from './container';
 import {
   BSU,
@@ -767,6 +768,10 @@ export class TUI {
     // 非滚轮事件：构造 SgrMouseEvent 并分发
     const action = terminator === 'm' ? 'release' : (btn & 0x20) !== 0 ? 'drag' : 'press';
 
+    logger.info(
+      `SGR_MOUSE btn=${btn} col=${col} row=${row} action=${action} button=${btn & 3} meta=${(btn & 8) !== 0}`
+    );
+
     const event: SgrMouseEvent = {
       btn,
       col,
@@ -828,6 +833,24 @@ export class TUI {
 
     // 2. 计算可滚动区域可用行数
     const scrollableHeight = Math.max(1, height - fixedHeight);
+
+    // 通知可滚动组件其区域矩形（使选区坐标转换能获取 #areaRect）
+    // 在旧管线中，引擎不调用 renderToScreen，OutputArea 等组件需要
+    // setAreaRect 来获取布局位置以便 #terminalToLogical 正确转换。
+    {
+      let y = 0;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i]!;
+        const isScrollable = child.scrollOffset !== undefined;
+        if (isScrollable) {
+          const rect = { x: 0, y, width, height: scrollableHeight };
+          (child as { setAreaRect?: (r: typeof rect) => void }).setAreaRect?.(rect);
+          y += scrollableHeight;
+        } else {
+          y += outputs[i]?.lines.length ?? 0;
+        }
+      }
+    }
 
     // 3. 按顺序组装输出，可滚动组件按 scrollOffset 切片
     let lines: string[] = [];

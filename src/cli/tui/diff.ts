@@ -59,15 +59,19 @@ export function diffScreens(prev: Screen | null, next: Screen, stylePool: StyleP
   let changedRows = 0;
 
   if (prev === null) {
-    // 首次渲染：每个非空行生成完整补丁
+    // 首次渲染：每行按 styleId 分段输出（带样式码）
     for (let r = 0; r < rows; r++) {
-      const lineText = buildLineText(next, r, cols);
-      if (lineText === null) continue; // 空行
+      const { segments, firstStyle } = buildSegmentText(next, r, 0, cols, stylePool);
+      if (segments.length === 0 || segments.every((s) => s.text === '')) continue;
 
       patches.push({ type: 'move', x: 0, y: r });
-      // 先 reset style，再逐行渲染
-      patches.push({ type: 'style', style: stylePool.transition(0, 0) });
-      patches.push({ type: 'write', text: lineText });
+      patches.push({ type: 'style', style: stylePool.transition(0, firstStyle) });
+      for (const seg of segments) {
+        patches.push({ type: 'write', text: seg.text });
+        if (seg.nextTransition) {
+          patches.push({ type: 'style', style: seg.nextTransition });
+        }
+      }
       patches.push({ type: 'clearLine', y: r });
       changedCells += countNonEmptyCells(next, r, cols);
       changedRows++;
@@ -78,13 +82,18 @@ export function diffScreens(prev: Screen | null, next: Screen, stylePool: StyleP
   // 非首帧：逐行比较
   for (let r = 0; r < rows; r++) {
     if (r >= prev.rows) {
-      // 新行：直接写入
-      const lineText = buildLineText(next, r, cols);
-      if (lineText === null) continue;
+      // 新行：分段写入（带样式码）
+      const { segments, firstStyle } = buildSegmentText(next, r, 0, cols, stylePool);
+      if (segments.length === 0 || segments.every((s) => s.text === '')) continue;
 
       patches.push({ type: 'move', x: 0, y: r });
-      patches.push({ type: 'style', style: stylePool.transition(0, 0) });
-      patches.push({ type: 'write', text: lineText });
+      patches.push({ type: 'style', style: stylePool.transition(0, firstStyle) });
+      for (const seg of segments) {
+        patches.push({ type: 'write', text: seg.text });
+        if (seg.nextTransition) {
+          patches.push({ type: 'style', style: seg.nextTransition });
+        }
+      }
       continue;
     }
 
@@ -97,15 +106,19 @@ export function diffScreens(prev: Screen | null, next: Screen, stylePool: StyleP
     }
 
     if (changed.fullLine) {
-      // 整行变化：直接 write 整行
-      const lineText = buildLineText(next, r, cols);
-      if (lineText === null) {
-        // 行为空 → clearLine
+      // 整行变化：分段写入（带样式码）
+      const { segments, firstStyle } = buildSegmentText(next, r, 0, cols, stylePool);
+      if (segments.length === 0) {
         patches.push({ type: 'clearLine', y: r });
       } else {
         patches.push({ type: 'move', x: 0, y: r });
-        patches.push({ type: 'style', style: stylePool.transition(0, 0) });
-        patches.push({ type: 'write', text: lineText });
+        patches.push({ type: 'style', style: stylePool.transition(0, firstStyle) });
+        for (const seg of segments) {
+          patches.push({ type: 'write', text: seg.text });
+          if (seg.nextTransition) {
+            patches.push({ type: 'style', style: seg.nextTransition });
+          }
+        }
         patches.push({ type: 'clearLine', y: r });
       }
       changedRows++;
@@ -114,7 +127,6 @@ export function diffScreens(prev: Screen | null, next: Screen, stylePool: StyleP
     }
 
     // 部分变化：分段写入
-    // 先清行尾（如果 prev 比 next 长或行尾有残余）
     let lineCleared = false;
 
     for (const range of changed.ranges) {
@@ -125,14 +137,22 @@ export function diffScreens(prev: Screen | null, next: Screen, stylePool: StyleP
       // 移动光标到变化区间起点
       patches.push({ type: 'move', x: range.colStart, y: r });
 
-      // 写入变化区间的文本，并跟踪 style 变化
-      const segments = buildSegmentText(next, r, range.colStart, range.colEnd, stylePool);
-      for (const seg of segments) {
-        if (seg.styleTransition) {
-          patches.push({ type: 'style', style: seg.styleTransition });
-        }
-        if (seg.text) {
+      // 分段写入（带样式码）
+      const { segments, firstStyle } = buildSegmentText(
+        next,
+        r,
+        range.colStart,
+        range.colEnd,
+        stylePool
+      );
+      if (segments.length > 0) {
+        // 从 0 重置到第一段的 style（光标移动后 terminal 状态已知，但用 reset 保证正确）
+        patches.push({ type: 'style', style: stylePool.transition(0, firstStyle) });
+        for (const seg of segments) {
           patches.push({ type: 'write', text: seg.text });
+          if (seg.nextTransition) {
+            patches.push({ type: 'style', style: seg.nextTransition });
+          }
         }
       }
 
@@ -258,12 +278,6 @@ function findChangedRanges(
   return { fullLine: false, ranges };
 }
 
-/** 行文本分段，含样式转换 */
-interface TextSegment {
-  text: string;
-  styleTransition: string | null;
-}
-
 /**
  * 为某行的某一区间构建分段文本。
  * 每个样式变化处切分为新 segment。
@@ -274,36 +288,27 @@ function buildSegmentText(
   colStart: number,
   colEnd: number,
   stylePool: StylePool
-): TextSegment[] {
-  const segments: TextSegment[] = [];
+): { segments: { text: string; nextTransition: string | null }[]; firstStyle: number } {
+  const segments: { text: string; nextTransition: string | null }[] = [];
   let currentText = '';
-  let currentStyle = -1; // -1 = uninitialized
-  let initialized = false;
+  let currentStyle = -1;
+  let firstStyle = -1;
 
   const maxCol = Math.min(colEnd, screen.cols);
 
   for (let c = colStart; c < maxCol; c++) {
     const cell = screen.getCell(c, row);
-    if (cell.width === 2 && cell.char === '') {
-      // spacer tail: 跳过
-      continue;
-    }
+    if (cell.width === 2 && cell.char === '') continue;
 
-    if (!initialized) {
+    if (currentStyle === -1) {
       currentStyle = cell.styleId;
+      firstStyle = cell.styleId;
       currentText = cell.char;
-      initialized = true;
-      continue;
-    }
-
-    if (cell.styleId !== currentStyle) {
-      // flush current segment
+    } else if (cell.styleId !== currentStyle) {
+      // 当前 segment 结束（style=currentStyle），下个 segment 切换为 cell.styleId
       segments.push({
         text: currentText,
-        styleTransition: stylePool.transition(
-          currentStyle === -1 ? 0 : currentStyle,
-          currentStyle === -1 ? cell.styleId : currentStyle
-        ),
+        nextTransition: stylePool.transition(currentStyle, cell.styleId),
       });
       currentStyle = cell.styleId;
       currentText = cell.char;
@@ -312,35 +317,31 @@ function buildSegmentText(
     }
   }
 
-  // flush last segment
-  if (initialized) {
-    segments.push({
-      text: currentText,
-      styleTransition: null, // 调用方在区间前已做 style transition
-    });
+  if (currentStyle !== -1) {
+    segments.push({ text: currentText, nextTransition: null });
   }
 
-  return segments;
+  return { segments, firstStyle };
 }
 
 /**
  * 构建一行的完整文本（用于 fullLine 写入）。
  * 空行返回 null。
  */
-function buildLineText(screen: Screen, row: number, cols: number): string | null {
-  let text = '';
-  let hasContent = false;
-
-  for (let c = 0; c < cols; c++) {
-    const cell = screen.getCell(c, row);
-    if (cell.char === '') continue;
-    if (cell.width === 2 && cell.char === '') continue; // spacer tail
-    text += cell.char;
-    hasContent = true;
-  }
-
-  return hasContent ? text : null;
-}
+// function buildLineText(screen: Screen, row: number, cols: number): string | null {
+//   let text = '';
+//   let hasContent = false;
+//
+//   for (let c = 0; c < cols; c++) {
+//     const cell = screen.getCell(c, row);
+//     if (cell.char === '') continue;
+//     if (cell.width === 2 && cell.char === '') continue; // spacer tail
+//     text += cell.char;
+//     hasContent = true;
+//   }
+//
+//   return hasContent ? text : null;
+// }
 
 /**
  * 统计一行中非空单元格数。

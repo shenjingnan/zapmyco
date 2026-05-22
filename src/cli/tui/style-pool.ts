@@ -94,7 +94,7 @@ export class StylePool {
   readonly none = 0;
 
   /** 选中背景色 ANSI 码 */
-  #selectionColor: AnsiCode = '48;2;58;58;140';
+  #selectionColor: AnsiCode = '48;2;38;79;120';
 
   /** withSelectionBg 缓存: key = "sel-{baseStyleId}" → styleId */
   #selCache = new Map<string, number>();
