@@ -92,6 +92,12 @@ export class AgentStatusBar extends Container {
   /** 上次活跃实例快照（用于检测变化） */
   #lastActiveCount = 0;
 
+  /**
+   * Token 信息行是否已 flush 到 OutputArea。
+   * flush 后 render() 不再单独显示 Token 行，避免与 OutputArea 中的内容重复。
+   */
+  #tokenFlushed = false;
+
   constructor(animationManager: AnimationManager) {
     super();
     this.#animationManager = animationManager;
@@ -186,6 +192,26 @@ export class AgentStatusBar extends Container {
     this.invalidate();
   }
 
+  /**
+   * 将 Token 信息行 flush 到 OutputArea（由 session 在执行完成后调用）。
+   *
+   * 获取当前 Token 信息行并返回，同时标记 #tokenFlushed = true，
+   * 后续无活跃 Agent 时不再单独显示 Token 行。
+   *
+   * @param width - 终端宽度
+   * @returns Token 信息行（无 Token 信息时返回 null）
+   */
+  flushTokenInfo(width: number): string | null {
+    if (!this.hasTokenInfo) return null;
+    this.#tokenFlushed = true;
+    return truncateToWidth(this.#renderTokenInfoLine(), width);
+  }
+
+  /** 重置 Token flush 标记（新执行开始时调用） */
+  resetTokenFlush(): void {
+    this.#tokenFlushed = false;
+  }
+
   /** 是否有 Token 信息要显示 */
   get hasTokenInfo(): boolean {
     return this.#modelName !== null;
@@ -203,6 +229,8 @@ export class AgentStatusBar extends Container {
     if (activeInstances.length === 0) {
       this.#stopLoading();
       this.#lastActiveCount = 0;
+      // 如果 Token 已 flush 到 OutputArea，不再重复显示
+      if (this.#tokenFlushed) return [];
       // 如果有 Token 信息，单独显示 Token 行
       if (this.hasTokenInfo) {
         return [truncateToWidth(this.#renderTokenInfoLine(), width)];

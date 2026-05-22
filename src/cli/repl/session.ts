@@ -500,7 +500,11 @@ export class ReplSession {
     // 9. 清除 Agent 状态栏的 Token 显示
     this.agentStatusBar.clearTokenStats();
 
-    // 10. 重新渲染 TUI
+    // 10. 重置状态栏 flush 标记，使下次执行时正常显示
+    this.taskStatusBar.resetFlush();
+    this.agentStatusBar.resetTokenFlush();
+
+    // 11. 重新渲染 TUI
     this.tui.requestRender();
   }
 
@@ -1095,8 +1099,10 @@ export class ReplSession {
         this.editor.onToggleThinking = toggleThinking;
       }
 
-      // 重置状态栏 Token 信息，然后设置当前模型名称
+      // 重置状态栏 Token 信息和 flush 标记，然后设置当前模型名称
       this.agentStatusBar.clearTokenStats();
+      this.agentStatusBar.resetTokenFlush();
+      this.taskStatusBar.resetFlush();
       const agentModel = (this.agent as LlmBasedAgent).innerAgent.state.model;
       const modelName = typeof agentModel?.id === 'string' ? agentModel.id : 'unknown';
       this.agentStatusBar.setModelName(modelName);
@@ -1527,6 +1533,19 @@ export class ReplSession {
         finalUsage.outputTokens,
         Date.now() - startTime
       );
+
+      // 将任务状态栏和 Agent 状态栏的最终摘要 flush 到 OutputArea（成为可滚动内容）
+      const termWidth = this.tui.terminal?.columns ?? 80;
+      const flushedTaskLines = this.taskStatusBar.flushSummary(termWidth);
+      if (flushedTaskLines.length > 0) {
+        this.outputArea.append(flushedTaskLines);
+      }
+      const flushedTokenLine = this.agentStatusBar.flushTokenInfo(termWidth);
+      if (flushedTokenLine !== null) {
+        this.outputArea.append([flushedTokenLine]);
+      }
+      this.tui.requestRender();
+
       this._state = 'idle';
       this.updateStatsState();
       this.editor.setExecuting(false);
