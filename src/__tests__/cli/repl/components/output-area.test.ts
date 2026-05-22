@@ -1310,4 +1310,119 @@ describe('OutputArea', () => {
       });
     });
   });
+
+  describe('getSelectedText', () => {
+    function createSetup(lines: string[], width = 40) {
+      const area = new OutputArea();
+      area.append(lines);
+      const pool = new StylePool();
+      const screen = new Screen(5, width);
+      // 必须先 render 以建立 #areaRect 缓存
+      area.renderToScreen(screen, pool, { x: 0, y: 0, width, height: 5 });
+      return { area, pool, screen };
+    }
+
+    it('无选择时应返回空字符串', () => {
+      const { area } = createSetup(['Hello World']);
+      expect(area.getSelectedText()).toBe('');
+    });
+
+    it('单行选择应返回相应文本', () => {
+      const { area } = createSetup(['Hello World']);
+
+      area.handleMouseEvent(createPress(7, 1));
+      area.handleMouseEvent(createDrag(12, 1));
+
+      expect(area.getSelectedText()).toBe('World');
+    });
+
+    it('多行选择应拼接文本', () => {
+      const { area } = createSetup(['First line', 'Second line']);
+
+      // 选中第一行全部 + 第二行前 4 个字符
+      area.handleMouseEvent(createPress(1, 1));
+      area.handleMouseEvent(createDrag(5, 2));
+
+      expect(area.getSelectedText()).toBe('First line\nSeco');
+    });
+
+    it('反向选择（end < start）应归一化', () => {
+      const { area } = createSetup(['Hello World']);
+
+      // 反向选择: press col 12 → drag col 7
+      area.handleMouseEvent(createPress(12, 1));
+      area.handleMouseEvent(createDrag(7, 1));
+
+      expect(area.getSelectedText()).toBe('World');
+    });
+
+    it('包含 ANSI 码的行应去除 ANSI 后返回', () => {
+      const { area } = createSetup(['\x1b[32mGreen\x1b[39m']);
+
+      area.handleMouseEvent(createPress(1, 1));
+      area.handleMouseEvent(createDrag(11, 1));
+
+      expect(area.getSelectedText()).toBe('Green');
+    });
+
+    it('选定范围不跨越多行时首个字偏移正确', () => {
+      const { area } = createSetup(['Hello World']);
+
+      // 选择前 5 个字符 "Hello"
+      area.handleMouseEvent(createPress(1, 1));
+      area.handleMouseEvent(createDrag(6, 1));
+
+      expect(area.getSelectedText()).toBe('Hello');
+    });
+
+    it('release 事件触发后 getSelectedText 保留选择内容', () => {
+      const { area } = createSetup(['Hello World']);
+
+      area.handleMouseEvent(createPress(1, 1));
+      area.handleMouseEvent(createDrag(6, 1));
+      area.handleMouseEvent(createRelease(6, 1));
+
+      // release 后选择仍保持，可提取文本
+      expect(area.getSelectedText()).toBe('Hello');
+    });
+  });
 });
+
+function createPress(col: number, row: number) {
+  return {
+    btn: 0,
+    col,
+    row,
+    action: 'press' as const,
+    button: 0,
+    shiftKey: false,
+    metaKey: false,
+    ctrlKey: false,
+  };
+}
+
+function createDrag(col: number, row: number) {
+  return {
+    btn: 32,
+    col,
+    row,
+    action: 'drag' as const,
+    button: 0,
+    shiftKey: false,
+    metaKey: false,
+    ctrlKey: false,
+  };
+}
+
+function createRelease(col: number, row: number) {
+  return {
+    btn: 0,
+    col,
+    row,
+    action: 'release' as const,
+    button: 0,
+    shiftKey: false,
+    metaKey: false,
+    ctrlKey: false,
+  };
+}
