@@ -27,6 +27,7 @@ import { AgentStatusBar } from '@/cli/repl/components/agent-status-bar';
 import type { ApprovalOption } from '@/cli/repl/components/custom-editor';
 import { LOADING_FRAMES, ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 import { showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import { OutputArea } from '@/cli/repl/components/output-area';
 import { TaskStatusBar } from '@/cli/repl/components/task-status-bar';
 import { _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import { CronScheduler } from '@/cli/repl/cron/cron-scheduler';
@@ -65,7 +66,6 @@ import {
   ProcessTerminal,
   type SlashCommand,
   TUI,
-  wrapTextWithAnsi,
 } from '@/cli/tui';
 import { normalizeMcpConfig, type ZapmycoConfig } from '@/config/types';
 import { createLlmBasedAgent, type LlmBasedAgent } from '@/core/agent-runtime';
@@ -121,172 +121,6 @@ function getApiKeyErrorHelp(errorMessage: string): string[] {
   ];
 }
 
-/**
- * 输出区域组件
- *
- * 管理所有输出内容的行缓冲，实现 render 接口。
- * 支持通过鼠标滚轮滚动查看历史内容。
- */
-class OutputArea extends Container {
-  private lines: string[] = [];
-  /** 逐行缓存的渲染结果（避免每帧对所有历史行重新调用 wrapTextWithAnsi） */
-  private lineCache: Map<number, string[]> = new Map();
-  /** 缓存生成时使用的终端宽度，变化时重建 */
-  private cacheWidth = 0;
-
-  /** 滚动偏移量（0 = 底部/最新），单位为换行后显示行 */
-  #scrollOffset = 0;
-  /** 是否跟随底部（追加内容时自动滚动到底部） */
-  #followBottom = true;
-
-  /** 公共只读属性，供引擎层读取 */
-  get scrollOffset(): number {
-    return this.#scrollOffset;
-  }
-
-  /** 是否处于跟随底部模式 */
-  get followBottom(): boolean {
-    return this.#followBottom;
-  }
-
-  /**
-   * 渲染所有行（引擎层根据 scrollOffset 做切片）
-   * 此处返回完整内容，不做截断
-   */
-  override render(width: number): string[] {
-    // 终端宽度变化 → 所有缓存行失效
-    if (width !== this.cacheWidth) {
-      this.cacheWidth = width;
-      this.lineCache.clear();
-    }
-
-    const result: string[] = [];
-    for (let i = 0; i < this.lines.length; i++) {
-      let cached = this.lineCache.get(i);
-      if (!cached) {
-        cached = wrapTextWithAnsi(this.lines[i] ?? '', width);
-        this.lineCache.set(i, cached);
-      }
-      result.push(...cached);
-    }
-    return result;
-  }
-
-  /** 处理鼠标滚轮滚动事件（来自 Component 接口） */
-  handleScroll(direction: 'up' | 'down', _lines?: number): void {
-    const step = _lines ?? 3;
-    if (direction === 'up') {
-      this.#scrollOffset += step;
-      this.#followBottom = false;
-    } else {
-      this.#scrollOffset = Math.max(0, this.#scrollOffset - step);
-      if (this.#scrollOffset === 0) {
-        this.#followBottom = true;
-      }
-    }
-    this.invalidate();
-  }
-
-  /** 重置滚动到底部 */
-  scrollToBottom(): void {
-    this.#scrollOffset = 0;
-    this.#followBottom = true;
-    this.invalidate();
-  }
-
-  /** 追加多行内容，返回新追加行中第一行的索引 */
-  append(lines: string[]): number {
-    const index = this.lines.length;
-    this.lines.push(...lines);
-    // 追加后如果用户正在查看历史，需调整 scrollOffset 保持视图稳定
-    if (!this.#followBottom) {
-      // 获取每行的换行数来计算新增显示行
-      // 近似：每行用当前 cacheWidth 计算，但 cacheWidth 可能为 0
-      const newWrappedLines = lines.reduce((sum, line) => {
-        if (this.cacheWidth > 0) {
-          return sum + wrapTextWithAnsi(line, this.cacheWidth).length;
-        }
-        return sum + 1; // 近似
-      }, 0);
-      this.#scrollOffset += newWrappedLines;
-    }
-    this.invalidate();
-    return index;
-  }
-
-  /** 追加文本到当前行末尾（用于流式输出） */
-  appendText(text: string): void {
-    if (this.lines.length === 0) {
-      this.lines.push(text);
-    } else {
-      this.lines[this.lines.length - 1] += text;
-      // 追加文本后，最后一行缓存失效
-      this.lineCache.delete(this.lines.length - 1);
-    }
-    if (!this.#followBottom) {
-      // 如果用户不是在底部，估算新增显示行
-      if (this.cacheWidth > 0) {
-        const newWrapped = wrapTextWithAnsi(text, this.cacheWidth).length;
-        this.#scrollOffset += newWrapped;
-      } else {
-        this.#scrollOffset += 1;
-      }
-    }
-    this.invalidate();
-  }
-
-  /** 替换最后一行的完整内容（用于 spinner 动画和首 chunk 替换），返回行索引 */
-  replaceLastLine(text: string): number {
-    if (this.lines.length > 0) {
-      this.lines[this.lines.length - 1] = text;
-      // 最后一行变化，失效其缓存
-      this.lineCache.delete(this.lines.length - 1);
-    } else {
-      this.lines.push(text);
-    }
-    this.invalidate();
-    return this.lines.length - 1;
-  }
-
-  /** 在指定位置插入/删除/替换行（原子操作） */
-  spliceLines(startIndex: number, deleteCount: number, insertLines: string[]): void {
-    this.lines.splice(startIndex, deleteCount, ...insertLines);
-    // 行索引发生变化，从 startIndex 起的所有缓存失效
-    this.invalidateCacheFrom(startIndex);
-    this.invalidate();
-  }
-
-  /** 更新指定索引行的内容 */
-  updateLine(index: number, text: string): void {
-    if (index >= 0 && index < this.lines.length) {
-      this.lines[index] = text;
-      this.lineCache.delete(index);
-      this.invalidate();
-    }
-  }
-
-  /** 清空所有内容 */
-  clear(): void {
-    this.lines = [];
-    this.lineCache.clear();
-    this.#scrollOffset = 0;
-    this.#followBottom = true;
-    this.invalidate();
-  }
-
-  /** 使从指定索引开始的所有缓存行失效 */
-  private invalidateCacheFrom(startIndex: number): void {
-    // Map 的 keys() 按插入顺序返回，但 index 不保证连续
-    // 遍历 keys 删除 >= startIndex 的条目
-    for (const key of this.lineCache.keys()) {
-      if (key >= startIndex) {
-        this.lineCache.delete(key);
-      }
-    }
-  }
-}
-
-/** 默认提示符（用于显示/格式化） */
 const DEFAULT_PROMPT = '\u276f ';
 
 /** 默认续行提示符 */

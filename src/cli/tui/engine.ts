@@ -43,6 +43,92 @@ import type { ProcessTerminal } from './terminal';
 import type { Component, OverlayHandle, OverlayMargin, OverlayOptions, Rect } from './types';
 
 // ---------------------------------------------------------------------------
+// 导出：ANSI 行 → Screen 缓冲区渲染
+// ---------------------------------------------------------------------------
+
+/**
+ * 光标标记结果（通过可变对象传递，避免所有权和闭包问题）
+ */
+export interface CursorMarker {
+  row: number;
+  col: number;
+}
+
+/**
+ * 将 ANSI 字符串行解析为 Screen 单元格。
+ *
+ * 解析 SGR 样式序列，写入 Screen buffer。
+ * 可选地检测 Editor 嵌入的光标标记（\\u001B_pi:c\\u0007）并记录位置。
+ *
+ * @param screen      目标 Screen 缓冲区
+ * @param stylePool   样式池
+ * @param x           起始列
+ * @param y           起始行
+ * @param line        ANSI 格式化的字符串行
+ * @param cursorMarker 可选，用于接收光标标记位置的可变对象
+ */
+export function renderAnsiLineToScreen(
+  screen: Screen,
+  stylePool: StylePool,
+  x: number,
+  y: number,
+  line: string,
+  cursorMarker?: CursorMarker
+): void {
+  let styleId = 0;
+  let col = x;
+  let i = 0;
+
+  while (i < line.length) {
+    if (line[i] === '\x1b' && line[i + 1] === '[') {
+      // 查找 ANSI SGR 序列结束
+      const end = line.indexOf('m', i + 2);
+      if (end > 0) {
+        const codeStr = line.slice(i + 2, end);
+        // 重置码 → styleId = 0
+        if (codeStr === '0' || codeStr === '' || codeStr.includes('39') || codeStr.includes('49')) {
+          styleId = 0;
+        } else if (codeStr.startsWith('38;5;') || codeStr.startsWith('48;5;')) {
+          // 256 色
+          styleId = stylePool.intern([codeStr]);
+        } else if (codeStr.startsWith('38;2;') || codeStr.startsWith('48;2;')) {
+          // 真彩色
+          styleId = stylePool.intern([codeStr]);
+        } else {
+          styleId = stylePool.intern([codeStr]);
+        }
+        i = end + 1;
+        continue;
+      }
+    }
+
+    // 跳过 CURSOR_MARKER（新管线用其他方式定位光标）
+    if (line[i] === '\x1b' && line.slice(i, i + 7) === '\x1b_pi:c\x07') {
+      // 记录光标位置但不写入 screen
+      const markerIdx = line.indexOf('\x07', i);
+      if (markerIdx >= 0) {
+        if (cursorMarker) {
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI 序列含 ESC
+          const plainBefore = line.slice(0, i).replace(/\x1b\[[\d;]*m/g, '');
+          cursorMarker.row = y;
+          cursorMarker.col = plainBefore.length;
+        }
+        i = markerIdx + 1;
+        continue;
+      }
+    }
+
+    // 普通字符
+    const ch = line[i] ?? '';
+    if (ch >= ' ') {
+      screen.setCell(col, y, ch, styleId, 1);
+      col++;
+    }
+    i++;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 内部类型
 // ---------------------------------------------------------------------------
 
@@ -368,53 +454,48 @@ export class TUI {
    * 布局逻辑（与旧的 computeOutput 一致）：
    * - 可滚动组件（scrollOffset 已定义）占用剩余高度
    * - 不可滚动组件占用 render(width) 返回的行数
+   *
+   * 注意：可滚动组件不再调用 render(width) 来测量，避免触发全量换行。
+   * 固定组件（StatusBar/Editor）行数极少，调用 render(width) 测量成本可忽略。
    */
   private renderComponentsToScreen(screen: Screen): void {
     const children = this.getLayoutChildren();
-    const outputs: { lines: string[]; scrollable: boolean }[] = [];
-    let scrollOffset = 0;
+
+    // Pass 1: 测量固定高度组件的高度（可滚动组件不测量）
     let fixedHeight = 0;
+    const fixedChildHeights: number[] = [];
 
     for (const child of children) {
-      const childLines = child.render(screen.cols);
-      const isScrollable = child.scrollOffset !== undefined;
-      if (isScrollable) {
-        scrollOffset = child.scrollOffset;
+      if (child.scrollOffset !== undefined) {
+        // 可滚动组件 — 不调用 render，分配剩余高度
+        fixedChildHeights.push(0);
       } else {
-        fixedHeight += childLines.length;
+        // 固定高度组件 — 调用 render 测量
+        const h = child.render(screen.cols).length;
+        fixedChildHeights.push(h);
+        fixedHeight += h;
       }
-      outputs.push({ lines: childLines, scrollable: isScrollable });
     }
 
     // 可滚动区域可用行数
     const scrollableHeight = Math.max(1, screen.rows - fixedHeight);
     let y = 0;
 
+    // Pass 2: 渲染每个子组件
     for (let i = 0; i < children.length; i++) {
-      const child =
-        children[i] ??
-        (() => {
-          throw new Error('unreachable');
-        })();
-      const entry =
-        outputs[i] ??
-        (() => {
-          throw new Error('unreachable');
-        })();
+      // biome-ignore lint/style/noNonNullAssertion: children[i] guaranteed by loop bounds
+      const child = children[i]!;
+      const isScrollable = child.scrollOffset !== undefined;
 
       let rect: Rect;
-
-      if (entry.scrollable) {
-        // 可滚动组件：计算 slices 后的可见区域
-        const maxStart = Math.max(0, entry.lines.length - scrollableHeight);
-        const visibleStart = Math.max(0, maxStart - scrollOffset);
-        const visibleCount = Math.min(scrollableHeight, entry.lines.length - visibleStart);
-        // 使用 y=0 并让组件写入到顶行（因为实际切片后的行从 0 开始渲染）
-        rect = { x: 0, y, width: screen.cols, height: visibleCount };
+      if (isScrollable) {
+        // 可滚动组件获得全部剩余高度，组件内部自行管理视口
+        rect = { x: 0, y, width: screen.cols, height: scrollableHeight };
         y += scrollableHeight;
       } else {
-        rect = { x: 0, y, width: screen.cols, height: entry.lines.length };
-        y += entry.lines.length;
+        const h = fixedChildHeights[i] ?? 0;
+        rect = { x: 0, y, width: screen.cols, height: h };
+        y += h;
       }
 
       if (child.renderToScreen) {
@@ -432,71 +513,18 @@ export class TUI {
 
   /**
    * 旧接口回退：将组件 render(width) 的 ANSI 字符串行解析写入 Screen。
+   *
+   * 使用模块级 renderAnsiLineToScreen 并在找到光标标记时记录位置。
    */
   private renderChildToScreenFallback(child: Component, screen: Screen, rect: Rect): void {
     const lines = child.render(rect.width);
+    const cursorMarker: CursorMarker = { row: -1, col: -1 };
     for (let i = 0; i < lines.length && i < screen.rows - rect.y; i++) {
-      this.renderAnsiLineToScreen(screen, 0, rect.y + i, lines[i] ?? '');
+      renderAnsiLineToScreen(screen, this.stylePool, 0, rect.y + i, lines[i] ?? '', cursorMarker);
     }
-  }
-
-  /**
-   * 将 ANSI 字符串行解析为 Screen 单元格。
-   */
-  private renderAnsiLineToScreen(screen: Screen, x: number, y: number, line: string): void {
-    let styleId = 0;
-    let col = x;
-    let i = 0;
-
-    while (i < line.length) {
-      if (line[i] === '\x1b' && line[i + 1] === '[') {
-        // 查找 ANSI SGR 序列结束
-        const end = line.indexOf('m', i + 2);
-        if (end > 0) {
-          const codeStr = line.slice(i + 2, end);
-          // 重置码 → styleId = 0
-          if (
-            codeStr === '0' ||
-            codeStr === '' ||
-            codeStr.includes('39') ||
-            codeStr.includes('49')
-          ) {
-            styleId = 0;
-          } else if (codeStr.startsWith('38;5;') || codeStr.startsWith('48;5;')) {
-            // 256 色
-            styleId = this.stylePool.intern([codeStr]);
-          } else if (codeStr.startsWith('38;2;') || codeStr.startsWith('48;2;')) {
-            // 真彩色
-            styleId = this.stylePool.intern([codeStr]);
-          } else {
-            styleId = this.stylePool.intern([codeStr]);
-          }
-          i = end + 1;
-          continue;
-        }
-      }
-
-      // 跳过 CURSOR_MARKER（新管线用其他方式定位光标）
-      if (line[i] === '\x1b' && line.slice(i, i + 7) === '\x1b_pi:c\x07') {
-        // 记录光标位置但不写入 screen
-        const markerIdx = line.indexOf('\x07', i);
-        if (markerIdx >= 0) {
-          // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI 序列含 ESC
-          const plainBefore = line.slice(0, i).replace(/\x1b\[[\d;]*m/g, '');
-          this.cursorRow = y;
-          this.cursorCol = plainBefore.length;
-          i = markerIdx + 1;
-          continue;
-        }
-      }
-
-      // 普通字符
-      const ch = line[i] ?? '';
-      if (ch >= ' ') {
-        screen.setCell(col, y, ch, styleId, 1);
-        col++;
-      }
-      i++;
+    if (cursorMarker.row >= 0) {
+      this.cursorRow = cursorMarker.row;
+      this.cursorCol = cursorMarker.col;
     }
   }
 
@@ -509,7 +537,7 @@ export class TUI {
     const rect = this.calculateOverlayRect(entry, overlayLines.length);
 
     for (let i = 0; i < overlayLines.length && rect.row + i < screen.rows; i++) {
-      this.renderAnsiLineToScreen(screen, 0, rect.row + i, overlayLines[i] ?? '');
+      renderAnsiLineToScreen(screen, this.stylePool, 0, rect.row + i, overlayLines[i] ?? '');
     }
   }
 

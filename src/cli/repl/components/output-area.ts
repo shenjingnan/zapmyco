@@ -7,6 +7,8 @@
 
 import chalk, { Chalk } from 'chalk';
 import type { HistoryEntry } from '@/cli/repl/types';
+import type { Rect, Screen, StylePool } from '@/cli/tui';
+import { Container, renderAnsiLineToScreen, wrapTextWithAnsi } from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
 import type { TaskGraph } from '@/core/task/types';
@@ -387,6 +389,377 @@ export class OutputFormatter {
         return `${c.gray(' ⊘')}`;
       default:
         return `${c.gray(' ○')}`;
+    }
+  }
+}
+
+// =============================================================================
+// OutputArea — 输出区域组件
+// =============================================================================
+
+/**
+ * 输出区域组件
+ *
+ * 管理所有输出内容的行缓冲，实现 render 和 renderToScreen 接口。
+ * 支持通过键盘（PageUp/Down）和鼠标滚轮滚动查看历史内容。
+ *
+ * 在 Screen 管线中（renderToScreen），采用虚拟滚动策略：
+ * 只将可见范围的换行行写入 Screen 缓冲区，渲染时间与历史行数无关。
+ *
+ * 在旧管线中（render），保持返回所有行，由引擎层切片。
+ */
+export class OutputArea extends Container {
+  private lines: string[] = [];
+  /** 逐行缓存的换行结果（逻辑行索引 → 换行后的行数组） */
+  private lineCache: Map<number, string[]> = new Map();
+  /** 缓存生成时使用的终端宽度，变化时重建 */
+  private cacheWidth = 0;
+  /**
+   * 每个逻辑行换行后的显示行数。
+   * 用于 renderToScreen 中的 display line → logical line 转换。
+   */
+  private wrappedHeights: number[] = [];
+
+  /** 滚动偏移量（0 = 底部/最新），单位为换行后显示行 */
+  #scrollOffset = 0;
+  /** 是否跟随底部（追加内容时自动滚动到底部） */
+  #followBottom = true;
+
+  /** 最大逻辑行数（超出时丢弃最早的行） */
+  private static readonly MAX_LINES = 10_000;
+
+  /** 公共只读属性，供引擎层读取 */
+  get scrollOffset(): number {
+    return this.#scrollOffset;
+  }
+
+  /** 是否处于跟随底部模式 */
+  get followBottom(): boolean {
+    return this.#followBottom;
+  }
+
+  // -------------------------------------------------------------------------
+  // 旧版渲染接口（返回全部行，由引擎层切片）
+  // -------------------------------------------------------------------------
+
+  /**
+   * 渲染所有行（引擎层根据 scrollOffset 做切片）
+   * 此处返回完整内容，不做截断。
+   */
+  override render(width: number): string[] {
+    if (width !== this.cacheWidth) {
+      this.rebuildAllWraps(width);
+    }
+
+    const result: string[] = [];
+    for (let i = 0; i < this.lines.length; i++) {
+      result.push(...this.getOrCreateWrappedLine(i));
+    }
+    return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // Screen 管线渲染接口（虚拟滚动）
+  // -------------------------------------------------------------------------
+
+  /**
+   * 渲染到 Screen 缓冲区（虚拟滚动）。
+   *
+   * 只将当前可见范围的换行行写入 Screen，而非全部历史行。
+   * 使用 wrappedHeights 数组进行 display line → logical line 转换。
+   */
+  renderToScreen(screen: Screen, stylePool: StylePool, rect: Rect): void {
+    // 终端宽度变化 → 重建所有缓存
+    if (rect.width !== this.cacheWidth) {
+      this.rebuildAllWraps(rect.width);
+    }
+
+    if (this.lines.length === 0 || rect.height <= 0) {
+      screen.clearRegion(rect.x, rect.y, rect.width, rect.height);
+      return;
+    }
+
+    // 计算总显示高度
+    const totalDisplayHeight = this.wrappedHeights.reduce((a, b) => a + b, 0);
+
+    if (totalDisplayHeight === 0) {
+      screen.clearRegion(rect.x, rect.y, rect.width, rect.height);
+      return;
+    }
+
+    // 在显示行空间中计算可见窗口
+    // scrollOffset = 0 → 显示底部（最新内容）
+    // scrollOffset > 0 → 从底部向上偏移（查看历史）
+    const maxScroll = Math.max(0, totalDisplayHeight - rect.height);
+    const clampedOffset = Math.min(this.#scrollOffset, maxScroll);
+    const visibleEnd = totalDisplayHeight - clampedOffset;
+    const visibleStart = Math.max(0, visibleEnd - rect.height);
+
+    // 遍历逻辑行，只渲染可见部分
+    let displayRow = 0;
+    let screenRow = rect.y;
+
+    for (let logicalIdx = 0; logicalIdx < this.lines.length; logicalIdx++) {
+      const height = this.wrappedHeights[logicalIdx] ?? 1;
+      const lineEnd = displayRow + height;
+
+      // 完全在可见窗口上方 → 跳过
+      if (lineEnd <= visibleStart) {
+        displayRow = lineEnd;
+        continue;
+      }
+
+      // 完全在可见窗口下方 → 结束遍历
+      if (displayRow >= visibleEnd) {
+        break;
+      }
+
+      // 此行至少部分可见 → 获取换行结果并写入可见的子行
+      const wrapped = this.getOrCreateWrappedLine(logicalIdx);
+      for (let wi = 0; wi < wrapped.length; wi++) {
+        const globalRow = displayRow + wi;
+        if (globalRow >= visibleStart && globalRow < visibleEnd) {
+          renderAnsiLineToScreen(screen, stylePool, rect.x, screenRow, wrapped[wi] ?? '');
+          screenRow++;
+        }
+      }
+
+      displayRow = lineEnd;
+    }
+
+    // 填充底部空白区域（渲染行数不足 rect.height 时）
+    const renderedRows = screenRow - rect.y;
+    if (renderedRows < rect.height) {
+      screen.clearRegion(rect.x, rect.y + renderedRows, rect.width, rect.height - renderedRows);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 内容管理
+  // -------------------------------------------------------------------------
+
+  /** 处理键盘/鼠标滚动事件 */
+  handleScroll(direction: 'up' | 'down', _lines?: number): void {
+    const step = _lines ?? 3;
+    if (direction === 'up') {
+      this.#scrollOffset += step;
+      this.#followBottom = false;
+    } else {
+      this.#scrollOffset = Math.max(0, this.#scrollOffset - step);
+      if (this.#scrollOffset === 0) {
+        this.#followBottom = true;
+      }
+    }
+    this.invalidate();
+  }
+
+  /** 重置滚动到底部 */
+  scrollToBottom(): void {
+    this.#scrollOffset = 0;
+    this.#followBottom = true;
+    this.invalidate();
+  }
+
+  /** 追加多行内容，返回新追加行中第一行的索引 */
+  append(lines: string[]): number {
+    const index = this.lines.length;
+    const width = this.cacheWidth || 80;
+
+    if (width > 0) {
+      for (const line of lines) {
+        this.lines.push(line);
+        const wrapped = wrapTextWithAnsi(line, width);
+        this.lineCache.set(this.lines.length - 1, wrapped);
+        this.wrappedHeights.push(wrapped.length);
+      }
+    } else {
+      // cacheWidth 为 0 时不做换行，首次渲染时重建
+      this.lines.push(...lines);
+      for (const _ of lines) {
+        this.wrappedHeights.push(1); // 默认高度 1
+      }
+    }
+
+    // 非跟随底部模式：增加 scrollOffset 以保持视图稳定
+    if (!this.#followBottom) {
+      const addedDisplayLines = this.wrappedHeights
+        .slice(this.wrappedHeights.length - lines.length)
+        .reduce((a, b) => a + b, 0);
+      this.#scrollOffset += addedDisplayLines;
+    }
+
+    this.evictExcessLines();
+    this.invalidate();
+    return Math.max(0, index - Math.max(0, this.lines.length - OutputArea.MAX_LINES));
+  }
+
+  /** 追加文本到当前行末尾（用于流式输出） */
+  appendText(text: string): void {
+    const width = this.cacheWidth || 80;
+
+    if (this.lines.length === 0) {
+      this.lines.push(text);
+      if (width > 0) {
+        const wrapped = wrapTextWithAnsi(text, width);
+        this.lineCache.set(0, wrapped);
+        this.wrappedHeights.push(wrapped.length);
+      } else {
+        this.wrappedHeights.push(1);
+      }
+    } else {
+      const lastIdx = this.lines.length - 1;
+      this.lines[lastIdx] += text;
+      this.lineCache.delete(lastIdx);
+      if (width > 0) {
+        const lineText = this.lines[lastIdx];
+        if (lineText !== undefined) {
+          this.wrappedHeights[lastIdx] = wrapTextWithAnsi(lineText, width).length;
+        }
+      }
+    }
+
+    // 非跟随底部模式：调整 scrollOffset
+    if (!this.#followBottom) {
+      const addedHeight =
+        width > 0
+          ? wrapTextWithAnsi(text, width).length
+          : text.includes('\n')
+            ? text.split('\n').length
+            : 1;
+      this.#scrollOffset += addedHeight;
+    }
+
+    this.evictExcessLines();
+    this.invalidate();
+  }
+
+  /** 替换最后一行的完整内容（用于 spinner 动画和首 chunk 替换），返回行索引 */
+  replaceLastLine(text: string): number {
+    const width = this.cacheWidth || 80;
+
+    if (this.lines.length > 0) {
+      const lastIdx = this.lines.length - 1;
+      this.lines[lastIdx] = text;
+      this.lineCache.delete(lastIdx);
+      if (width > 0) {
+        this.wrappedHeights[lastIdx] = wrapTextWithAnsi(text, width).length;
+      }
+    } else {
+      this.lines.push(text);
+      if (width > 0) {
+        const wrapped = wrapTextWithAnsi(text, width);
+        this.lineCache.set(0, wrapped);
+        this.wrappedHeights.push(wrapped.length);
+      } else {
+        this.wrappedHeights.push(1);
+      }
+    }
+
+    this.evictExcessLines();
+    this.invalidate();
+    return this.lines.length - 1;
+  }
+
+  /** 在指定位置插入/删除/替换行（原子操作） */
+  spliceLines(startIndex: number, deleteCount: number, insertLines: string[]): void {
+    this.lines.splice(startIndex, deleteCount, ...insertLines);
+
+    const width = this.cacheWidth || 80;
+    let insertHeights: number[];
+    if (width > 0) {
+      insertHeights = insertLines.map((line) => wrapTextWithAnsi(line, width).length);
+    } else {
+      insertHeights = insertLines.map(() => 1);
+    }
+    this.wrappedHeights.splice(startIndex, deleteCount, ...insertHeights);
+
+    this.invalidateCacheFrom(startIndex);
+    this.evictExcessLines();
+    this.invalidate();
+  }
+
+  /** 更新指定索引行的内容 */
+  updateLine(index: number, text: string): void {
+    if (index >= 0 && index < this.lines.length) {
+      this.lines[index] = text;
+      this.lineCache.delete(index);
+      const width = this.cacheWidth || 80;
+      if (width > 0) {
+        this.wrappedHeights[index] = wrapTextWithAnsi(text, width).length;
+      }
+      this.invalidate();
+    }
+  }
+
+  /** 清空所有内容 */
+  clear(): void {
+    this.lines = [];
+    this.lineCache.clear();
+    this.wrappedHeights = [];
+    this.#scrollOffset = 0;
+    this.#followBottom = true;
+    this.invalidate();
+  }
+
+  // -------------------------------------------------------------------------
+  // 内部辅助方法
+  // -------------------------------------------------------------------------
+
+  /**
+   * 获取或创建指定逻辑行的换行缓存。
+   * cacheWidth 为 0 时返回原始行（未换行）。
+   */
+  private getOrCreateWrappedLine(index: number): string[] {
+    if (this.cacheWidth <= 0) return [this.lines[index] ?? ''];
+    let cached = this.lineCache.get(index);
+    if (!cached) {
+      cached = wrapTextWithAnsi(this.lines[index] ?? '', this.cacheWidth);
+      this.lineCache.set(index, cached);
+    }
+    return cached;
+  }
+
+  /**
+   * 用新宽度重建所有换行缓存和高度数组。
+   * 在终端宽度变化时调用。
+   */
+  private rebuildAllWraps(width: number): void {
+    this.cacheWidth = width;
+    this.lineCache.clear();
+    this.wrappedHeights = this.lines.map((line) => wrapTextWithAnsi(line, width).length);
+  }
+
+  /**
+   * 行数超限逐出。
+   * 当 lines 超过 MAX_LINES 时，丢弃最早的行并调整 scrollOffset。
+   */
+  private evictExcessLines(): void {
+    if (this.lines.length <= OutputArea.MAX_LINES) return;
+
+    const evictCount = this.lines.length - OutputArea.MAX_LINES;
+    const evictedDisplayHeight = this.wrappedHeights
+      .slice(0, evictCount)
+      .reduce((a, b) => a + b, 0);
+
+    this.lines.splice(0, evictCount);
+    this.wrappedHeights.splice(0, evictCount);
+    // 所有行索引已偏移 → 清空缓存
+    this.lineCache.clear();
+
+    if (!this.#followBottom) {
+      this.#scrollOffset = Math.max(0, this.#scrollOffset - evictedDisplayHeight);
+      if (this.#scrollOffset === 0) {
+        this.#followBottom = true;
+      }
+    }
+  }
+
+  /** 使从指定索引开始的所有缓存行失效 */
+  private invalidateCacheFrom(startIndex: number): void {
+    for (const key of this.lineCache.keys()) {
+      if (key >= startIndex) {
+        this.lineCache.delete(key);
+      }
     }
   }
 }
