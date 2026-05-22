@@ -19,6 +19,8 @@ export const DEC = {
   ALT_SCREEN: 47,
   ALT_SCREEN_CLEAR: 1049,
   SYNCHRONIZED_UPDATE: 2026,
+  MOUSE_BUTTON: 1002,
+  MOUSE_SGR: 1006,
 } as const;
 
 /** 生成 DEC SET 序列: CSI ? <mode> h */
