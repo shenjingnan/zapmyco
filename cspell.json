@@ -112,7 +112,17 @@
     "focusables",
     "flexbox",
     "unclip",
-    "Unclip"
+    "Unclip",
+    "rrggbb",
+    "termio",
+    "XTVERSION",
+    "xtversion",
+    "Xtversion",
+    "DECSCUSR",
+    "DECSTBM",
+    "BSU",
+    "ESU",
+    "yogalayout"
   ],
   "ignorePaths": [
     "node_modules",

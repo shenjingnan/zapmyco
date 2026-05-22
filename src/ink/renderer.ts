@@ -1,33 +1,73 @@
-import { DEFAULT_TERMINAL_HEIGHT, DEFAULT_TERMINAL_WIDTH } from './constants';
-import type { DOMElement } from './dom';
-import { Output } from './output';
-
 /**
- * 遍历 DOM 树，生成终端输出字符串。
+ * renderer — 渲染管线编排
  *
- * PR1 最小实现：深度优先遍历子节点，将文本节点写入 Output。
- * 后续 PR 集成 Yoga 布局（使用计算后的 x/y/w/h）和样式应用。
+ * 将 DOM 树通过以下管线处理为一帧 Frame：
+ * DOM 树 → renderNodeToOutput() → Output 操作队列 → output.get() → Screen → Frame
+ *
+ * PR2 完整实现：使用 Yoga 布局和 Screen buffer 进行渲染。
  */
-export function renderToOutput(node: DOMElement): {
-  output: string;
-  height: number;
-} {
-  const yogaWidth = DEFAULT_TERMINAL_WIDTH;
-  const yogaHeight = DEFAULT_TERMINAL_HEIGHT;
-  const output = new Output({ width: yogaWidth, height: yogaHeight });
 
-  renderNode(node, output, 0, 0);
+import type { DOMElement } from './dom';
+import type { Frame } from './frame';
+import { Output } from './output';
+import { renderNodeToOutput } from './render-node-to-output';
+import type { Screen } from './screen';
 
-  return output.get();
+// ---------------------------------------------------------------------------
+// RenderOptions / RenderResult
+// ---------------------------------------------------------------------------
+
+export interface RenderOptions {
+  terminalWidth: number;
+  terminalHeight: number;
+  prevScreen?: Screen;
 }
 
-function renderNode(node: DOMElement, output: Output, _x: number, _y: number): void {
-  for (const child of node.childNodes) {
-    if (child.nodeName === '#text') {
-      output.write(_x, _y, child.nodeValue);
-    } else if ('childNodes' in child) {
-      // 递归渲染子 DOMElement
-      renderNode(child as DOMElement, output, _x, _y);
+export interface RenderResult {
+  frame: Frame;
+}
+
+// ---------------------------------------------------------------------------
+// createRenderer
+// ---------------------------------------------------------------------------
+
+/**
+ * 创建渲染器函数。
+ *
+ * @param rootNode DOM 树根节点
+ * @param stylePool 样式池
+ * @returns 渲染器函数
+ */
+export function createRenderer(rootNode: DOMElement): (options: RenderOptions) => RenderResult {
+  let output: Output | null = null;
+
+  return (options: RenderOptions): RenderResult => {
+    const { terminalWidth, terminalHeight, prevScreen } = options;
+
+    // 创建或复用 Output 实例
+    if (!output || output.width !== terminalWidth || output.height !== terminalHeight) {
+      output = new Output({ width: terminalWidth, height: terminalHeight });
     }
-  }
+
+    // 确保 output 的 screen 尺寸正确
+    if (output.screen.rows !== terminalHeight || output.screen.cols !== terminalWidth) {
+      output.screen.resize(terminalHeight, terminalWidth);
+    }
+    output.reset(terminalWidth, terminalHeight, output.screen);
+
+    // 渲染 DOM 树到 Output
+    renderNodeToOutput(rootNode, output, prevScreen ? { prevScreen } : undefined);
+
+    // 应用操作到 Screen buffer
+    const screen = output.get();
+
+    // 构造 Frame
+    const frame: Frame = {
+      screen,
+      viewport: { width: terminalWidth, height: terminalHeight },
+      cursor: { x: 0, y: 0, visible: true },
+    };
+
+    return { frame };
+  };
 }

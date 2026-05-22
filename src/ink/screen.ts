@@ -1,7 +1,19 @@
 /**
- * Cell — 终端屏幕中的一个单元格。
- * 后续 PR 将优化为 Int32Array packed 格式以减少 GC 压力。
+ * Screen — Cell 缓冲区
+ *
+ * 二维网格的 Cell 缓冲区，扁平数组存储（行主序: cells[row * cols + col]）。
+ * 这是 Ink 渲染管线的基础缓冲区。
+ *
+ * PR2 增强：增加 damage tracking、blitRegion、forEachCell。
+ * 后续 PR（PR6）将优化为 Int32Array packed 格式以减少 GC 压力。
  */
+
+import type { Rectangle } from './layout/geometry';
+
+// ---------------------------------------------------------------------------
+// Cell 类型
+// ---------------------------------------------------------------------------
+
 export interface Cell {
   /** 字符（'' = 空单元格） */
   char: string;
@@ -14,16 +26,17 @@ export interface Cell {
 /** 空单元格常量 */
 const EMPTY_CELL: Cell = { char: '', styleId: 0, width: 1 };
 
-/**
- * Screen — Cell 缓冲区。
- *
- * 二维网格的 Cell 缓冲区，扁平数组存储（行主序: cells[row * cols + col]）。
- * 这是 Ink 渲染管线的基础缓冲区。
- */
+// ---------------------------------------------------------------------------
+// Screen 类
+// ---------------------------------------------------------------------------
+
 export class Screen {
   private _cells: Cell[];
   private _rows: number;
   private _cols: number;
+
+  /** 本帧中被修改的区域（用于 diff 优化），每次 get 后自动清除 */
+  damage: Rectangle | undefined;
 
   constructor(rows: number, cols: number) {
     this._rows = rows;
@@ -56,6 +69,9 @@ export class Screen {
     }
     const idx = row * this._cols + col;
     this._cells[idx] = { char, styleId, width };
+
+    // 更新 damage 区域
+    this._expandDamage(col, row);
   }
 
   /** 全屏填充 */
@@ -66,6 +82,7 @@ export class Screen {
         this._cells[r * this._cols + c] = { char, styleId, width };
       }
     }
+    this.damage = { x: 0, y: 0, width: this._cols, height: this._rows };
   }
 
   /** 清空一行 */
@@ -75,6 +92,8 @@ export class Screen {
     for (let c = 0; c < this._cols; c++) {
       this._cells[start + c] = { ...EMPTY_CELL };
     }
+    this._expandDamage(0, row);
+    this._expandDamage(this._cols - 1, row);
   }
 
   /** 清空矩形区域 */
@@ -86,6 +105,8 @@ export class Screen {
         this._cells[i] = { ...EMPTY_CELL };
       }
     }
+    this._expandDamage(x, y);
+    this._expandDamage(x + w - 1, y + h - 1);
   }
 
   /**
@@ -123,6 +144,10 @@ export class Screen {
         this.clearLine(r);
       }
     }
+
+    // 滚动导致整个区域变化
+    this._expandDamage(0, top);
+    this._expandDamage(this._cols - 1, bottom);
   }
 
   /** 深拷贝 */
@@ -172,5 +197,75 @@ export class Screen {
     this._cells = newCells;
     this._rows = rows;
     this._cols = cols;
+    this.damage = { x: 0, y: 0, width: cols, height: rows };
+  }
+
+  // ---------------------------------------------------------------------------
+  // PR2 新增方法
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 从另一个 Screen 拷贝矩形区域到本 Screen 的指定位置。
+   * 用于 prevScreen 复用优化。
+   */
+  blitRegion(
+    src: Screen,
+    srcX: number,
+    srcY: number,
+    w: number,
+    h: number,
+    dstX: number,
+    dstY: number
+  ): void {
+    for (let r = 0; r < h; r++) {
+      const srcRow = srcY + r;
+      const dstRow = dstY + r;
+      if (srcRow < 0 || srcRow >= src._rows || dstRow < 0 || dstRow >= this._rows) continue;
+      for (let c = 0; c < w; c++) {
+        const srcCol = srcX + c;
+        const dstCol = dstX + c;
+        if (srcCol < 0 || srcCol >= src._cols || dstCol < 0 || dstCol >= this._cols) continue;
+        const cell = src._cells[srcRow * src._cols + srcCol] ?? EMPTY_CELL;
+        this._cells[dstRow * this._cols + dstCol] = { ...cell };
+      }
+    }
+    this._expandDamage(dstX, dstY);
+    this._expandDamage(dstX + w - 1, dstY + h - 1);
+  }
+
+  /**
+   * 遍历所有 Cell，调用 callback。
+   * callback 返回 false 可停止遍历。
+   */
+  forEachCell(callback: (cell: Cell, col: number, row: number) => boolean | void): void {
+    for (let r = 0; r < this._rows; r++) {
+      for (let c = 0; c < this._cols; c++) {
+        const cell = this._cells[r * this._cols + c] ?? EMPTY_CELL;
+        if (callback(cell, c, r) === false) return;
+      }
+    }
+  }
+
+  /** 清除 damage 区域标记 */
+  clearDamage(): void {
+    this.damage = undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 内部方法
+  // ---------------------------------------------------------------------------
+
+  /** 扩展 damage 区域以包含 (col, row) */
+  private _expandDamage(col: number, row: number): void {
+    if (this.damage) {
+      const x2 = Math.max(this.damage.x + this.damage.width - 1, col);
+      const y2 = Math.max(this.damage.y + this.damage.height - 1, row);
+      this.damage.x = Math.min(this.damage.x, col);
+      this.damage.y = Math.min(this.damage.y, row);
+      this.damage.width = x2 - this.damage.x + 1;
+      this.damage.height = y2 - this.damage.y + 1;
+    } else {
+      this.damage = { x: col, y: row, width: 1, height: 1 };
+    }
   }
 }
