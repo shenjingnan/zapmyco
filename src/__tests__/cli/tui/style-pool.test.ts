@@ -148,3 +148,67 @@ describe('chalkToCodes', () => {
     expect(codes.filter((c) => c === '1')).toHaveLength(1);
   });
 });
+
+describe('withSelectionBg', () => {
+  it('基础样式应添加选中背景色', () => {
+    const pool = new StylePool();
+    const baseId = pool.intern(['32']); // green foreground
+    const selId = pool.withSelectionBg(baseId);
+    expect(selId).not.toBe(baseId);
+    const codes = pool.getCodes(selId);
+    expect(codes).toContain('32'); // 保留前景色
+    expect(codes).toContain('48;2;58;58;140'); // 选中背景
+  });
+
+  it('已有背景色应被替换', () => {
+    const pool = new StylePool();
+    const baseId = pool.intern(['32', '48;2;100;100;100']); // green + custom bg
+    const selId = pool.withSelectionBg(baseId);
+    const codes = pool.getCodes(selId);
+    expect(codes).toContain('32');
+    expect(codes).not.toContain('48;2;100;100;100');
+    expect(codes).toContain('48;2;58;58;140');
+  });
+
+  it('ID 0 应生成纯选中背景样式', () => {
+    const pool = new StylePool();
+    const selId = pool.withSelectionBg(0);
+    const codes = pool.getCodes(selId);
+    expect(codes).toEqual(['48;2;58;58;140']);
+  });
+
+  it('结果应被缓存', () => {
+    const pool = new StylePool();
+    const baseId = pool.intern(['32']);
+    const r1 = pool.withSelectionBg(baseId);
+    const r2 = pool.withSelectionBg(baseId);
+    expect(r1).toBe(r2); // 相同引用 = 命中缓存
+  });
+
+  it('setSelectionColor 后应使用新颜色', () => {
+    const pool = new StylePool();
+    pool.setSelectionColor(200, 100, 50);
+    const baseId = pool.intern(['32']);
+    const selId = pool.withSelectionBg(baseId);
+    const codes = pool.getCodes(selId);
+    expect(codes).toContain('48;2;200;100;50');
+  });
+
+  it('setSelectionColor 应清空缓存', () => {
+    const pool = new StylePool();
+    const baseId = pool.intern(['32']);
+    const oldId = pool.withSelectionBg(baseId);
+    pool.setSelectionColor(10, 20, 30);
+    const newId = pool.withSelectionBg(baseId);
+    expect(newId).not.toBe(oldId); // 缓存被清空
+  });
+
+  it('默认背景 49 应被过滤', () => {
+    const pool = new StylePool();
+    const baseId = pool.intern(['32', '49']); // green + default bg
+    const selId = pool.withSelectionBg(baseId);
+    const codes = pool.getCodes(selId);
+    expect(codes).not.toContain('49');
+    expect(codes).toContain('48;2;58;58;140');
+  });
+});

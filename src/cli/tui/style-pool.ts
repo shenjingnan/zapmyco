@@ -93,6 +93,12 @@ export class StylePool {
   /** 默认无样式（ID = 0） */
   readonly none = 0;
 
+  /** 选中背景色 ANSI 码 */
+  #selectionColor: AnsiCode = '48;2;58;58;140';
+
+  /** withSelectionBg 缓存: key = "sel-{baseStyleId}" → styleId */
+  #selCache = new Map<string, number>();
+
   constructor() {
     // 预注册 none 样式（ID 0）
     this.codes.push([]);
@@ -172,6 +178,39 @@ export class StylePool {
   /** 清空所有缓存（应对长时间运行的内存管理） */
   clearCaches(): void {
     this.transitionCache.clear();
+  }
+
+  /**
+   * 设置选中背景色。
+   * 修改后的颜色将在下次 withSelectionBg 调用时生效。
+   */
+  setSelectionColor(r: number, g: number, b: number): void {
+    this.#selectionColor = `48;2;${r};${g};${b}`;
+    this.#selCache.clear();
+  }
+
+  /**
+   * 为指定 styleId 生成带选中背景的新 styleId。
+   *
+   * 实现逻辑：
+   * 1. 获取 base 样式的 ANSI 码数组
+   * 2. 过滤掉所有背景色相关码（48 系、49）
+   * 3. 追加选中背景色
+   * 4. 驻留为新样式并返回 ID
+   */
+  withSelectionBg(baseStyleId: number): number {
+    const key = `sel-${baseStyleId}`;
+    const cached = this.#selCache.get(key);
+    if (cached !== undefined) return cached;
+
+    const baseCodes = this.getCodes(baseStyleId);
+    // 过滤背景色: 去掉 48;5;N / 48;2;R;G;B / 49 (默认背景)
+    const filtered = baseCodes.filter((code) => code !== '49' && !code.startsWith('48;'));
+    filtered.push(this.#selectionColor);
+
+    const id = this.intern(filtered);
+    this.#selCache.set(key, id);
+    return id;
   }
 
   /** 当前注册的样式数 */

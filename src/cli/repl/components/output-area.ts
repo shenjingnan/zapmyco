@@ -7,7 +7,7 @@
 
 import chalk, { Chalk } from 'chalk';
 import type { HistoryEntry } from '@/cli/repl/types';
-import type { Rect, Screen, StylePool } from '@/cli/tui';
+import type { Rect, Screen, SgrMouseEvent, StylePool } from '@/cli/tui';
 import { Container, renderAnsiLineToScreen, wrapTextWithAnsi } from '@/cli/tui';
 import type { ZapmycoConfig } from '@/config/types';
 import type { FinalResult } from '@/core/result/types';
@@ -394,6 +394,22 @@ export class OutputFormatter {
 }
 
 // =============================================================================
+// 选择范围类型
+// =============================================================================
+
+/** 选择范围（逻辑行坐标） */
+interface SelRange {
+  /** anchor 逻辑行索引 */
+  startLine: number;
+  /** anchor 字符偏移 */
+  startOffset: number;
+  /** focus 逻辑行索引 */
+  endLine: number;
+  /** focus 字符偏移 */
+  endOffset: number;
+}
+
+// =============================================================================
 // OutputArea — 输出区域组件
 // =============================================================================
 
@@ -424,6 +440,13 @@ export class OutputArea extends Container {
   #scrollOffset = 0;
   /** 是否跟随底部（追加内容时自动滚动到底部） */
   #followBottom = true;
+
+  /** 当前选择范围（null = 无选择） */
+  #selection: SelRange | null = null;
+  /** 是否正在拖拽选择 */
+  #isDragging = false;
+  /** 缓存的渲染区域矩形（从 renderToScreen 获取，供坐标转换使用） */
+  #areaRect: Rect | null = null;
 
   /** 最大逻辑行数（超出时丢弃最早的行） */
   private static readonly MAX_LINES = 10_000;
@@ -469,8 +492,13 @@ export class OutputArea extends Container {
    * 使用 wrappedHeights 数组进行 display line → logical line 转换。
    */
   renderToScreen(screen: Screen, stylePool: StylePool, rect: Rect): void {
-    // 终端宽度变化 → 重建所有缓存
+    // 缓存 rect 供 #terminalToLogical 使用
+    this.#areaRect = rect;
+
+    // 终端宽度变化 → 清除选择并重建所有缓存
     if (rect.width !== this.cacheWidth) {
+      this.#selection = null;
+      this.#isDragging = false;
       this.rebuildAllWraps(rect.width);
     }
 
@@ -532,6 +560,9 @@ export class OutputArea extends Container {
     if (renderedRows < rect.height) {
       screen.clearRegion(rect.x, rect.y + renderedRows, rect.width, rect.height - renderedRows);
     }
+
+    // 渲染选中高亮（在正常内容之上修改选中 cell 的 styleId）
+    this.#renderSelectionHighlight(screen, stylePool, rect);
   }
 
   // -------------------------------------------------------------------------
@@ -558,6 +589,113 @@ export class OutputArea extends Container {
     this.#scrollOffset = 0;
     this.#followBottom = true;
     this.invalidate();
+  }
+
+  // -------------------------------------------------------------------------
+  // 鼠标事件处理
+  // -------------------------------------------------------------------------
+
+  /**
+   * 处理 SGR 鼠标事件。
+   *
+   * 只响应左键（button === 0）的 press/drag/release 事件：
+   * - press: 在点击位置建立选择锚点
+   * - drag: 扩展选择范围到鼠标位置
+   * - release: 结束拖拽状态，保持选择高亮
+   */
+  handleMouseEvent(event: SgrMouseEvent): void {
+    // 只处理左键
+    if (event.button !== 0) return;
+
+    switch (event.action) {
+      case 'press': {
+        const pos = this.#terminalToLogical(event.col, event.row);
+        this.#selection = {
+          startLine: pos.line,
+          startOffset: pos.offset,
+          endLine: pos.line,
+          endOffset: pos.offset,
+        };
+        this.#isDragging = true;
+        break;
+      }
+      case 'drag': {
+        if (!this.#isDragging) return;
+        const pos = this.#terminalToLogical(event.col, event.row);
+        if (this.#selection) {
+          this.#selection.endLine = pos.line;
+          this.#selection.endOffset = pos.offset;
+        }
+        this.invalidate();
+        break;
+      }
+      case 'release': {
+        if (this.#isDragging) {
+          this.#isDragging = false;
+          // 保持 selection 不变，高亮显示选中的文本
+        }
+        break;
+      }
+    }
+  }
+
+  /**
+   * 将终端坐标转换为逻辑行坐标。
+   *
+   * 转换步骤：
+   * 1. SGR 1-based → 0-based
+   * 2. 相对 OutputArea rect 偏移
+   * 3. 考虑虚拟滚动偏移，计算全局显示行
+   * 4. 遍历 wrappedHeights 找到对应逻辑行
+   *
+   * @param col - SGR 列号（1-based）
+   * @param row - SGR 行号（1-based）
+   * @returns 逻辑行坐标 { line, offset }
+   */
+  #terminalToLogical(col: number, row: number): { line: number; offset: number } {
+    const rect = this.#areaRect;
+    if (!rect) return { line: 0, offset: 0 };
+
+    // SGR 1-based → 0-based 屏幕坐标
+    const absoluteRow = row - 1;
+    // 相对于 OutputArea 区域的行
+    const rowInRect = absoluteRow - rect.y;
+
+    // 计算虚拟滚动的可见窗口（同 renderToScreen 算法）
+    const totalHeight = this.wrappedHeights.reduce((a, b) => a + b, 0);
+    if (totalHeight <= 0) return { line: 0, offset: 0 };
+
+    const maxScroll = Math.max(0, totalHeight - rect.height);
+    const clampedOffset = Math.min(this.#scrollOffset, maxScroll);
+    const visibleEnd = totalHeight - clampedOffset;
+    const visibleStart = Math.max(0, visibleEnd - rect.height);
+
+    // 全局显示行索引
+    let displayLine = visibleStart + rowInRect;
+    // 边界 clamp
+    if (displayLine < 0) displayLine = 0;
+    if (displayLine >= totalHeight) displayLine = totalHeight - 1;
+
+    // 遍历 wrappedHeights 找到对应逻辑行
+    let accumulated = 0;
+    for (let logicalIdx = 0; logicalIdx < this.wrappedHeights.length; logicalIdx++) {
+      const height = this.wrappedHeights[logicalIdx] ?? 1;
+      if (displayLine < accumulated + height) {
+        // 找到目标逻辑行
+        const lineOffset = displayLine - accumulated;
+        // 计算列偏移（相对 rect 左边界）
+        const colInLine = col - 1 - rect.x;
+        const clampedCol = Math.max(0, Math.min(colInLine, rect.width - 1));
+        const charOffset = lineOffset * rect.width + clampedCol;
+        return { line: logicalIdx, offset: charOffset };
+      }
+      accumulated += height;
+    }
+
+    // 兜底：最后一行末尾
+    const lastIdx = Math.max(0, this.wrappedHeights.length - 1);
+    const lastHeight = this.wrappedHeights[lastIdx] ?? 1;
+    return { line: lastIdx, offset: lastHeight * rect.width };
   }
 
   /** 追加多行内容，返回新追加行中第一行的索引 */
@@ -704,6 +842,108 @@ export class OutputArea extends Container {
   // -------------------------------------------------------------------------
   // 内部辅助方法
   // -------------------------------------------------------------------------
+
+  /**
+   * 渲染选中高亮。
+   *
+   * 遍历选中区域在可见范围内的 cell，用 stylePool.withSelectionBg() 替换 styleId。
+   * 不修改 cell.char，因此 diff 引擎自动检测 styleId 变化，产生轻量 style 补丁。
+   */
+  #renderSelectionHighlight(screen: Screen, stylePool: StylePool, rect: Rect): void {
+    const sel = this.#selection;
+    if (!sel) return;
+
+    // 归一化：保证 start ≤ end
+    const startLine = sel.startLine <= sel.endLine ? sel.startLine : sel.endLine;
+    const endLine = sel.startLine <= sel.endLine ? sel.endLine : sel.startLine;
+    const startOffset = sel.startLine <= sel.endLine ? sel.startOffset : sel.endOffset;
+    const endOffset = sel.startLine <= sel.endLine ? sel.endOffset : sel.startOffset;
+
+    // 计算可见窗口
+    const totalHeight = this.wrappedHeights.reduce((a, b) => a + b, 0);
+    if (totalHeight <= 0) return;
+
+    const maxScroll = Math.max(0, totalHeight - rect.height);
+    const clampedOffset = Math.min(this.#scrollOffset, maxScroll);
+    const visibleEnd = totalHeight - clampedOffset;
+    const visibleStart = Math.max(0, visibleEnd - rect.height);
+
+    const W = rect.width;
+
+    // 遍历选择范围内的逻辑行
+    let accumulated = 0;
+    for (let ll = 0; ll < this.wrappedHeights.length; ll++) {
+      const h = this.wrappedHeights[ll] ?? 1;
+      const dlStart = accumulated;
+      const dlEnd = accumulated + h;
+
+      // 超出选择范围 → 结束
+      if (ll > endLine) break;
+      // 未到选择范围 → 跳过
+      if (ll < startLine) {
+        accumulated = dlEnd;
+        continue;
+      }
+      // 完全不可见 → 跳过
+      if (dlEnd <= visibleStart || dlStart >= visibleEnd) {
+        accumulated = dlEnd;
+        continue;
+      }
+
+      // 计算本逻辑行的选中字符范围
+      let charStart: number;
+      let charEnd: number;
+      if (ll === startLine && ll === endLine) {
+        // 单行选择
+        charStart = startOffset;
+        charEnd = endOffset;
+      } else if (ll === startLine) {
+        // 多行选择的首行
+        charStart = startOffset;
+        charEnd = h * W;
+      } else if (ll === endLine) {
+        // 多行选择的末行
+        charStart = 0;
+        charEnd = endOffset;
+      } else {
+        // 中间行：整行选中
+        charStart = 0;
+        charEnd = h * W;
+      }
+
+      // 遍历每个显示子行
+      for (let wi = 0; wi < h; wi++) {
+        const globalDl = dlStart + wi;
+        if (globalDl < visibleStart || globalDl >= visibleEnd) continue;
+
+        // 本子行的字符范围
+        const wiStart = wi * W;
+        const wiEnd = (wi + 1) * W;
+
+        // 与选择范围求交集
+        const selStart = Math.max(wiStart, charStart) - wiStart;
+        const selEnd = Math.min(wiEnd, charEnd) - wiStart;
+
+        if (selStart >= selEnd || selStart >= W) continue;
+
+        const screenRow = rect.y + (globalDl - visibleStart);
+        const colStart = Math.min(selStart, W);
+        const colEnd = Math.min(selEnd, W);
+
+        for (let c = colStart; c < colEnd; c++) {
+          const screenCol = rect.x + c;
+          const cell = screen.getCell(screenCol, screenRow);
+          // 只高亮有内容的单元格
+          if (cell.char !== '') {
+            const newStyleId = stylePool.withSelectionBg(cell.styleId);
+            screen.setCell(screenCol, screenRow, cell.char, newStyleId, cell.width);
+          }
+        }
+      }
+
+      accumulated = dlEnd;
+    }
+  }
 
   /**
    * 获取或创建指定逻辑行的换行缓存。
