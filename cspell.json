@@ -154,7 +154,11 @@
     "MINTTY",
     "qlen",
     "ZWNJ",
-    "ZWNBS"
+    "ZWNBS",
+    "COLORTERM",
+    "XTERMJS",
+    "conemu",
+    "ConEmu"
   ],
   "ignorePaths": [
     "node_modules",

@@ -204,6 +204,32 @@ export function getXtversionName(): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// 进度报告
+// ---------------------------------------------------------------------------
+
+/** 进度状态 */
+export type Progress = {
+  state: 'completed' | 'error' | 'indeterminate' | 'running';
+};
+
+/** 支持进度报告的终端集合 */
+const PROGRESS_TERMINALS = new Set([
+  'iTerm2',
+  'ghostty',
+  'Ghostty',
+  'conemu',
+  'ConEmu',
+  'ConEmu64',
+]);
+
+/** 检测终端是否支持进度报告 */
+export function isProgressReportingAvailable(): boolean {
+  const term = process.env.TERM_PROGRAM;
+  if (!term) return false;
+  return PROGRESS_TERMINALS.has(term);
+}
+
+// ---------------------------------------------------------------------------
 // writeDiffToTerminal
 // ---------------------------------------------------------------------------
 

@@ -11,8 +11,8 @@
 
 import React, { type ReactNode } from 'react';
 import { LegacyRoot } from 'react-reconciler/constants.js';
-import { setClipboard } from '@/cli/tui/clipboard';
-import { StylePool } from '@/cli/tui/style-pool';
+import { setClipboard } from './clipboard';
+import { bumpGeneration } from './style-cache';
 import { InkContext } from './components/InkContext';
 import type { DOMElement } from './dom';
 import { createNode } from './dom';
@@ -27,6 +27,7 @@ import type { ParsedKey } from './parse-keypress';
 import reconciler, { dispatcher as eventDispatcher } from './reconciler';
 import { createRenderer } from './renderer';
 import { applySearchHighlight } from './searchHighlight';
+import type { MatchPosition } from './render-to-screen';
 import {
   applySelectionOverlay,
   captureScrolledRows,
@@ -46,7 +47,6 @@ import {
   startSelection,
   updateSelection,
 } from './selection';
-import { bumpGeneration } from './style-cache';
 import { ProcessTerminal, writeDiffToTerminal } from './terminal';
 import { DEC, decreset, decset } from './termio/dec';
 
@@ -69,9 +69,6 @@ export class Ink {
   private readonly container: ReturnType<typeof reconciler.createContainer>;
   readonly terminal: ProcessTerminal;
   private isUnmounted = false;
-
-  /** 样式池 */
-  private stylePool: StylePool;
 
   /** 双缓冲 */
   private frontFrame: Frame;
@@ -152,9 +149,6 @@ export class Ink {
 
     this.terminal = new ProcessTerminal();
 
-    // 样式池
-    this.stylePool = new StylePool();
-
     // 根 DOM 节点
     this.rootNode = createNode('ink-root');
 
@@ -185,7 +179,7 @@ export class Ink {
     this.backFrame = emptyFrame(rows, columns);
 
     // Diff 引擎
-    this.logUpdate = new LogUpdate(this.stylePool);
+    this.logUpdate = new LogUpdate();
 
     // 渲染器
     this.renderFrame = createRenderer(this.rootNode);
@@ -307,9 +301,7 @@ export class Ink {
     }
 
     // Pool GC：定期清理样式缓存，防止长时间运行内存泄漏
-    if (bumpGeneration()) {
-      this.stylePool.clearCaches();
-    }
+    bumpGeneration();
 
     // 交换帧引用
     this.frontFrame = frame;
@@ -317,17 +309,13 @@ export class Ink {
     // 在选择进行中时，应用选择覆盖到前帧的 Screen buffer
     // 在 diff 之前修改，使 diff 引擎将选择变化当作普通 cell 变化
     if (hasSelection(this.selection)) {
-      applySelectionOverlay(this.frontFrame.screen, this.selection, this.stylePool);
+      applySelectionOverlay(this.frontFrame.screen, this.selection);
     }
 
     // PR9: 搜索高亮叠加（在 selection overlay 之后，但在 diff 之前）
     // 这样搜索高亮和选择高亮可以同时显示
     if (this.searchHighlightQuery && !hasSelection(this.selection)) {
-      this._hlActive = applySearchHighlight(
-        this.frontFrame.screen,
-        this.searchHighlightQuery,
-        this.stylePool
-      );
+      this._hlActive = applySearchHighlight(this.frontFrame.screen, this.searchHighlightQuery);
     } else {
       this._hlActive = false;
     }
@@ -685,6 +673,35 @@ export class Ink {
 
     moveFocus(this.selection, col, row);
     this.notifySelectionChange();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 搜索高亮
+  // ---------------------------------------------------------------------------
+
+  /** 设置搜索高亮查询（非空 → 下一帧反转所有可见匹配） */
+  setSearchHighlight(query: string): void {
+    this.searchHighlightQuery = query;
+    this.requestRender();
+  }
+
+  /**
+   * 将 DOM 子树绘制到独立 Screen 并扫描匹配。
+   * 存根实现 — 完整实现需 render-to-screen 的离屏渲染管线。
+   */
+  scanElementSubtree(_el: import('./dom').DOMElement): MatchPosition[] {
+    return [];
+  }
+
+  /** 设置当前位置高亮 */
+  setSearchPositions(
+    _state: {
+      positions: MatchPosition[];
+      rowOffset: number;
+      currentIdx: number;
+    } | null
+  ): void {
+    // 存根 — 完整实现在后续 PR 中
   }
 
   // ---------------------------------------------------------------------------

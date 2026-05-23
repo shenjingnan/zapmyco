@@ -378,7 +378,7 @@ describe('applySelectionOverlay', () => {
     s.anchor = { col: 0, row: 0 };
     s.focus = { col: 4, row: 0 };
 
-    applySelectionOverlay(screen, s, pool);
+    applySelectionOverlay(screen, s);
 
     // 选中单元格（col 0-4）的 styleId 应改变（添加了选择背景色）
     expect(screen.getCell(0, 0).styleId).not.toBe(originalStyle);
@@ -388,11 +388,10 @@ describe('applySelectionOverlay', () => {
   });
 
   it('无选择时应无修改', () => {
-    const pool = new StylePool();
     const screen = createTestScreen();
     const s = createSelectionState();
     const styleBefore = screen.getCell(0, 0).styleId;
-    applySelectionOverlay(screen, s, pool);
+    applySelectionOverlay(screen, s);
     expect(screen.getCell(0, 0).styleId).toBe(styleBefore);
   });
 
@@ -412,7 +411,7 @@ describe('applySelectionOverlay', () => {
     s.anchor = { col: 0, row: 0 };
     s.focus = { col: 10, row: 0 };
 
-    applySelectionOverlay(screen, s, pool);
+    applySelectionOverlay(screen, s);
 
     // noSelect 区域的 styleId 不应改变
     const noSelectStyle = screen.getCell(0, 0).styleId;

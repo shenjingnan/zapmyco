@@ -9,9 +9,9 @@
  * 参考 claude-code src/ink/log-update.ts 的结构。
  */
 
-import type { StylePool } from '@/cli/tui/style-pool';
 import type { Diff, Frame, Patch } from './frame';
 import { shouldClearScreen } from './frame';
+import { transitionStyle } from './style-cache';
 
 // ---------------------------------------------------------------------------
 // DECSTBM 硬件滚动检测
@@ -115,12 +115,6 @@ function rowsMatch(
 // ---------------------------------------------------------------------------
 
 export class LogUpdate {
-  private stylePool: StylePool;
-
-  constructor(stylePool: StylePool) {
-    this.stylePool = stylePool;
-  }
-
   /**
    * 比较 prev 和 next 两帧，生成差异补丁序列。
    *
@@ -428,15 +422,6 @@ export class LogUpdate {
   // ---------------------------------------------------------------------------
 
   private _transitionStyle(fromId: number, toId: number): string {
-    if (fromId === toId) return '';
-
-    // 尝试使用 StylePool
-    try {
-      return this.stylePool.transition(fromId, toId);
-    } catch {
-      // fallback to inline style
-      if (toId === 0) return '\x1b[0m';
-      return '\x1b[0m'; // default reset
-    }
+    return transitionStyle(fromId, toId);
   }
 }

@@ -15,6 +15,25 @@ export const OSC_ST = '\x1b\\';
 export const BEL = '\x07';
 
 // ---------------------------------------------------------------------------
+// iTerm2 专有 OSC 常量
+// ---------------------------------------------------------------------------
+
+/** iTerm2 专有常量 */
+export const ITERM2 = {
+  PROGRESS: '9' as const,
+  /** 文件下载 */
+  FILE: '51' as const,
+} as const;
+
+/** 进度报告常量 */
+export const PROGRESS = {
+  SET: '0' as const,
+  CLEAR: '1' as const,
+  INDETERMINATE: '2' as const,
+  ERROR: '3' as const,
+} as const;
+
+// ---------------------------------------------------------------------------
 // OSC 命令编号
 // ---------------------------------------------------------------------------
 
@@ -72,6 +91,21 @@ export function linkStart(uri: string): string {
  * @param text 要写入剪贴板的文本（base64 编码前）
  * @returns OSC 52 序列
  */
+// ---------------------------------------------------------------------------
+// tmux 多路复用器支持
+// ---------------------------------------------------------------------------
+
+/**
+ * 当运行在 tmux 中时，将序列包裹在 DCS 透传中。
+ * tmux 不会透传裸 OSC 序列，必须包裹为 DCS payload。
+ */
+export function wrapForMultiplexer(seq: string): string {
+  if (process.env.TMUX) {
+    return `\x1bPtmux;\x1b${seq}\x1b\\`;
+  }
+  return seq;
+}
+
 export function clipboardWrite(text: string): string {
   const base64 = Buffer.from(text, 'utf-8').toString('base64');
   return `${OSC_PREFIX}52;c;${base64}${OSC_ST}`;

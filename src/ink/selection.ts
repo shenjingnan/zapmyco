@@ -7,8 +7,8 @@
  * 参考 claude-code src/ink/selection.ts
  */
 
-import type { StylePool } from '@/cli/tui/style-pool';
 import type { Screen } from './screen';
+import { withSelectionBg } from './style-cache';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -580,11 +580,7 @@ export function captureScrolledRows(
  *
  * 在 diff 之前调用，使 diff 引擎将选择变化当作普通 cell 变化处理。
  */
-export function applySelectionOverlay(
-  screen: Screen,
-  selection: SelectionState,
-  stylePool: StylePool
-): void {
+export function applySelectionOverlay(screen: Screen, selection: SelectionState): void {
   const b = selectionBounds(selection);
   if (!b) return;
   const { start, end } = b;
@@ -601,7 +597,7 @@ export function applySelectionOverlay(
       if (noSelect[idx] === 1) continue;
       const cell = screen.getCell(col, row);
       if (!cell) continue;
-      const newStyleId = stylePool.withSelectionBg(cell.styleId);
+      const newStyleId = withSelectionBg(cell.styleId);
       screen.setCellStyleId(col, row, newStyleId);
     }
   }

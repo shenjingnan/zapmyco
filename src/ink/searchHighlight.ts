@@ -8,8 +8,8 @@
  * 参考 claude-code src/ink/searchHighlight.ts
  */
 
-import type { StylePool } from '@/cli/tui/style-pool';
 import type { Screen } from './screen';
+import { withInverse } from './style-cache';
 
 /**
  * 在 Screen buffer 上应用搜索高亮。
@@ -19,7 +19,7 @@ import type { Screen } from './screen';
  * @param stylePool - 样式池（用于 withInverse）
  * @returns 是否有任何匹配（caller 可用此触发全帧 damage）
  */
-export function applySearchHighlight(screen: Screen, query: string, stylePool: StylePool): boolean {
+export function applySearchHighlight(screen: Screen, query: string): boolean {
   if (!query) return false;
 
   const lq = query.toLowerCase();
@@ -66,7 +66,7 @@ export function applySearchHighlight(screen: Screen, query: string, stylePool: S
         const cellCol = colOf[pos + ci];
         if (cellCol === undefined) break;
         const cell = screen.getCell(cellCol, row);
-        const invStyleId = stylePool.withInverse(cell.styleId);
+        const invStyleId = withInverse(cell.styleId);
         screen.setCellStyleId(cellCol, row, invStyleId);
       }
 
