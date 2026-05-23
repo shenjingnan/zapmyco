@@ -76,7 +76,8 @@ const reconciler = createReconciler<
       type === 'ink-root' ||
       type === 'ink-box' ||
       type === 'ink-text' ||
-      type === 'ink-virtual-text'
+      type === 'ink-virtual-text' ||
+      type === 'ink-scroll-box'
         ? type
         : 'ink-box';
     const node = dom.createNode(sanitized);

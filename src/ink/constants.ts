@@ -10,4 +10,5 @@ export const ELEMENT_ROOT = 'ink-root' as const;
 export const ELEMENT_BOX = 'ink-box' as const;
 export const ELEMENT_TEXT = 'ink-text' as const;
 export const ELEMENT_VIRTUAL_TEXT = 'ink-virtual-text' as const;
+export const ELEMENT_SCROLL_BOX = 'ink-scroll-box' as const;
 export const TEXT_NODE = '#text' as const;

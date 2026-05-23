@@ -43,6 +43,9 @@ export function renderNodeToOutput(
     case 'ink-box':
       renderBox(node, output, options);
       break;
+    case 'ink-scroll-box':
+      renderScrollBox(node, output, options);
+      break;
     case 'ink-text':
       renderText(node, output);
       break;
@@ -91,6 +94,50 @@ function renderBox(node: DOMElement, output: Output, options?: RenderOptions): v
 
   // 将子节点内容 blit 到父 Output 的正确位置
   const childScreen = childOutput.get();
+  output.blit(childScreen, 0, 0, w, h, x + padLeft, y + padTop);
+
+  output.unclip();
+}
+
+/** 渲染 ink-scroll-box 节点 — 裁剪到视口，标记溢出状态 */
+function renderScrollBox(node: DOMElement, output: Output, options?: RenderOptions): void {
+  const yoga = node.yogaNode;
+  if (!yoga) {
+    renderChildren(node, output, options);
+    return;
+  }
+
+  const x = Math.round(yoga.getComputedLeft());
+  const y = Math.round(yoga.getComputedTop());
+  const w = Math.round(yoga.getComputedWidth());
+  const h = Math.round(yoga.getComputedHeight());
+
+  // 应用 padding
+  const padTop = Math.round(yoga.getComputedPadding('top'));
+  const padLeft = Math.round(yoga.getComputedPadding('left'));
+
+  // 压入裁剪栈（限制到视口区域）
+  const clip: Clip = {
+    x1: x,
+    y1: y,
+    x2: x + w - 1,
+    y2: y + h - 1,
+  };
+  output.clip(clip);
+
+  // 在完整区域内渲染子节点
+  const childOutput = new Output({ width: w, height: h });
+  renderChildren(node, childOutput, options);
+
+  // 获取子内容
+  const childScreen = childOutput.get();
+
+  // 检查内容是否溢出视口 → 标记 scrollDrainPending
+  if (childScreen.rows > h) {
+    node.attributes['data-scroll-drain'] = true;
+  }
+
+  // 将子节点内容 blit 到父 Output 的正确位置
   output.blit(childScreen, 0, 0, w, h, x + padLeft, y + padTop);
 
   output.unclip();

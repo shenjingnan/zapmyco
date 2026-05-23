@@ -2,11 +2,12 @@
  * InkApp — REPL 根 React 组件
  *
  * 使用 Ink Box/Text 组件描述 REPL 布局。
- * PR2: 基础布局骨架，使用桥接 Wrapper 显示旧组件内容。
+ * PR3: 用 ScrollBox + VirtualMessageList 替换 OutputAreaWrapper 桥接组件。
  *
  * 布局结构：
  * ┌─────────────────────────────┐
- * │       OutputArea             │  ← flexGrow=1
+ * │   ScrollBox                  │  ← flexGrow=1
+ * │   └─ VirtualMessageList      │
  * ├─────────────────────────────┤
  * │       TaskStatusBar          │  ← height=1
  * ├─────────────────────────────┤
@@ -16,15 +17,23 @@
  * └─────────────────────────────┘
  */
 
-import type React from 'react';
-import { useEffect, useState } from 'react';
-import type { AgentStatusBar } from '@/cli/repl/components/agent-status-bar';
+import { type ReactElement, useState } from 'react';
 import type { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
 import type { OutputArea } from '@/cli/repl/components/output-area';
-import type { TaskStatusBar } from '@/cli/repl/components/task-status-bar';
+import { VirtualMessageList } from '@/cli/repl/components/virtual-message-list';
 import { App } from '@/ink/components/App';
 import { Box } from '@/ink/components/Box';
+import { ScrollBox } from '@/ink/components/ScrollBox';
 import { Text } from '@/ink/components/Text';
+
+// ---------------------------------------------------------------------------
+// 常量（终端尺寸默认值，后续 PR 将通过 TerminalSizeContext 获取）
+// ---------------------------------------------------------------------------
+
+/** 输出区域预估高度（终端行数 - 状态栏 - 编辑器） */
+const DEFAULT_VIEWPORT_HEIGHT = 15;
+/** 终端宽度默认值 */
+const DEFAULT_VIEWPORT_WIDTH = 80;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -35,8 +44,10 @@ export interface InkAppProps {
   stdout: NodeJS.WriteStream;
   outputArea: OutputArea;
   editor: ZapmycoEditor;
-  agentStatusBar: AgentStatusBar;
-  taskStatusBar: TaskStatusBar;
+  /** 视口高度（终端行数），可选，用于虚拟滚动计算 */
+  viewportHeight?: number;
+  /** 视口宽度（终端列数），可选 */
+  viewportWidth?: number;
   onExit?: (error?: Error) => void;
 }
 
@@ -49,31 +60,39 @@ export function InkApp({
   stdout,
   outputArea,
   editor,
-  agentStatusBar,
-  taskStatusBar,
+  viewportHeight = DEFAULT_VIEWPORT_HEIGHT,
+  viewportWidth = DEFAULT_VIEWPORT_WIDTH,
   onExit,
-}: InkAppProps): React.ReactElement {
+}: InkAppProps): ReactElement {
+  // 滚动状态（受控模式，由 ScrollBox 和 VirtualMessageList 共享）
+  const [scrollTop, setScrollTop] = useState(0);
+
   return (
     <App stdin={stdin} stdout={stdout} onExit={onExit ?? (() => {})}>
       <Box flexDirection="column" height="100%">
-        {/* 输出区域 */}
-        <Box flexGrow={1} overflow="scroll">
-          <OutputAreaWrapper outputArea={outputArea} />
-        </Box>
+        {/* 输出区域 — 虚拟滚动 */}
+        <ScrollBox flexGrow={1} scrollTop={scrollTop} onScroll={setScrollTop}>
+          <VirtualMessageList
+            outputArea={outputArea}
+            scrollTop={scrollTop}
+            viewportHeight={viewportHeight}
+            viewportWidth={viewportWidth}
+          />
+        </ScrollBox>
 
         {/* 任务状态栏 */}
         <Box height={1}>
-          <StatusBarWrapper statusBar={taskStatusBar} />
+          <TaskStatusBarPlaceholder />
         </Box>
 
         {/* Agent 状态栏 */}
         <Box height={1}>
-          <StatusBarWrapper statusBar={agentStatusBar} />
+          <AgentStatusBarPlaceholder />
         </Box>
 
         {/* 编辑器（含边框） */}
         <Box height={6}>
-          <EditorWrapper editor={editor} />
+          <EditorPlaceholder editor={editor} />
         </Box>
       </Box>
     </App>
@@ -81,79 +100,24 @@ export function InkApp({
 }
 
 // ---------------------------------------------------------------------------
-// 桥接 Wrapper 组件
+// 占位组件
 //
-// 临时方案：定期调用旧组件的 render() 获取内容并显示。
-// 后续 PR（PR3-PR5）将逐步替换为纯 React/Ink 实现。
+// StatusBar 和 Editor 将在 PR5 中迁移为纯 React/Ink 组件。
+// 目前这些占位组件保持布局结构完整。
 // ---------------------------------------------------------------------------
 
-function OutputAreaWrapper({ outputArea }: { outputArea: OutputArea }): React.ReactElement {
-  const [text, setText] = useState('');
-
-  useEffect(() => {
-    const update = () => {
-      try {
-        const lines = outputArea.render(80);
-        setText(lines.slice(-10).join('\n'));
-      } catch {
-        // ignore
-      }
-    };
-
-    update();
-    const id = setInterval(update, 100);
-    return () => clearInterval(id);
-  }, [outputArea]);
-
-  return <Text>{text || 'Output Area'}</Text>;
-}
-
-function EditorWrapper({ editor }: { editor: ZapmycoEditor }): React.ReactElement {
-  const [text, setText] = useState('');
-
-  useEffect(() => {
-    const update = () => {
-      try {
-        const lines = editor.render(80);
-        setText(lines.slice(0, 3).join('\n'));
-      } catch {
-        // ignore
-      }
-    };
-
-    update();
-    const id = setInterval(update, 100);
-    return () => clearInterval(id);
-  }, [editor]);
-
+function EditorPlaceholder(_props: { editor: ZapmycoEditor }): React.ReactElement {
   return (
     <Box paddingLeft={1}>
-      <Text>{text || '> '}</Text>
+      <Text>{'> '}</Text>
     </Box>
   );
 }
 
-function StatusBarWrapper({
-  statusBar,
-}: {
-  statusBar: { render: (w: number) => string[] };
-}): React.ReactElement {
-  const [text, setText] = useState('');
+function TaskStatusBarPlaceholder(): React.ReactElement {
+  return <Text dim>{'\u00a0'}</Text>;
+}
 
-  useEffect(() => {
-    const update = () => {
-      try {
-        const lines = statusBar.render(80);
-        setText(lines.join('\n'));
-      } catch {
-        // ignore
-      }
-    };
-
-    update();
-    const id = setInterval(update, 100);
-    return () => clearInterval(id);
-  }, [statusBar]);
-
-  return <Text dim>{text || '\u00a0'}</Text>;
+function AgentStatusBarPlaceholder(): React.ReactElement {
+  return <Text dim>{'\u00a0'}</Text>;
 }

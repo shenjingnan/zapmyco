@@ -461,6 +461,32 @@ export class OutputArea extends Container {
   /** 最大逻辑行数（超出时丢弃最早的行） */
   private static readonly MAX_LINES = 10_000;
 
+  // -------------------------------------------------------------------------
+  // 公共数据访问（供 Ink VirtualMessageList 使用）
+  // -------------------------------------------------------------------------
+
+  /** 逻辑行总数（Ink 虚拟滚动使用） */
+  get totalLines(): number {
+    return this.lines.length;
+  }
+
+  /** 获取指定逻辑行的内容（Ink 虚拟滚动使用） */
+  getLine(index: number): string {
+    return this.lines[index] ?? '';
+  }
+
+  /** 获取指定逻辑行的高度（显示行数，Ink 虚拟滚动使用） */
+  getLineHeight(index: number): number {
+    return this.wrappedHeights[index] ?? 1;
+  }
+
+  /** 同步宽度缓存（Ink 虚拟滚动使用） */
+  syncCacheWidth(width: number): void {
+    if (width !== this.cacheWidth) {
+      this.rebuildAllWraps(width);
+    }
+  }
+
   /** 公共只读属性，供引擎层读取 */
   get scrollOffset(): number {
     return this.#scrollOffset;
@@ -1287,7 +1313,7 @@ export class OutputArea extends Container {
    * 获取或创建指定逻辑行的换行缓存。
    * cacheWidth 为 0 时返回原始行（未换行）。
    */
-  private getOrCreateWrappedLine(index: number): string[] {
+  getOrCreateWrappedLine(index: number): string[] {
     if (this.cacheWidth <= 0) return [this.lines[index] ?? ''];
     let cached = this.lineCache.get(index);
     if (!cached) {
