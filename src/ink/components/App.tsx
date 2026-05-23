@@ -6,7 +6,7 @@
  * PR7: 集成 parse-keypress 管线、EventEmitter、TerminalQuerier。
  */
 
-import React, { createContext, type ReactNode, useCallback, useEffect, useRef } from 'react';
+import React, { type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { EventEmitter } from '../events/emitter';
 import { InputEvent } from '../events/input-event';
 import { TerminalFocusEvent } from '../events/terminal-focus-event';
@@ -24,34 +24,22 @@ import {
   FOCUS_OUT,
 } from '../termio/csi';
 import { DBP, DFE, EBP, EFE } from '../termio/dec';
+import { AppContext } from './AppContext';
+import { ClockProvider } from './ClockContext';
+import { CursorDeclarationContextProvider } from './CursorDeclarationContext';
+import { StdinContext, type StdinContextValue } from './StdinContext';
+import { TerminalFocusProvider } from './TerminalFocusContext';
+import { TerminalSizeProvider } from './TerminalSizeContext';
+import { TerminalWriteContext } from './TerminalWriteContext';
 
 // ---------------------------------------------------------------------------
-// Contexts
+// Re-export for backward compatibility
 // ---------------------------------------------------------------------------
 
-export interface AppContextValue {
-  exit: (error?: Error) => void;
-}
-
-export const AppContext = createContext<AppContextValue>({
-  exit: () => {},
-});
-
-export interface StdinContextValue {
-  stdin: NodeJS.ReadStream;
-  stdout: NodeJS.WriteStream;
-  setRawMode: (mode: boolean) => void;
-  internal_eventEmitter: EventEmitter;
-  internal_querier: TerminalQuerier;
-}
-
-export const StdinContext = createContext<StdinContextValue>({
-  stdin: process.stdin,
-  stdout: process.stdout,
-  setRawMode: () => {},
-  internal_eventEmitter: new EventEmitter(),
-  internal_querier: new TerminalQuerier(process.stdout),
-});
+export type { AppContextValue } from './AppContext';
+export { AppContext } from './AppContext';
+export type { StdinContextValue } from './StdinContext';
+export { StdinContext } from './StdinContext';
 
 // ---------------------------------------------------------------------------
 // AppProps
@@ -274,10 +262,28 @@ export function App({
     internal_querier: querierRef.current ?? new TerminalQuerier(stdout),
   };
 
+  // writeRaw 用于 TerminalWriteContext（供 hooks 直接写入原始 ANSI）
+  const writeRaw = useCallback(
+    (data: string) => {
+      stdout.write(data);
+    },
+    [stdout]
+  );
+
   return (
     <AppContext.Provider value={{ exit }}>
       <StdinContext.Provider value={contextValue}>
-        {React.createElement('ink-root', null, children)}
+        <TerminalWriteContext.Provider value={writeRaw}>
+          <TerminalSizeProvider>
+            <TerminalFocusProvider>
+              <ClockProvider>
+                <CursorDeclarationContextProvider>
+                  {React.createElement('ink-root', null, children)}
+                </CursorDeclarationContextProvider>
+              </ClockProvider>
+            </TerminalFocusProvider>
+          </TerminalSizeProvider>
+        </TerminalWriteContext.Provider>
       </StdinContext.Provider>
     </AppContext.Provider>
   );

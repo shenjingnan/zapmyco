@@ -29,6 +29,8 @@ export interface BoxProps {
   marginRight?: number;
   overflow?: 'visible' | 'hidden' | 'scroll';
   display?: 'flex' | 'none';
+  /** 标记为不可选择（用于 NoSelect 组件） */
+  noSelect?: boolean | 'from-left-edge';
 }
 
 /**
@@ -37,7 +39,7 @@ export interface BoxProps {
  * 终端中的 <div>，通过 flexbox 布局管理子元素位置。
  * PR2: 完整实现，style 属性同步到 Yoga 节点。
  */
-export function Box({ children, style, ...props }: BoxProps): React.ReactElement {
+export function Box({ children, style, noSelect, ...props }: BoxProps): React.ReactElement {
   const mergedStyle: Styles = { ...style };
 
   for (const [key, value] of Object.entries(props)) {
@@ -46,5 +48,10 @@ export function Box({ children, style, ...props }: BoxProps): React.ReactElement
     }
   }
 
-  return React.createElement('ink-box', { style: mergedStyle }, children);
+  const attrs: Record<string, unknown> = { style: mergedStyle };
+  if (noSelect !== undefined) {
+    attrs.noSelect = noSelect;
+  }
+
+  return React.createElement('ink-box', attrs, children);
 }

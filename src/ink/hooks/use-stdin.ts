@@ -5,7 +5,7 @@
  */
 
 import { useContext } from 'react';
-import { StdinContext, type StdinContextValue } from '../components/App';
+import { StdinContext, type StdinContextValue } from '../components/StdinContext';
 
 /**
  * 访问 stdin/stdout 流和 raw mode 控制。

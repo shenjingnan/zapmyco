@@ -14,6 +14,21 @@ export const OSC_ST = '\x1b\\';
 /** BEL 替代终止符 */
 export const BEL = '\x07';
 
+// ---------------------------------------------------------------------------
+// OSC 命令编号
+// ---------------------------------------------------------------------------
+
+/** OSC 命令编号常量 */
+export const OSC = {
+  SET_TITLE_AND_ICON: 0 as const,
+  SET_ICON: 1 as const,
+  SET_TITLE: 2 as const,
+  /** iTerm2 proprietary OSC */
+  ITERM2: 1337 as const,
+  KITTY: 9 as const,
+  GHOSTTY: 9 as const,
+} as const;
+
 /** 通用 OSC 序列构建函数 */
 export function osc(...parts: (string | number)[]): string {
   return `${OSC_PREFIX}${parts.join(';')}${OSC_ST}`;

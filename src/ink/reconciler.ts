@@ -115,7 +115,9 @@ const reconciler = createReconciler<
       type === 'ink-box' ||
       type === 'ink-text' ||
       type === 'ink-virtual-text' ||
-      type === 'ink-scroll-box'
+      type === 'ink-scroll-box' ||
+      type === 'ink-link' ||
+      type === 'ink-raw-ansi'
         ? type
         : 'ink-box';
     const node = dom.createNode(sanitized);

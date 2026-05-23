@@ -9,15 +9,17 @@
  * 后续 PR 将添加 selection、search highlight、pool GC 等特性。
  */
 
-import type { ReactNode } from 'react';
+import React, { type ReactNode } from 'react';
 import { LegacyRoot } from 'react-reconciler/constants.js';
 import { setClipboard } from '@/cli/tui/clipboard';
 import { StylePool } from '@/cli/tui/style-pool';
+import { InkContext } from './components/InkContext';
 import type { DOMElement } from './dom';
 import { createNode } from './dom';
 import { KeyboardEvent } from './events/keyboard-event';
 import type { Frame, ScrollHint } from './frame';
 import { emptyFrame } from './frame';
+import instances from './instances';
 import { detectDecstbmScroll, LogUpdate } from './log-update';
 import { optimize } from './optimizer';
 import type { ParsedKey } from './parse-keypress';
@@ -108,6 +110,19 @@ export class Ink {
   /** stdin 数据缓冲区 */
   private stdinBuffer = '';
 
+  /** 缩放事件监听器 */
+  readonly _resizeHandlers = new Set<(columns: number, rows: number) => void>();
+
+  /** 获取当前终端列数 */
+  get columns(): number {
+    return this.terminal.columns;
+  }
+
+  /** 获取当前终端行数 */
+  get rows(): number {
+    return this.terminal.rows;
+  }
+
   constructor(options?: InkOptions) {
     this.debug = options?.debug ?? false;
 
@@ -118,6 +133,9 @@ export class Ink {
 
     // 根 DOM 节点
     this.rootNode = createNode('ink-root');
+
+    // 注册到实例注册表
+    instances.set(this.terminal.stdout, this);
 
     // 挂载渲染生命周期回调
     this.rootNode.onComputeLayout = this.calculateLayout;
@@ -154,7 +172,9 @@ export class Ink {
 
   /** 渲染 React 组件树 */
   render(node: ReactNode): void {
-    reconciler.updateContainerSync(node, this.container, null, () => {});
+    // 包裹 InkContext.Provider 使子组件能访问 Ink 实例
+    const wrapped = React.createElement(InkContext.Provider, { value: this }, node);
+    reconciler.updateContainerSync(wrapped, this.container, null, () => {});
     reconciler.flushSyncWork();
   }
 
@@ -170,6 +190,10 @@ export class Ink {
     reconciler.flushSyncWork();
 
     this.disableMouse();
+
+    // 从实例注册表注销
+    instances.delete(this.terminal.stdout);
+
     this.terminal.destroy();
   }
 
@@ -315,6 +339,12 @@ export class Ink {
   private handleResize(): void {
     this.cancelScheduledRender();
     this.requestRender();
+
+    // 通知 resize 监听器
+    const { columns, rows } = this.terminal;
+    for (const handler of this._resizeHandlers) {
+      handler(columns, rows);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -516,6 +546,19 @@ export class Ink {
     if (!hasSelection(this.selection)) return;
     clearSelectionState(this.selection);
     this.notifySelectionChange();
+  }
+
+  /** alt 屏幕活跃状态（用于 AlternateScreen 组件，通知渲染器） */
+  private _altScreenActive = false;
+
+  /** 是否处于备选屏幕模式 */
+  setAltScreenActive(active: boolean, _mouseTracking?: boolean): void {
+    this._altScreenActive = active;
+  }
+
+  /** 当前是否处于备选屏幕模式 */
+  isAltScreenActive(): boolean {
+    return this._altScreenActive;
   }
 
   /** 是否有活跃的文本选择 */
