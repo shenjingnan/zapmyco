@@ -282,6 +282,7 @@ export const InkZapmycoEditor = forwardRef<InkZapmycoEditorHandle, InkZapmycoEdi
     }, []);
 
     useInput(
+      // biome-ignore lint/correctness/useExhaustiveDependencies: 通过 useRef 保持稳定引用，避免依赖地狱
       useCallback(
         (input: string, key: Key) => {
           // 审批模式优先
@@ -719,6 +720,7 @@ export const InkZapmycoEditor = forwardRef<InkZapmycoEditorHandle, InkZapmycoEdi
           }
 
           return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 显示行无唯一 ID，且为静态列表
             <Box key={i} height={1}>
               <Text>
                 {prefix}
@@ -735,6 +737,7 @@ export const InkZapmycoEditor = forwardRef<InkZapmycoEditorHandle, InkZapmycoEdi
               acItems.slice(0, 10).map((item, i) => {
                 const isSelected = i === acSelected;
                 return (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 补全项无稳定唯一 ID
                   <Box key={i}>
                     {isSelected ? (
                       <Text color="green" bold>
