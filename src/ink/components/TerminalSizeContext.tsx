@@ -50,7 +50,7 @@ export function TerminalSizeProvider({ children }: TerminalSizeProviderProps): R
     };
   }, [ink]);
 
-  const value = useMemo(() => size, [size.columns, size.rows]);
+  const value = useMemo(() => size, [size]);
 
   return <TerminalSizeContext.Provider value={value}>{children}</TerminalSizeContext.Provider>;
 }
