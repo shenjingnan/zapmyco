@@ -488,7 +488,7 @@ export function getSelectedText(s: SelectionState, screen: Screen): string {
 
   // 滚出累加器（上方）
   for (let i = 0; i < s.scrolledOffAbove.length; i++) {
-    joinRows(lines, s.scrolledOffAbove[i]!, s.scrolledOffAboveSW[i]);
+    joinRows(lines, s.scrolledOffAbove[i] ?? '', s.scrolledOffAboveSW[i]);
   }
 
   // 视口中选中的行
@@ -501,7 +501,7 @@ export function getSelectedText(s: SelectionState, screen: Screen): string {
 
   // 滚出累加器（下方）
   for (let i = 0; i < s.scrolledOffBelow.length; i++) {
-    joinRows(lines, s.scrolledOffBelow[i]!, s.scrolledOffBelowSW[i]);
+    joinRows(lines, s.scrolledOffBelow[i] ?? '', s.scrolledOffBelowSW[i]);
   }
 
   return lines.join('\n');

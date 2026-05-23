@@ -333,13 +333,14 @@ export class Ink {
     if (!buf.includes('\x1b[<')) return false;
 
     // 尝试匹配最长的完整 SGR 序列
-    const match = buf.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])/);
+    const esc = '\x1b';
+    const match = buf.match(new RegExp(`^${esc}\\[<(\\d+);(\\d+);(\\d+)([Mm])`));
     if (!match) return false;
 
-    const btnStr = match[1]!;
-    const colStr = match[2]!;
-    const rowStr = match[3]!;
-    const terminator = match[4]!;
+    const btnStr = match[1] ?? '';
+    const colStr = match[2] ?? '';
+    const rowStr = match[3] ?? '';
+    const terminator = match[4] ?? '';
     const button = Number.parseInt(btnStr, 10);
     const col = Number.parseInt(colStr, 10) - 1; // 1-based → 0-based
     const row = Number.parseInt(rowStr, 10) - 1;
