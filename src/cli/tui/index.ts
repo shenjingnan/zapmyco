@@ -1,7 +1,8 @@
 /**
  * TUI 模块入口
  *
- * 全部自建实现，无外部依赖。
+ * 保留向后兼容导出。新代码应使用 Ink (@/ink) API。
+ * @deprecated 优先使用 @/ink 中的等价功能
  */
 
 export type { AutocompleteProvider, Completion } from './autocomplete';
@@ -9,7 +10,7 @@ export type { AutocompleteProvider, Completion } from './autocomplete';
 export { CombinedAutocompleteProvider } from './autocomplete';
 // === 剪贴板管理 ===
 export { setClipboard } from './clipboard';
-// === 本地引擎实现 ===
+// === 本地引擎实现（待移除）===
 export { Container } from './container';
 // === DEC 序列管理 ===
 export {
@@ -26,7 +27,7 @@ export {
 export type { DiffResult, Patch } from './diff';
 // === Diff 引擎 ===
 export { diffScreens } from './diff';
-// === 本地 TUI 组件 ===
+// === 本地 TUI 组件（待移除）===
 export { Editor } from './editor';
 export type { CursorMarker } from './engine';
 export { renderAnsiLineToScreen, TUI } from './engine';

@@ -70,7 +70,7 @@ vi.mock('chalk', () => {
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TaskStatusBar } from '@/cli/repl/components/task-status-bar';
+import { TaskStatusBar } from '@/cli/repl/components/legacy/task-status-bar';
 import { TaskStore } from '@/core/task/task-store';
 
 describe('TaskStatusBar', () => {

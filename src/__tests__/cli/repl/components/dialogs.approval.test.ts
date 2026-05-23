@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { ApprovalDialogComponentForTesting } from '@/cli/repl/components/dialogs';
+import { ApprovalDialogComponentForTesting } from '@/cli/repl/components/legacy/dialogs';
 import type { ApprovalRequest } from '@/security/types';
 
 // matchesKey 由 @/cli/tui 本地提供，测试使用真实终端控制字符

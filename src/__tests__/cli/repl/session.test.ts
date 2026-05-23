@@ -54,7 +54,7 @@ vi.mock('@/cli/tui', async (importOriginal) => {
 });
 
 // Mock ZapmycoEditor
-vi.mock('@/cli/repl/components/custom-editor', () => ({
+vi.mock('@/cli/repl/components/legacy/custom-editor', () => ({
   LOADING_FRAMES: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
   ZapmycoEditor: class MockZapmycoEditor {
     onSubmit?: (text: string) => void;
