@@ -1,7 +1,7 @@
 /**
  * TUI — 终端 UI 引擎
  *
- * 本地实现的 TUI 引擎。
+ * 本地实现的 TUI 引擎（旧版，仅保留 Screen 管线）。
  * 管理渲染循环（事件驱动 + 16ms 节流）、组件树、焦点、Overlay 栈、差量渲染。
  *
  * ### 渲染流程
@@ -9,19 +9,12 @@
  * 组件调用 requestRender() → dirty=true
  *   → queueMicrotask → flush() 被调度
  *   → 检查节流（距上次渲染 ≥ 16ms）
- *   → [Screen 管线]: renderToScreen → diffScreens → applyPatches
- *   → [旧管线]:    computeOutput → deltaUpdate / forceFullRedraw
+ *   → renderToScreen → diffScreens → applyPatches
  *   → 定位硬件光标
  * ```
  *
- * ### 双管线架构
- * useScreenPipeline 标志控制使用哪条渲染路径：
- * - true  (新管线): Screen 缓冲区 + Cell 级 Diff → Patch → applyPatches
- * - false (旧管线): render(width) → string[] → deltaUpdate（逐行比较）
- *
- * 组件逐步迁移到 renderToScreen 新接口后切换标志。
- *
- * 空闲时无任何定时器运行。
+ * PR6: 移除旧字符串管线（doRenderLegacy/deltaUpdate/forceFullRedraw）。
+ * 新 Ink 管线已完全取代旧管线功能。
  *
  * ### AnimationManager 兼容
  * doRender 为公共方法，可被 AnimationManager monkey-patch 替换，
@@ -162,9 +155,7 @@ interface OverlayRect {
 }
 
 /** 光标标记 — Editor 在渲染输出末尾嵌入，TUI 据此定位硬件光标 */
-const CURSOR_MARKER = '\u001B_pi:c\u0007';
-// biome-ignore lint/suspicious/noControlCharactersInRegex: CURSOR_MARKER 包含 ESC 和 BEL 控制字符
-const CURSOR_MARKER_RE = /\u001B_pi:c\u0007/g;
+// 常量值保留在 renderAnsiLineToScreen 中内联使用
 
 // ---------------------------------------------------------------------------
 // TUI 引擎
@@ -197,9 +188,6 @@ export class TUI {
   /** 引擎是否已停止 — 防止 flush 在 stop() 后误执行 */
   private stopped = false;
 
-  /** 上一帧的输出行数组，用于逐行 diff */
-  private lastOutput: string[] = [];
-
   /** 当前获得焦点的组件 */
   private focused: Component | null = null;
 
@@ -207,30 +195,27 @@ export class TUI {
   private cursorRow = -1;
   private cursorCol = -1;
 
-  // -----------------------------------------------------------------------
-  // Screen 管线字段
-  // -----------------------------------------------------------------------
-
   /** 上一帧的 Screen 缓冲区（用于差异计算） */
   private prevScreen: Screen | null = null;
 
   /** 样式池（跨帧共享） */
   private stylePool = new StylePool();
 
-  /** 是否使用新 Screen 管线（true = 新管线, false = 旧字符串管线） */
-  private useScreenPipeline = false;
-
-  /** 启用 Screen 管线（供测试和逐步迁移使用） */
+  /**
+   * @deprecated 旧字符串管线已移除，始终使用 Screen 管线。
+   * 此方法保留为空操作以确保向后兼容。
+   */
   enableScreenPipeline(): void {
-    this.useScreenPipeline = true;
     this.prevScreen = null;
     this.force = true;
     this.requestRender();
   }
 
-  /** 禁用 Screen 管线，回退到旧字符串管线 */
+  /**
+   * @deprecated 旧字符串管线已移除，始终使用 Screen 管线。
+   * 此方法保留为空操作以确保向后兼容。
+   */
   disableScreenPipeline(): void {
-    this.useScreenPipeline = false;
     this.requestRender();
   }
 
@@ -277,7 +262,6 @@ export class TUI {
     // 隐藏硬件光标
     this.terminal.write('\x1b[?25l');
     this.terminal.clear();
-    this.lastOutput = [];
     this.dirty = true;
     this.force = true;
 
@@ -350,7 +334,6 @@ export class TUI {
 
     this.terminal.destroy();
     this.terminal.stdin.removeAllListeners('data');
-    this.lastOutput = [];
     this.dirty = false;
     this.force = false;
     this.renderScheduled = false;
@@ -394,32 +377,7 @@ export class TUI {
    * ```
    */
   doRender(): void {
-    if (this.useScreenPipeline) {
-      this.doRenderScreen();
-    } else {
-      this.doRenderLegacy();
-    }
-  }
-
-  /**
-   * 旧版渲染管线（字符串比较）。
-   * 作为新管线的回退。
-   */
-  private doRenderLegacy(): void {
-    const lines = this.computeOutput();
-
-    if (this.force || this.lastOutput.length === 0) {
-      this.forceFullRedraw(lines);
-    } else {
-      this.deltaUpdate(lines);
-    }
-
-    // 如果编辑器在渲染中嵌入了光标标记，定位硬件光标后重新显示
-    if (this.cursorRow >= 0) {
-      this.terminal.write('\x1b[?25h');
-    }
-
-    this.lastOutput = lines;
+    this.doRenderScreen();
   }
 
   /**
@@ -802,123 +760,6 @@ export class TUI {
   }
 
   /**
-   * 计算完整输出 — 渲染组件树 → 应用 overlay → 限制行数
-   *
-   * 当有组件处于滚动状态（scrollOffset > 0）时，切片会保留更多历史内容，
-   * 而非仅保留末尾 height 行。
-   */
-  private computeOutput(): string[] {
-    const width = this.terminal.columns;
-    const height = this.terminal.rows;
-    this.cursorRow = -1;
-    this.cursorCol = -1;
-
-    // 1. 获取实际布局子组件（跳过 Container 包装层）
-    const children = this.getLayoutChildren();
-
-    const outputs: { lines: string[]; scrollable: boolean }[] = [];
-    let scrollOffset = 0;
-    let fixedHeight = 0;
-
-    for (const child of children) {
-      const childLines = child.render(width);
-      const isScrollable = child.scrollOffset !== undefined;
-      if (isScrollable) {
-        scrollOffset = child.scrollOffset;
-      } else {
-        fixedHeight += childLines.length;
-      }
-      outputs.push({ lines: childLines, scrollable: isScrollable });
-    }
-
-    // 2. 计算可滚动区域可用行数
-    const scrollableHeight = Math.max(1, height - fixedHeight);
-
-    // 通知可滚动组件其区域矩形（使选区坐标转换能获取 #areaRect）
-    // 在旧管线中，引擎不调用 renderToScreen，OutputArea 等组件需要
-    // setAreaRect 来获取布局位置以便 #terminalToLogical 正确转换。
-    {
-      let y = 0;
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i]!;
-        const isScrollable = child.scrollOffset !== undefined;
-        if (isScrollable) {
-          const rect = { x: 0, y, width, height: scrollableHeight };
-          (child as { setAreaRect?: (r: typeof rect) => void }).setAreaRect?.(rect);
-          y += scrollableHeight;
-        } else {
-          y += outputs[i]?.lines.length ?? 0;
-        }
-      }
-    }
-
-    // 3. 按顺序组装输出，可滚动组件按 scrollOffset 切片
-    let lines: string[] = [];
-    for (const entry of outputs) {
-      if (entry.scrollable && entry.lines.length > scrollableHeight) {
-        // 有滚动偏移时从更早位置切片
-        const maxStart = entry.lines.length - scrollableHeight;
-        const start = Math.max(0, maxStart - scrollOffset);
-        lines.push(...entry.lines.slice(start, start + scrollableHeight));
-      } else {
-        lines.push(...entry.lines);
-      }
-    }
-
-    // 安全网：确保总行数不超过终端高度
-    if (lines.length > height) {
-      lines = lines.slice(0, height);
-    }
-
-    // 3. 应用 overlay（从底向上，栈顶在最上面）
-    for (const entry of this.overlayStack) {
-      lines = this.applyOverlay(lines, entry);
-    }
-
-    // 4. 扫描并移除光标标记
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i] ?? '';
-      const markerIdx = line.indexOf(CURSOR_MARKER);
-      if (markerIdx >= 0) {
-        // 移除标记
-        lines[i] = line.replace(CURSOR_MARKER_RE, '');
-        // 计算标记位置的可见宽度（不含 ANSI 码）
-        this.cursorRow = i;
-        this.cursorCol = visibleWidth(line.substring(0, markerIdx));
-      }
-    }
-
-    return lines;
-  }
-
-  /**
-   * 将 overlay 渲染结果叠加到基础输出上
-   */
-  private applyOverlay(base: string[], entry: OverlayEntry): string[] {
-    const width = this.terminal.columns;
-    const overlayLines = entry.component.render(width);
-    const rect = this.calculateOverlayRect(entry, overlayLines.length);
-
-    const result = [...base];
-
-    // 限制 overlay 高度不超过终端可用行数
-    const clampedHeight = Math.min(rect.height, this.terminal.rows - rect.row);
-
-    for (let i = 0; i < clampedHeight; i++) {
-      const targetRow = rect.row + i;
-      // 确保目标行存在
-      while (targetRow >= result.length) {
-        result.push('');
-      }
-      const overlayLine = i < overlayLines.length ? (overlayLines[i] ?? '') : '';
-      // 截断或填充到指定宽度
-      result[targetRow] = overlayLine.padEnd(rect.width).slice(0, rect.width);
-    }
-
-    return result;
-  }
-
-  /**
    * 计算 overlay 的矩形区域（位置 + 尺寸）
    *
    * 所有现有 overlay 均使用 anchor: 'top-left'，布局逻辑：
@@ -973,75 +814,6 @@ export class TUI {
   }
 
   /**
-   * 差量更新 — 逐行比较 lastOutput 与新输出，仅变更的行
-   *
-   * 输出用 BSU/ESU 包裹以实现原子帧刷新，消除终端撕裂。
-   */
-  private deltaUpdate(newOutput: string[]): void {
-    const oldOutput = this.lastOutput;
-    if (oldOutput.length === 0) {
-      this.forceFullRedraw(newOutput);
-      return;
-    }
-
-    const maxLen = Math.max(newOutput.length, oldOutput.length);
-    let buf = BSU;
-
-    for (let i = 0; i < maxLen; i++) {
-      if (i >= newOutput.length) {
-        // 行被删除 → 清空
-        buf += `\r\x1b[${i + 1};1H\x1b[2K`;
-      } else if (i >= oldOutput.length || newOutput[i] !== oldOutput[i]) {
-        // 新行或内容变化 → 覆写后清行尾（确保旧行无残留）
-        buf += `\r\x1b[${i + 1};1H`;
-        buf += newOutput[i] ?? '';
-        buf += '\x1b[0K';
-      }
-    }
-
-    // 定位硬件光标
-    if (this.cursorRow >= 0 && this.cursorCol >= 0) {
-      buf += `\r\x1b[${this.cursorRow + 1};${this.cursorCol + 1}H`;
-    }
-
-    buf += ESU;
-    this.terminal.write(buf);
-  }
-
-  /**
-   * 全量重绘 — 清屏后重新写入所有行
-   *
-   * 输出用 BSU/ESU 包裹以实现原子帧刷新，消除终端撕裂。
-   */
-  private forceFullRedraw(lines: string[]): void {
-    let buf = BSU;
-    buf += '\r\x1b[1;1H'; // cursorTo(0, 0) 内联
-
-    // 写入所有行，每行后 \r\n（raw mode 下 \n 不回行首）
-    for (let i = 0; i < lines.length; i++) {
-      buf += `${lines[i] ?? ''}\x1b[0K`;
-      if (i < lines.length - 1) {
-        buf += '\r\n';
-      }
-    }
-
-    // 清空多余行
-    if (this.lastOutput.length > lines.length) {
-      for (let i = lines.length; i < this.lastOutput.length; i++) {
-        buf += `\r\x1b[${i + 1};1H\x1b[2K`;
-      }
-    }
-
-    // 定位硬件光标
-    if (this.cursorRow >= 0 && this.cursorCol >= 0) {
-      buf += `\r\x1b[${this.cursorRow + 1};${this.cursorCol + 1}H`;
-    }
-
-    buf += ESU;
-    this.terminal.write(buf);
-  }
-
-  /**
    * 获取布局子组件列表
    *
    * TUI.root 可能只有一层包装容器（如 ReplSession 创建的根 Container），
@@ -1054,19 +826,4 @@ export class TUI {
     }
     return outerChildren;
   }
-}
-
-// ======================================================================
-// 工具函数
-// ======================================================================
-
-/** ANSI 转义序列正则（用于计算可见宽度时排除） */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI 转义序列包含 ESC 控制字符
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-
-/** 计算字符串的可见宽度（排除 ANSI 码） */
-function visibleWidth(text: string): number {
-  // 简单实现：排除 ANSI 控制序列后取长度
-  // 不考虑 CJK 双宽字符（因为用于光标定位列号，不影响正确性）
-  return text.replace(ANSI_RE, '').length;
 }

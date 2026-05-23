@@ -48,7 +48,12 @@ export type Patch =
   | { type: 'cursorTo'; col: number }
   | { type: 'carriageReturn' }
   | { type: 'hyperlink'; uri: string }
-  | { type: 'styleStr'; str: string };
+  | { type: 'styleStr'; str: string }
+  // DECSTBM 硬件滚动（PR6）
+  | { type: 'setScrollRegion'; top: number; bottom: number }
+  | { type: 'scrollUp'; count: number }
+  | { type: 'scrollDown'; count: number }
+  | { type: 'resetScrollRegion' };
 
 export type Diff = Patch[];
 

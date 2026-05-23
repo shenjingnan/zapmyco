@@ -17,6 +17,7 @@
 
 import type { DOMElement } from './dom';
 import { type Clip, Output } from './output';
+import { getStyleId } from './style-cache';
 import type { TextStyles } from './styles';
 import { textStylesToAnsiCodes } from './styles';
 
@@ -162,7 +163,7 @@ function renderText(node: DOMElement, output: Output): void {
 
   // 使用轻量级 styleId
   const styleKey = ansiCodes.join(',');
-  const styleId = getOrCreateStyleId(styleKey, ansiCodes);
+  const styleId = getStyleId(styleKey, ansiCodes);
 
   // 写入文本（截断以适配宽度）
   const displayText = text.slice(0, w);
@@ -203,46 +204,6 @@ function renderChildren(node: DOMElement, output: Output, options?: RenderOption
   }
 }
 
-// ---------------------------------------------------------------------------
-// 简化的 StylePool 替代方案
-// ---------------------------------------------------------------------------
-
-const styleIdCache = new Map<string, number>();
-const styleCodesCache: string[][] = [];
-let nextStyleId = 1; // 0 = none
-
-function getOrCreateStyleId(key: string, codes: string[]): number {
-  if (key === '' || codes.length === 0) return 0;
-  const existing = styleIdCache.get(key);
-  if (existing !== undefined) return existing;
-  const id = nextStyleId++;
-  styleIdCache.set(key, id);
-  styleCodesCache[id] = codes;
-  return id;
-}
-
-/** 从 styleId 获取 ANSI 码数组 */
-export function getStyleCodes(id: number): readonly string[] {
-  return styleCodesCache[id] ?? [];
-}
-
-/** 获取从 fromId 切换到 toId 的 ANSI 序列 */
-export function transitionStyle(fromId: number, toId: number): string {
-  if (fromId === toId) return '';
-  if (toId === 0) return '\x1b[0m';
-  if (fromId === 0) {
-    const codes = styleCodesCache[toId];
-    if (!codes || codes.length === 0) return '';
-    return `\x1b[${codes.join(';')}m`;
-  }
-  const toCodes = styleCodesCache[toId];
-  if (!toCodes || toCodes.length === 0) return '\x1b[0m';
-  return `\x1b[0m\x1b[${toCodes.join(';')}m`;
-}
-
-/** 清空样式缓存 */
-export function clearStyleCaches(): void {
-  styleIdCache.clear();
-  styleCodesCache.length = 0;
-  nextStyleId = 1;
-}
+// 样式缓存管理已提取到 ./style-cache
+// 导出兼容符号
+export { clearStyleCaches, getStyleCodes, transitionStyle } from './style-cache';

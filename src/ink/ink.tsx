@@ -15,9 +15,9 @@ import { setClipboard } from '@/cli/tui/clipboard';
 import { StylePool } from '@/cli/tui/style-pool';
 import type { DOMElement } from './dom';
 import { createNode } from './dom';
-import type { Frame } from './frame';
+import type { Frame, ScrollHint } from './frame';
 import { emptyFrame } from './frame';
-import { LogUpdate } from './log-update';
+import { detectDecstbmScroll, LogUpdate } from './log-update';
 import { optimize } from './optimizer';
 import reconciler from './reconciler';
 import { createRenderer } from './renderer';
@@ -41,6 +41,7 @@ import {
   updateSelection,
 } from './selection';
 import { ProcessTerminal, writeDiffToTerminal } from './terminal';
+import { bumpGeneration } from './style-cache';
 import { DEC, decreset, decset } from './termio/dec';
 
 export interface InkOptions {
@@ -234,6 +235,30 @@ export class Ink {
       terminalHeight: rows,
       prevScreen: this.backFrame.screen,
     });
+
+    // DECSTBM 硬件滚动检测
+    // 比较 backFrame.screen（上一帧已显示内容）与 frame.screen（新渲染帧），
+    // 检测流式追加时内容是否发生 uniform shift
+    const SCROLLABLE_OFFSET = 8; // taskBar(1) + agentBar(1) + editor(6)
+    if (rows > SCROLLABLE_OFFSET) {
+      const scrollDelta = detectDecstbmScroll(
+        this.backFrame.screen,
+        frame.screen,
+        { x: 0, y: 0, width: columns, height: rows - SCROLLABLE_OFFSET }
+      );
+      if (scrollDelta !== null) {
+        (frame as { scrollHint: ScrollHint }).scrollHint = {
+          top: 0,
+          bottom: rows - SCROLLABLE_OFFSET - 1,
+          delta: scrollDelta,
+        };
+      }
+    }
+
+    // Pool GC：定期清理样式缓存，防止长时间运行内存泄漏
+    if (bumpGeneration()) {
+      this.stylePool.clearCaches();
+    }
 
     // 交换帧引用
     this.frontFrame = frame;

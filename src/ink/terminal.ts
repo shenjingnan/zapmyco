@@ -12,7 +12,17 @@
 
 import { cursorTo as nodeCursorTo } from 'node:readline';
 import type { Diff } from './frame';
-import { CURSOR_HIDE, CURSOR_SHOW, cursorMove, cursorTo, eraseLines } from './termio/csi';
+import {
+  CURSOR_HIDE,
+  CURSOR_SHOW,
+  cursorMove,
+  cursorTo,
+  eraseLines,
+  RESET_SCROLL_REGION,
+  scrollDown,
+  scrollUp,
+  setScrollRegion,
+} from './termio/csi';
 import { BSU, ESU } from './termio/dec';
 
 // ---------------------------------------------------------------------------
@@ -31,6 +41,11 @@ export class ProcessTerminal {
 
   get columns(): number {
     return (process.stdout as { columns?: number }).columns ?? 80;
+  }
+
+  /** 终端色彩级别 */
+  get colorLevel(): ColorLevel {
+    return getColorLevel();
   }
 
   enableRawMode(): void {
@@ -85,22 +100,99 @@ export class ProcessTerminal {
 }
 
 // ---------------------------------------------------------------------------
-// Terminal synchronization output detection
+// Terminal capability detection
 // ---------------------------------------------------------------------------
 
 let _syncOutputSupported: boolean | undefined;
 /** @internal XTVERSION probe result (used in writeDiffToTerminal) */
 let _xtversionName: string | undefined;
+
 /**
  * 检测终端是否支持同步输出 (DEC 2026 BSU/ESU)。
- * PR2: 默认假设支持。PR6 做真正的终端查询。
+ *
+ * 支持矩阵：
+ * - iTerm2: 支持
+ * - WezTerm: 支持
+ * - Warp: 支持
+ * - kitty: 支持
+ * - ghostty: 支持
+ * - VTE >= 6800: 支持
+ * - tmux: 不支持（即使底层终端支持，tmux 会破坏同步）
+ * - Terminal.app: 不支持
+ * - Windows Terminal: 不支持
+ *
+ * PR6: 使用环境变量检测替代硬编码 true。
+ */
+export function detectSyncOutputSupport(): boolean {
+  const termProgram = process.env.TERM_PROGRAM ?? '';
+  const term = process.env.TERM ?? '';
+
+  // tmux 特殊处理：即使底层终端支持，tmux 会破坏同步
+  if (termProgram === 'tmux' || term.includes('tmux')) {
+    return false;
+  }
+
+  // 已知支持的终端
+  const supported = [
+    'iTerm.app', // iTerm2
+    'WezTerm', // WezTerm
+    'warp-terminal', // Warp
+    'kitty', // kitty
+    'ghostty', // ghostty
+    'vscode', // VS Code terminal（基于 xterm.js）
+  ];
+
+  if (supported.includes(termProgram)) return true;
+
+  // VTE >= 6800: 检查 TERM 包含 vte
+  if (term.includes('vte')) return true;
+
+  // 默认不支持（保守策略）
+  return false;
+}
+
+/**
+ * 查询终端是否支持同步输出。
+ * 首次调用后缓存结果。
  */
 export function isSynchronizedOutputSupported(): boolean {
   if (_syncOutputSupported === undefined) {
-    // 默认 true，后续 PR 通过终端查询精确判断
-    _syncOutputSupported = true;
+    _syncOutputSupported = detectSyncOutputSupport();
   }
   return _syncOutputSupported;
+}
+
+/** 色彩级别 */
+export type ColorLevel = 'truecolor' | '256' | '16' | '8';
+
+/**
+ * 检测终端色彩级别。
+ * 使用 Node.js `process.stdout.getColorDepth()`。
+ */
+export function detectColorLevel(): ColorLevel {
+  const colorDepth = (process.stdout as { getColorDepth?: () => number }).getColorDepth?.();
+  if (colorDepth === undefined) return '16';
+
+  // Node.js getColorDepth() 返回值：
+  // 1  → 8 色
+  // 4  → 16 色
+  // 8  → 256 色
+  // 24 → truecolor (16.7M)
+  if (colorDepth >= 24) return 'truecolor';
+  if (colorDepth >= 8) return '256';
+  if (colorDepth >= 4) return '16';
+  return '8';
+}
+
+/**
+ * 获取终端色彩级别（缓存结果）。
+ */
+let _colorLevel: ColorLevel | undefined;
+export function getColorLevel(): ColorLevel {
+  if (_colorLevel === undefined) {
+    _colorLevel = detectColorLevel();
+  }
+  return _colorLevel;
 }
 
 export function setXtversionName(name: string): void {
@@ -163,6 +255,18 @@ export function writeDiffToTerminal(terminal: ProcessTerminal, diff: Diff): void
         break;
       case 'hyperlink':
         // 后续 PR 实现
+        break;
+      case 'setScrollRegion':
+        result += setScrollRegion(patch.top, patch.bottom);
+        break;
+      case 'scrollUp':
+        result += scrollUp(patch.count);
+        break;
+      case 'scrollDown':
+        result += scrollDown(patch.count);
+        break;
+      case 'resetScrollRegion':
+        result += RESET_SCROLL_REGION;
         break;
     }
   }
