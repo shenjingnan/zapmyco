@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useContext, useEffect, useRef } from 'react';
-import { StdinContext } from '../components/App';
+import { StdinContext } from '../components/StdinContext';
 import type { InputEvent, Key } from '../events/input-event';
 
 // ---------------------------------------------------------------------------

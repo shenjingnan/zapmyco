@@ -5,7 +5,7 @@
  */
 
 import { useContext } from 'react';
-import { AppContext, type AppContextValue } from '../components/App';
+import { AppContext, type AppContextValue } from '../components/AppContext';
 
 /**
  * 访问 Ink 应用上下文。

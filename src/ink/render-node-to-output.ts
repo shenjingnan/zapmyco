@@ -53,6 +53,14 @@ export function renderNodeToOutput(
     case 'ink-virtual-text':
       renderChildren(node, output, options);
       break;
+    case 'ink-link':
+      // 超链接内部文本节点由父 Text 的 collectText 收集
+      // 超链接渲染由 Text 组件处理（通过 href 属性）
+      renderChildren(node, output, options);
+      break;
+    case 'ink-raw-ansi':
+      renderRawAnsi(node, output);
+      break;
     default:
       renderChildren(node, output, options);
   }
@@ -201,6 +209,25 @@ function renderChildren(node: DOMElement, output: Output, options?: RenderOption
     } else if ('childNodes' in child) {
       renderNodeToOutput(child as DOMElement, output, options);
     }
+  }
+}
+
+/** 渲染 ink-raw-ansi 节点 — 原始 ANSI 透传 */
+function renderRawAnsi(node: DOMElement, output: Output): void {
+  const rawText = node.attributes.rawText as string | undefined;
+  const rawWidth = node.attributes.rawWidth as number | undefined;
+  const rawHeight = node.attributes.rawHeight as number | undefined;
+
+  if (!rawText || !rawWidth || !rawHeight) return;
+
+  const yoga = node.yogaNode;
+  const x = yoga ? Math.round(yoga.getComputedLeft()) : 0;
+  const y = yoga ? Math.round(yoga.getComputedTop()) : 0;
+
+  // 逐行写入原始 ANSI 文本
+  const lines = (rawText as string).split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    output.write(x, y + i, lines[i] ?? '');
   }
 }
 
