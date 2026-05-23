@@ -290,7 +290,7 @@ export class LogUpdate {
     if (anyEmpty && ranges.length === 0) return null;
     if (ranges.length === 0) return null;
 
-    if (ranges.length === 1 && ranges[0]!.colStart === 0 && ranges[0]!.colEnd >= cols) {
+    if (ranges.length === 1 && ranges[0]?.colStart === 0 && ranges[0]?.colEnd >= cols) {
       return { fullLine: true, ranges };
     }
 

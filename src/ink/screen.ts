@@ -38,10 +38,26 @@ export class Screen {
   /** 本帧中被修改的区域（用于 diff 优化），每次 get 后自动清除 */
   damage: Rectangle | undefined;
 
+  /**
+   * 每单元格 1 字节的 noSelect 标记（1 = 排除选择）。
+   * 用于标记行号、分隔线等区域，使其不能被鼠标选择。
+   */
+  noSelect: Uint8Array;
+
+  /**
+   * 每行 soft-wrap 续行标记。
+   * softWrap[r] > 0 表示行 r 是上一行的 word-wrap 续行，
+   * 且上一行的内容结束于此列（绝对列号 exclusive）。
+   * 用于选择文本复制时正确拼接换行。
+   */
+  softWrap: Int32Array;
+
   constructor(rows: number, cols: number) {
     this._rows = rows;
     this._cols = cols;
     this._cells = Array.from({ length: rows * cols }, () => ({ ...EMPTY_CELL }));
+    this.noSelect = new Uint8Array(rows * cols);
+    this.softWrap = new Int32Array(rows);
   }
 
   /** 行数 */
@@ -74,6 +90,54 @@ export class Screen {
     this._expandDamage(col, row);
   }
 
+  /** 替换单元格 styleId（用于选择覆盖渲染）。不改变 char/width。 */
+  setCellStyleId(col: number, row: number, styleId: number): void {
+    if (col < 0 || col >= this._cols || row < 0 || row >= this._rows) {
+      return;
+    }
+    const idx = row * this._cols + col;
+    const cell = this._cells[idx];
+    if (cell) {
+      this._cells[idx] = { char: cell.char, styleId, width: cell.width };
+    }
+    this._expandDamage(col, row);
+  }
+
+  /**
+   * 将矩形区域标记为 noSelect（排除选择）。
+   * 用于行号、分隔线等区域。
+   */
+  markNoSelectRegion(x: number, y: number, w: number, h: number): void {
+    const maxX = Math.min(x + w, this._cols);
+    const maxY = Math.min(y + h, this._rows);
+    for (let row = Math.max(0, y); row < maxY; row++) {
+      const rowStart = row * this._cols;
+      for (let col = Math.max(0, x); col < maxX; col++) {
+        this.noSelect[rowStart + col] = 1;
+      }
+    }
+  }
+
+  /**
+   * 从一行的指定范围内提取文本（跳过 noSelect cell 和 spacer tail）。
+   * 用于 getSelectedText 从选中的 Screen 区域提取纯文本。
+   */
+  extractRowText(colStart: number, colEnd: number, row: number): string {
+    if (row < 0 || row >= this._rows) return '';
+    const rowOff = row * this._cols;
+    let text = '';
+    for (let col = colStart; col <= colEnd && col < this._cols; col++) {
+      // 跳过 noSelect cell
+      if (this.noSelect[rowOff + col] === 1) continue;
+      const cell = this._cells[rowOff + col];
+      if (!cell) continue;
+      // 跳过 spacer tail（宽字符第二格）
+      if (cell.width === 2 && cell.char === '') continue;
+      text += cell.char;
+    }
+    return text;
+  }
+
   /** 全屏填充 */
   fill(char: string, styleId: number): void {
     const width = char.length >= 2 ? 2 : 1;
@@ -85,13 +149,15 @@ export class Screen {
     this.damage = { x: 0, y: 0, width: this._cols, height: this._rows };
   }
 
-  /** 清空一行 */
+  /** 清空一行（同时清空该行的 noSelect 和 softWrap 标记） */
   clearLine(row: number): void {
     if (row < 0 || row >= this._rows) return;
     const start = row * this._cols;
     for (let c = 0; c < this._cols; c++) {
       this._cells[start + c] = { ...EMPTY_CELL };
+      this.noSelect[start + c] = 0;
     }
+    this.softWrap[row] = 0;
     this._expandDamage(0, row);
     this._expandDamage(this._cols - 1, row);
   }
@@ -113,6 +179,8 @@ export class Screen {
    * 行偏移（硬件滚动仿真）。
    * delta > 0: 向上滚动（行从 bottom 移出，顶部出现空行）
    * delta < 0: 向下滚动（行从 top 移出，底部出现空行）
+   *
+   * 同时偏移 noSelect 和 softWrap 数组以保持同步。
    */
   shiftRows(top: number, bottom: number, delta: number): void {
     if (top < 0 || bottom >= this._rows || top > bottom) return;
@@ -126,10 +194,18 @@ export class Screen {
         const dstRow = r * width;
         for (let c = 0; c < width; c++) {
           this._cells[dstRow + c] = this._cells[srcRow + c] ?? { ...EMPTY_CELL };
+          this.noSelect[dstRow + c] = this.noSelect[srcRow + c] ?? 0;
         }
       }
       for (let r = bottom - shift + 1; r <= bottom; r++) {
         this.clearLine(r);
+      }
+      // 偏移 softWrap
+      for (let r = top; r <= bottom - shift; r++) {
+        this.softWrap[r] = this.softWrap[r + shift] ?? 0;
+      }
+      for (let r = bottom - shift + 1; r <= bottom; r++) {
+        this.softWrap[r] = 0;
       }
     } else if (delta < 0) {
       const shift = Math.min(-delta, count);
@@ -138,10 +214,18 @@ export class Screen {
         const dstRow = (r + shift) * width;
         for (let c = 0; c < width; c++) {
           this._cells[dstRow + c] = this._cells[srcRow + c] ?? { ...EMPTY_CELL };
+          this.noSelect[dstRow + c] = this.noSelect[srcRow + c] ?? 0;
         }
       }
       for (let r = top; r < top + shift; r++) {
         this.clearLine(r);
+      }
+      // 偏移 softWrap
+      for (let r = bottom; r >= top + shift; r--) {
+        this.softWrap[r] = this.softWrap[r - shift] ?? 0;
+      }
+      for (let r = top; r < top + shift; r++) {
+        this.softWrap[r] = 0;
       }
     }
 
@@ -150,13 +234,15 @@ export class Screen {
     this._expandDamage(this._cols - 1, bottom);
   }
 
-  /** 深拷贝 */
+  /** 深拷贝（包括 noSelect 和 softWrap） */
   clone(): Screen {
     const s = new Screen(this._rows, this._cols);
     for (let i = 0; i < this._cells.length; i++) {
       const c = this._cells[i] ?? EMPTY_CELL;
       s._cells[i] = { char: c.char, styleId: c.styleId, width: c.width };
     }
+    s.noSelect.set(this.noSelect);
+    s.softWrap.set(this.softWrap);
     return s;
   }
 
@@ -179,10 +265,12 @@ export class Screen {
     }
   }
 
-  /** 调整屏幕尺寸。保留可容纳的原内容，新增区域清空。 */
+  /** 调整屏幕尺寸。保留可容纳的原内容，新增区域清空。同时重建 noSelect 和 softWrap。 */
   resize(rows: number, cols: number): void {
     if (rows === this._rows && cols === this._cols) return;
     const newCells = Array.from({ length: rows * cols }, () => ({ ...EMPTY_CELL }));
+    const newNoSelect = new Uint8Array(rows * cols);
+    const newSoftWrap = new Int32Array(rows);
 
     const copyRows = Math.min(rows, this._rows);
     const copyCols = Math.min(cols, this._cols);
@@ -191,10 +279,16 @@ export class Screen {
       const dstStart = r * cols;
       for (let c = 0; c < copyCols; c++) {
         newCells[dstStart + c] = this._cells[srcStart + c] ?? { ...EMPTY_CELL };
+        newNoSelect[dstStart + c] = this.noSelect[srcStart + c] ?? 0;
       }
+    }
+    for (let r = 0; r < copyRows; r++) {
+      newSoftWrap[r] = this.softWrap[r] ?? 0;
     }
 
     this._cells = newCells;
+    this.noSelect = newNoSelect;
+    this.softWrap = newSoftWrap;
     this._rows = rows;
     this._cols = cols;
     this.damage = { x: 0, y: 0, width: cols, height: rows };
@@ -206,6 +300,7 @@ export class Screen {
 
   /**
    * 从另一个 Screen 拷贝矩形区域到本 Screen 的指定位置。
+   * 同时拷贝 noSelect 数据。
    * 用于 prevScreen 复用优化。
    */
   blitRegion(
@@ -227,6 +322,8 @@ export class Screen {
         if (srcCol < 0 || srcCol >= src._cols || dstCol < 0 || dstCol >= this._cols) continue;
         const cell = src._cells[srcRow * src._cols + srcCol] ?? EMPTY_CELL;
         this._cells[dstRow * this._cols + dstCol] = { ...cell };
+        this.noSelect[dstRow * this._cols + dstCol] =
+          src.noSelect[srcRow * src._cols + srcCol] ?? 0;
       }
     }
     this._expandDamage(dstX, dstY);
@@ -237,7 +334,7 @@ export class Screen {
    * 遍历所有 Cell，调用 callback。
    * callback 返回 false 可停止遍历。
    */
-  forEachCell(callback: (cell: Cell, col: number, row: number) => boolean | void): void {
+  forEachCell(callback: (cell: Cell, col: number, row: number) => boolean | undefined): void {
     for (let r = 0; r < this._rows; r++) {
       for (let c = 0; c < this._cols; c++) {
         const cell = this._cells[r * this._cols + c] ?? EMPTY_CELL;
