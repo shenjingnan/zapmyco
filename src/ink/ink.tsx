@@ -40,8 +40,8 @@ import {
   startSelection,
   updateSelection,
 } from './selection';
-import { ProcessTerminal, writeDiffToTerminal } from './terminal';
 import { bumpGeneration } from './style-cache';
+import { ProcessTerminal, writeDiffToTerminal } from './terminal';
 import { DEC, decreset, decset } from './termio/dec';
 
 export interface InkOptions {
@@ -241,11 +241,12 @@ export class Ink {
     // 检测流式追加时内容是否发生 uniform shift
     const SCROLLABLE_OFFSET = 8; // taskBar(1) + agentBar(1) + editor(6)
     if (rows > SCROLLABLE_OFFSET) {
-      const scrollDelta = detectDecstbmScroll(
-        this.backFrame.screen,
-        frame.screen,
-        { x: 0, y: 0, width: columns, height: rows - SCROLLABLE_OFFSET }
-      );
+      const scrollDelta = detectDecstbmScroll(this.backFrame.screen, frame.screen, {
+        x: 0,
+        y: 0,
+        width: columns,
+        height: rows - SCROLLABLE_OFFSET,
+      });
       if (scrollDelta !== null) {
         (frame as { scrollHint: ScrollHint }).scrollHint = {
           top: 0,
