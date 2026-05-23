@@ -59,13 +59,22 @@ interface ShiftOperation {
   delta: number;
 }
 
+interface NoSelectOperation {
+  type: 'noSelect';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 type Operation =
   | WriteOperation
   | BlitOperation
   | ClearOperation
   | ClipOperation
   | UnclipOperation
-  | ShiftOperation;
+  | ShiftOperation
+  | NoSelectOperation;
 
 // ---------------------------------------------------------------------------
 // Output 类
@@ -135,6 +144,11 @@ export class Output {
     this.operations.push({ type: 'shift', top, bottom, delta });
   }
 
+  /** 标记 noSelect 区域 */
+  markNoSelect(x: number, y: number, w: number, h: number): void {
+    this.operations.push({ type: 'noSelect', x, y, w, h });
+  }
+
   /** 应用所有操作到 Screen buffer，返回 Screen */
   get(): Screen {
     const screen = this._screen;
@@ -159,6 +173,9 @@ export class Output {
           break;
         case 'shift':
           screen.shiftRows(op.top, op.bottom, op.delta);
+          break;
+        case 'noSelect':
+          screen.markNoSelectRegion(op.x, op.y, op.w, op.h);
           break;
       }
     }
