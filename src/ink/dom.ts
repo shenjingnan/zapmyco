@@ -8,6 +8,7 @@
 import {
   type ELEMENT_BOX,
   type ELEMENT_ROOT,
+  type ELEMENT_SCROLL_BOX,
   type ELEMENT_TEXT,
   type ELEMENT_VIRTUAL_TEXT,
   TEXT_NODE,
@@ -24,7 +25,8 @@ export type ElementName =
   | typeof ELEMENT_ROOT
   | typeof ELEMENT_BOX
   | typeof ELEMENT_TEXT
-  | typeof ELEMENT_VIRTUAL_TEXT;
+  | typeof ELEMENT_VIRTUAL_TEXT
+  | typeof ELEMENT_SCROLL_BOX;
 export type TextName = typeof TEXT_NODE;
 export type NodeName = ElementName | TextName;
 

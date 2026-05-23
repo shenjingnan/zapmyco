@@ -6,10 +6,11 @@
  */
 
 import { Box } from './components/Box';
+import { ScrollBox } from './components/ScrollBox';
 import { Text } from './components/Text';
 import { Ink as InkImpl } from './ink';
 
-export { Box, InkImpl as Ink, Text };
+export { Box, InkImpl as Ink, ScrollBox, Text };
 
 /** 快速渲染函数 */
 export function render(element: import('react').ReactNode): InkImpl {
