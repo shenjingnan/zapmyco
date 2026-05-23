@@ -2,7 +2,6 @@
  * TUI 引擎单元测试
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Container } from '@/cli/tui/container';
 import { BSU, ESU, RESET_SCROLL_REGION, scrollUp, setScrollRegion } from '@/cli/tui/dec';
 import { TUI } from '@/cli/tui/engine';
 import type { Screen } from '@/cli/tui/screen';
@@ -196,50 +195,9 @@ describe('TUI', () => {
       expect(terminal.write).toHaveBeenCalledWith(expect.stringContaining('[hi]'));
     });
 
-    it('差量渲染模式下输出含光标定位序列', () => {
-      const child = createMockComponent('line');
-      tui.addChild(child);
-      // 第一次渲染：force 模式
-      tui.requestRender(true);
-      tui.doRender();
-      terminal.write.mockClear();
-
-      // 第二次渲染：delta 模式
-      tui.requestRender();
-      tui.doRender();
-      // delta 模式下光标定位序列内联在 write buffer 中
-      const writeCall = terminal.write.mock.lastCall?.[0] as string;
-      expect(writeCall).toContain(';1H'); // cursorTo(0, i) 的内联序列
-    });
-
-    it('差量渲染时行数减少应清空旧行', () => {
-      const container = new Container();
-      const child = createMockComponent(['line1', 'line2']);
-      container.addChild(child);
-      tui.addChild(container);
-
-      // 第一次渲染：2 行输出
-      tui.requestRender(true);
-      tui.doRender();
-
-      // 清空 mock 记录
-      terminal.write.mockClear();
-      terminal.cursorTo.mockClear();
-
-      // 第二次渲染：完全清空容器，输出 0 行
-      const noOutputChild: Component = {
-        render: () => [],
-        handleInput: vi.fn(),
-        invalidate: vi.fn(),
-      };
-      container.removeChild(child);
-      container.addChild(noOutputChild);
-      tui.requestRender();
-      tui.doRender();
-      // 旧行数 > 新行数，输出应含清行指令
-      const writeCall = terminal.write.mock.lastCall?.[0] as string;
-      expect(writeCall).toContain('\x1b[2K');
-    });
+    // PR6: 旧字符串管线（deltaUpdate/forceFullRedraw）已移除。
+    // 原 "差量渲染模式下输出含光标定位序列" 和 "差量渲染时行数减少应清空旧行"
+    // 测试的是旧管线行为，已被移除。Screen 管线的等效测试见下方 "Screen pipeline" describe 块。
   });
 
   describe('showOverlay', () => {
@@ -335,8 +293,6 @@ describe('TUI', () => {
       await vi.advanceTimersByTimeAsync(0); // 处理 microtask，flush 设置 setTimeout
       await vi.advanceTimersByTimeAsync(16); // 触发 setTimeout 中的真正渲染
       expect(terminal.write).toHaveBeenCalled();
-      const writeCall = terminal.write.mock.lastCall?.[0] as string;
-      expect(writeCall).toContain('\x1b[1;1H');
     });
 
     it('stop 应恢复光标、销毁 terminal', () => {

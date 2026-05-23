@@ -14,6 +14,103 @@ import type { Diff, Frame, Patch } from './frame';
 import { shouldClearScreen } from './frame';
 
 // ---------------------------------------------------------------------------
+// DECSTBM 硬件滚动检测
+// ---------------------------------------------------------------------------
+
+/**
+ * 检测两帧在指定矩形区域内是否存在均匀位移（硬件滚动优化）。
+ *
+ * 当可滚动区域内容发生 uniform shift（流式追加），用 DECSTBM + SU/SD
+ * 替代逐 cell 差异输出，减少传输量并提高终端渲染效率。
+ *
+ * @param prev  上一帧 Screen
+ * @param next  当前帧 Screen
+ * @param rect  可滚动区域（x, y, width, height）
+ * @returns 检测到的 delta 值（正数=向下滚动），或 null（无均匀位移）
+ */
+export function detectDecstbmScroll(
+  prev: import('./screen').Screen,
+  next: import('./screen').Screen,
+  rect: { x: number; y: number; width: number; height: number }
+): number | null {
+  const { y, height } = rect;
+
+  // 最小高度检查
+  if (height < 2) return null;
+
+  // 边界检查：两帧都必须能容纳该矩形
+  if (prev.rows < y + height || next.rows < y + height) return null;
+
+  // 尝试最常见的 delta 值（流式输出一般每次追加 1~3 个显示行）
+  const MAX_DELTA = Math.min(3, height - 1);
+
+  for (let delta = 1; delta <= MAX_DELTA; delta++) {
+    if (checkUniformShift(prev, next, rect, delta)) {
+      return delta;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 检查指定 delta 是否构成 uniform shift。
+ * next.row[y + i] 应与 prev.row[y + i + delta] 匹配（对所有在重叠区内的 i）。
+ * 采样 3 行（首、中、尾）加速检查。
+ */
+function checkUniformShift(
+  prev: import('./screen').Screen,
+  next: import('./screen').Screen,
+  rect: { x: number; y: number; width: number; height: number },
+  delta: number
+): boolean {
+  const { y, x, width, height } = rect;
+  const overlapCount = height - delta;
+  if (overlapCount <= 0) return false;
+
+  // 采样索引：首行、1/3处、2/3处（保证覆盖面）
+  const sampleIndices = [
+    0,
+    Math.floor(overlapCount / 3),
+    Math.floor((overlapCount * 2) / 3),
+    overlapCount - 1,
+  ];
+  // 去重
+  const uniqueIndices = [...new Set(sampleIndices)].filter((i) => i >= 0 && i < overlapCount);
+
+  for (const si of uniqueIndices) {
+    const prevRow = y + si + delta;
+    const nextRow = y + si;
+    if (!rowsMatch(prev, next, prevRow, nextRow, x, width)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * 比较两帧中指定行的指定列范围是否完全相同。
+ */
+function rowsMatch(
+  prev: import('./screen').Screen,
+  next: import('./screen').Screen,
+  prevRow: number,
+  nextRow: number,
+  x: number,
+  width: number
+): boolean {
+  for (let c = x; c < x + width; c++) {
+    const pc = prev.getCell(c, prevRow);
+    const nc = next.getCell(c, nextRow);
+    if (pc.char !== nc.char || pc.styleId !== nc.styleId) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // LogUpdate
 // ---------------------------------------------------------------------------
 
@@ -41,6 +138,20 @@ export class LogUpdate {
         patches.push({ type: 'clearTerminal', reason: clearReason });
         prev = null; // 清屏后相当于首次渲染
       }
+    }
+
+    // DECSTBM 硬件滚动：当 scrollHint 存在时发射滚动序列并同步缓冲区
+    if (prev && next.scrollHint && next.scrollHint.delta !== 0) {
+      const { top, bottom, delta } = next.scrollHint;
+      // 1-based for terminal CSI sequences
+      patches.push({ type: 'setScrollRegion', top: top + 1, bottom: bottom + 1 });
+      patches.push(
+        delta > 0 ? { type: 'scrollUp', count: delta } : { type: 'scrollDown', count: -delta }
+      );
+      patches.push({ type: 'resetScrollRegion' });
+
+      // 同步 prevScreen 缓冲区，使后续 diff 仅发现边缘行差异
+      prev.screen.shiftRows(top, bottom, delta);
     }
 
     const prevScreen = prev?.screen ?? null;

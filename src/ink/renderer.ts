@@ -5,6 +5,7 @@
  * DOM 树 → renderNodeToOutput() → Output 操作队列 → output.get() → Screen → Frame
  *
  * PR2 完整实现：使用 Yoga 布局和 Screen buffer 进行渲染。
+ * PR6 增强：DECSTBM 硬件滚动检测 — 添加 scrollHint 到 Frame。
  */
 
 import type { DOMElement } from './dom';
