@@ -53,6 +53,8 @@ export interface DOMElement {
   onComputeLayout?: () => void;
   onRender?: () => void;
   onImmediateRender?: () => void;
+  /** 事件处理器存储（由 reconciler 管理） */
+  _eventHandlers?: Record<string, unknown>;
 }
 
 /** 文本节点 */

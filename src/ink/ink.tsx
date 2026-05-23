@@ -15,11 +15,13 @@ import { setClipboard } from '@/cli/tui/clipboard';
 import { StylePool } from '@/cli/tui/style-pool';
 import type { DOMElement } from './dom';
 import { createNode } from './dom';
+import { KeyboardEvent } from './events/keyboard-event';
 import type { Frame, ScrollHint } from './frame';
 import { emptyFrame } from './frame';
 import { detectDecstbmScroll, LogUpdate } from './log-update';
 import { optimize } from './optimizer';
-import reconciler from './reconciler';
+import type { ParsedKey } from './parse-keypress';
+import reconciler, { dispatcher as eventDispatcher } from './reconciler';
 import { createRenderer } from './renderer';
 import {
   applySelectionOverlay,
@@ -313,6 +315,21 @@ export class Ink {
   private handleResize(): void {
     this.cancelScheduledRender();
     this.requestRender();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 事件派发（PR7）
+  // ---------------------------------------------------------------------------
+
+  /** 派发键盘事件 — 创建 KeyboardEvent 并通过 capture/bubble 派发 */
+  dispatchKeyboardEvent(parsedKey: ParsedKey): void {
+    const event = new KeyboardEvent(parsedKey);
+    eventDispatcher.dispatchDiscrete(this.rootNode, event);
+  }
+
+  /** 派发点击事件 — 占位（PR9 实现完整 hit-test） */
+  dispatchClick(_col: number, _row: number): boolean {
+    return false;
   }
 
   // ---------------------------------------------------------------------------
