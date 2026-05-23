@@ -12,7 +12,6 @@
 import React, { type ReactNode } from 'react';
 import { LegacyRoot } from 'react-reconciler/constants.js';
 import { setClipboard } from './clipboard';
-import { bumpGeneration } from './style-cache';
 import { InkContext } from './components/InkContext';
 import type { DOMElement } from './dom';
 import { createNode } from './dom';
@@ -25,9 +24,9 @@ import { detectDecstbmScroll, LogUpdate } from './log-update';
 import { optimize } from './optimizer';
 import type { ParsedKey } from './parse-keypress';
 import reconciler, { dispatcher as eventDispatcher } from './reconciler';
+import type { MatchPosition } from './render-to-screen';
 import { createRenderer } from './renderer';
 import { applySearchHighlight } from './searchHighlight';
-import type { MatchPosition } from './render-to-screen';
 import {
   applySelectionOverlay,
   captureScrolledRows,
@@ -47,6 +46,7 @@ import {
   startSelection,
   updateSelection,
 } from './selection';
+import { bumpGeneration } from './style-cache';
 import { ProcessTerminal, writeDiffToTerminal } from './terminal';
 import { DEC, decreset, decset } from './termio/dec';
 
