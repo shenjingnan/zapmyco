@@ -19,12 +19,14 @@ import { createNode } from './dom';
 import { KeyboardEvent } from './events/keyboard-event';
 import type { Frame, ScrollHint } from './frame';
 import { emptyFrame } from './frame';
+import { dispatchHover, dispatchClick as hitTestDispatchClick } from './hit-test';
 import instances from './instances';
 import { detectDecstbmScroll, LogUpdate } from './log-update';
 import { optimize } from './optimizer';
 import type { ParsedKey } from './parse-keypress';
 import reconciler, { dispatcher as eventDispatcher } from './reconciler';
 import { createRenderer } from './renderer';
+import { applySearchHighlight } from './searchHighlight';
 import {
   applySelectionOverlay,
   captureScrolledRows,
@@ -97,6 +99,28 @@ export class Ink {
 
   /** 选择状态变化监听器（用于 useHasSelection） */
   private readonly selectionListeners = new Set<() => void>();
+
+  // ---------------------------------------------------------------------------
+  // 搜索高亮（PR9）
+  // ---------------------------------------------------------------------------
+
+  /** 搜索高亮查询（空 = 无高亮） */
+  searchHighlightQuery = '';
+
+  /** 搜索高亮是否激活 */
+  private _hlActive = false;
+
+  /** 搜索高亮是否激活（公开只读） */
+  get searchHighlightActive(): boolean {
+    return this._hlActive;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 命中测试 hover 状态（PR9）
+  // ---------------------------------------------------------------------------
+
+  /** 当前 hover 的节点集合 */
+  private readonly hoveredNodes = new Set<DOMElement>();
 
   /** 鼠标事件追踪 */
   private mouseEnabled = false;
@@ -296,6 +320,18 @@ export class Ink {
       applySelectionOverlay(this.frontFrame.screen, this.selection, this.stylePool);
     }
 
+    // PR9: 搜索高亮叠加（在 selection overlay 之后，但在 diff 之前）
+    // 这样搜索高亮和选择高亮可以同时显示
+    if (this.searchHighlightQuery && !hasSelection(this.selection)) {
+      this._hlActive = applySearchHighlight(
+        this.frontFrame.screen,
+        this.searchHighlightQuery,
+        this.stylePool
+      );
+    } else {
+      this._hlActive = false;
+    }
+
     // Diff
     const diff = this.logUpdate.render(this.backFrame, this.frontFrame);
 
@@ -357,9 +393,15 @@ export class Ink {
     eventDispatcher.dispatchDiscrete(this.rootNode, event);
   }
 
-  /** 派发点击事件 — 占位（PR9 实现完整 hit-test） */
-  dispatchClick(_col: number, _row: number): boolean {
-    return false;
+  /** 派发点击事件 — 使用 hit-test 查找目标组件并派发 */
+  dispatchClick(col: number, row: number): boolean {
+    const cellIsBlank = this.frontFrame.screen.getCell(col, row).char === '';
+    return hitTestDispatchClick(this.rootNode, col, row, cellIsBlank);
+  }
+
+  /** 派发 hover 事件 */
+  private dispatchHoverEvent(col: number, row: number): void {
+    dispatchHover(this.rootNode, col, row, this.hoveredNodes);
   }
 
   // ---------------------------------------------------------------------------
@@ -456,6 +498,9 @@ export class Ink {
     this.lastClickTime = now;
     this.lastClickCol = col;
     this.lastClickRow = row;
+
+    // 在按下时更新 hover 状态
+    this.dispatchHoverEvent(col, row);
 
     if (button === 0) {
       // 左键：开始选择

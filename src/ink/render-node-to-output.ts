@@ -8,18 +8,23 @@
  *   - ink-box: 裁剪到 Yoga 计算的 bounding rect，渲染子节点
  *   - ink-text: 将文本节点写入 Output，应用 TextStyles 样式
  *
- * 后续 PR 将添加：
- *   - ScrollBox 滚动支持（PR3）
- *   - Blit fast path（PR6）
- *   - NoSelect（PR4）
- *   - 边框渲染（PR9）
+ * PR3: 添加 ScrollBox 滚动支持
+ * PR9: 添加边框渲染、背景渲染、文本换行集成
  */
 
 import type { DOMElement } from './dom';
+import { getMaxWidth } from './get-max-width';
+import { updateNodeCache } from './hit-test';
+import { lineWidth } from './line-width-cache';
 import { type Clip, Output } from './output';
+import { renderBackground } from './render-background';
+import { renderBorder } from './render-border';
+import { squashTextNodesToSegments } from './squash-text-nodes';
 import { getStyleId } from './style-cache';
 import type { TextStyles } from './styles';
 import { textStylesToAnsiCodes } from './styles';
+import { widestLine } from './widest-line';
+import { type TextWrapType, wrapText } from './wrap-text';
 
 // ---------------------------------------------------------------------------
 // renderNodeToOutput
@@ -54,7 +59,7 @@ export function renderNodeToOutput(
       renderChildren(node, output, options);
       break;
     case 'ink-link':
-      // 超链接内部文本节点由父 Text 的 collectText 收集
+      // 超链接内部文本节点由父 Text 的 squashTextNodes 收集
       // 超链接渲染由 Text 组件处理（通过 href 属性）
       renderChildren(node, output, options);
       break;
@@ -84,9 +89,8 @@ function renderBox(node: DOMElement, output: Output, options?: RenderOptions): v
   const w = Math.round(yoga.getComputedWidth());
   const h = Math.round(yoga.getComputedHeight());
 
-  // 应用 padding
-  const padTop = Math.round(yoga.getComputedPadding('top'));
-  const padLeft = Math.round(yoga.getComputedPadding('left'));
+  // 缓存布局信息供 hit-test 使用
+  updateNodeCache(node, x, y, w, h);
 
   // 压入裁剪栈
   const clip: Clip = {
@@ -97,7 +101,15 @@ function renderBox(node: DOMElement, output: Output, options?: RenderOptions): v
   };
   output.clip(clip);
 
+  // PR9: 在子节点渲染前绘制背景
+  const bgColor = node.style.backgroundColor;
+  if (bgColor) {
+    renderBackground(x, y, w, h, bgColor as string, output);
+  }
+
   // 在 Box 的 padding 区域内渲染子节点
+  const padTop = Math.round(yoga.getComputedPadding('top'));
+  const padLeft = Math.round(yoga.getComputedPadding('left'));
   const childOutput = new Output({ width: w, height: h });
   renderChildren(node, childOutput, options);
 
@@ -106,6 +118,9 @@ function renderBox(node: DOMElement, output: Output, options?: RenderOptions): v
   output.blit(childScreen, 0, 0, w, h, x + padLeft, y + padTop);
 
   output.unclip();
+
+  // PR9: 在子节点渲染后绘制边框（确保覆盖子节点的清除操作）
+  renderBorder(x, y, node, output);
 }
 
 /** 渲染 ink-scroll-box 节点 — 裁剪到视口，标记溢出状态 */
@@ -121,9 +136,8 @@ function renderScrollBox(node: DOMElement, output: Output, options?: RenderOptio
   const w = Math.round(yoga.getComputedWidth());
   const h = Math.round(yoga.getComputedHeight());
 
-  // 应用 padding
-  const padTop = Math.round(yoga.getComputedPadding('top'));
-  const padLeft = Math.round(yoga.getComputedPadding('left'));
+  // 缓存布局信息供 hit-test 使用
+  updateNodeCache(node, x, y, w, h);
 
   // 压入裁剪栈（限制到视口区域）
   const clip: Clip = {
@@ -133,6 +147,12 @@ function renderScrollBox(node: DOMElement, output: Output, options?: RenderOptio
     y2: y + h - 1,
   };
   output.clip(clip);
+
+  // PR9: 背景渲染
+  const bgColor = node.style.backgroundColor;
+  if (bgColor) {
+    renderBackground(x, y, w, h, bgColor as string, output);
+  }
 
   // 在完整区域内渲染子节点
   const childOutput = new Output({ width: w, height: h });
@@ -147,9 +167,12 @@ function renderScrollBox(node: DOMElement, output: Output, options?: RenderOptio
   }
 
   // 将子节点内容 blit 到父 Output 的正确位置
-  output.blit(childScreen, 0, 0, w, h, x + padLeft, y + padTop);
+  output.blit(childScreen, 0, 0, w, h, x, y);
 
   output.unclip();
+
+  // PR9: 边框渲染
+  renderBorder(x, y, node, output);
 }
 
 /** 渲染 ink-text 节点 — 生成带样式的文本 */
@@ -161,39 +184,69 @@ function renderText(node: DOMElement, output: Output): void {
   const y = Math.round(yoga.getComputedTop());
   const w = Math.round(yoga.getComputedWidth());
 
-  // 收集所有文本子节点
-  const text = collectText(node);
-  if (text.length === 0) return;
+  // 缓存布局信息供 hit-test 使用
+  updateNodeCache(node, x, y, w, 1);
 
-  // 应用 TextStyles → SGR 码
-  const textStyles = node.style as TextStyles;
-  const ansiCodes = textStylesToAnsiCodes(textStyles);
+  // PR9: 使用 squashTextNodesToSegments 收集带样式的文本片段
+  const segments = squashTextNodesToSegments(node, node.style as TextStyles);
 
-  // 使用轻量级 styleId
-  const styleKey = ansiCodes.join(',');
-  const styleId = getStyleId(styleKey, ansiCodes);
+  // PR9: 获取可用内容宽度（考虑 padding 和 border）
+  const maxWidth = Math.min(
+    getMaxWidth(yoga),
+    w - Math.round(yoga.getComputedPadding('left')) - Math.round(yoga.getComputedPadding('right'))
+  );
 
-  // 写入文本（截断以适配宽度）
-  const displayText = text.slice(0, w);
-  output.write(x, y, displayText, styleId);
+  if (maxWidth <= 0) return;
+
+  // 当前写入位置
+  let currentX = x + Math.round(yoga.getComputedPadding('left'));
+  let currentY = y + Math.round(yoga.getComputedPadding('top'));
+
+  for (const segment of segments) {
+    if (!segment.text) continue;
+    const text = segment.text;
+    const textStyles = segment.styles;
+
+    // PR9: 检查是否需要换行
+    const lineWidest = widestLine(text);
+    const needsWrap = lineWidest > maxWidth;
+    const wrapType = (node.style.textWrap as TextWrapType) ?? 'wrap';
+
+    // 确定显示文本
+    let displayText: string;
+    if (needsWrap) {
+      displayText = wrapText(text, maxWidth, wrapType);
+    } else {
+      displayText = text;
+    }
+
+    // 生成样式 ID
+    const ansiCodes = textStylesToAnsiCodes(textStyles);
+    const styleKey = ansiCodes.join(',');
+    const styleId = getStyleId(styleKey, ansiCodes);
+
+    // 写入文本
+    const lines = displayText.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] as string;
+      if (i > 0) {
+        // 换行
+        currentY++;
+        currentX = x + Math.round(yoga.getComputedPadding('left'));
+      }
+      // 截断以适配可用宽度
+      const truncatedLine =
+        lineWidth(line) > maxWidth ? wrapText(line, maxWidth, 'truncate-end') : line;
+      output.write(currentX, currentY, truncatedLine, styleId);
+      // 更新 X 位置（多个 segment 在同一行）
+      currentX += lineWidth(truncatedLine);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
 // 辅助函数
 // ---------------------------------------------------------------------------
-
-/** 收集节点下的所有文本 */
-function collectText(node: DOMElement): string {
-  let result = '';
-  for (const child of node.childNodes) {
-    if (child.nodeName === '#text') {
-      result += child.nodeValue;
-    } else if ('childNodes' in child) {
-      result += collectText(child);
-    }
-  }
-  return result;
-}
 
 /** 渲染子节点 */
 function renderChildren(node: DOMElement, output: Output, options?: RenderOptions): void {
@@ -223,6 +276,17 @@ function renderRawAnsi(node: DOMElement, output: Output): void {
   const yoga = node.yogaNode;
   const x = yoga ? Math.round(yoga.getComputedLeft()) : 0;
   const y = yoga ? Math.round(yoga.getComputedTop()) : 0;
+
+  // 缓存布局信息供 hit-test 使用
+  if (yoga) {
+    updateNodeCache(
+      node,
+      x,
+      y,
+      Math.round(yoga.getComputedWidth()),
+      Math.round(yoga.getComputedHeight())
+    );
+  }
 
   // 逐行写入原始 ANSI 文本
   const lines = (rawText as string).split('\n');

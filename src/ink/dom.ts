@@ -59,6 +59,22 @@ export interface DOMElement {
   onImmediateRender?: () => void;
   /** 事件处理器存储（由 reconciler 管理） */
   _eventHandlers?: Record<string, unknown>;
+  /** 焦点管理器（由 hit-test click-to-focus 使用） */
+  focusManager?: import('./focus').FocusManager;
+  /** 滚动位置（ScrollBox 使用） */
+  scrollTop?: number;
+  /** 待处理滚动增量（帧速率限制） */
+  pendingScrollDelta?: number;
+  /** 内容总高度 */
+  scrollHeight?: number;
+  /** 视口高度 */
+  scrollViewportHeight?: number;
+  /** 视口顶部偏移 */
+  scrollViewportTop?: number;
+  /** 是否跟随底部自动滚动 */
+  stickyScroll?: boolean;
+  /** tabIndex（用于可聚焦元素） */
+  tabIndex?: number;
 }
 
 /** 文本节点 */

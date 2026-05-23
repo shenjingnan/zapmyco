@@ -213,6 +213,31 @@ export class StylePool {
     return id;
   }
 
+  /** withInverse 缓存: key = "inv-{baseStyleId}" → styleId */
+  #invCache = new Map<string, number>();
+
+  /**
+   * 为指定 styleId 生成带反转（SGR 7）的新 styleId。
+   * 用于搜索高亮。
+   *
+   * @param baseStyleId - 基础样式 ID
+   * @returns 带反转的新样式 ID
+   */
+  withInverse(baseStyleId: number): number {
+    const key = `inv-${baseStyleId}`;
+    const cached = this.#invCache.get(key);
+    if (cached !== undefined) return cached;
+
+    const baseCodes = this.getCodes(baseStyleId);
+    // 追加反转码（如果尚未存在）
+    const filtered = baseCodes.filter((code) => code !== '7');
+    filtered.push('7');
+
+    const id = this.intern(filtered);
+    this.#invCache.set(key, id);
+    return id;
+  }
+
   /** 当前注册的样式数 */
   get size(): number {
     return this.codes.length;
