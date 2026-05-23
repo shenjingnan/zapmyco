@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ZapmycoEditor } from '@/cli/repl/components/custom-editor';
+import { ZapmycoEditor } from '@/cli/repl/components/legacy/custom-editor';
 
 describe('ZapmycoEditor', () => {
   const createEditor = () => {

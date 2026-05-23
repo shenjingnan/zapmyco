@@ -9,7 +9,11 @@
  */
 
 import chalk from 'chalk';
-import { showConfigView, showSelectList, showTextInput } from '@/cli/repl/components/dialogs';
+import {
+  showConfigView,
+  showSelectList,
+  showTextInput,
+} from '@/cli/repl/components/legacy/dialogs';
 import { _getByDotPath, _setByDotPath, readSettings, writeSettings } from '@/cli/repl/config-utils';
 import type { CommandDefinition, ReplSession } from '@/cli/repl/types';
 import type { SelectItem, TUI } from '@/cli/tui';

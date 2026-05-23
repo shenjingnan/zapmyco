@@ -71,7 +71,7 @@ vi.mock('@/core/agent-team/agent-instance-manager', () => ({
   }),
 }));
 
-import { AgentStatusBar } from '@/cli/repl/components/agent-status-bar';
+import { AgentStatusBar } from '@/cli/repl/components/legacy/agent-status-bar';
 
 interface MockInstance {
   instanceId: string;
