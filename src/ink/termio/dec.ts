@@ -17,6 +17,8 @@ export const DEC = {
   MOUSE_BUTTON: 1002,
   MOUSE_ANY: 1003,
   MOUSE_SGR: 1006,
+  FOCUS_EVENTS: 1004,
+  BRACKETED_PASTE: 2004,
 } as const;
 
 /** 生成 DEC SET 序列: CSI ?<mode>h */
@@ -46,3 +48,29 @@ export const BSU = decset(DEC.SYNCHRONIZED_UPDATE);
 
 /** 结束同步更新 ESU (DECRESET 2026) */
 export const ESU = decreset(DEC.SYNCHRONIZED_UPDATE);
+
+/** 启用括号粘贴模式 (DECSET 2004) */
+export const EBP = decset(DEC.BRACKETED_PASTE);
+
+/** 禁用括号粘贴模式 (DECRESET 2004) */
+export const DBP = decreset(DEC.BRACKETED_PASTE);
+
+/** 启用焦点事件 (DECSET 1004) */
+export const EFE = decset(DEC.FOCUS_EVENTS);
+
+/** 禁用焦点事件 (DECRESET 1004) */
+export const DFE = decreset(DEC.FOCUS_EVENTS);
+
+/** 启用鼠标跟踪 (所有模式级联) */
+export const ENABLE_MOUSE_TRACKING =
+  decset(DEC.MOUSE_NORMAL) +
+  decset(DEC.MOUSE_BUTTON) +
+  decset(DEC.MOUSE_ANY) +
+  decset(DEC.MOUSE_SGR);
+
+/** 禁用鼠标跟踪 (所有模式级联) */
+export const DISABLE_MOUSE_TRACKING =
+  decreset(DEC.MOUSE_SGR) +
+  decreset(DEC.MOUSE_ANY) +
+  decreset(DEC.MOUSE_BUTTON) +
+  decreset(DEC.MOUSE_NORMAL);

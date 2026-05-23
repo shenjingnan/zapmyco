@@ -7,13 +7,19 @@
  * PR2 增强：
  * - hideInstance: 设置 isHidden 标志
  * - commitUpdate: 同步 style 变更到 Yoga 节点
+ *
+ * PR7 增强：
+ * - 事件处理器属性识别和存储（_eventHandlers）
+ * - Dispatcher 集成（事件优先级、事件类型、时间戳）
+ * - applyProp() 统一属性处理
  */
 
 import { createContext } from 'react';
 import createReconciler from 'react-reconciler';
-import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants.js';
 import type { DOMElement, ElementName, TextNode } from './dom';
 import * as dom from './dom';
+import { Dispatcher } from './events/dispatcher';
+import { EVENT_HANDLER_PROPS } from './events/event-handlers';
 import { applyStyles } from './styles';
 
 // ---------------------------------------------------------------------------
@@ -36,10 +42,42 @@ type NoTimeout = -1;
 type TransitionStatus = unknown;
 
 // ---------------------------------------------------------------------------
-// 事件优先级追踪
+// 事件处理器辅助函数
 // ---------------------------------------------------------------------------
 
-let currentUpdatePriority: number = DefaultEventPriority;
+function setEventHandler(node: DOMElement, key: string, value: unknown): void {
+  if (!node._eventHandlers) {
+    node._eventHandlers = {};
+  }
+  node._eventHandlers[key] = value;
+}
+
+function applyProp(node: DOMElement, key: string, value: unknown): void {
+  if (key === 'children') return;
+
+  if (key === 'style') {
+    if (typeof value === 'object' && value !== null) {
+      Object.assign(node.style, value);
+      if (node.yogaNode) {
+        applyStyles(value as Parameters<typeof applyStyles>[0], node.yogaNode);
+      }
+    }
+    return;
+  }
+
+  if (EVENT_HANDLER_PROPS.has(key)) {
+    setEventHandler(node, key, value);
+    return;
+  }
+
+  dom.setAttribute(node, key, value);
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher 实例
+// ---------------------------------------------------------------------------
+
+export const dispatcher = new Dispatcher();
 
 // ---------------------------------------------------------------------------
 // Reconciler 实例
@@ -83,19 +121,7 @@ const reconciler = createReconciler<
     const node = dom.createNode(sanitized);
 
     for (const [key, value] of Object.entries(newProps)) {
-      if (key === 'children') continue;
-      dom.setAttribute(node, key, value);
-    }
-
-    // 将 style props 映射到 node.style 并同步到 Yoga 节点
-    if (newProps.style && typeof newProps.style === 'object') {
-      const style = newProps.style as Record<string, unknown>;
-      Object.assign(node.style, style);
-
-      // 同步到 Yoga 节点
-      if (node.yogaNode) {
-        applyStyles(style as Parameters<typeof applyStyles>[0], node.yogaNode);
-      }
+      applyProp(node, key, value);
     }
 
     return node;
@@ -188,19 +214,28 @@ const reconciler = createReconciler<
   },
 
   commitUpdate(node, _type, _oldProps, newProps) {
-    // 同步 style 变更到 node
     for (const [key, value] of Object.entries(newProps)) {
       if (key === 'children') continue;
-      dom.setAttribute(node, key, value);
-    }
 
-    // 同步到 Yoga 节点
-    if (newProps.style && typeof newProps.style === 'object') {
-      const style = newProps.style as Record<string, unknown>;
-      Object.assign(node.style, style);
-      if (node.yogaNode) {
-        applyStyles(style as Parameters<typeof applyStyles>[0], node.yogaNode);
+      // 事件处理器
+      if (EVENT_HANDLER_PROPS.has(key)) {
+        setEventHandler(node, key, value);
+        continue;
       }
+
+      // style
+      if (key === 'style') {
+        if (typeof value === 'object' && value !== null) {
+          Object.assign(node.style, value);
+          if (node.yogaNode) {
+            applyStyles(value as Parameters<typeof applyStyles>[0], node.yogaNode);
+          }
+        }
+        continue;
+      }
+
+      // 普通属性
+      dom.setAttribute(node, key, value);
     }
   },
 
@@ -208,7 +243,7 @@ const reconciler = createReconciler<
     dom.setTextNodeValue(node, newText);
   },
 
-  /** 隐藏实例 — 设置 isHidden 标志（PR2 实现） */
+  /** 隐藏实例 */
   hideInstance(node: DOMElement): void {
     node.isHidden = true;
     dom.markDirty?.(node);
@@ -236,13 +271,13 @@ const reconciler = createReconciler<
 
   // ---- 事件优先级 ----
   setCurrentUpdatePriority(priority: number) {
-    currentUpdatePriority = priority;
+    dispatcher.currentUpdatePriority = priority;
   },
   getCurrentUpdatePriority() {
-    return currentUpdatePriority;
+    return dispatcher.currentUpdatePriority;
   },
   resolveUpdatePriority() {
-    return currentUpdatePriority !== NoEventPriority ? currentUpdatePriority : DefaultEventPriority;
+    return dispatcher.resolveEventPriority();
   },
 
   // ---- 暂停/过渡 ----
@@ -269,10 +304,10 @@ const reconciler = createReconciler<
     // no-op
   },
   resolveEventType() {
-    return null;
+    return dispatcher.currentEvent?.type ?? null;
   },
   resolveEventTimeStamp() {
-    return -1.1;
+    return dispatcher.currentEvent?.timeStamp ?? -1.1;
   },
 
   // ---- 暂停提交 ----
@@ -312,5 +347,8 @@ const reconciler = createReconciler<
     // no-op
   },
 });
+
+// 注入 discreteUpdates 到 Dispatcher（打破循环导入）
+dispatcher.discreteUpdates = reconciler.discreteUpdates.bind(reconciler);
 
 export default reconciler;

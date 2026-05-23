@@ -16,14 +16,16 @@ export type { TextProps } from './ink/components/Text';
 export type { Cursor } from './ink/cursor';
 export type { DOMElement, TextNode } from './ink/dom';
 export { createNode, createTextNode } from './ink/dom';
+export type { Key } from './ink/events/input-event';
 export type { Focusable, FocusChangeCallback } from './ink/focus';
 export { FocusManager } from './ink/focus';
 export type { Diff, FlickerReason, Frame, Patch } from './ink/frame';
 export { emptyFrame, shouldClearScreen } from './ink/frame';
 export { useAnimationFrame } from './ink/hooks/use-animation-frame';
 export { useApp } from './ink/hooks/use-app';
+export type { InputHandler } from './ink/hooks/use-input';
 // Hooks
-export { type InputHandler, type Key, useInput } from './ink/hooks/use-input';
+export { useInput } from './ink/hooks/use-input';
 export { useStdin } from './ink/hooks/use-stdin';
 export type { InkOptions } from './ink/ink';
 export { LogUpdate } from './ink/log-update';

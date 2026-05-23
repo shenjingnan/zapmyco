@@ -14,6 +14,11 @@ export const OSC_ST = '\x1b\\';
 /** BEL 替代终止符 */
 export const BEL = '\x07';
 
+/** 通用 OSC 序列构建函数 */
+export function osc(...parts: (string | number)[]): string {
+  return `${OSC_PREFIX}${parts.join(';')}${OSC_ST}`;
+}
+
 // ---------------------------------------------------------------------------
 // Hyperlink (OSC 8)
 // ---------------------------------------------------------------------------

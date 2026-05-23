@@ -1,102 +1,19 @@
 /**
  * useInput — 键盘输入 hook
  *
- * 基于 StdinContext 封装键盘输入处理。
- * 监听 stdin data 事件，通过 matchesKey（从 @/cli/tui/key 导入）
- * 解析按键为 Key 对象。
+ * 基于 EventEmitter（InputEvent 路径）封装键盘输入处理。
+ * 由 App.tsx 的 processKeysInBatch 发射 InputEvent，
+ * 此 hook 监听 internal_eventEmitter 的 'input' 事件。
  *
- * > 注意：events/ 系统和 parse-keypress（PR7）尚未实现。
- * > 此 hook 直接使用 stdin data 事件 + matchesKey 作为过渡方案，
- * > 后续 PR7 会替换为完整的事件系统。
+ * PR7 重构：从 stdin.on('data') + matchesKey 迁移到
+ * parse-keypress + InputEvent 路径。
+ *
+ * handler 签名 (input: string, key: Key) 保持向后兼容。
  */
 
 import { useCallback, useContext, useEffect, useRef } from 'react';
-import { matchesKey } from '@/cli/tui/key';
 import { StdinContext } from '../components/App';
-
-// ---------------------------------------------------------------------------
-// Key 类型
-// ---------------------------------------------------------------------------
-
-export interface Key {
-  ctrl: boolean;
-  shift: boolean;
-  meta: boolean;
-  escape: boolean;
-  return: boolean;
-  tab: boolean;
-  backspace: boolean;
-  delete: boolean;
-  pageUp: boolean;
-  pageDown: boolean;
-  home: boolean;
-  end: boolean;
-  up: boolean;
-  down: boolean;
-  left: boolean;
-  right: boolean;
-}
-
-const EMPTY_KEY: Key = {
-  ctrl: false,
-  shift: false,
-  meta: false,
-  escape: false,
-  return: false,
-  tab: false,
-  backspace: false,
-  delete: false,
-  pageUp: false,
-  pageDown: false,
-  home: false,
-  end: false,
-  up: false,
-  down: false,
-  left: false,
-  right: false,
-};
-
-// ---------------------------------------------------------------------------
-// 按键解析辅助（基于 matchesKey）
-// ---------------------------------------------------------------------------
-
-/** 将 raw data 解析为 { input, key } */
-function parseInput(data: string): { input: string; key: Key } {
-  const key: Key = { ...EMPTY_KEY };
-
-  // 预检查各个键
-  if (matchesKey(data, 'escape')) key.escape = true;
-  else if (matchesKey(data, 'enter')) key.return = true;
-  else if (matchesKey(data, 'tab')) key.tab = true;
-  else if (matchesKey(data, 'backspace')) key.backspace = true;
-  else if (matchesKey(data, 'delete')) key.delete = true;
-  else if (matchesKey(data, 'pageup')) key.pageUp = true;
-  else if (matchesKey(data, 'pagedown')) key.pageDown = true;
-  else if (matchesKey(data, 'home')) key.home = true;
-  else if (matchesKey(data, 'end')) key.end = true;
-  else if (matchesKey(data, 'up')) key.up = true;
-  else if (matchesKey(data, 'down')) key.down = true;
-  else if (matchesKey(data, 'left')) key.left = true;
-  else if (matchesKey(data, 'right')) key.right = true;
-
-  // Ctrl 修饰键检测
-  if (data.length === 1) {
-    const code = data.charCodeAt(0);
-    if (code >= 0x01 && code <= 0x1a) {
-      key.ctrl = true;
-    }
-  }
-
-  // Shift 修饰键 — 大写字母检测
-  if (data.length === 1) {
-    const code = data.charCodeAt(0);
-    if (code >= 0x41 && code <= 0x5a) {
-      key.shift = true;
-    }
-  }
-
-  return { input: data, key };
-}
+import type { InputEvent, Key } from '../events/input-event';
 
 // ---------------------------------------------------------------------------
 // useInput
@@ -118,29 +35,25 @@ export type InputHandler = (input: string, key: Key) => void;
  * });
  */
 export function useInput(handler: InputHandler, options?: { isActive?: boolean }): void {
-  const { stdin } = useContext(StdinContext);
+  const { internal_eventEmitter } = useContext(StdinContext);
   const isActive = options?.isActive ?? true;
 
   // 用 ref 保持 handler 引用稳定，避免 useEffect 频繁重建
   const handlerRef = useRef<InputHandler>(handler);
   handlerRef.current = handler;
 
-  const handleData = useCallback(
-    (data: Buffer) => {
+  const handleInputEvent = useCallback(
+    (event: InputEvent) => {
       if (!isActive) return;
-
-      const input = data.toString();
-      const { key } = parseInput(input);
-
-      handlerRef.current(input, key);
+      handlerRef.current(event.input, event.key);
     },
     [isActive]
   );
 
   useEffect(() => {
-    stdin.on('data', handleData);
+    internal_eventEmitter.on('input', handleInputEvent);
     return () => {
-      stdin.removeListener('data', handleData);
+      internal_eventEmitter.removeListener('input', handleInputEvent);
     };
-  }, [stdin, handleData]);
+  }, [internal_eventEmitter, handleInputEvent]);
 }
