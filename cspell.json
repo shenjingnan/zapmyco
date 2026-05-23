@@ -148,7 +148,13 @@
     "keypresses",
     "decrpm",
     "decrqm",
-    "DEFGHIJKL"
+    "DEFGHIJKL",
+    "CONPTY",
+    "mintty",
+    "MINTTY",
+    "qlen",
+    "ZWNJ",
+    "ZWNBS"
   ],
   "ignorePaths": [
     "node_modules",

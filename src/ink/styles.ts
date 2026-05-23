@@ -109,6 +109,24 @@ export interface Styles {
     | 'truncate-start'
     | 'truncate-middle'
     | 'truncate-end';
+
+  // 边框样式
+  borderStyle?: import('./render-border').BorderStyle;
+  borderTop?: boolean;
+  borderBottom?: boolean;
+  borderLeft?: boolean;
+  borderRight?: boolean;
+  borderColor?: Color;
+  borderTopColor?: Color;
+  borderBottomColor?: Color;
+  borderLeftColor?: Color;
+  borderRightColor?: Color;
+  borderDimColor?: boolean;
+  borderTopDimColor?: boolean;
+  borderBottomDimColor?: boolean;
+  borderLeftDimColor?: boolean;
+  borderRightDimColor?: boolean;
+  borderText?: import('./render-border').BorderTextOptions;
 }
 
 // ---------------------------------------------------------------------------
@@ -260,6 +278,9 @@ export function applyStyles(style: Styles, yogaNode: LayoutNode): void {
   if (style.display === 'none') {
     yogaNode.setDisplay(LayoutDisplay.None);
   }
+
+  // Border
+  applyBorderStyles(style, yogaNode);
 }
 
 // ---------------------------------------------------------------------------
@@ -382,4 +403,30 @@ export function textStylesToSgrStart(styles?: TextStyles): string {
   const codes = textStylesToAnsiCodes(styles);
   if (codes.length === 0) return '';
   return `\x1b[${codes.join(';')}m`;
+}
+
+// ---------------------------------------------------------------------------
+// 边框样式 → Yoga
+// ---------------------------------------------------------------------------
+
+/**
+ * 将边框样式属性应用到 Yoga 节点。
+ * 当 borderStyle 设置时，各可见边的边框宽度设为 1。
+ */
+export function applyBorderStyles(
+  style: Styles,
+  yogaNode: import('./layout/node').LayoutNode
+): void {
+  if (!style.borderStyle) return;
+
+  // 各侧可见性（默认全部可见）
+  const showTop = style.borderTop !== false;
+  const showBottom = style.borderBottom !== false;
+  const showLeft = style.borderLeft !== false;
+  const showRight = style.borderRight !== false;
+
+  if (showTop) yogaNode.setBorder('top', 1);
+  if (showBottom) yogaNode.setBorder('bottom', 1);
+  if (showLeft) yogaNode.setBorder('left', 1);
+  if (showRight) yogaNode.setBorder('right', 1);
 }

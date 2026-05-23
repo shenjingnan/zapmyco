@@ -6,8 +6,9 @@
  * PR8: 新增 hooks、上下文和组件导出。
  */
 
+// PR9: 工具函数
+export { clearTerminal, getClearTerminal } from './ink/clearTerminal';
 export { AlternateScreen, type AlternateScreenProps } from './ink/components/AlternateScreen';
-
 // Contexts
 export type { AppContextValue } from './ink/components/App';
 export { App, AppContext, StdinContext } from './ink/components/App';
@@ -42,6 +43,8 @@ export { FocusManager } from './ink/focus';
 // Frame / Diff types
 export type { Diff, FlickerReason, Frame, Patch } from './ink/frame';
 export { emptyFrame, shouldClearScreen } from './ink/frame';
+export { getMaxWidth } from './ink/get-max-width';
+export { clearNodeCache, hitTest, updateNodeCache } from './ink/hit-test';
 // Hooks
 export { useAnimationFrame } from './ink/hooks/use-animation-frame';
 export { useApp } from './ink/hooks/use-app';
@@ -59,18 +62,34 @@ export { useTerminalTitle } from './ink/hooks/use-terminal-title';
 export type { InkOptions } from './ink/ink';
 // Infrastructure
 export { default as instances } from './ink/instances';
-
+export { clearLineWidthCache, lineWidth } from './ink/line-width-cache';
 // Render engine
 export { LogUpdate } from './ink/log-update';
+export { measureElement } from './ink/measure-element';
+export { measureText } from './ink/measure-text';
 export { optimize } from './ink/optimizer';
 export { Output } from './ink/output';
+export { renderBackground } from './ink/render-background';
+export { type BorderStyle, type BorderTextOptions, renderBorder } from './ink/render-border';
 export { renderNodeToOutput } from './ink/render-node-to-output';
+export { renderToString } from './ink/render-to-string';
 export type { RenderOptions } from './ink/renderer';
 export { createRenderer } from './ink/renderer';
 // Core public API
 export { Box, Ink, render, ScrollBox, Text } from './ink/root';
 export type { Cell } from './ink/screen';
 export { Screen } from './ink/screen';
+export { applySearchHighlight } from './ink/searchHighlight';
+export {
+  type StyledSegment,
+  squashTextNodes,
+  squashTextNodesToSegments,
+} from './ink/squash-text-nodes';
+export { stringWidth } from './ink/stringWidth';
 export type { Styles, TextStyles } from './ink/styles';
 export { supportsHyperlinks } from './ink/supports-hyperlinks';
+export { expandTabs } from './ink/tabstops';
 export { ProcessTerminal } from './ink/terminal';
+export { widestLine } from './ink/widest-line';
+export { wrapText } from './ink/wrap-text';
+export { wrapAnsi } from './ink/wrapAnsi';

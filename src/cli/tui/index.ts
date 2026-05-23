@@ -5,14 +5,8 @@
  * @deprecated 优先使用 @/ink 中的等价功能
  */
 
-export type { AutocompleteProvider, Completion } from './autocomplete';
-// === 本地自动补全 ===
-export { CombinedAutocompleteProvider } from './autocomplete';
-// === 剪贴板管理 ===
-export { setClipboard } from './clipboard';
-// === 本地引擎实现（待移除）===
-export { Container } from './container';
-// === DEC 序列管理 ===
+export { RESET_SCROLL_REGION, scrollDown, scrollUp } from '@/ink/termio/csi';
+// === DEC 序列管理 — 现在从 Ink 的 termio/ 重导出 ===
 export {
   BSU,
   DEC,
@@ -23,7 +17,21 @@ export {
   EXIT_ALT_SCREEN,
   HIDE_CURSOR,
   SHOW_CURSOR,
-} from './dec';
+} from '@/ink/termio/dec';
+export type { AutocompleteProvider, Completion } from './autocomplete';
+// === 本地自动补全 ===
+export { CombinedAutocompleteProvider } from './autocomplete';
+// === 剪贴板管理 ===
+export { setClipboard } from './clipboard';
+// === 本地引擎实现（待移除）===
+export { Container } from './container';
+
+/**
+ * setScrollRegion — 从旧 dec.ts 保留的实现
+ * 等 CSI 序列，在 termio/csi.ts 中没有对应参数化版本
+ */
+export const setScrollRegion = (top: number, bottom: number): string => `\x1b[${top};${bottom}r`;
+
 export type { DiffResult, Patch } from './diff';
 // === Diff 引擎 ===
 export { diffScreens } from './diff';
@@ -44,7 +52,7 @@ export type { AnsiCode } from './style-pool';
 // === 样式池 ===
 export { StylePool } from './style-pool';
 export { ProcessTerminal } from './terminal';
-// === 本地文本工具 ===
+// === 本地文本工具（待迁移到 Ink）===
 export { truncateToWidth, wrapTextWithAnsi } from './text-utils';
 // === 本地类型定义 ===
 export type {
