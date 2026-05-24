@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>zapmyco ai - 交互式 CLI 原型</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    padding: 20px;
+  }
+
+  .terminal {
+    width: 800px;
+    max-width: 100%;
+    background: #0d0d1a;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+  }
+
+  .terminal-header {
+    background: #1a1a2e;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .terminal-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+  .terminal-dot.red { background: #ff5f57; }
+  .terminal-dot.yellow { background: #ffbd2e; }
+  .terminal-dot.green { background: #28c840; }
+
+  .terminal-title {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+    margin-left: 8px;
+    font-family: -apple-system, sans-serif;
+  }
+
+  .terminal-body {
+    padding: 20px;
+    height: 500px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .terminal-body::-webkit-scrollbar {
+    width: 6px;
+  }
+  .terminal-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .terminal-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+
+  .message {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .message-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.35);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .message-label.system { color: #6c63ff; }
+  .message-label.user { color: #4fc3f7; }
+  .message-label.assistant { color: #aed581; }
+
+  .message-content {
+    color: rgba(255, 255, 255, 0.9);
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .message-content.system {
+    background: rgba(108, 99, 255, 0.08);
+    border-left: 2px solid rgba(108, 99, 255, 0.3);
+  }
+
+  .message-content.user {
+    background: rgba(79, 195, 247, 0.06);
+    border-left: 2px solid rgba(79, 195, 247, 0.3);
+  }
+
+  .message-content.assistant {
+    background: rgba(174, 213, 129, 0.06);
+    border-left: 2px solid rgba(174, 213, 129, 0.3);
+  }
+
+  .code-block {
+    display: block;
+    background: #1a1a2e;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 8px 0;
+    font-size: 13px;
+    color: #e6e6e6;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    overflow-x: auto;
+    font-family: inherit;
+    white-space: pre;
+    line-height: 1.5;
+  }
+
+  .streaming-cursor::after {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background: #aed581;
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  .input-area {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    gap: 8px;
+  }
+
+  .input-prompt {
+    color: #4fc3f7;
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .input-field {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: rgba(255, 255, 255, 0.9);
+    font-family: inherit;
+    font-size: 14px;
+    caret-color: #4fc3f7;
+  }
+
+  .input-field::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .controls button {
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.7);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .controls button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .controls button.primary {
+    background: #4fc3f7;
+    color: #0d0d1a;
+    border-color: #4fc3f7;
+  }
+
+  .controls button.primary:hover {
+    background: #39b0e4;
+  }
+
+  .controls .hint {
+    margin-left: auto;
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 12px;
+  }
+
+  .typing-dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 0;
+  }
+
+  .typing-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #aed581;
+    animation: dots 1.4s ease-in-out infinite;
+  }
+
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes dots {
+    0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+    30% { opacity: 1; transform: scale(1.2); }
+  }
+</style>
+</head>
+<body>
+<div class="terminal">
+  <div class="terminal-header">
+    <div class="terminal-dot red"></div>
+    <div class="terminal-dot yellow"></div>
+    <div class="terminal-dot green"></div>
+    <span class="terminal-title">zapmyco ai — deepseek-v4-flash</span>
+  </div>
+
+  <div class="terminal-body" id="terminalBody"></div>
+
+  <div class="input-area">
+    <span class="input-prompt">❯</span>
+    <input class="input-field" type="text" id="inputField" placeholder="输入你的问题..." autofocus>
+  </div>
+
+  <div class="controls">
+    <button onclick="sendMessage()" class="primary">发送</button>
+    <button onclick="doClear()">/clear</button>
+    <button onclick="doExit()">/exit</button>
+    <span class="hint">Enter 发送</span>
+  </div>
+</div>
+
+<script>
+  const bodyEl = document.getElementById('terminalBody');
+  const inputEl = document.getElementById('inputField');
+  let msgCount = 0;
+  let history = [];
+
+  function addMsg(role, text) {
+    const div = document.createElement('div');
+    div.className = 'message';
+
+    const label = document.createElement('div');
+    label.className = 'message-label ' + role;
+    label.textContent = role === 'system' ? '╰─ system' : role === 'user' ? '❯ user' : '◉ assistant';
+
+    const content = document.createElement('div');
+    content.className = 'message-content ' + role;
+
+    content.textContent = text;
+
+    div.appendChild(label);
+    div.appendChild(content);
+    bodyEl.appendChild(div);
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+    return content;
+  }
+
+  function addCodeMsg(role, text, codeBlocks) {
+    const div = document.createElement('div');
+    div.className = 'message';
+
+    const label = document.createElement('div');
+    label.className = 'message-label ' + role;
+    label.textContent = role === 'system' ? '╰─ system' : role === 'user' ? '❯ user' : '◉ assistant';
+
+    const content = document.createElement('div');
+    content.className = 'message-content ' + role;
+
+    if (codeBlocks) {
+      const lines = text.split('\n');
+      let currentText = document.createTextNode('');
+      for (const line of lines) {
+        if (line.startsWith('==CODEBLOCK==')) {
+          const codeText = document.createElement('div');
+          codeText.className = 'code-block';
+          codeText.textContent = line.replace('==CODEBLOCK==', '');
+          if (currentText.textContent) {
+            content.appendChild(document.createElement('br'));
+          }
+          content.appendChild(codeText);
+        } else {
+          if (currentText.textContent) {
+            content.appendChild(document.createElement('br'));
+          }
+          const tn = document.createTextNode(line);
+          content.appendChild(tn);
+        }
+      }
+    } else {
+      content.textContent = text;
+    }
+
+    div.appendChild(label);
+    div.appendChild(content);
+    bodyEl.appendChild(div);
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+    return content;
+  }
+
+  const responseData = [
+    {
+      role: 'system',
+      text: '进入 AI 对话模式 · 模型: deepseek-v4-flash\n输入 /exit 退出 · /clear 清空上下文'
+    },
+    {
+      role: 'user',
+      text: '用 TypeScript 写一个快速排序函数'
+    },
+    {
+      role: 'assistant',
+      text: '',
+      codeBlocks: true,
+      parts: [
+        '好的，这是一个泛型快速排序实现，支持任意可比较类型：',
+        '==CODEBLOCK==function quickSort<T>(arr: T[], compare?: (a: T, b: T) => number): T[] {',
+        '==CODEBLOCK==  if (arr.length <= 1) return arr;',
+        '==CODEBLOCK==  const pivot = arr[arr.length - 1];',
+        '==CODEBLOCK==  const left: T[] = [];',
+        '==CODEBLOCK==  const right: T[] = [];',
+        '==CODEBLOCK==  const cmp = compare ?? ((a, b) => a < b ? -1 : a > b ? 1 : 0);',
+        '==CODEBLOCK==  for (let i = 0; i < arr.length - 1; i++) {',
+        '==CODEBLOCK==    if (cmp(arr[i], pivot) < 0) left.push(arr[i]);',
+        '==CODEBLOCK==    else right.push(arr[i]);',
+        '==CODEBLOCK==  }',
+        '==CODEBLOCK==  return [...quickSort(left, cmp), pivot, ...quickSort(right, cmp)];',
+        '==CODEBLOCK==}',
+        '',
+        '使用示例：quickSort([3, 1, 4, 1, 5, 9, 2, 6]) → [1, 1, 2, 3, 4, 5, 6, 9]',
+        '',
+        '这是非变异版本，返回新数组。需要我改成原地排序吗？'
+      ]
+    }
+  ];
+
+  const responses = [
+    [
+      '没问题，这是非递归的迭代版本，用栈代替递归，避免栈溢出：',
+      '==CODEBLOCK==function quickSortIterative<T>(arr: T[], compare?: (a: T, b: T) => number): T[] {',
+      '==CODEBLOCK==  const result = [...arr];',
+      '==CODEBLOCK==  const stack: [number, number][] = [[0, result.length - 1]];',
+      '==CODEBLOCK==  const cmp = compare ?? ((a, b) => a < b ? -1 : a > b ? 1 : 0);',
+      '==CODEBLOCK==  while (stack.length > 0) {',
+      '==CODEBLOCK==    const [lo, hi] = stack.pop();',
+      '==CODEBLOCK==    if (lo >= hi) continue;',
+      '==CODEBLOCK==    let pivot = result[hi];',
+      '==CODEBLOCK==    let i = lo;',
+      '==CODEBLOCK==    for (let j = lo; j < hi; j++) {',
+      '==CODEBLOCK==      if (cmp(result[j], pivot) < 0) {',
+      '==CODEBLOCK==        [result[i], result[j]] = [result[j], result[i]];',
+      '==CODEBLOCK==        i++;',
+      '==CODEBLOCK==      }',
+      '==CODEBLOCK==    }',
+      '==CODEBLOCK==    [result[i], result[hi]] = [result[hi], result[i]];',
+      '==CODEBLOCK==    stack.push([lo, i - 1], [i + 1, hi]);',
+      '==CODEBLOCK==  }',
+      '==CODEBLOCK==  return result;',
+      '==CODEBLOCK==}',
+      '',
+      '优点：不依赖递归，适合大数据集，不会栈溢出。'
+    ],
+    [
+      '在 Deno 中使用 @anthropic-ai/sdk 的示例：',
+      '==CODEBLOCK==import Anthropic from "npm:@anthropic-ai/sdk";',
+      '==CODEBLOCK==',
+      '==CODEBLOCK==const client = new Anthropic({',
+      '==CODEBLOCK==  baseURL: "https://api.deepseek.com/anthropic",',
+      '==CODEBLOCK==  apiKey: Deno.env.get("DEEPSEEK_API_KEY"),',
+      '==CODEBLOCK==});',
+      '==CODEBLOCK==',
+      '==CODEBLOCK==const stream = client.messages.stream({',
+      '==CODEBLOCK==  model: "deepseek-chat",',
+      '==CODEBLOCK==  max_tokens: 4096,',
+      '==CODEBLOCK==  messages: [{ role: "user", content: "你好" }],',
+      '==CODEBLOCK==});',
+      '==CODEBLOCK==',
+      '==CODEBLOCK==stream.on("text", (text) => {',
+      '==CODEBLOCK==  Deno.stdout.write(new TextEncoder().encode(text));',
+      '==CODEBLOCK==});',
+      '==CODEBLOCK==',
+      '==CODEBLOCK==const msg = await stream.finalMessage();',
+      '',
+      '关键点：npm: 前缀引入包，baseURL 指向 DeepSeek 的 Anthropic 兼容端点。'
+    ],
+    [
+      '这个问题需要分几步分析：',
+      '',
+      '1. 性能瓶颈定位',
+      '   先找出慢的原因：数据库查询？计算密集？I/O 等待？',
+      '',
+      '2. 常见优化策略',
+      '',
+      '==CODEBLOCK==// 缓存',
+      '==CODEBLOCK==const cache = new Map<string, { data: unknown; expiry: number }>();',
+      '==CODEBLOCK==',
+      '==CODEBLOCK==// 并发',
+      '==CODEBLOCK==const results = await Promise.all(tasks);',
+      '',
+      '3. 懒加载 / 分页',
+      '   对于大数据集，避免一次性加载全部。',
+      '',
+      '你能描述一下具体是什么场景吗？我可以给出更有针对性的建议。'
+    ]
+  ];
+
+  let respIdx = 0;
+
+  function renderInitial() {
+    for (const item of responseData) {
+      if (item.role === 'assistant') {
+        addParts(item.parts);
+      } else {
+        addMsg(item.role, item.text);
+      }
+    }
+    msgCount = 2;
+  }
+
+  function addParts(parts) {
+    const div = document.createElement('div');
+    div.className = 'message';
+
+    const label = document.createElement('div');
+    label.className = 'message-label assistant';
+    label.textContent = '◉ assistant';
+
+    const content = document.createElement('div');
+    content.className = 'message-content assistant';
+
+    for (const line of parts) {
+      if (line.startsWith('==CODEBLOCK==')) {
+        const cb = document.createElement('div');
+        cb.className = 'code-block';
+        cb.textContent = line.replace('==CODEBLOCK==', '');
+        content.appendChild(cb);
+      } else {
+        if (content.lastChild && content.lastChild.nodeType === Node.TEXT_NODE) {
+          content.appendChild(document.createElement('br'));
+        }
+        content.appendChild(document.createTextNode(line));
+      }
+    }
+
+    div.appendChild(label);
+    div.appendChild(content);
+    bodyEl.appendChild(div);
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+    return content;
+  }
+
+  function showTyping() {
+    const div = document.createElement('div');
+    div.className = 'message';
+    div.id = 'typing-msg';
+
+    const label = document.createElement('div');
+    label.className = 'message-label assistant';
+    label.textContent = '◉ assistant';
+
+    const content = document.createElement('div');
+    content.className = 'message-content assistant';
+
+    const dots = document.createElement('div');
+    dots.className = 'typing-dots';
+    for (let i = 0; i < 3; i++) {
+      const s = document.createElement('span');
+      dots.appendChild(s);
+    }
+    content.appendChild(dots);
+    div.appendChild(label);
+    div.appendChild(content);
+    bodyEl.appendChild(div);
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+  }
+
+  function hideTyping() {
+    const el = document.getElementById('typing-msg');
+    if (el) el.remove();
+  }
+
+  function streamResponse(parts, idx, contentEl) {
+    if (idx >= parts.length) {
+      contentEl.classList.remove('streaming-cursor');
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+      return;
+    }
+
+    const line = parts[idx];
+    if (line.startsWith('==CODEBLOCK==')) {
+      const cb = document.createElement('div');
+      cb.className = 'code-block';
+      cb.textContent = line.replace('==CODEBLOCK==', '');
+      contentEl.appendChild(cb);
+    } else {
+      if (contentEl.lastChild && contentEl.lastChild.nodeType === Node.TEXT_NODE) {
+        contentEl.appendChild(document.createElement('br'));
+        contentEl.appendChild(document.createTextNode(line));
+      } else {
+        contentEl.appendChild(document.createTextNode(line));
+      }
+    }
+
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+    setTimeout(() => streamResponse(parts, idx + 1, contentEl), 80);
+  }
+
+  function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = '';
+
+    if (text === '/exit') { doExit(); return; }
+    if (text === '/clear') { doClear(); return; }
+
+    addMsg('user', text);
+    msgCount++;
+
+    showTyping();
+
+    const delay = 600 + Math.random() * 800;
+    setTimeout(() => {
+      hideTyping();
+
+      const parts = responses[respIdx % responses.length];
+      respIdx++;
+
+      const div = document.createElement('div');
+      div.className = 'message';
+
+      const label = document.createElement('div');
+      label.className = 'message-label assistant';
+      label.textContent = '◉ assistant';
+
+      const content = document.createElement('div');
+      content.className = 'message-content assistant streaming-cursor';
+
+      div.appendChild(label);
+      div.appendChild(content);
+      bodyEl.appendChild(div);
+
+      streamResponse(parts, 0, content);
+    }, delay);
+  }
+
+  function doClear() {
+    addMsg('system', '上下文已清空，开始新的对话。');
+  }
+
+  function doExit() {
+    inputEl.disabled = true;
+    inputEl.placeholder = '会话已结束';
+    addMsg('system', '再见！\n\n提示：这是 UI 原型演示，实际 CLI 会退出程序。');
+  }
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  document.addEventListener('click', () => inputEl.focus());
+  renderInitial();
+</script>
+</body>
+</html>
