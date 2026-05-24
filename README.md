@@ -75,26 +75,26 @@ ai-typescript-starter/
 
 ## 可用脚本
 
-| 命令 | 说明 |
-|------|------|
-| `pnpm run build` | 构建项目 |
-| `pnpm run dev` | 开发模式 (watch) |
-| `pnpm run test` | 运行测试 |
-| `pnpm run test:watch` | 测试监听模式 |
-| `pnpm run test:coverage` | 测试覆盖率报告 |
-| `pnpm run lint` | 代码检查 |
-| `pnpm run lint:fix` | 自动修复代码问题 |
-| `pnpm run format` | 格式化代码 |
-| `pnpm run typecheck` | TypeScript 类型检查 |
-| `pnpm run check` | 完整检查 (typecheck + lint) |
-| `pnpm run check:fix` | 检查并修复 |
-| `pnpm run spellcheck` | 拼写检查 |
-| `pnpm run release` | 创建发布 |
-| `pnpm run release:beta` | 发布 beta 预发布版本 |
-| `pnpm run release:dry` | 发布干运行 (不实际发布) |
-| `pnpm run release:patch` | 直接发布 patch 版本 |
-| `pnpm run release:minor` | 直接发布 minor 版本 |
-| `pnpm run release:major` | 直接发布 major 版本 |
+| 命令                     | 说明                        |
+| ------------------------ | --------------------------- |
+| `pnpm run build`         | 构建项目                    |
+| `pnpm run dev`           | 开发模式 (watch)            |
+| `pnpm run test`          | 运行测试                    |
+| `pnpm run test:watch`    | 测试监听模式                |
+| `pnpm run test:coverage` | 测试覆盖率报告              |
+| `pnpm run lint`          | 代码检查                    |
+| `pnpm run lint:fix`      | 自动修复代码问题            |
+| `pnpm run format`        | 格式化代码                  |
+| `pnpm run typecheck`     | TypeScript 类型检查         |
+| `pnpm run check`         | 完整检查 (typecheck + lint) |
+| `pnpm run check:fix`     | 检查并修复                  |
+| `pnpm run spellcheck`    | 拼写检查                    |
+| `pnpm run release`       | 创建发布                    |
+| `pnpm run release:beta`  | 发布 beta 预发布版本        |
+| `pnpm run release:dry`   | 发布干运行 (不实际发布)     |
+| `pnpm run release:patch` | 直接发布 patch 版本         |
+| `pnpm run release:minor` | 直接发布 minor 版本         |
+| `pnpm run release:major` | 直接发布 major 版本         |
 
 ## AI 辅助开发
 
@@ -106,8 +106,10 @@ ai-typescript-starter/
 
 ### .claude/ 目录
 
-- `commands/` - 自定义 Slash 命令 (`/build`, `/test`, `/lint`, `/typecheck`, `/spellcheck`, `/release`, `/commit-push-pr`)
-- `skills/` - 项目技能定义 (`resolve-git-conflicts`, `fix-audit`, `project-context`, `update-readme`)
+- `commands/` - 自定义 Slash 命令 (`/build`, `/test`, `/lint`, `/typecheck`, `/spellcheck`,
+  `/release`, `/commit-push-pr`)
+- `skills/` - 项目技能定义 (`resolve-git-conflicts`, `fix-audit`, `project-context`,
+  `update-readme`)
 
 ## 代码风格
 
@@ -132,6 +134,7 @@ pnpm run release
 ```
 
 发布过程会自动：
+
 1. 更新版本号
 2. 更新 CHANGELOG.md
 3. 创建 Git tag

@@ -3,10 +3,10 @@
  * 专为 AI 辅助开发时代打造
  */
 
-declare const __VERSION__: string;
+import denoJson from '../deno.json' with { type: 'json' };
 
 /** 当前库的版本号 */
-export const VERSION: string = __VERSION__;
+export const VERSION: string = denoJson.version;
 
 /**
  * 配置选项

@@ -1,0 +1,31 @@
+#!/bin/sh
+# Pre-commit hook for Deno 项目
+# 安装: git config core.hooksPath .githooks
+
+set -e
+
+echo "🔍 运行代码格式检查..."
+deno fmt --check 2>/dev/null || {
+  echo "⚠️  代码格式有误，请运行: deno fmt"
+  exit 1
+}
+
+echo "🔍 运行代码检查..."
+deno lint 2>/dev/null || {
+  echo "⚠️  存在 lint 错误"
+  exit 1
+}
+
+echo "🔍 运行类型检查..."
+deno check src/ 2>/dev/null || {
+  echo "⚠️  存在类型错误"
+  exit 1
+}
+
+echo "🔍 运行测试..."
+deno test 2>/dev/null || {
+  echo "⚠️  测试未通过"
+  exit 1
+}
+
+echo "✅ 所有检查通过"
