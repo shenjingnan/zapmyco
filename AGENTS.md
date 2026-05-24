@@ -1,56 +1,54 @@
-# CLAUDE.md - AI 原生 TypeScript 启动模板
+# CLAUDE.md - AI 原生 TypeScript 启动模板 (Deno)
 
 本文档为 Claude Code 提供项目上下文和开发规范。
 
 ## 项目概述
 
-**ai-typescript-starter** 是一个 AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。
+**ai-typescript-starter** 是一个 AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。\
+基于 **Deno 2.x** 运行时，发布到 **JSR**。
 
 ## 技术栈
 
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| TypeScript | 5.x | 编程语言 |
-| Node.js | 24+ | 运行时 |
-| pnpm | 10.x | 包管理器 |
-| tsdown | 0.x | 构建工具 |
-| Vitest | 2.x | 测试框架 |
-| Biome | 1.x | Linter + Formatter |
-| cspell | 8.x | 拼写检查 |
-| release-it | 17.x | 发布工具 |
+| 技术       | 版本     | 用途                                            |
+| ---------- | -------- | ----------------------------------------------- |
+| Deno       | 2.8+     | 运行时 / TypeScript 编译 / 测试 / Lint / Format |
+| TypeScript | 原生支持 | 编程语言                                        |
+| cspell     | 8.x      | 拼写检查 (npm)                                  |
+| JSR        | —        | 包发布 registry                                 |
 
 ## 快速命令参考
 
 ```bash
 # 开发
-pnpm run dev          # 开发模式 (watch)
-pnpm run build        # 构建项目
+deno run src/index.ts                # 直接运行
+deno run --watch src/index.ts        # 开发模式 (watch)
 
 # 测试
-pnpm run test         # 运行测试
-pnpm run test:watch   # 测试监听模式
-pnpm run test:coverage # 覆盖率报告
+deno test                            # 运行测试
+deno test --coverage                 # 覆盖率收集
+deno coverage                        # 查看覆盖率报告
 
 # 代码质量
-pnpm run lint         # 代码检查
-pnpm run lint:fix     # 自动修复
-pnpm run format       # 格式化代码
-pnpm run typecheck    # 类型检查
-pnpm run check        # 完整检查
+deno lint                            # 代码检查
+deno fmt                             # 格式化代码
+deno fmt --check                     # 格式检查
+deno check src/                      # 类型检查
+deno fmt --check && deno lint && deno check src/ && deno test  # 完整检查
 
 # 发布
-pnpm run release      # 创建发布
+deno publish                         # 发布到 JSR
+deno publish --dry-run               # 发布预检（不实际发布）
 ```
 
 ## 代码风格规范
 
-### 基本规则
+由 `deno fmt` 和 `deno lint` 强制执行，配置在 `deno.json` 中：
 
 - **缩进**: 2 空格
 - **引号**: 单引号
 - **分号**: 必须有
 - **行宽**: 最大 100 字符
-- **尾随逗号**: ES5 标准
+- **尾随逗号**: 默认
 
 ### TypeScript 规范
 
@@ -62,13 +60,13 @@ pnpm run release      # 创建发布
 
 ### 命名约定
 
-| 类型 | 约定 | 示例 |
-|------|------|------|
-| 文件 | kebab-case | `my-module.ts` |
-| 类 | PascalCase | `MyClass` |
-| 函数/变量 | camelCase | `myFunction` |
-| 常量 | SCREAMING_SNAKE_CASE | `MAX_COUNT` |
-| 类型/接口 | PascalCase | `UserConfig` |
+| 类型      | 约定                 | 示例           |
+| --------- | -------------------- | -------------- |
+| 文件      | kebab-case           | `my-module.ts` |
+| 类        | PascalCase           | `MyClass`      |
+| 函数/变量 | camelCase            | `myFunction`   |
+| 常量      | SCREAMING_SNAKE_CASE | `MAX_COUNT`    |
+| 类型/接口 | PascalCase           | `UserConfig`   |
 
 ## Git 工作流
 
@@ -90,6 +88,7 @@ pnpm run release      # 创建发布
 ```
 
 **类型**:
+
 - `feat` - 新功能
 - `fix` - Bug 修复
 - `docs` - 文档
@@ -100,6 +99,7 @@ pnpm run release      # 创建发布
 - `chore` - 构建/工具
 
 **示例**:
+
 ```
 feat: add new utility function
 fix(utils): handle null case in formatDate
@@ -110,33 +110,35 @@ docs: update README with new examples
 
 ### 测试文件位置
 
-- 单元测试: `src/__tests__/*.test.ts`
-- 集成测试: `tests/**/*.test.ts` (如存在)
+- 遵循 Deno 惯例: `src/*_test.ts`（与源码同目录）
+- 使用 Deno 原生测试 API + `@std/assert`
 
-### 测试覆盖率
-
-- 阈值: 80%
-- 报告格式: text, json, html
-
-### 测试命名
+### 测试格式
 
 ```typescript
-describe('MyModule', () => {
-  describe('myFunction', () => {
-    it('should return correct value when input is valid', () => {
-      // ...
-    });
+import { assertEquals, assertThrows } from 'jsr:@std/assert';
+import { myFunction } from './index.ts';
 
-    it('should throw error when input is invalid', () => {
-      // ...
-    });
+Deno.test('MyModule', async (t) => {
+  await t.step('should return correct value when input is valid', () => {
+    assertEquals(myFunction('valid'), 'expected');
+  });
+
+  await t.step('should throw error when input is invalid', () => {
+    assertThrows(() => myFunction(''), TypeError);
   });
 });
 ```
 
+### 测试覆盖率
+
+- 运行 `deno test --coverage && deno coverage`
+- 生成 lcov 报告:
+  `deno test --coverage=coverage && deno coverage --lcov coverage > coverage/lcov.info`
+
 ## 关键规则
 
-1. **提交前检查**: 确保所有测试通过，代码检查无错误
+1. **提交前检查**: 确保 `deno fmt --check && deno lint && deno check src/ && deno test` 全部通过
 2. **类型安全**: 避免使用 `any`，优先使用具体类型或泛型
 3. **文档更新**: 新功能需更新相关文档
 4. **测试覆盖**: 新代码需要有对应的测试
@@ -144,11 +146,11 @@ describe('MyModule', () => {
 
 ## 可用 Slash Commands
 
-| 命令 | 说明 |
-|------|------|
-| `/build` | 构建项目 |
-| `/test` | 运行测试 |
-| `/lint` | 代码检查 |
+| 命令       | 说明     |
+| ---------- | -------- |
+| `/build`   | 构建项目 |
+| `/test`    | 运行测试 |
+| `/lint`    | 代码检查 |
 | `/release` | 创建发布 |
 
 ## 常见问题
@@ -158,7 +160,7 @@ describe('MyModule', () => {
 1. 创建功能分支: `git checkout -b feature/my-feature`
 2. 实现功能代码
 3. 编写测试用例
-4. 运行检查: `pnpm run check`
+4. 运行检查: `deno fmt --check && deno lint && deno check src/ && deno test`
 5. 提交代码: `git commit -m "feat: add my feature"`
 6. 创建 PR
 
@@ -170,3 +172,9 @@ describe('MyModule', () => {
 4. 验证测试通过
 5. 提交代码: `git commit -m "fix: resolve my bug"`
 6. 创建 PR
+
+### 如何发布新版本？
+
+1. 在 `deno.json` 中更新 `version` 字段
+2. 运行 `deno publish --dry-run` 预检
+3. 创建 GitHub Release（触发自动发布到 JSR）

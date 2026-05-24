@@ -18,7 +18,11 @@
     "dependabot",
     "shenjingnan",
     "rankdir",
-    "Qwen"
+    "Qwen",
+    "deno",
+    "denoland",
+    "jsr",
+    "lcov"
   ],
   "ignorePaths": [
     "node_modules",

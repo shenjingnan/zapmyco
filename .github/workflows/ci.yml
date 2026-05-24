@@ -11,45 +11,34 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [22, 24]
+        deno-version: [2.x]
 
     steps:
       - name: 检出代码仓库
         uses: actions/checkout@v6
 
-      - name: 设置 pnpm
-        uses: pnpm/action-setup@v5
+      - name: 设置 Deno ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v2
         with:
-          version: 10.30.3
-
-      - name: 设置 Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'pnpm'
-
-      - name: 安装依赖
-        run: pnpm install --frozen-lockfile
-
-      - name: 类型检查
-        run: pnpm run typecheck
+          deno-version: ${{ matrix.deno-version }}
 
       - name: 代码检查
-        run: pnpm run lint
+        run: deno lint
 
-      - name: 构建
-        run: pnpm run build
+      - name: 格式检查
+        run: deno fmt --check
+
+      - name: 类型检查
+        run: deno check src/
 
       - name: 测试
-        run: pnpm run test
+        run: deno test
 
       - name: 覆盖率报告
-        run: pnpm run test:coverage
-        if: matrix.node-version == 22
+        run: deno test --coverage=coverage && deno coverage --lcov coverage > coverage/lcov.info
 
       - name: 上传覆盖率到 Codecov
         uses: codecov/codecov-action@v6
-        if: matrix.node-version == 22
         with:
           files: ./coverage/lcov.info
           fail_ci_if_error: false

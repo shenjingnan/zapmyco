@@ -10,7 +10,8 @@
 
 ### 报告 Bug
 
-如果您发现了 Bug，请通过 [GitHub Issues](https://github.com/shenjingnan/ai-typescript-starter/issues) 报告。
+如果您发现了 Bug，请通过
+[GitHub Issues](https://github.com/shenjingnan/ai-typescript-starter/issues) 报告。
 
 报告 Bug 时，请包含：
 
@@ -63,6 +64,7 @@ pnpm run check
 ```
 
 **类型**:
+
 - `feat` - 新功能
 - `fix` - Bug 修复
 - `docs` - 文档
@@ -73,6 +75,7 @@ pnpm run check
 - `chore` - 构建/工具
 
 **示例**:
+
 ```
 feat: add new utility function
 fix(utils): handle null case in formatDate
@@ -136,6 +139,7 @@ pnpm run release
 ```
 
 发布过程会自动：
+
 1. 更新版本号
 2. 更新 CHANGELOG.md
 3. 创建 Git tag

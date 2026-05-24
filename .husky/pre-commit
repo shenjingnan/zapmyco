@@ -1,1 +1,0 @@
-npx lint-staged && pnpm run typecheck && pnpm run test

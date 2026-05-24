@@ -8,18 +8,18 @@
 
 ## 技术栈
 
-| 技术 | 用途 |
-|------|------|
-| TypeScript 5.x | 编程语言 |
-| Node.js 24+ | 运行时 |
-| pnpm | 包管理器 |
-| tsdown | 构建工具 |
-| Vitest | 测试框架 |
-| Biome | Linter + Formatter |
-| cspell | 拼写检查 |
-| release-it | 发布工具 |
-| Husky | Git Hooks |
-| lint-staged | 暂存区检查 |
+| 技术           | 用途               |
+| -------------- | ------------------ |
+| TypeScript 5.x | 编程语言           |
+| Node.js 24+    | 运行时             |
+| pnpm           | 包管理器           |
+| tsdown         | 构建工具           |
+| Vitest         | 测试框架           |
+| Biome          | Linter + Formatter |
+| cspell         | 拼写检查           |
+| release-it     | 发布工具           |
+| Husky          | Git Hooks          |
+| lint-staged    | 暂存区检查         |
 
 ## 目录结构
 
@@ -41,14 +41,14 @@ ai-typescript-starter/
 
 ## 可用脚本
 
-| 命令 | 说明 |
-|------|------|
-| `pnpm run build` | 构建项目 |
-| `pnpm run dev` | 开发模式 |
-| `pnpm run test` | 运行测试 |
-| `pnpm run lint` | 代码检查 |
+| 命令                 | 说明     |
+| -------------------- | -------- |
+| `pnpm run build`     | 构建项目 |
+| `pnpm run dev`       | 开发模式 |
+| `pnpm run test`      | 运行测试 |
+| `pnpm run lint`      | 代码检查 |
 | `pnpm run typecheck` | 类型检查 |
-| `pnpm run check` | 完整检查 |
+| `pnpm run check`     | 完整检查 |
 
 ## 代码风格
 
