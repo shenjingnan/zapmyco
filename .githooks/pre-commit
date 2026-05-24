@@ -23,7 +23,7 @@ deno check src/ 2>/dev/null || {
 }
 
 echo "🔍 运行测试..."
-deno test 2>/dev/null || {
+deno test --allow-env 2>/dev/null || {
   echo "⚠️  测试未通过"
   exit 1
 }
