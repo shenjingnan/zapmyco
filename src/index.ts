@@ -4,6 +4,7 @@
  */
 
 import denoJson from '../deno.json' with { type: 'json' };
+import { AiAgent } from './ai-agent.ts';
 
 /** 当前库的版本号 */
 export const VERSION: string = denoJson.version;
@@ -84,7 +85,7 @@ export interface CliResult {
  * @param args - 命令行参数数组
  * @returns CLI 执行结果
  */
-export function cli(args: string[]): CliResult {
+export async function cli(args: string[]): Promise<CliResult> {
   const [command, ...rest] = args;
 
   if (command === 'greet') {
@@ -103,6 +104,17 @@ export function cli(args: string[]): CliResult {
     };
   }
 
+  if (command === 'ai') {
+    try {
+      const agent = new AiAgent();
+      await agent.startInteractiveChat();
+      return { exitCode: 0, stdout: '', stderr: '' };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { exitCode: 1, stdout: '', stderr: message };
+    }
+  }
+
   if (command === '--version' || command === '-v' || command === '-V') {
     return { exitCode: 0, stdout: `v${VERSION}`, stderr: '' };
   }
@@ -111,10 +123,11 @@ export function cli(args: string[]): CliResult {
     `ZapMyCo v${VERSION}`,
     '',
     '用法:',
-    '  greet <name>     向指定名称打招呼',
-    '  config           显示配置信息',
+    '  greet <name>       向指定名称打招呼',
+    '  config             显示配置信息',
+    '  ai                 进入 AI 对话模式',
     '  --version, -v, -V  显示版本号',
-    '  --help, -h       显示帮助信息',
+    '  --help, -h         显示帮助信息',
   ].join('\n');
 
   if (!command || command === '--help' || command === '-h') {
@@ -129,7 +142,7 @@ export function cli(args: string[]): CliResult {
 }
 
 if (import.meta.main) {
-  const result = cli(Deno.args);
+  const result = await cli(Deno.args);
   if (result.stderr) console.error(result.stderr);
   if (result.stdout) console.log(result.stdout);
   Deno.exit(result.exitCode);

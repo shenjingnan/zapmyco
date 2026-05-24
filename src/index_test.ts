@@ -1,5 +1,6 @@
 import { assertEquals, assertMatch, assertThrows } from 'jsr:@std/assert@1';
 import { cli, createConfig, greet, VERSION } from './index.ts';
+import { AiAgent } from './ai-agent.ts';
 
 Deno.test('greet', async (t) => {
   await t.step('should return greeting message with the given name', () => {
@@ -68,63 +69,96 @@ Deno.test('VERSION', async (t) => {
 });
 
 Deno.test('cli', async (t) => {
-  await t.step('greet with name should return greeting', () => {
-    const result = cli(['greet', 'World']);
+  await t.step('greet with name should return greeting', async () => {
+    const result = await cli(['greet', 'World']);
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout, 'Hello, World!');
     assertEquals(result.stderr, '');
   });
 
-  await t.step('greet without name should exit with code 1', () => {
-    const result = cli(['greet']);
+  await t.step('greet without name should exit with code 1', async () => {
+    const result = await cli(['greet']);
     assertEquals(result.exitCode, 1);
     assertEquals(result.stdout, '');
     assertEquals(result.stderr, '请指定名称');
   });
 
-  await t.step('config should print config JSON', () => {
-    const result = cli(['config']);
+  await t.step('config should print config JSON', async () => {
+    const result = await cli(['config']);
     assertEquals(result.exitCode, 0);
     const config = JSON.parse(result.stdout);
     assertEquals(config.debug, false);
     assertEquals(config.logLevel, 'info');
   });
 
-  await t.step('--version should print version', () => {
-    const result = cli(['--version']);
+  await t.step('--version should print version', async () => {
+    const result = await cli(['--version']);
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout, `v${VERSION}`);
   });
 
-  await t.step('-v should print version', () => {
-    const result = cli(['-v']);
+  await t.step('-v should print version', async () => {
+    const result = await cli(['-v']);
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout, `v${VERSION}`);
   });
 
-  await t.step('-V should print version', () => {
-    const result = cli(['-V']);
+  await t.step('-V should print version', async () => {
+    const result = await cli(['-V']);
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout, `v${VERSION}`);
   });
 
-  await t.step('--help should show help text', () => {
-    const result = cli(['--help']);
+  await t.step('--help should show help text', async () => {
+    const result = await cli(['--help']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout.includes('greet'), true);
+    assertEquals(result.stdout.includes('config'), true);
+    assertEquals(result.stdout.includes('ai'), true);
+  });
+
+  await t.step('no args should show help text', async () => {
+    const result = await cli([]);
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout.includes('greet'), true);
     assertEquals(result.stdout.includes('config'), true);
   });
 
-  await t.step('no args should show help text', () => {
-    const result = cli([]);
-    assertEquals(result.exitCode, 0);
-    assertEquals(result.stdout.includes('greet'), true);
-    assertEquals(result.stdout.includes('config'), true);
-  });
-
-  await t.step('unknown command should exit with code 1', () => {
-    const result = cli(['unknown']);
+  await t.step('unknown command should exit with code 1', async () => {
+    const result = await cli(['unknown']);
     assertEquals(result.exitCode, 1);
     assertEquals(result.stderr.includes('未知命令'), true);
+  });
+
+  await t.step('ai without API key should show error', async () => {
+    const result = await cli(['ai']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stderr.includes('DEEPSEEK_API_KEY'), true);
+  });
+});
+
+Deno.test('AiAgent', async (t) => {
+  await t.step('should throw when no API key provided', () => {
+    assertThrows(
+      () => new AiAgent({ apiKey: '' }),
+      Error,
+      'DEEPSEEK_API_KEY',
+    );
+  });
+
+  await t.step('should accept custom options', () => {
+    const agent = new AiAgent({
+      apiKey: 'test-key',
+      baseURL: 'https://custom.example.com',
+      model: 'test-model',
+    });
+    assertEquals(agent.getMessages(), []);
+  });
+
+  await t.step('should manage context messages', () => {
+    const agent = new AiAgent({ apiKey: 'test-key' });
+    assertEquals(agent.getMessages(), []);
+    agent.clearContext();
+    assertEquals(agent.getMessages(), []);
   });
 });
