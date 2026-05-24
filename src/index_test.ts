@@ -1,5 +1,5 @@
 import { assertEquals, assertMatch, assertThrows } from 'jsr:@std/assert@1';
-import { createConfig, greet, VERSION } from './index.ts';
+import { cli, createConfig, greet, VERSION } from './index.ts';
 
 Deno.test('greet', async (t) => {
   await t.step('should return greeting message with the given name', () => {
@@ -64,5 +64,67 @@ Deno.test('VERSION', async (t) => {
 
   await t.step('should match semver format', () => {
     assertMatch(VERSION, /^\d+\.\d+\.\d+/);
+  });
+});
+
+Deno.test('cli', async (t) => {
+  await t.step('greet with name should return greeting', () => {
+    const result = cli(['greet', 'World']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout, 'Hello, World!');
+    assertEquals(result.stderr, '');
+  });
+
+  await t.step('greet without name should exit with code 1', () => {
+    const result = cli(['greet']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stdout, '');
+    assertEquals(result.stderr, '请指定名称');
+  });
+
+  await t.step('config should print config JSON', () => {
+    const result = cli(['config']);
+    assertEquals(result.exitCode, 0);
+    const config = JSON.parse(result.stdout);
+    assertEquals(config.debug, false);
+    assertEquals(config.logLevel, 'info');
+  });
+
+  await t.step('--version should print version', () => {
+    const result = cli(['--version']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout, `v${VERSION}`);
+  });
+
+  await t.step('-v should print version', () => {
+    const result = cli(['-v']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout, `v${VERSION}`);
+  });
+
+  await t.step('-V should print version', () => {
+    const result = cli(['-V']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout, `v${VERSION}`);
+  });
+
+  await t.step('--help should show help text', () => {
+    const result = cli(['--help']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout.includes('greet'), true);
+    assertEquals(result.stdout.includes('config'), true);
+  });
+
+  await t.step('no args should show help text', () => {
+    const result = cli([]);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout.includes('greet'), true);
+    assertEquals(result.stdout.includes('config'), true);
+  });
+
+  await t.step('unknown command should exit with code 1', () => {
+    const result = cli(['unknown']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stderr.includes('未知命令'), true);
   });
 });

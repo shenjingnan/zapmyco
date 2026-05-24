@@ -4,6 +4,8 @@
   "description": "AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造",
   "exports": "./src/index.ts",
   "tasks": {
+    "cli": "deno run src/index.ts",
+    "install:global": "deno install -g -n zapmyco src/index.ts",
     "dev": "deno run --watch src/index.ts",
     "test": "deno test",
     "test:coverage": "deno test --coverage && deno coverage",
