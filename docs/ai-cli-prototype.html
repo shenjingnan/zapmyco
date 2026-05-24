@@ -280,11 +280,7 @@
     const content = document.createElement('div');
     content.className = 'message-content ' + role;
 
-    if (text instanceof HTMLElement) {
-      content.appendChild(text);
-    } else {
-      content.textContent = text;
-    }
+    content.textContent = text;
 
     div.appendChild(label);
     div.appendChild(content);
