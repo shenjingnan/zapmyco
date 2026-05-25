@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.17.0](https://github.com/shenjingnan/zapmyco/compare/v0.16.0...v0.17.0) (2026-05-25)
+## [0.17.1](https://github.com/shenjingnan/zapmyco/compare/v0.16.0...v0.17.1) (2026-05-25)
 
 ### Code Refactoring
 
