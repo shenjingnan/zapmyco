@@ -1,7 +1,0 @@
-{
-  "framework": null,
-  "buildCommand": "cd docs && pnpm install && pnpm build",
-  "outputDirectory": "docs/dist",
-  "installCommand": "pnpm install",
-  "cleanUrls": true
-}
