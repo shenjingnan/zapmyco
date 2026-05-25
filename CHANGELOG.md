@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/shenjingnan/zapmyco/compare/v0.17.2-beta.2...v0.18.0) (2026-05-25)
+
+### Features
+
+- GitHub Release 自动构建多平台二进制文件 (#207)
+  ([170f653](https://github.com/shenjingnan/zapmyco/commit/170f653))
+
 ## [0.17.2-beta.2](https://github.com/shenjingnan/zapmyco/compare/v0.16.0...v0.17.2-beta.2) (2026-05-25)
 
 ### Code Refactoring
