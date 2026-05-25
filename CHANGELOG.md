@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.20.5](https://github.com/shenjingnan/zapmyco/compare/v0.20.4-beta.0...v0.20.5) (2026-05-25)
+
+### Documentation
+
+- 添加跨平台安装脚本（Unix 和 Windows） (#233)
+  ([4b1f4e9](https://github.com/shenjingnan/zapmyco/commit/4b1f4e9))
+- 将安装脚本移动到 docs 目录 (#232)
+  ([eca3c25](https://github.com/shenjingnan/zapmyco/commit/eca3c25))
+- 徽标居中显示 (#231) ([03358b4](https://github.com/shenjingnan/zapmyco/commit/03358b4))
+- 移除 MDX 文件中的 H1 标题并修复徽标布局 (#230)
+  ([01a525d](https://github.com/shenjingnan/zapmyco/commit/01a525d))
+- 简化 README 中贡献相关的内容 (#229)
+  ([6395fd6](https://github.com/shenjingnan/zapmyco/commit/6395fd6))
+- 移除旧项目残留的过期文档文件 (#228)
+  ([f06b43d](https://github.com/shenjingnan/zapmyco/commit/f06b43d))
+- 使用 OpenManual 重构文档站点并配置 Vercel 部署 (#224)
+  ([476f6e2](https://github.com/shenjingnan/zapmyco/commit/476f6e2))
+- 更新 README 为 zapmyco 项目信息并添加 Logo (#223)
+  ([14fa8d2](https://github.com/shenjingnan/zapmyco/commit/14fa8d2))
+
+### Chores
+
+- **docs:** 移动 logo.svg 到 docs/public 并去除白底 (#227)
+  ([3495ea6](https://github.com/shenjingnan/zapmyco/commit/3495ea6))
+
+### Code Refactoring
+
+- **deploy:** 将 Vercel 配置从根目录迁移到 docs 目录 (#226)
+  ([6dc77f3](https://github.com/shenjingnan/zapmyco/commit/6dc77f3))
+
+### Bug Fixes
+
+- **deploy:** 修复 Vercel 部署失败，从 npm 切换到 pnpm (#225)
+  ([b40869f](https://github.com/shenjingnan/zapmyco/commit/b40869f))
+- pre-commit 类型检查增加 tools 目录 (#222)
+  ([a6af1e3](https://github.com/shenjingnan/zapmyco/commit/a6af1e3))
+
 ## [0.20.4-beta.0](https://github.com/shenjingnan/zapmyco/compare/v0.20.3...v0.20.4-beta.0) (2026-05-25)
 
 ### Code Refactoring
