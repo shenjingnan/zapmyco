@@ -40,10 +40,12 @@ esac
 BINARY="zapmyco-${OS}-${ARCH}"
 
 if [ "$VERSION" = 'latest' ]; then
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY}"
+  BASE_URL="https://github.com/${REPO}/releases/latest/download"
 else
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY}"
+  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
 fi
+
+DOWNLOAD_URL="${BASE_URL}/${BINARY}"
 
 # ---- 安装 ----
 
@@ -52,6 +54,29 @@ mkdir -p "$BIN_DIR"
 echo "⬇️  正在下载 ${BINARY} ..."
 curl -fsSL "$DOWNLOAD_URL" -o "${BIN_DIR}/${BINARY_NAME}"
 chmod +x "${BIN_DIR}/${BINARY_NAME}"
+
+# ---- 完整性验证 ----
+
+if [ -z "${ZAPMYCO_NO_VERIFY:-}" ]; then
+  SHA256SUMS_FILE=$(mktemp)
+  if curl -fsSL "${BASE_URL}/SHA256SUMS" -o "$SHA256SUMS_FILE" 2>/dev/null; then
+    EXPECTED=$(grep "  ${BINARY}$" "$SHA256SUMS_FILE" | awk '{print $1}')
+    COMPUTED=$(shasum -a 256 "${BIN_DIR}/${BINARY_NAME}" | awk '{print $1}')
+
+    if [ "$EXPECTED" = "$COMPUTED" ]; then
+      echo "🔐 文件完整性验证通过"
+    else
+      echo "❌ 错误: 文件完整性验证失败！SHA256 不匹配"
+      echo "   期望: $EXPECTED"
+      echo "   实际: $COMPUTED"
+      rm -f "${BIN_DIR}/${BINARY_NAME}" "$SHA256SUMS_FILE"
+      exit 1
+    fi
+    rm -f "$SHA256SUMS_FILE"
+  else
+    echo "⚠️  警告: 无法下载 SHA256SUMS，跳过完整性验证（可设置 ZAPMYCO_NO_VERIFY=1 跳过此警告）"
+  fi
+fi
 
 echo ""
 echo "✅ 安装完成！"

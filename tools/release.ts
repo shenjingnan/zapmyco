@@ -200,6 +200,30 @@ function updateChangelog(
   return updated;
 }
 
+// ---- 安装指引 ----
+
+function formatInstallGuide(): string {
+  return `
+
+## 📦 安装方式
+
+**一键安装（推荐）**:
+\`\`\`bash
+curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+\`\`\`
+
+**Windows PowerShell**:
+\`\`\`powershell
+iwr https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.ps1 -useb | iex
+\`\`\`
+
+**npm**:
+\`\`\`bash
+npx zapmyco
+\`\`\`
+`;
+}
+
 // ---- GitHub Release ----
 
 async function createGitHubRelease(
@@ -207,7 +231,8 @@ async function createGitHubRelease(
   commits: Commit[],
 ): Promise<void> {
   const date = new Date().toISOString().slice(0, 10);
-  const notes = formatChangelogEntry(version, date, commits);
+  const notes = formatChangelogEntry(version, date, commits) +
+    formatInstallGuide();
 
   const tmpFile = await Deno.makeTempFile({ suffix: '.md' });
   try {

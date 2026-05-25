@@ -137,7 +137,39 @@ jobs:
         if: runner.os == 'Windows'
         run: upx --best --lzma ${{ matrix.output }}
 
+      - name: 计算 SHA256
+        shell: bash
+        run: shasum -a 256 ${{ matrix.output }} > checksums-${{ matrix.output }}.txt
+
+      - name: 上传 checksum 文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-${{ matrix.output }}
+          path: checksums-${{ matrix.output }}.txt
+          retention-days: 1
+
       - name: 上传到 Release
         run: gh release upload ${{ github.event.release.tag_name }} "${{ matrix.output }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  generate-checksums:
+    name: 生成 SHA256SUMS
+    runs-on: ubuntu-latest
+    needs: [build-binaries]
+    permissions:
+      contents: write
+    steps:
+      - name: 下载所有 checksum 文件
+        uses: actions/download-artifact@v4
+        with:
+          pattern: checksums-*
+          merge-multiple: true
+
+      - name: 合并为 SHA256SUMS
+        run: cat *.txt | sort > SHA256SUMS
+
+      - name: 上传 SHA256SUMS 到 Release
+        run: gh release upload ${{ github.event.release.tag_name }} SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
