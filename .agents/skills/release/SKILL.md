@@ -1,6 +1,8 @@
 ---
 name: release
 description: 创建项目发布。当用户输入 /release 或要求发布新版本时使用
+argument-hint: [tag]
+arguments: [tag]
 ---
 
 # Release Command
@@ -15,12 +17,41 @@ description: 创建项目发布。当用户输入 /release 或要求发布新版
 
 ## 你的任务
 
-根据上方注入的发布输出，判断发布是否成功：
+根据上方注入的干跑结果和用户的要求，按以下步骤处理：
 
-- **发布成功** — `---[release output]---` 末尾显示 `🎉 发布完成`，告知用户版本号和 GitHub Release
-  链接
-- **发布失败** — 分析失败原因（前置检查不通过、版本推导失败、GitHub Release
-  创建失败等），告知用户具体错误
+### 1. 分析干跑结果
+
+查看 `---[release dry-run]---` 中的输出：
+
+- 确认当前版本、推导的版本号和 bump 类型
+- 如果干跑失败，分析原因并告知用户
+
+### 2. 确定发布参数
+
+根据用户输入的参数确定最终发布命令（`$tag` 会自动替换为用户输入的参数）：
+
+| 用户意图               | 执行命令                                  |
+| ---------------------- | ----------------------------------------- |
+| `/release`（标准发布） | `deno run -A tools/release.ts`            |
+| `/release beta`        | `deno run -A tools/release.ts --tag $tag` |
+| `/release alpha`       | `deno run -A tools/release.ts --tag $tag` |
+| 仅预检，不发布         | 告知用户干跑结果即可                      |
+
+如果用户没有指定 tag，直接进行标准发布；如果指定了 tag（如 beta、alpha、rc），使用 `--tag $tag`
+参数执行发布。
+
+### 3. 执行发布
+
+```bash
+# 示例：标准发布
+deno run -A tools/release.ts
+
+# 示例：beta 发布
+deno run -A tools/release.ts --tag beta
+# 用户输入 /release beta，$tag 自动替换为 beta
+```
+
+发布成功后告知用户版本号和 GitHub Release 链接。
 
 ## 发布流程
 

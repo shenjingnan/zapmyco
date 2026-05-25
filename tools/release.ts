@@ -9,8 +9,10 @@
  * 5. 创建 GitHub Release
  *
  * 用法:
- *   deno run -A tools/release.ts            # 正式发布
- *   deno run -A tools/release.ts --dry-run  # 预检
+ *   deno run -A tools/release.ts                       # 正式发布
+ *   deno run -A tools/release.ts --dry-run             # 预检
+ *   deno run -A tools/release.ts --tag beta          # beta 发布
+ *   deno run -A tools/release.ts --tag beta --dry-run  # beta 预检
  *
  * 前置条件:
  *   - gh CLI 已安装并认证 (gh auth status)
@@ -20,6 +22,8 @@
 
 const REPO = 'shenjingnan/zapmyco';
 const REPO_URL = `https://github.com/${REPO}`;
+
+type BumpType = 'major' | 'minor' | 'patch' | 'premajor' | 'preminor' | 'prepatch' | 'prerelease';
 
 const TYPE_LABELS: Record<string, string> = {
   feat: 'Features',
@@ -43,7 +47,8 @@ interface Commit {
 // ---- 工具函数 ----
 
 function run(args: string[]): string {
-  const cmd = new Deno.Command(args[0], {
+  if (args.length === 0) throw new Error('run() 需要至少一个参数');
+  const cmd = new Deno.Command(args[0]!, {
     args: args.slice(1),
     stdout: 'piped',
     stderr: 'piped',
@@ -117,17 +122,27 @@ function getCommitsSince(tag: string | null): Commit[] {
 
 function determineBump(
   commits: Commit[],
-): 'major' | 'minor' | 'patch' {
-  if (commits.some((c) => c.isBreaking)) return 'major';
-  if (commits.some((c) => c.type === 'feat')) return 'minor';
-  return 'patch';
+  tag?: string,
+  currentVersion?: string,
+): BumpType {
+  if (tag && currentVersion?.includes('-')) return 'prerelease';
+  const base = commits.some((c) => c.isBreaking)
+    ? 'major'
+    : commits.some((c) => c.type === 'feat')
+    ? 'minor'
+    : 'patch';
+  return tag ? `pre${base}` as BumpType : base;
 }
 
 function bumpVersion(
   current: string,
-  bump: 'major' | 'minor' | 'patch',
+  bump: BumpType,
+  tag?: string,
 ): string {
-  const [major, minor, patch] = current.split('.').map(Number);
+  const [versionPart = '0.0.0', currentPre] = current.split('-');
+  const [major = 0, minor = 0, patch = 0] = versionPart.split('.').map(Number);
+  const preNum = currentPre ? parseInt(currentPre.split('.').pop() ?? '-1', 10) : -1;
+
   switch (bump) {
     case 'major':
       return `${major + 1}.0.0`;
@@ -135,6 +150,14 @@ function bumpVersion(
       return `${major}.${minor + 1}.0`;
     case 'patch':
       return `${major}.${minor}.${patch + 1}`;
+    case 'premajor':
+      return `${major + 1}.0.0-${tag ?? 'beta'}.0`;
+    case 'preminor':
+      return `${major}.${minor + 1}.0-${tag ?? 'beta'}.0`;
+    case 'prepatch':
+      return `${major}.${minor}.${patch + 1}-${tag ?? 'beta'}.0`;
+    case 'prerelease':
+      return `${major}.${minor}.${patch}-${tag ?? 'beta'}.${preNum + 1}`;
   }
 }
 
@@ -237,7 +260,7 @@ async function createGitHubRelease(
   const tmpFile = await Deno.makeTempFile({ suffix: '.md' });
   try {
     await Deno.writeTextFile(tmpFile, notes);
-    run([
+    const releaseArgs = [
       'gh',
       'release',
       'create',
@@ -246,7 +269,9 @@ async function createGitHubRelease(
       `v${version}`,
       '--notes-file',
       tmpFile,
-    ]);
+    ];
+    if (version.includes('-')) releaseArgs.push('--prerelease');
+    run(releaseArgs);
   } finally {
     await Deno.remove(tmpFile);
   }
@@ -256,6 +281,7 @@ async function createGitHubRelease(
 
 async function main() {
   const isDryRun = Deno.args.includes('--dry-run');
+  const tag = Deno.args.includes('--tag') ? Deno.args[Deno.args.indexOf('--tag') + 1] : undefined;
 
   // 前置检查
   if (!isDryRun) {
@@ -294,8 +320,8 @@ async function main() {
   console.log(`  新 commits: ${commits.length} 个`);
 
   // 3. 推导版本
-  const bump = determineBump(commits);
-  const newVersion = bumpVersion(currentVersion, bump);
+  const bump = determineBump(commits, tag, currentVersion);
+  const newVersion = bumpVersion(currentVersion, bump, tag);
   console.log(`  版本推导: ${bump} → v${newVersion}`);
 
   // 4. 打印 commits 摘要
