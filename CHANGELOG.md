@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.2](https://github.com/shenjingnan/zapmyco/compare/v0.20.1...v0.20.2) (2026-05-25)
+
+### Bug Fixes
+
+- generate-checksums job 缺少 checkout 导致 gh release upload 失败
+  ([ae86a11](https://github.com/shenjingnan/zapmyco/commit/ae86a11))
+
 ## [0.20.1](https://github.com/shenjingnan/zapmyco/compare/v0.20.0...v0.20.1) (2026-05-25)
 
 ### Bug Fixes
