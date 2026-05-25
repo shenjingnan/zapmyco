@@ -7,34 +7,67 @@ description: 安全审计技能，用于检查和修复依赖安全问题
 
 ## 执行步骤
 
-### 1. 清空 overrides
+### 1. 执行安全审计
 
-将 `package.json` 中的 `pnpm.overrides` 设为 `{}`，然后 `pnpm install`。
-
-### 2. 执行审计
+检查依赖中的已知漏洞：
 
 ```bash
-pnpm audit --audit-level moderate
+deno audit
+```
+
+仅查看 high 和 critical 级别漏洞：
+
+```bash
+deno audit --level=high
+```
+
+使用 socket.dev 漏洞数据库（更全面的检查）：
+
+```bash
+deno audit --socket
 ```
 
 零漏洞则结束。
 
-### 3. 逐个修复漏洞
+### 2. 检查过时依赖
+
+```bash
+deno outdated
+```
+
+查看可兼容更新的依赖：
+
+```bash
+deno outdated --compatible
+```
+
+### 3. 修复漏洞
 
 对每个漏洞包：
 
-1. **尝试升级**：`pnpm update <包名>` 或升级其上游依赖
-2. **验证**：`pnpm typecheck && pnpm build && pnpm test && pnpm lint`
-3. **验证失败则回滚**：`git checkout -- package.json pnpm-lock.yaml && pnpm install`
-4. **回滚后用 override 解决**：在 `pnpm.overrides` 中添加 `"<包名>": ">=安全版本"`，再验证
+1. **尝试自动修复**：
+   ```bash
+   deno audit --fix
+   ```
+   或手动更新到最新兼容版本：
+   ```bash
+   deno outdated --update --latest <包名>
+   ```
+
+2. **验证**：运行 `deno check src/ && deno test --allow-env && deno lint`
+
+3. **验证失败则回滚**：
+   ```bash
+   git checkout -- deno.json deno.lock
+   ```
 
 ### 4. 收尾
 
-- 确认 `pnpm audit --audit-level moderate` 通过
-- overrides 按包名字母序排列，版本格式 `>=X.Y.Z`
-- `pnpm install --lockfile-only` 同步 lockfile
+- 确认 `deno audit` 通过
+- 重新运行完整检查：`deno fmt --check && deno lint && deno check src/ && deno test --allow-env`
 
 ## 原则
 
-- 禁止使用 `pnpm audit --fix`
-- 优先升级依赖，override 仅作为最后手段
+- 优先通过 `deno audit --fix` 自动修复，无法修复时手动升级
+- 升级后必须通过类型检查和测试验证
+- 如果某个漏洞无法通过升级修复，考虑使用 `--ignore <CVE>` 绕过（需确认风险可接受）

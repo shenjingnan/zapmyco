@@ -150,12 +150,22 @@ Deno.test('MyModule', async (t) => {
 
 ## 可用 Slash Commands
 
-| 命令       | 说明     |
-| ---------- | -------- |
-| `/build`   | 构建项目 |
-| `/test`    | 运行测试 |
-| `/lint`    | 代码检查 |
-| `/release` | 创建发布 |
+| 命令                  | 触发方式      | 说明                   |
+| --------------------- | ------------- | ---------------------- |
+| `/build`              | `/build`      | 构建 npm 包/二进制文件 |
+| `/test`               | `/test`       | 运行测试套件           |
+| `/lint`               | `/lint`       | 代码检查和格式化       |
+| `/release`            | `/release`    | 创建发布               |
+| `/spellcheck`         | `/spellcheck` | 运行拼写检查           |
+| `/typecheck`          | `/typecheck`  | 运行类型检查           |
+| coverage              | 自然语言触发  | 分析测试覆盖率         |
+| spellcheck            | 自然语言触发  | 拼写检查               |
+| typecheck             | 自然语言触发  | 类型检查               |
+| commit-push-pr        | 自然语言触发  | 提交、推送并创建 PR    |
+| update-readme         | 自然语言触发  | 更新 README.md         |
+| security-audit        | 自然语言触发  | 依赖安全审计           |
+| project-context       | 自动加载      | 项目上下文理解         |
+| resolve-git-conflicts | 自动检测      | 解决 Git 合并冲突      |
 
 ## 常见问题
 
