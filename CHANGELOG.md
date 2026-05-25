@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/shenjingnan/zapmyco/compare/v0.20.0...v0.20.1) (2026-05-25)
+
+### Bug Fixes
+
+- Windows CI 上 shasum 命令不存在导致 SHA256 计算失败 (#212)
+  ([b961f5d](https://github.com/shenjingnan/zapmyco/commit/b961f5d))
+
 ## [0.20.0](https://github.com/shenjingnan/zapmyco/compare/v0.19.2...v0.20.0) (2026-05-25)
 
 ### Features
