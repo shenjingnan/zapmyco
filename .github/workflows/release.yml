@@ -100,8 +100,34 @@ jobs:
         with:
           deno-version: 2.x
 
+      - name: 安装 UPX (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y upx
+
+      - name: 安装 UPX (macOS)
+        if: runner.os == 'macOS'
+        run: brew install upx
+
+      - name: 安装 UPX (Windows)
+        if: runner.os == 'Windows'
+        run: choco install upx
+
       - name: 编译二进制文件
-        run: deno compile --allow-env --allow-net ${{ matrix.compile-target }} --output ${{ matrix.output }} src/index.ts
+        run: deno compile --no-check --allow-env --allow-net ${{ matrix.compile-target }} --output ${{ matrix.output }} src/index.ts
+
+      - name: 压缩二进制 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          strip ${{ matrix.output }}
+          upx --best --lzma ${{ matrix.output }}
+
+      - name: 压缩二进制 (macOS)
+        if: runner.os == 'macOS'
+        run: upx --best --lzma --force-macos ${{ matrix.output }}
+
+      - name: 压缩二进制 (Windows)
+        if: runner.os == 'Windows'
+        run: upx --best --lzma ${{ matrix.output }}
 
       - name: 上传到 Release
         run: gh release upload ${{ github.event.release.tag_name }} "${{ matrix.output }}"
