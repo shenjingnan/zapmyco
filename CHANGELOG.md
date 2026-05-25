@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.2](https://github.com/shenjingnan/zapmyco/compare/v0.19.1...v0.19.2) (2026-05-25)
+
+### Bug Fixes
+
+- 修复 Release workflow ARM64 二进制构建时 strip 失败的问题 (#210)
+  ([63c10d7](https://github.com/shenjingnan/zapmyco/commit/63c10d7))
+
 ## [0.19.1](https://github.com/shenjingnan/zapmyco/compare/v0.19.0...v0.19.1) (2026-05-25)
 
 ### Performance Improvements
