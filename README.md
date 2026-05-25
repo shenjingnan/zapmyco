@@ -5,6 +5,7 @@
 </p>
 
 [![CI](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg)](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/shenjingnan/zapmyco/branch/main/graph/badge.svg)](https://codecov.io/gh/shenjingnan/zapmyco)
 [![NPM](https://img.shields.io/npm/v/zapmyco.svg?color=brightgreen)](https://www.npmjs.com/package/zapmyco)
 [![JSR](https://jsr.io/badges/@zapmyco/zapmyco)](https://jsr.io/@zapmyco/zapmyco)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
