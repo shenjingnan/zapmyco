@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.20.4-beta.0](https://github.com/shenjingnan/zapmyco/compare/v0.20.3...v0.20.4-beta.0) (2026-05-25)
+
+### Code Refactoring
+
+- **skills:** 优化 release skill 使用脚本预执行发布 (#221)
+  ([ac4da10](https://github.com/shenjingnan/zapmyco/commit/ac4da10))
+- **skills:** 优化 resolve-git-conflicts 使用脚本预执行冲突检测 (#220)
+  ([fb4bbe5](https://github.com/shenjingnan/zapmyco/commit/fb4bbe5))
+- **skills:** 优化 commit-push-pr skill 使用脚本预执行上下文 (#219)
+  ([432cfa4](https://github.com/shenjingnan/zapmyco/commit/432cfa4))
+- **skills:** 优化 security-audit skill 使用脚本预执行审计 (#218)
+  ([8acc0d2](https://github.com/shenjingnan/zapmyco/commit/8acc0d2))
+- **skills:** 优化 build skill 使用脚本预执行构建 (#217)
+  ([cedb893](https://github.com/shenjingnan/zapmyco/commit/cedb893))
+- **skills:** 合并 lint/test/spellcheck/typecheck 为统一的 check 技能 (#215)
+  ([2c3b759](https://github.com/shenjingnan/zapmyco/commit/2c3b759))
+- 将 .agents/commands 迁移为 skills (#213)
+  ([ab75c90](https://github.com/shenjingnan/zapmyco/commit/ab75c90))
+
+### Chores
+
+- **skills:** 删除已迁移的旧技能文件 (#216)
+  ([c12b127](https://github.com/shenjingnan/zapmyco/commit/c12b127))
+- 更新技能和配置文件以适配 Deno 技术栈 (#214)
+  ([d3fb5a1](https://github.com/shenjingnan/zapmyco/commit/d3fb5a1))
+
 ## [0.20.3](https://github.com/shenjingnan/zapmyco/compare/v0.20.2...v0.20.3) (2026-05-25)
 
 ### Chores
