@@ -15,7 +15,7 @@
 | TypeScript | 原生支持 | 编程语言                                        |
 | cspell     | 8.x      | 拼写检查 (npm)                                  |
 | dnt        | 0.42.x   | Deno → npm 转换 (JSR)                           |
-| JSR        | —        | 包发布 registry                                 |
+| JSR        | —        | 包发布 registry (@zapmyco/zapmyco)              |
 | npm        | —        | 包发布 registry (zapmyco)                       |
 
 ## 快速命令参考

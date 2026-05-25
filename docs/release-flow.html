@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>发布流程架构图 — zapmyco</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #020617; color: #e2e8f0; font-family: 'JetBrains Mono', monospace; min-height: 100vh; display: flex; justify-content: center; padding: 40px 20px; }
+.container { max-width: 1100px; width: 100%; }
+.header { text-align: center; margin-bottom: 32px; }
+.header h1 { font-size: 24px; font-weight: 700; color: white; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.pulse-dot { width: 10px; height: 10px; background: #34d399; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); } 50% { opacity: 0.7; box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); } }
+.header .subtitle { color: #64748b; font-size: 12px; margin-top: 8px; letter-spacing: 0.5px; }
+.diagram-card { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 32px; margin-bottom: 24px; }
+svg { width: 100%; height: auto; display: block; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+.card { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; }
+.card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.card-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.card h3 { font-size: 11px; font-weight: 600; color: white; }
+.card ul { list-style: none; padding: 0; }
+.card ul li { color: #94a3b8; font-size: 10px; line-height: 1.8; padding-left: 12px; position: relative; }
+.card ul li::before { content: '›'; position: absolute; left: 0; color: #475569; }
+.footer { text-align: center; color: #475569; font-size: 9px; letter-spacing: 1px; }
+.dot-cyan { background: #22d3ee; }
+.dot-emerald { background: #34d399; }
+.dot-violet { background: #a78bfa; }
+.dot-slate { background: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1><span class="pulse-dot"></span>发布流程架构图</h1>
+    <div class="subtitle">zapmyco · Deno 原生自动化双发布 · JSR + npm</div>
+  </div>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 1040 740" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+        </marker>
+        <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+        </marker>
+        <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+        </marker>
+        <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/>
+        </marker>
+      </defs>
+
+      <!-- Background -->
+      <rect width="1040" height="740" fill="url(#grid)"/>
+
+      <!-- === ARROWS (drawn first) === -->
+
+      <!-- Developer → Git push -->
+      <line x1="300" y1="120" x2="470" y2="120" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- Git push → GitHub -->
+      <line x1="520" y1="120" x2="520" y2="210" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- GitHub Release → Workflow trigger arrows -->
+      <line x1="520" y1="260" x2="520" y2="330" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+      <!-- Workflow fork to JSR and npm -->
+      <line x1="520" y1="380" x2="520" y2="430" stroke="#34d399" stroke-width="1.5"/>
+      <line x1="370" y1="430" x2="670" y2="430" stroke="#34d399" stroke-width="1.5"/>
+      <line x1="370" y1="430" x2="370" y2="470" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+      <line x1="670" y1="430" x2="670" y2="470" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+      <!-- CI to registries -->
+      <line x1="270" y1="460" x2="270" y2="540" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+      <line x1="710" y1="460" x2="710" y2="540" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+
+      <!-- === DEVELOPMENT MACHINE === -->
+      <rect x="40" y="70" width="260" height="190" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4"/>
+      <text x="170" y="92" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">💻 开发者本地</text>
+
+      <!-- Opaque background masks -->
+      <rect x="70" y="105" width="200" height="50" rx="6" fill="#0f172a"/>
+      <rect x="70" y="180" width="200" height="50" rx="6" fill="#0f172a"/>
+
+      <!-- release.ts -->
+      <rect x="70" y="105" width="200" height="50" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="170" y="125" fill="white" font-size="11" font-weight="600" text-anchor="middle">tools/release.ts</text>
+      <text x="170" y="141" fill="#94a3b8" font-size="9" text-anchor="middle">Deno 原生发布脚本</text>
+
+      <!-- Git push -->
+      <rect x="70" y="180" width="200" height="50" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="170" y="200" fill="white" font-size="11" font-weight="600" text-anchor="middle">git push origin main --tags</text>
+      <text x="170" y="216" fill="#94a3b8" font-size="9" text-anchor="middle">推送 commit + tag</text>
+
+      <!-- Release steps list -->
+      <text x="170" y="253" fill="#475569" font-size="8" text-anchor="middle">① 解析 conventional commits → 推导版本</text>
+      <text x="170" y="265" fill="#475569" font-size="8" text-anchor="middle">② 更新 deno.json + CHANGELOG.md</text>
+      <text x="170" y="277" fill="#475569" font-size="8" text-anchor="middle">③ git commit + tag + push</text>
+
+      <!-- === GITHUB === -->
+      <rect x="400" y="70" width="240" height="50" rx="6" fill="#0f172a"/>
+      <rect x="400" y="70" width="240" height="50" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="520" y="90" fill="white" font-size="11" font-weight="600" text-anchor="middle">GitHub</text>
+      <text x="520" y="106" fill="#94a3b8" font-size="9" text-anchor="middle">代码仓库 + Release</text>
+
+      <!-- GitHub Release event -->
+      <rect x="400" y="210" width="240" height="50" rx="6" fill="#0f172a"/>
+      <rect x="400" y="210" width="240" height="50" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="520" y="230" fill="white" font-size="11" font-weight="600" text-anchor="middle">🚀 GitHub Release Published</text>
+      <text x="520" y="246" fill="#94a3b8" font-size="9" text-anchor="middle">触发 workflow: release.yml</text>
+
+      <!-- === GITHUB ACTIONS === -->
+      <rect x="30" y="330" width="980" height="140" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4"/>
+      <text x="520" y="352" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">⚡ GitHub Actions CI/CD</text>
+
+      <!-- JSR publish job -->
+      <rect x="220" y="370" width="300" height="60" rx="6" fill="#0f172a"/>
+      <rect x="220" y="370" width="300" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="370" y="392" fill="white" font-size="11" font-weight="600" text-anchor="middle">Job: publish-jsr</text>
+      <text x="370" y="408" fill="#94a3b8" font-size="9" text-anchor="middle">deno publish → JSR</text>
+      <text x="370" y="420" fill="#475569" font-size="8" text-anchor="middle">permissions: id-token: write (OIDC)</text>
+
+      <!-- npm publish job -->
+      <rect x="520" y="370" width="300" height="60" rx="6" fill="#0f172a"/>
+      <rect x="520" y="370" width="300" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="670" y="392" fill="white" font-size="11" font-weight="600" text-anchor="middle">Job: publish-npm</text>
+      <text x="670" y="408" fill="#94a3b8" font-size="9" text-anchor="middle">dnt 构建 → npm publish --provenance</text>
+      <text x="670" y="420" fill="#475569" font-size="8" text-anchor="middle">permissions: id-token: write (OIDC)</text>
+
+      <!-- === REGISTRIES === -->
+      <!-- JSR -->
+      <rect x="110" y="500" width="320" height="100" rx="12" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="4,4"/>
+      <text x="270" y="520" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">📦 JSR Registry</text>
+
+      <rect x="140" y="535" width="260" height="45" rx="6" fill="#0f172a"/>
+      <rect x="140" y="535" width="260" height="45" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="270" y="555" fill="white" font-size="11" font-weight="600" text-anchor="middle">@zapmyco/zapmyco</text>
+      <text x="270" y="571" fill="#94a3b8" font-size="9" text-anchor="middle">仅 Deno 生态</text>
+
+      <!-- npm -->
+      <rect x="610" y="500" width="320" height="100" rx="12" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4,4"/>
+      <text x="770" y="520" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">📦 npm Registry</text>
+
+      <rect x="640" y="535" width="260" height="45" rx="6" fill="#0f172a"/>
+      <rect x="640" y="535" width="260" height="45" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="770" y="555" fill="white" font-size="11" font-weight="600" text-anchor="middle">zapmyco</text>
+      <text x="770" y="571" fill="#94a3b8" font-size="9" text-anchor="middle">Node.js / Deno 双生态 · ESM + .d.ts</text>
+
+      <!-- === USERS === -->
+      <rect x="270" y="650" width="500" height="55" rx="12" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,4"/>
+      <text x="520" y="670" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="middle">👥 用户</text>
+
+      <rect x="300" y="683" width="130" height="20" rx="4" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+      <text x="365" y="697" fill="#94a3b8" font-size="9" text-anchor="middle">deno add @zapmyco/zapmyco</text>
+
+      <rect x="460" y="683" width="110" height="20" rx="4" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+      <text x="515" y="697" fill="#94a3b8" font-size="9" text-anchor="middle">npx zapmyco</text>
+
+      <rect x="600" y="683" width="120" height="20" rx="4" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+      <text x="660" y="697" fill="#94a3b8" font-size="9" text-anchor="middle">npm install zapmyco</text>
+
+      <!-- Down arrows from registries to users -->
+      <line x1="270" y1="600" x2="365" y2="683" stroke="#64748b" stroke-width="1" marker-end="url(#arrow)" opacity="0.5"/>
+      <line x1="770" y1="580" x2="560" y2="683" stroke="#64748b" stroke-width="1" marker-end="url(#arrow)" opacity="0.5"/>
+
+      <!-- Legend -->
+      <rect x="750" y="70" width="240" height="100" rx="6" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+      <text x="870" y="88" fill="#64748b" font-size="9" font-weight="600" text-anchor="middle">图例</text>
+      <rect x="770" y="96" width="10" height="10" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1"/>
+      <text x="790" y="105" fill="#94a3b8" font-size="9">JSR 相关</text>
+      <rect x="770" y="112" width="10" height="10" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1"/>
+      <text x="790" y="121" fill="#94a3b8" font-size="9">npm 相关</text>
+      <rect x="770" y="128" width="10" height="10" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="790" y="137" fill="#94a3b8" font-size="9">GitHub 基础设施</text>
+      <rect x="770" y="144" width="10" height="10" rx="2" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1"/>
+      <text x="790" y="153" fill="#94a3b8" font-size="9">事件触发</text>
+    </svg>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot dot-emerald"></div>
+        <h3>本地发布</h3>
+      </div>
+      <ul>
+        <li>deno run -A tools/release.ts</li>
+        <li>解析 conventional commits 推导版本</li>
+        <li>更新 deno.json + CHANGELOG.md</li>
+        <li>git commit + tag + push</li>
+        <li>创建 GitHub Release</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot dot-cyan"></div>
+        <h3>CI 自动发布 (JSR)</h3>
+      </div>
+      <ul>
+        <li>触发方式: GitHub Release published</li>
+        <li>deno publish 直接发布</li>
+        <li>OIDC 认证 (id-token: write)</li>
+        <li>发布到 @zapmyco/zapmyco</li>
+        <li>仅 Deno 生态</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot dot-violet"></div>
+        <h3>CI 自动发布 (npm)</h3>
+      </div>
+      <ul>
+        <li>触发方式: GitHub Release published</li>
+        <li>dnt 转换 Deno → npm 包</li>
+        <li>npm publish --provenance</li>
+        <li>发布到 zapmyco</li>
+        <li>ESM + 类型声明 + CLI bin</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">
+    zapmyco · 发布时间: 2026-05-25 · 架构: Deno 原生发布 + dnt 双发布
+  </div>
+</div>
+</body>
+</html>
