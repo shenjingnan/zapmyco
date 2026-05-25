@@ -28,7 +28,7 @@ iwr https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.ps1 -useb
 
 ```bash
 # 安装指定版本
-ZAPMYCO_VERSION=v0.18.0 curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+ZAPMYCO_VERSION=vX.X.X curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
 
 # 安装到自定义目录
 ZAPMYCO_INSTALL=~/tools curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
