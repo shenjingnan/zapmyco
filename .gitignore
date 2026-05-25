@@ -5,7 +5,7 @@ deno.lock
 node_modules/
 
 # Coverage
-coverage
+/coverage
 *.lcov
 
 # Build output
