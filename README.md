@@ -10,22 +10,35 @@ AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。
 
 ### 二进制下载（无需安装运行时）
 
-每个版本都会发布预编译的二进制文件，下载即可运行：
-
-| 平台    | 架构          | 下载命令                                                                                                                     |
-| ------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Linux   | x86_64        | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-x64 -o zapmyco && chmod +x zapmyco`   |
-| Linux   | ARM64         | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-arm64 -o zapmyco && chmod +x zapmyco` |
-| macOS   | Apple Silicon | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-arm64 -o zapmyco && chmod +x zapmyco` |
-| macOS   | Intel         | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-x64 -o zapmyco && chmod +x zapmyco`   |
-| Windows | x86_64        | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-windows-x64.exe -o zapmyco.exe`             |
-
-一行命令自动检测平台下载：
+每个版本都会发布预编译的二进制文件，一行命令即可安装：
 
 ```bash
-# Linux / macOS
-curl -fsSL "https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-$(uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')" -o zapmyco && chmod +x zapmyco && ./zapmyco --help
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+
+# Windows (PowerShell)
+iwr https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.ps1 -useb | iex
 ```
+
+安装脚本支持通过环境变量指定版本和安装目录：
+
+```bash
+# 安装指定版本
+ZAPMYCO_VERSION=v0.18.0 curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+
+# 安装到自定义目录
+ZAPMYCO_INSTALL=~/tools curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+```
+
+如果你更倾向于直接下载二进制文件，也可以从下表选择对应平台：
+
+| 平台    | 架构          | 下载链接                                                                                                           |
+| ------- | ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Linux   | x86_64        | [zapmyco-linux-x64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-x64)             |
+| Linux   | ARM64         | [zapmyco-linux-arm64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-arm64)         |
+| macOS   | Apple Silicon | [zapmyco-macos-arm64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-arm64)         |
+| macOS   | Intel         | [zapmyco-macos-x64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-x64)             |
+| Windows | x86_64        | [zapmyco-windows-x64.exe](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-windows-x64.exe) |
 
 ### 通过 npm 安装
 
