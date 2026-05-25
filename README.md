@@ -8,7 +8,7 @@
 [![npm version](https://img.shields.io/npm/v/zapmyco.svg)](https://www.npmjs.com/package/zapmyco)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
-AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。
+基于 Deno 的 AI 驱动命令行工具。
 
 ## 安装方式
 
