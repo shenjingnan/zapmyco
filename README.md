@@ -160,45 +160,10 @@ ai-typescript-starter/
 Slash 命令通过内置 skills 提供，支持 `/build`, `/test`, `/lint`, `/typecheck`, `/spellcheck`,
 `/release`, `/commit-push-pr` 等。
 
-## 代码风格
+## 贡献指南
 
-- 2 空格缩进
-- 单引号
-- 必须有分号
-- 行宽 100 字符
-- 禁止 `any` 类型 (warn)
-
-## 测试规范
-
-- 测试文件与源码同目录，遵循 `src/*_test.ts` 惯例
-- 使用 Deno 原生测试 API（`Deno.test`）和 `@std/assert`
-- 运行测试: `deno task test`
-- 覆盖率报告: `deno task test:coverage`
-
-## 发布流程
-
-本项目使用自动化发布脚本：
-
-```bash
-# 预检发布
-deno task release:dry
-
-# 正式发布
-deno task release
-```
-
-发布过程会自动：
-
-1. 解析 conventional commits，推导版本号
-2. 更新 `deno.json` 版本号
-3. 更新 CHANGELOG.md
-4. 创建 Git commit + tag 并推送
-5. 创建 GitHub Release
-
-GitHub Actions 检测到新 Release 后自动执行双平台发布：
-
-- `deno publish` → JSR
-- dnt 构建 + `npm publish` → npm
+请参阅 [贡献指南](https://zapmyco-docs.vercel.app/community/contributing)
+了解代码风格、测试规范、提交规范和发布流程等详细内容。
 
 ## 文档
 
