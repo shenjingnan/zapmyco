@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.3](https://github.com/shenjingnan/zapmyco/compare/v0.20.2...v0.20.3) (2026-05-25)
+
+### Chores
+
+- 升级 upload-artifact/download-artifact 兼容 Node.js 24
+  ([7598b04](https://github.com/shenjingnan/zapmyco/commit/7598b04))
+
 ## [0.20.2](https://github.com/shenjingnan/zapmyco/compare/v0.20.1...v0.20.2) (2026-05-25)
 
 ### Bug Fixes
