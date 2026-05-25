@@ -11,6 +11,9 @@ node_modules/
 # Build output
 dist
 
+# OpenManual cache
+docs/.cache/
+
 # OS files
 .DS_Store
 Thumbs.db

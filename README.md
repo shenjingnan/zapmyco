@@ -202,9 +202,14 @@ GitHub Actions 检测到新 Release 后自动执行双平台发布：
 
 ## 文档
 
-- [架构文档](docs/architecture.md)
-- [API 文档](docs/api.md)
-- [贡献指南](docs/contributing.md)
+请访问 [文档站点](https://zapmyco-docs.vercel.app) 查看完整的在线文档，包括：
+
+- [快速开始](https://zapmyco-docs.vercel.app/quickstart)
+- [CLI 使用指南](https://zapmyco-docs.vercel.app/guide/cli-usage)
+- [AI 代理功能](https://zapmyco-docs.vercel.app/guide/ai-agent)
+- [架构说明](https://zapmyco-docs.vercel.app/advanced/architecture)
+- [发布流程](https://zapmyco-docs.vercel.app/advanced/release-flow)
+- [贡献指南](https://zapmyco-docs.vercel.app/community/contributing)
 
 ## 许可证
 

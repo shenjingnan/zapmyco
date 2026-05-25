@@ -1,0 +1,68 @@
+---
+title: 安装方式
+description: ZapMyCo 的多种安装方式详解
+---
+
+# 安装方式
+
+ZapMyCo 提供三种安装方式，你可以根据使用场景选择最适合的方式。
+
+## 二进制安装（推荐）
+
+预编译二进制文件是最便捷的安装方式，无需安装任何运行时环境。
+
+### 一键安装脚本
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+```
+
+### 指定版本或目录
+
+```bash
+# 安装指定版本
+ZAPMYCO_VERSION=v0.20.0 curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+
+# 安装到自定义目录
+ZAPMYCO_INSTALL=~/my-tools curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+```
+
+### 直接下载
+
+你也可以从 [GitHub Releases](https://github.com/shenjingnan/zapmyco/releases) 直接下载对应平台的二进制文件：
+
+| 平台    | 架构          | 文件名 |
+| ------- | ------------- | ------ |
+| Linux   | x86_64        | `zapmyco-linux-x64` |
+| Linux   | ARM64         | `zapmyco-linux-arm64` |
+| macOS   | Apple Silicon | `zapmyco-macos-arm64` |
+| macOS   | Intel         | `zapmyco-macos-x64` |
+| Windows | x86_64        | `zapmyco-windows-x64.exe` |
+
+## npm 安装
+
+通过 npm 可以全局安装或直接使用：
+
+```bash
+# 直接运行（无需安装）
+npx zapmyco --help
+
+# 全局安装
+npm install -g zapmyco
+zapmyco --help
+```
+
+## JSR / Deno 运行
+
+如果你使用 Deno 运行时，可以直接通过 JSR 运行：
+
+```bash
+deno run --allow-env --allow-net jsr:@zapmyco/zapmyco --help
+```
+
+也可以全局安装为 Deno 可执行文件：
+
+```bash
+deno install -g -n zapmyco --allow-env --allow-net jsr:@zapmyco/zapmyco
+zapmyco --help
+```

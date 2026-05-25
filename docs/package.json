@@ -1,0 +1,12 @@
+{
+  "name": "zapmyco-docs",
+  "private": true,
+  "scripts": {
+    "dev": "openmanual dev",
+    "build": "rm -rf .cache && rm -rf dist && openmanual build",
+    "start": "npx -y serve dist -p 3000"
+  },
+  "dependencies": {
+    "openmanual": "^0.16.1"
+  }
+}
