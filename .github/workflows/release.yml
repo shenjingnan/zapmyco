@@ -55,7 +55,6 @@ jobs:
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
-          cache: 'pnpm'
 
       - name: 发布到 npm（Trusted Publishing）
         env:
