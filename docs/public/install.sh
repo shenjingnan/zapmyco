@@ -52,7 +52,7 @@ DOWNLOAD_URL="${BASE_URL}/${BINARY}"
 mkdir -p "$BIN_DIR"
 
 echo "⬇️  正在下载 ${BINARY} ..."
-curl -fsSL "$DOWNLOAD_URL" -o "${BIN_DIR}/${BINARY_NAME}"
+curl -fSL "$DOWNLOAD_URL" -o "${BIN_DIR}/${BINARY_NAME}" --progress-bar
 chmod +x "${BIN_DIR}/${BINARY_NAME}"
 
 # ---- 完整性验证 ----
