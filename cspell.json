@@ -22,7 +22,10 @@
     "deno",
     "denoland",
     "jsr",
-    "lcov"
+    "lcov",
+    "zapmyco",
+    "deepseek",
+    "useb"
   ],
   "ignorePaths": [
     "node_modules",
