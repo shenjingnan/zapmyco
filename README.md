@@ -4,11 +4,13 @@
   <img src="docs/public/logo.svg" alt="zapmyco logo" width="300" />
 </p>
 
-[![CI](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg)](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/shenjingnan/zapmyco/branch/main/graph/badge.svg)](https://codecov.io/gh/shenjingnan/zapmyco)
-[![NPM](https://img.shields.io/npm/v/zapmyco.svg?color=brightgreen)](https://www.npmjs.com/package/zapmyco)
-[![JSR](https://jsr.io/badges/@zapmyco/zapmyco)](https://jsr.io/@zapmyco/zapmyco)
-[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml"><img src="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/shenjingnan/zapmyco"><img src="https://codecov.io/gh/shenjingnan/zapmyco/branch/main/graph/badge.svg" alt="Codecov"></a>
+  <a href="https://www.npmjs.com/package/zapmyco"><img src="https://img.shields.io/npm/v/zapmyco.svg?color=brightgreen" alt="NPM"></a>
+  <a href="https://jsr.io/@zapmyco/zapmyco"><img src="https://jsr.io/badges/@zapmyco/zapmyco" alt="JSR"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg" alt="License: MIT"></a>
+</p>
 
 基于 Deno 的 AI 驱动命令行工具。
 
