@@ -1,10 +1,16 @@
-# ai-typescript-starter
+# zapmyco
 
-[![CI](https://github.com/shenjingnan/ai-typescript-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/shenjingnan/ai-typescript-starter/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/ai-typescript-starter.svg)](https://www.npmjs.com/package/ai-typescript-starter)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <img src="docs/logo.svg" alt="zapmyco logo" width="300" />
+</p>
 
-AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。
+[![CI](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg)](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/shenjingnan/zapmyco/branch/main/graph/badge.svg)](https://codecov.io/gh/shenjingnan/zapmyco)
+[![NPM](https://img.shields.io/npm/v/zapmyco.svg?color=brightgreen)](https://www.npmjs.com/package/zapmyco)
+[![JSR](https://jsr.io/badges/@zapmyco/zapmyco)](https://jsr.io/@zapmyco/zapmyco)
+[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
+
+基于 Deno 的 AI 驱动命令行工具。
 
 ## 安装方式
 
@@ -24,7 +30,7 @@ iwr https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.ps1 -useb
 
 ```bash
 # 安装指定版本
-ZAPMYCO_VERSION=v0.18.0 curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+ZAPMYCO_VERSION=vX.X.X curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
 
 # 安装到自定义目录
 ZAPMYCO_INSTALL=~/tools curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
@@ -54,13 +60,12 @@ deno run --allow-env --allow-net jsr:@zapmyco/zapmyco --help
 
 ## 特性
 
-- **现代技术栈**: TypeScript + Node.js 24+ + pnpm
-- **构建工具**: tsdown - 基于 rolldown 的 TypeScript 打包器
-- **测试框架**: Vitest - Vite 原生测试框架
-- **代码质量**: Biome (Lint + Format) + cspell (拼写检查)
-- **Git 工作流**: Husky + lint-staged + release-it
+- **现代技术栈**: TypeScript + Deno 2.x 运行时
+- **测试框架**: Deno Test - 内置测试运行器
+- **代码质量**: deno lint + deno fmt + cspell (拼写检查)
 - **AI 集成**: 内置 CLAUDE.md 和 .claude/ 目录配置
 - **CI/CD**: GitHub Actions 自动化测试和发布
+- **双平台发布**: 自动发布到 JSR 和 npm (通过 dnt)
 
 ## 快速开始
 
@@ -74,31 +79,27 @@ deno run --allow-env --allow-net jsr:@zapmyco/zapmyco --help
 # 克隆项目
 git clone https://github.com/your-username/your-project.git
 cd your-project
-
-# 安装依赖
-pnpm install
 ```
+
+> 本项目基于 Deno 运行时，无需手动安装依赖。Deno 会自动处理模块缓存。
 
 ### 开发
 
 ```bash
 # 开发模式
-pnpm run dev
-
-# 构建
-pnpm run build
+deno task dev
 
 # 测试
-pnpm run test
+deno task test
 
 # 代码检查
-pnpm run lint
+deno task lint
 
 # 类型检查
-pnpm run typecheck
+deno task check
 
 # 完整检查
-pnpm run check
+deno task check:all
 ```
 
 ## 项目结构
@@ -106,41 +107,42 @@ pnpm run check
 ```
 ai-typescript-starter/
 ├── .claude/              # Claude Code 配置
-│   ├── commands/         # Slash 命令
-│   └── skills/           # 技能定义
+│   ├── skills/           # 技能定义
+│   └── CLAUDE.md         # 项目上下文
 ├── .github/              # GitHub 配置
-│   ├── workflows/        # CI/CD 工作流
-│   └── ISSUE_TEMPLATE/   # Issue 模板
+│   └── workflows/        # CI/CD 工作流
 ├── docs/                 # 文档
 ├── examples/             # 示例代码
 ├── src/                  # 源代码
-│   └── __tests__/        # 测试文件
+│   ├── index.ts          # 主入口 & CLI
+│   ├── index_test.ts     # 测试文件（与源码同目录）
+│   ├── ai-agent.ts       # AI Agent 对话模块
+│   └── text-line-stream.ts # 文本行流工具
+├── tools/                # 构建/发布脚本
+│   ├── build-npm.ts      # dnt npm 构建
+│   └── release.ts        # 自动化发布
 ├── AGENTS.md             # AI Agent 配置
+├── deno.json             # Deno 配置
 └── dist/                 # 构建产物
 ```
 
 ## 可用脚本
 
-| 命令                     | 说明                        |
-| ------------------------ | --------------------------- |
-| `pnpm run build`         | 构建项目                    |
-| `pnpm run dev`           | 开发模式 (watch)            |
-| `pnpm run test`          | 运行测试                    |
-| `pnpm run test:watch`    | 测试监听模式                |
-| `pnpm run test:coverage` | 测试覆盖率报告              |
-| `pnpm run lint`          | 代码检查                    |
-| `pnpm run lint:fix`      | 自动修复代码问题            |
-| `pnpm run format`        | 格式化代码                  |
-| `pnpm run typecheck`     | TypeScript 类型检查         |
-| `pnpm run check`         | 完整检查 (typecheck + lint) |
-| `pnpm run check:fix`     | 检查并修复                  |
-| `pnpm run spellcheck`    | 拼写检查                    |
-| `pnpm run release`       | 创建发布                    |
-| `pnpm run release:beta`  | 发布 beta 预发布版本        |
-| `pnpm run release:dry`   | 发布干运行 (不实际发布)     |
-| `pnpm run release:patch` | 直接发布 patch 版本         |
-| `pnpm run release:minor` | 直接发布 minor 版本         |
-| `pnpm run release:major` | 直接发布 major 版本         |
+| 命令                      | 说明                                 |
+| ------------------------- | ------------------------------------ |
+| `deno task dev`           | 开发模式 (watch)                     |
+| `deno task test`          | 运行测试                             |
+| `deno task test:coverage` | 测试覆盖率报告                       |
+| `deno task lint`          | 代码检查                             |
+| `deno task fmt`           | 格式化代码                           |
+| `deno task fmt:check`     | 格式检查                             |
+| `deno task check`         | 类型检查                             |
+| `deno task check:all`     | 完整检查 (fmt + lint + check + test) |
+| `deno task cli`           | 运行 CLI                             |
+| `deno task ai`            | AI 对话模式                          |
+| `deno task release`       | 创建发布                             |
+| `deno task release:dry`   | 发布干运行 (不实际发布)              |
+| `deno task build:npm`     | dnt 构建 npm 包                      |
 
 ## AI 辅助开发
 
@@ -152,10 +154,11 @@ ai-typescript-starter/
 
 ### .claude/ 目录
 
-- `commands/` - 自定义 Slash 命令 (`/build`, `/test`, `/lint`, `/typecheck`, `/spellcheck`,
-  `/release`, `/commit-push-pr`)
-- `skills/` - 项目技能定义 (`resolve-git-conflicts`, `fix-audit`, `project-context`,
-  `update-readme`)
+- `skills/` - 项目技能定义 (`update-readme`, `resolve-git-conflicts` 等)
+- `CLAUDE.md` - 项目上下文和开发规范
+
+Slash 命令通过内置 skills 提供，支持 `/build`, `/test`, `/lint`, `/typecheck`, `/spellcheck`,
+`/release`, `/commit-push-pr` 等。
 
 ## 代码风格
 
@@ -167,25 +170,35 @@ ai-typescript-starter/
 
 ## 测试规范
 
-- 测试文件放在 `src/__tests__/` 目录
-- 测试覆盖率阈值: 80%
-- 使用 Vitest 全局 API
+- 测试文件与源码同目录，遵循 `src/*_test.ts` 惯例
+- 使用 Deno 原生测试 API（`Deno.test`）和 `@std/assert`
+- 运行测试: `deno task test`
+- 覆盖率报告: `deno task test:coverage`
 
 ## 发布流程
 
-本项目使用 [release-it](https://github.com/release-it/release-it) 进行版本管理：
+本项目使用自动化发布脚本：
 
 ```bash
-pnpm run release
+# 预检发布
+deno task release:dry
+
+# 正式发布
+deno task release
 ```
 
 发布过程会自动：
 
-1. 更新版本号
-2. 更新 CHANGELOG.md
-3. 创建 Git tag
-4. 推送到远程仓库
+1. 解析 conventional commits，推导版本号
+2. 更新 `deno.json` 版本号
+3. 更新 CHANGELOG.md
+4. 创建 Git commit + tag 并推送
 5. 创建 GitHub Release
+
+GitHub Actions 检测到新 Release 后自动执行双平台发布：
+
+- `deno publish` → JSR
+- dnt 构建 + `npm publish` → npm
 
 ## 文档
 
