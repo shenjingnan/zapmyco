@@ -3,11 +3,11 @@ name: commit-push-pr
 description: 提交、推送并创建 PR
 ---
 
-## 上下文
+## 上下文获取
 
-- 当前 git 状态: !`git status`
-- 当前 git diff（已暂存和未暂存的变更）: !`git diff HEAD`
-- 当前分支: !`git branch --show-current`
+以下命令将在技能加载时自动执行，结果将注入到上下文中供分析：
+
+- 全部上下文: !`bash .agents/skills/commit-push-pr/scripts/collect-context.sh`
 
 ## Attribution 信息
 
