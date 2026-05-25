@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/shenjingnan/zapmyco/compare/v0.19.0...v0.19.1) (2026-05-25)
+
+### Performance Improvements
+
+- 优化 deno compile 产物体积，引入 --no-check、strip 和 UPX 压缩 (#209)
+  ([edf4820](https://github.com/shenjingnan/zapmyco/commit/edf4820))
+
 ## [0.19.0](https://github.com/shenjingnan/zapmyco/compare/v0.18.0...v0.19.0) (2026-05-25)
 
 ### Features
