@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.0](https://github.com/shenjingnan/zapmyco/compare/v0.16.0...v0.17.0) (2026-05-25)
+
+### Code Refactoring
+
+- 移除 release-it，改用 Deno 原生发布脚本 + dnt 双发布 (#206)
+  ([ad5042a](https://github.com/shenjingnan/zapmyco/commit/ad5042a))
+- 将项目从 Node.js/pnpm 迁移到 Deno/JSR (#202)
+  ([d49ed93](https://github.com/shenjingnan/zapmyco/commit/d49ed93))
+
+### Features
+
+- 新增 AI 对话模式和 CLI 交互原型 (#205)
+  ([55fc341](https://github.com/shenjingnan/zapmyco/commit/55fc341))
+- 添加 CLI 命令行支持 (#203) ([b8324e5](https://github.com/shenjingnan/zapmyco/commit/b8324e5))
+
 ## [0.4.5](https://github.com/shenjingnan/ai-typescript-starter/compare/v0.4.4...v0.4.5) (2026-04-14)
 
 ### Bug Fixes

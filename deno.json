@@ -1,6 +1,6 @@
 {
   "name": "zapmyco",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造",
   "exports": "./src/index.ts",
   "tasks": {
@@ -21,7 +21,9 @@
   },
   "nodeModulesDir": "auto",
   "fmt": {
-    "exclude": ["docs/"],
+    "exclude": [
+      "docs/"
+    ],
     "lineWidth": 100,
     "indentWidth": 2,
     "semiColons": true,
@@ -29,8 +31,12 @@
   },
   "lint": {
     "rules": {
-      "tags": ["recommended"],
-      "exclude": ["no-explicit-any"]
+      "tags": [
+        "recommended"
+      ],
+      "exclude": [
+        "no-explicit-any"
+      ]
     }
   },
   "publish": {
