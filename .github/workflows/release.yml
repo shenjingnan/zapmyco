@@ -139,7 +139,7 @@ jobs:
           fi
 
       - name: 上传 checksum 文件
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: checksums-${{ matrix.output }}
           path: checksums-${{ matrix.output }}.txt
