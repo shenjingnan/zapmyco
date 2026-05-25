@@ -45,11 +45,26 @@ jobs:
           TAG_NAME: ${{ github.event.release.tag_name }}
         run: deno run -A tools/build-npm.ts "${TAG_NAME#v}"
 
-      - name: 设置 Node.js
-        uses: actions/setup-node@v4
+      - name: 设置 pnpm
+        uses: pnpm/action-setup@v4
         with:
-          node-version: 22
+          version: latest
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
 
       - name: 发布到 npm（Trusted Publishing）
-        run: cd dist/npm && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ''
+        run: |
+          cd dist/npm
+          if echo "${{ github.event.release.tag_name }}" | grep -q '-'; then
+            TAG=$(echo "${{ github.event.release.tag_name }}" | sed 's/.*-\([a-z]*\).*/\1/')
+            pnpm publish --no-git-checks --provenance --access public --tag "$TAG"
+          else
+            pnpm publish --no-git-checks --provenance --access public
+          fi
