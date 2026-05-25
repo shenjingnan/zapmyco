@@ -5,45 +5,29 @@ description: 安全审计技能，用于检查和修复依赖安全问题
 
 # 安全审计
 
-## 执行步骤
+## 上下文获取
 
-### 1. 执行安全审计
+以下命令将在技能加载时自动执行，结果将注入到上下文中供分析：
 
-检查依赖中的已知漏洞：
+- 安全审计结果: !`bash .agents/skills/security-audit/scripts/run-security-audit.sh`
 
-```bash
-deno audit
-```
+## 你的任务
 
-仅查看 high 和 critical 级别漏洞：
+根据上方注入的审计结果，按以下步骤处理：
 
-```bash
-deno audit --level=high
-```
+### 1. 分析结果
 
-使用 socket.dev 漏洞数据库（更全面的检查）：
+逐项检查每个检查项的输出，判断是否存在安全问题：
 
-```bash
-deno audit --socket
-```
+1. **漏洞扫描** (`deno audit`) — 检查是否有已知漏洞，确认零漏洞则通过
+2. **high/critical 级别漏洞** (`deno audit --level=high`) — 重点排查高危漏洞
+3. **socket.dev 数据库** (`deno audit --socket`) — 更全面的漏洞检查
+4. **过时依赖** (`deno outdated`) — 检查是否有可更新的依赖
+5. **兼容更新** (`deno outdated --compatible`) — 确认可兼容升级的依赖
 
-零漏洞则结束。
+### 2. 修复漏洞
 
-### 2. 检查过时依赖
-
-```bash
-deno outdated
-```
-
-查看可兼容更新的依赖：
-
-```bash
-deno outdated --compatible
-```
-
-### 3. 修复漏洞
-
-对每个漏洞包：
+如果发现漏洞或过时依赖，对每个问题包依次处理：
 
 1. **尝试自动修复**：
    ```bash
@@ -61,10 +45,13 @@ deno outdated --compatible
    git checkout -- deno.json deno.lock
    ```
 
-### 4. 收尾
+### 3. 最终验证
 
-- 确认 `deno audit` 通过
-- 重新运行完整检查：`deno fmt --check && deno lint && deno check src/ && deno test --allow-env`
+修复完成后，确认所有检查通过：
+
+```bash
+deno fmt --check && deno lint && deno check src/ && deno test --allow-env
+```
 
 ## 原则
 
