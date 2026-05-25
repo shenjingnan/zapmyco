@@ -1,4 +1,5 @@
 {
+  "exclude": ["dist/"],
   "name": "@zapmyco/zapmyco",
   "version": "0.20.4-beta.0",
   "description": "AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造",
