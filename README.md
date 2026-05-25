@@ -1,7 +1,7 @@
 # zapmyco
 
 <p align="center">
-  <img src="docs/logo.svg" alt="zapmyco logo" width="300" />
+  <img src="docs/public/logo.svg" alt="zapmyco logo" width="300" />
 </p>
 
 [![CI](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg)](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml)
