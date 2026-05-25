@@ -36,13 +36,17 @@ await build({
     license: 'MIT',
     repository: {
       type: 'git',
-      url: 'git+https://github.com/shenjingnan/zapmyco.git',
+      url: 'https://github.com/shenjingnan/zapmyco.git',
     },
     bugs: {
       url: 'https://github.com/shenjingnan/zapmyco/issues',
     },
     bin: {
       zapmyco: './esm/src/index.js',
+    },
+    publishConfig: {
+      provenance: true,
+      access: 'public',
     },
   },
   typeCheck: false,
