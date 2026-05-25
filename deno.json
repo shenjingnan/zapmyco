@@ -14,8 +14,8 @@
     "lint": "deno lint",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
-    "check": "deno check src/",
-    "check:all": "deno fmt --check && deno lint && deno check src/ && deno test --allow-env",
+    "check": "deno check",
+    "check:all": "deno fmt --check && deno lint && deno check && deno test --allow-env",
     "release": "deno run -A tools/release.ts",
     "release:dry": "deno run -A tools/release.ts --dry-run",
     "build:npm": "deno run -A tools/build-npm.ts"

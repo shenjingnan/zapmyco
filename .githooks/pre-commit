@@ -17,7 +17,7 @@ deno lint 2>/dev/null || {
 }
 
 echo "🔍 运行类型检查..."
-deno check src/ tools/ 2>/dev/null || {
+deno check 2>/dev/null || {
   echo "⚠️  存在类型错误"
   exit 1
 }

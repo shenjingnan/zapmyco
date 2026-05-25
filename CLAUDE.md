@@ -34,8 +34,8 @@ deno coverage                        # 查看覆盖率报告
 deno lint                            # 代码检查
 deno fmt                             # 格式化代码
 deno fmt --check                     # 格式检查
-deno check src/                      # 类型检查
-deno fmt --check && deno lint && deno check src/ && deno test  # 完整检查
+deno check                           # 类型检查
+deno fmt --check && deno lint && deno check && deno test  # 完整检查
 
 # 发布
 deno run -A tools/release.ts            # 自动化发布（版本推导 + CHANGELOG + GitHub Release）
@@ -142,7 +142,7 @@ Deno.test('MyModule', async (t) => {
 
 ## 关键规则
 
-1. **提交前检查**: 确保 `deno fmt --check && deno lint && deno check src/ && deno test` 全部通过
+1. **提交前检查**: 确保 `deno fmt --check && deno lint && deno check && deno test` 全部通过
 2. **类型安全**: 避免使用 `any`，优先使用具体类型或泛型
 3. **文档更新**: 新功能需更新相关文档
 4. **测试覆盖**: 新代码需要有对应的测试
