@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/shenjingnan/zapmyco/compare/v0.18.0...v0.19.0) (2026-05-25)
+
+### Features
+
+- 创建安装脚本，简化二进制安装命令 (#208)
+  ([5f072dd](https://github.com/shenjingnan/zapmyco/commit/5f072dd))
+
 ## [0.18.0](https://github.com/shenjingnan/zapmyco/compare/v0.17.2-beta.2...v0.18.0) (2026-05-25)
 
 ### Features
