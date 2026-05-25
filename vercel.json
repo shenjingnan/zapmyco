@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "buildCommand": "cd docs && npm install && npx openmanual build",
+  "outputDirectory": "docs/dist",
+  "cleanUrls": true
+}

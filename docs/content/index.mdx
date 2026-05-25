@@ -1,0 +1,54 @@
+---
+title: ZapMyCo
+description: 基于 Deno 的 AI 驱动命令行工具
+---
+
+# ZapMyCo
+
+<p align="left">
+  <img src="/logo.svg" alt="zapmyco logo" width="240" />
+</p>
+
+[![CI](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg)](https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml)
+[![NPM](https://img.shields.io/npm/v/zapmyco.svg?color=brightgreen)](https://www.npmjs.com/package/zapmyco)
+[![JSR](https://jsr.io/badges/@zapmyco/zapmyco)](https://jsr.io/@zapmyco/zapmyco)
+[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
+
+**ZapMyCo** 是一个基于 Deno 的 AI 驱动命令行工具，提供现代化的 CLI 交互体验和 AI Agent 集成能力。
+
+## 特性
+
+- **现代技术栈** — TypeScript + Deno 2.x 运行时
+- **AI 集成** — 内置 AI Agent 对话模式，终端中的智能交互
+- **双平台发布** — 自动发布到 JSR 和 npm，支持多平台二进制分发
+- **零依赖运行** — 预编译二进制文件，无需安装运行时
+- **自动化发布** — Conventional Commits 驱动的自动化版本管理和发布
+
+## 快速安装
+
+```bash
+# 二进制安装（推荐，无需运行时）
+curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+
+# 或通过 npm
+npx zapmyco --help
+
+# 或通过 JSR / Deno
+deno run -A jsr:@zapmyco/zapmyco --help
+```
+
+## 快速使用
+
+```bash
+# 查看帮助
+zapmyco --help
+
+# 打招呼
+zapmyco greet World
+
+# 查看配置
+zapmyco config
+
+# AI 对话模式
+zapmyco ai
+```

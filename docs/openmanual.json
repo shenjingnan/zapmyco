@@ -1,0 +1,68 @@
+{
+  "name": "ZapMyCo",
+  "description": "基于 Deno 的 AI 驱动命令行工具",
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo.svg",
+    "dark": "/logo-dark.svg"
+  },
+  "siteUrl": "https://zapmyco-docs.vercel.app",
+  "locale": "zh",
+  "header": {
+    "links": [
+      { "icon": "/icons/github-fill.svg", "href": "https://github.com/shenjingnan/zapmyco" }
+    ]
+  },
+  "navbar": {
+    "items": [
+      { "label": "快速开始", "href": "/quickstart" },
+      { "label": "指南", "href": "/guide" },
+      { "label": "进阶", "href": "/advanced" },
+      { "label": "社区", "href": "/community" }
+    ]
+  },
+  "footer": {
+    "columns": {
+      "brand": {
+        "name": "ZapMyCo",
+        "description": "基于 Deno 的 AI 驱动命令行工具"
+      },
+      "groups": [
+        {
+          "title": "指南",
+          "links": [
+            { "label": "快速开始", "href": "/quickstart" },
+            { "label": "安装方式", "href": "/guide/installation" },
+            { "label": "CLI 使用", "href": "/guide/cli-usage" },
+            { "label": "AI 代理", "href": "/guide/ai-agent" }
+          ]
+        },
+        {
+          "title": "社区",
+          "links": [
+            {
+              "label": "GitHub",
+              "href": "https://github.com/shenjingnan/zapmyco",
+              "external": true
+            },
+            { "label": "贡献指南", "href": "/community/contributing" }
+          ]
+        },
+        {
+          "title": "资源",
+          "links": [
+            { "label": "架构说明", "href": "/advanced/architecture" },
+            { "label": "发布流程", "href": "/advanced/release-flow" },
+            {
+              "label": "更新日志",
+              "href": "https://github.com/shenjingnan/zapmyco/releases",
+              "external": true
+            }
+          ]
+        }
+      ],
+      "social": [{ "platform": "github", "url": "https://github.com/shenjingnan/zapmyco" }],
+      "copyright": "MIT 2026 © ZapMyCo."
+    }
+  }
+}
