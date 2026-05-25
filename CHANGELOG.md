@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/shenjingnan/zapmyco/compare/v0.19.2...v0.20.0) (2026-05-25)
+
+### Features
+
+- GitHub Release 增加 SHA256 checksum 校验和安装指引 (#211)
+  ([ead8583](https://github.com/shenjingnan/zapmyco/commit/ead8583))
+
 ## [0.19.2](https://github.com/shenjingnan/zapmyco/compare/v0.19.1...v0.19.2) (2026-05-25)
 
 ### Bug Fixes
