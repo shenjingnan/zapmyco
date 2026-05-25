@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.6](https://github.com/shenjingnan/zapmyco/compare/v0.20.5...v0.20.6) (2026-05-25)
+
+### Bug Fixes
+
+- 移除 macOS 编译二进制的 UPX 压缩 (#234)
+  ([057d634](https://github.com/shenjingnan/zapmyco/commit/057d634))
+
 ## [0.20.5](https://github.com/shenjingnan/zapmyco/compare/v0.20.4-beta.0...v0.20.5) (2026-05-25)
 
 ### Documentation
