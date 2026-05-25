@@ -1,6 +1,6 @@
 {
   "name": "@shenjingnan/ai-typescript-starter",
-  "version": "0.4.5",
+  "version": "0.16.0",
   "description": "AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造",
   "exports": "./src/index.ts",
   "tasks": {
