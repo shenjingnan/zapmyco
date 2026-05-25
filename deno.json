@@ -1,6 +1,6 @@
 {
-  "name": "@shenjingnan/ai-typescript-starter",
-  "version": "0.4.5",
+  "name": "zapmyco",
+  "version": "0.16.0",
   "description": "AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造",
   "exports": "./src/index.ts",
   "tasks": {
@@ -14,7 +14,10 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "check": "deno check src/",
-    "check:all": "deno fmt --check && deno lint && deno check src/ && deno test --allow-env"
+    "check:all": "deno fmt --check && deno lint && deno check src/ && deno test --allow-env",
+    "release": "deno run -A tools/release.ts",
+    "release:dry": "deno run -A tools/release.ts --dry-run",
+    "build:npm": "deno run -A tools/build-npm.ts"
   },
   "nodeModulesDir": "auto",
   "fmt": {
@@ -41,7 +44,9 @@
       "examples",
       "CHANGELOG.md",
       "AGENTS.md",
-      "src/**/*_test.ts"
+      "src/**/*_test.ts",
+      "tools",
+      "dist"
     ]
   },
   "compilerOptions": {

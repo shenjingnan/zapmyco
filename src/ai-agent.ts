@@ -3,7 +3,7 @@
  */
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.39';
-import { TextLineStream } from 'jsr:@std/streams@1';
+import { TextLineStream } from './text-line-stream.ts';
 
 /** AiAgent 配置选项 */
 export interface AiAgentOptions {

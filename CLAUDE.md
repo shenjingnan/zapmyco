@@ -5,7 +5,7 @@
 ## 项目概述
 
 **ai-typescript-starter** 是一个 AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。\
-基于 **Deno 2.x** 运行时，发布到 **JSR**。
+基于 **Deno 2.x** 运行时，发布到 **JSR** 和 **npm**。
 
 ## 技术栈
 
@@ -14,7 +14,9 @@
 | Deno       | 2.8+     | 运行时 / TypeScript 编译 / 测试 / Lint / Format |
 | TypeScript | 原生支持 | 编程语言                                        |
 | cspell     | 8.x      | 拼写检查 (npm)                                  |
-| JSR        | —        | 包发布 registry                                 |
+| dnt        | 0.42.x   | Deno → npm 转换 (JSR)                           |
+| JSR        | —        | 包发布 registry (zapmyco)                       |
+| npm        | —        | 包发布 registry (zapmyco)                       |
 
 ## 快速命令参考
 
@@ -36,8 +38,10 @@ deno check src/                      # 类型检查
 deno fmt --check && deno lint && deno check src/ && deno test  # 完整检查
 
 # 发布
-deno publish                         # 发布到 JSR
-deno publish --dry-run               # 发布预检（不实际发布）
+deno run -A tools/release.ts            # 自动化发布（版本推导 + CHANGELOG + GitHub Release）
+deno run -A tools/release.ts --dry-run  # 发布预检
+deno run -A tools/build-npm.ts          # dnt 构建 npm 包（CI 中自动执行）
+deno publish                            # 直接发布到 JSR（CI 中自动执行）
 ```
 
 ## 代码风格规范
@@ -175,6 +179,19 @@ Deno.test('MyModule', async (t) => {
 
 ### 如何发布新版本？
 
-1. 在 `deno.json` 中更新 `version` 字段
-2. 运行 `deno publish --dry-run` 预检
-3. 创建 GitHub Release（触发自动发布到 JSR）
+使用 Deno 原生发布脚本：
+
+1. 确保 `gh` CLI 已安装并认证：`gh auth status`
+2. 运行 `deno run -A tools/release.ts --dry-run` 预检
+3. 确认版本推导和 CHANGELOG 无误
+4. 运行 `deno run -A tools/release.ts` 正式发布
+5. 脚本会自动：
+   - 解析 conventional commits，推导版本号（`BREAKING CHANGE` → major, `feat` → minor, `fix` →
+     patch）
+   - 更新 `deno.json` 版本号
+   - 更新 `CHANGELOG.md`
+   - 创建 Git commit + tag 并推送
+   - 创建 GitHub Release
+6. GitHub Actions 检测到新 Release 后自动执行：
+   - `deno publish` → JSR
+   - dnt 构建 + `npm publish --provenance` → npm
