@@ -7,24 +7,32 @@ description: 创建项目发布。当用户输入 /release 或要求发布新版
 
 创建项目发布。
 
-## 执行步骤
+## 上下文获取
 
-1. 确保所有测试通过: `deno test --allow-env`
-2. 确保代码检查通过: `deno fmt --check && deno lint && deno check src/`
-3. 构建 npm 包: `deno run -A tools/build-npm.ts`
-4. 发布预检: `deno publish --dry-run`
-5. 运行发布: `deno run -A tools/release.ts`
+以下命令将在技能加载时自动执行，结果将注入到上下文中供分析：
+
+- 全部发布结果: !`bash .agents/skills/release/scripts/run-preflight.sh`
+
+## 你的任务
+
+根据上方注入的发布输出，判断发布是否成功：
+
+- **发布成功** — `---[release output]---` 末尾显示 `🎉 发布完成`，告知用户版本号和 GitHub Release
+  链接
+- **发布失败** — 分析失败原因（前置检查不通过、版本推导失败、GitHub Release
+  创建失败等），告知用户具体错误
 
 ## 发布流程
 
 `tools/release.ts` 会自动执行以下操作：
 
-1. 解析 conventional commits，推导版本号
-2. 更新 `deno.json` 版本号
-3. 更新 `CHANGELOG.md`
-4. 创建 Git commit + tag
-5. 推送到远程仓库
-6. 创建 GitHub Release
+1. 前置检查：分支为 main、工作区干净、gh 已认证
+2. 解析 conventional commits，推导版本号
+3. 更新 `deno.json` 版本号
+4. 更新 `CHANGELOG.md`
+5. 创建 Git commit + tag
+6. 推送到远程仓库
+7. 创建 GitHub Release
 
 ## 版本规范
 
@@ -33,13 +41,6 @@ description: 创建项目发布。当用户输入 /release 或要求发布新版
 - **major**: 不兼容的 API 变更
 - **minor**: 向后兼容的新功能
 - **patch**: 向后兼容的 Bug 修复
-
-## 预检
-
-```bash
-# 发布预检（不实际发布）
-deno run -A tools/release.ts --dry-run
-```
 
 ## GitHub Actions 自动发布
 
