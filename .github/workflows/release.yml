@@ -108,10 +108,6 @@ jobs:
         if: matrix.compile-target == '--target aarch64-unknown-linux-gnu'
         run: sudo apt-get install -y binutils-aarch64-linux-gnu
 
-      - name: 安装 UPX (macOS)
-        if: runner.os == 'macOS'
-        run: brew install upx
-
       - name: 安装 UPX (Windows)
         if: runner.os == 'Windows'
         run: choco install upx
@@ -128,10 +124,6 @@ jobs:
             strip ${{ matrix.output }}
           fi
           upx --best --lzma ${{ matrix.output }}
-
-      - name: 压缩二进制 (macOS)
-        if: runner.os == 'macOS'
-        run: upx --best --lzma --force-macos ${{ matrix.output }}
 
       - name: 压缩二进制 (Windows)
         if: runner.os == 'Windows'
