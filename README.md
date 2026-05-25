@@ -6,6 +6,39 @@
 
 AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。
 
+## 安装方式
+
+### 二进制下载（无需安装运行时）
+
+每个版本都会发布预编译的二进制文件，下载即可运行：
+
+| 平台    | 架构          | 下载命令                                                                                                                     |
+| ------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Linux   | x86_64        | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-x64 -o zapmyco && chmod +x zapmyco`   |
+| Linux   | ARM64         | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-arm64 -o zapmyco && chmod +x zapmyco` |
+| macOS   | Apple Silicon | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-arm64 -o zapmyco && chmod +x zapmyco` |
+| macOS   | Intel         | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-x64 -o zapmyco && chmod +x zapmyco`   |
+| Windows | x86_64        | `curl -L https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-windows-x64.exe -o zapmyco.exe`             |
+
+一行命令自动检测平台下载：
+
+```bash
+# Linux / macOS
+curl -fsSL "https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-$(uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')" -o zapmyco && chmod +x zapmyco && ./zapmyco --help
+```
+
+### 通过 npm 安装
+
+```bash
+npx zapmyco --help
+```
+
+### 通过 JSR / Deno 运行
+
+```bash
+deno run --allow-env --allow-net jsr:@zapmyco/zapmyco --help
+```
+
 ## 特性
 
 - **现代技术栈**: TypeScript + Node.js 24+ + pnpm
