@@ -1,7 +1,7 @@
 ---
 name: release
 description: 创建项目发布。当用户输入 /release 或要求发布新版本时使用
-argument-hint: [tag]
+argument-hint: '[tag]'
 arguments: [tag]
 ---
 
