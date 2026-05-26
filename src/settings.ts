@@ -4,8 +4,25 @@
 
 const SETTINGS_PATH = '.zapmyco/settings.json';
 
-/** LLM 配置 */
+/** 供应商配置 */
+export interface ProviderConfig {
+  /** API 密钥，支持 ${env.VAR} 语法 */
+  apiKey?: string;
+}
+
+/** LLM 配置（新格式） */
 export interface LlmSettings {
+  /** 供应商字典，key 为唯一标识名（如 "deepseek"、"glm"） */
+  providers?: Record<string, ProviderConfig>;
+  /**
+   * 模型配置档字典，key 为配置档名称（如 "default"、"advanced"、"light"、"vision"），
+   * value 为模型名称（对应内置模型注册表中的名称）
+   */
+  models?: Record<string, string>;
+}
+
+/** 旧版 LLM 配置格式 */
+interface LegacyLlmSettings {
   apiKey?: string;
   baseURL?: string;
   model?: string;
@@ -14,6 +31,35 @@ export interface LlmSettings {
 /** 顶层配置 */
 export interface Settings {
   llm?: LlmSettings;
+}
+
+/**
+ * 将旧版格式转换为新版格式
+ * 旧版: { llm: { apiKey, baseURL, model } }
+ * 新版: { llm: { providers: { default: { apiKey } }, models: { default: model } } }
+ * 只提取字符串类型的值
+ */
+function convertLegacySettings(legacy: LegacyLlmSettings): LlmSettings {
+  return {
+    providers: {
+      default: {
+        apiKey: typeof legacy.apiKey === 'string' ? legacy.apiKey : undefined,
+      },
+    },
+    models: {
+      default: typeof legacy.model === 'string' ? legacy.model : 'deepseek-v4-flash',
+    },
+  };
+}
+
+/**
+ * 检测是否为旧版 LLM 配置格式
+ * 要求 apiKey 或 model 为字符串类型
+ */
+function isLegacyFormat(llm: unknown): llm is LegacyLlmSettings {
+  if (typeof llm !== 'object' || llm === null) return false;
+  return typeof (llm as Record<string, unknown>).apiKey === 'string' ||
+    typeof (llm as Record<string, unknown>).model === 'string';
 }
 
 /**
@@ -38,6 +84,7 @@ export function resolveEnvRef(value: string): string {
 /**
  * 加载 ~/.zapmyco/settings.json
  * 文件不存在时返回 null，不报错
+ * 自动兼容旧版格式
  */
 export function loadSettings(): Settings | null {
   const home = Deno.env.get('HOME');
@@ -49,15 +96,42 @@ export function loadSettings(): Settings | null {
     const content = Deno.readTextFileSync(filePath);
     const parsed = JSON.parse(content);
 
-    // 只提取 llm 对象中的已知字段
-    const llm = parsed?.llm;
-    if (!llm || typeof llm !== 'object') return {};
+    const llmRaw = parsed?.llm;
+    if (!llmRaw || typeof llmRaw !== 'object') return {};
+
+    // 兼容旧版格式
+    if (isLegacyFormat(llmRaw)) {
+      return { llm: convertLegacySettings(llmRaw) };
+    }
+
+    // 新版格式
+    const llm = llmRaw as Record<string, unknown>;
+
+    const providers: Record<string, ProviderConfig> = {};
+    if (llm.providers && typeof llm.providers === 'object') {
+      for (const [name, cfg] of Object.entries(llm.providers)) {
+        if (typeof cfg === 'object' && cfg !== null) {
+          const pc = cfg as Record<string, unknown>;
+          providers[name] = {
+            apiKey: typeof pc.apiKey === 'string' ? pc.apiKey : undefined,
+          };
+        }
+      }
+    }
+
+    const models: Record<string, string> = {};
+    if (llm.models && typeof llm.models === 'object') {
+      for (const [name, modelName] of Object.entries(llm.models)) {
+        if (typeof modelName === 'string') {
+          models[name] = modelName;
+        }
+      }
+    }
 
     return {
       llm: {
-        apiKey: typeof llm.apiKey === 'string' ? llm.apiKey : undefined,
-        baseURL: typeof llm.baseURL === 'string' ? llm.baseURL : undefined,
-        model: typeof llm.model === 'string' ? llm.model : undefined,
+        providers: Object.keys(providers).length > 0 ? providers : undefined,
+        models: Object.keys(models).length > 0 ? models : undefined,
       },
     };
   } catch (error) {

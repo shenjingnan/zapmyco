@@ -5,15 +5,23 @@
 import Anthropic from 'npm:@anthropic-ai/sdk@0.39';
 import { TextLineStream } from './text-line-stream.ts';
 import { loadSettings, resolveEnvRef } from './settings.ts';
+import { getModelInfo } from './models.ts';
 
 /** AiAgent 配置选项 */
 export interface AiAgentOptions {
-  /** API Key，默认从 DEEPSEEK_API_KEY 环境变量读取 */
+  /** API Key，默认从 settings.json 或 DEEPSEEK_API_KEY 环境变量读取 */
   apiKey?: string;
-  /** API 基础 URL，默认 https://api.deepseek.com/anthropic */
+  /** API 基础 URL，默认从内置模型注册表读取 */
   baseURL?: string;
-  /** 模型名称，默认 deepseek-v4-flash */
+  /** 模型名称，默认从 modelProfile 或内置模型注册表读取 */
   model?: string;
+  /**
+   * 模型配置档名称（对应 settings.json llm.models 中的 key）
+   * 如 "default"、"advanced"、"light"、"vision"
+   */
+  modelProfile?: string;
+  /** 供应商名称（对应 settings.json llm.providers 中的 key） */
+  provider?: string;
   /** 系统提示词 */
   systemPrompt?: string;
 }
@@ -42,21 +50,45 @@ export class AiAgent {
     const settings = loadSettings();
     const llm = settings?.llm;
 
-    // 解析 apiKey：options > settings.json(${VAR}解析) > 环境变量
-    const settingsApiKey = llm?.apiKey ? resolveEnvRef(llm.apiKey) : undefined;
-    const apiKey = options.apiKey ?? settingsApiKey ??
-      Deno.env.get('DEEPSEEK_API_KEY');
+    // 1. 确定模型配置档名称
+    const profileName = options.modelProfile ?? 'default';
+
+    // 2. 从配置档解析模型名称
+    const profileModelName = llm?.models?.[profileName];
+
+    // 3. 最终模型名称：options.model > 配置档模型名 > 默认值
+    const modelName = options.model ?? profileModelName ?? DEFAULT_MODEL;
+
+    // 4. 从内置注册表查找模型信息
+    const modelInfo = getModelInfo(modelName);
+
+    // 5. 确定供应商名称：options.provider > 注册表中的供应商 > 'default'
+    const providerName = options.provider ?? modelInfo?.provider ?? 'default';
+
+    // 6. 解析 apiKey：options > settings.providers[provider].apiKey > 环境变量
+    let apiKey: string | undefined;
+    if (options.apiKey) {
+      apiKey = options.apiKey;
+    } else if (providerName) {
+      const providerCfg = llm?.providers?.[providerName];
+      if (providerCfg?.apiKey) {
+        apiKey = resolveEnvRef(providerCfg.apiKey);
+      }
+    }
+    if (!apiKey) {
+      apiKey = Deno.env.get('DEEPSEEK_API_KEY');
+    }
     if (!apiKey) {
       throw new Error(
-        'DEEPSEEK_API_KEY 未设置。请运行 \`zapmyco init\` 或设置环境变量 DEEPSEEK_API_KEY。',
+        'DEEPSEEK_API_KEY 未设置。请运行 `zapmyco init` 或设置环境变量 DEEPSEEK_API_KEY。',
       );
     }
 
-    this.client = new Anthropic({
-      baseURL: options.baseURL ?? llm?.baseURL ?? DEFAULT_BASE_URL,
-      apiKey,
-    });
-    this.model = options.model ?? llm?.model ?? DEFAULT_MODEL;
+    // 7. 确定 baseURL：options > 注册表中的 baseURL > 默认值
+    const baseURL = options.baseURL ?? modelInfo?.baseURL ?? DEFAULT_BASE_URL;
+
+    this.client = new Anthropic({ baseURL, apiKey });
+    this.model = modelName;
     this.systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   }
 

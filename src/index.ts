@@ -105,15 +105,22 @@ async function handleInitCommand(): Promise<CliResult> {
 
   // 交互式询问 API Key
   const apiKey = await promptUser(
-    '? API Key（输入密钥，或直接回车使用环境变量 DEEPSEEK_API_KEY）: ',
+    '? DeepSeek API Key（输入密钥，或直接回车使用环境变量 DEEPSEEK_API_KEY）: ',
   );
 
-  // 写入配置文件
+  // 写入配置文件（新结构）
   const settings = {
     llm: {
-      apiKey: apiKey || '${env.DEEPSEEK_API_KEY}',
-      baseURL: 'https://api.deepseek.com/anthropic',
-      model: 'deepseek-v4-flash',
+      providers: {
+        deepseek: {
+          apiKey: apiKey || '${env.DEEPSEEK_API_KEY}',
+        },
+      },
+      models: {
+        advanced: 'deepseek-reasoner',
+        default: 'deepseek-v4-flash',
+        light: 'deepseek-v4-flash',
+      },
     },
   };
 
@@ -185,9 +192,21 @@ function handleSettingsCommand(args: string[]): CliResult {
     return { exitCode: 1, stdout: '', stderr: String(error) };
   }
 
-  // 脱敏 apiKey
+  // 脱敏 apiKey（支持新版和旧版结构）
   if (settings.llm && typeof settings.llm === 'object') {
     const llm = settings.llm as Record<string, unknown>;
+
+    // 新版: llm.providers.<name>.apiKey
+    if (llm.providers && typeof llm.providers === 'object') {
+      const providers = llm.providers as Record<string, Record<string, unknown>>;
+      for (const cfg of Object.values(providers)) {
+        if (typeof cfg.apiKey === 'string') {
+          cfg.apiKey = maskApiKey(cfg.apiKey);
+        }
+      }
+    }
+
+    // 旧版: llm.apiKey
     if (typeof llm.apiKey === 'string') {
       llm.apiKey = maskApiKey(llm.apiKey);
     }
@@ -234,12 +253,25 @@ export async function cli(args: string[]): Promise<CliResult> {
   }
 
   if (command === 'ai') {
+    // 解析可选参数：ai [--profile <name>] [<content>...]
+    let profile: string | undefined;
+    const contentArgs: string[] = [];
+    const aiArgs = [...rest];
+    for (let i = 0; i < aiArgs.length; i++) {
+      if (aiArgs[i] === '--profile' && i + 1 < aiArgs.length) {
+        profile = aiArgs[i + 1];
+        i++;
+      } else {
+        contentArgs.push(aiArgs[i]!);
+      }
+    }
+    const inlineContent = contentArgs.join(' ');
+
     // 检查配置文件是否存在
     const settingsPath = getSettingsPath();
     try {
       Deno.statSync(settingsPath);
     } catch (_err) {
-      // 文件不存在，提示初始化
       return {
         exitCode: 1,
         stdout: '',
@@ -248,7 +280,15 @@ export async function cli(args: string[]): Promise<CliResult> {
     }
 
     try {
-      const agent = new AiAgent();
+      const agent = new AiAgent({ modelProfile: profile });
+
+      if (inlineContent) {
+        // 内联模式：单次问答，输出结果后退出
+        const response = await agent.chat(inlineContent);
+        return { exitCode: 0, stdout: response, stderr: '' };
+      }
+
+      // 交互模式
       await agent.startInteractiveChat();
       return { exitCode: 0, stdout: '', stderr: '' };
     } catch (error) {
@@ -276,7 +316,8 @@ export async function cli(args: string[]): Promise<CliResult> {
     '  greet <name>       向指定名称打招呼',
     '  config             显示配置信息',
     '  init               初始化 LLM 配置',
-    '  ai                 进入 AI 对话模式',
+    '  ai [--profile <n>] 进入 AI 对话模式（指定模型配置档）',
+    '    [<内容>]          直接传入内容进行单次问答',
     '  settings           显示 LLM 配置',
     '  settings path      显示配置文件路径',
     '  --version, -v, -V  显示版本号',
