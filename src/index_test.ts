@@ -153,29 +153,15 @@ Deno.test('cli', async (t) => {
     assertEquals(result.stdout.includes('greet'), true);
     assertEquals(result.stdout.includes('config'), true);
     assertEquals(result.stdout.includes('init'), true);
-    assertEquals(result.stdout.includes('ai'), true);
+    assertEquals(result.stdout.includes('run'), true);
   });
 
-  await t.step('no args should show help text', async () => {
-    const result = await cli([]);
-    assertEquals(result.exitCode, 0);
-    assertEquals(result.stdout.includes('greet'), true);
-    assertEquals(result.stdout.includes('config'), true);
-    assertEquals(result.stdout.includes('init'), true);
-  });
-
-  await t.step('unknown command should exit with code 1', async () => {
-    const result = await cli(['unknown']);
-    assertEquals(result.exitCode, 1);
-    assertEquals(result.stdout, '');
-  });
-
-  await t.step('ai without settings file should prompt init', async () => {
+  await t.step('no args without settings should prompt init', async () => {
     const origHome = Deno.env.get('HOME');
     const testDir = Deno.makeTempDirSync();
     Deno.env.set('HOME', testDir);
     try {
-      const result = await cli(['ai']);
+      const result = await cli([]);
       assertEquals(result.exitCode, 1);
       assertEquals(result.stderr.includes('zapmyco init'), true);
     } finally {
@@ -184,7 +170,32 @@ Deno.test('cli', async (t) => {
     }
   });
 
-  await t.step('ai with settings but no api key should exit with code 1', async () => {
+  await t.step('unknown command should exit with code 1', async () => {
+    const result = await cli(['unknown']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stdout, '');
+  });
+
+  await t.step('run without settings file should prompt init', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      const result = await cli(['run', 'hello']);
+      assertEquals(result.exitCode, 1);
+      assertEquals(result.stderr.includes('zapmyco init'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('run without content should exit with code 1', async () => {
+    const result = await cli(['run']);
+    assertEquals(result.exitCode, 1);
+  });
+
+  await t.step('run with settings but no api key should exit with code 1', async () => {
     const origHome = Deno.env.get('HOME');
     const origKey = Deno.env.get('DEEPSEEK_API_KEY');
     const testDir = Deno.makeTempDirSync();
@@ -202,7 +213,7 @@ Deno.test('cli', async (t) => {
         }),
       );
 
-      const result = await cli(['ai', 'hello']);
+      const result = await cli(['run', 'hello']);
       assertEquals(result.exitCode, 1);
     } finally {
       Deno.env.set('HOME', origHome ?? '');

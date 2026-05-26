@@ -14,6 +14,29 @@ ZapMyCo 提供简洁的命令行接口，支持以下命令。
 
 ## 命令列表
 
+## 使用方式
+
+`zapmyco` 支持两种运行模式：
+
+### 交互模式（默认）
+
+直接运行 `zapmyco` 进入交互式 AI 对话模式：
+
+```bash
+zapmyco
+```
+
+启动后将进入交互式对话界面，支持多轮对话。输入 `/exit` 退出。
+
+### 一次性执行
+
+使用 `zapmyco run` 执行一次性任务，完成后自动退出：
+
+```bash
+zapmyco run 帮我写一个 hello world
+zapmyco run --profile advanced 重构这个模块
+```
+
 ### `greet <name>`
 
 向指定名称打招呼。
@@ -40,18 +63,6 @@ zapmyco config
 # }
 ```
 
-### `ai`
-
-进入 AI 对话模式，与内置的 AI Agent 进行交互。
-
-```bash
-zapmyco ai
-```
-
-启动后将进入交互式对话界面，支持多轮对话。输入 `exit` 或 `quit` 退出对话模式。
-
-详细用法请参阅 [AI 代理功能](/guide/ai-agent)。
-
 ## 使用示例
 
 ```bash
@@ -64,8 +75,11 @@ zapmyco greet World
 # 查看配置
 zapmyco config
 
-# AI 对话
-zapmyco ai
+# 交互式 AI 对话
+zapmyco
+
+# 一次性 AI 任务
+zapmyco run 帮我查一下今天的日期
 
 # 查看帮助
 zapmyco --help
