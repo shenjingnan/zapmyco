@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/shenjingnan/zapmyco/compare/v0.22.0...v0.22.1) (2026-05-26)
+
+### Bug Fixes
+
+- **build:** 修复 npm 包 bin 路径和 shebang，解决 npx zapmyco 无法使用的问题 (#244)
+  ([47510d5](https://github.com/shenjingnan/zapmyco/commit/47510d5))
+
 ## [0.22.0](https://github.com/shenjingnan/zapmyco/compare/v0.21.0...v0.22.0) (2026-05-26)
 
 ### Bug Fixes
