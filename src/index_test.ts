@@ -538,9 +538,22 @@ Deno.test('CLI settings command', async (t) => {
   });
 
   await t.step('settings show should work like settings', async () => {
-    const result = await cli(['settings', 'show']);
-    assertEquals(result.exitCode, 0);
-    assertEquals(result.stdout.includes('llm'), true);
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({ llm: { apiKey: 'test-key' } }),
+      );
+      const result = await cli(['settings', 'show']);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout.includes('tes***'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
   });
 
   await t.step('settings with unknown subcommand should show error', async () => {
