@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: 设置 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@v2.0.3
         with:
           deno-version: 2.x
 
@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: 设置 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@v2.0.3
         with:
           deno-version: 2.x
 
@@ -96,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@v2.0.3
         with:
           deno-version: 2.x
 
