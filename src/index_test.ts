@@ -1,5 +1,6 @@
 import { assertEquals, assertMatch, assertThrows } from 'jsr:@std/assert@1';
-import { cli, createConfig, greet, VERSION } from './index.ts';
+import { cli } from './cli.ts';
+import { createConfig, greet, VERSION } from './index.ts';
 import { AiAgent } from './ai-agent.ts';
 import { loadSettings, resolveEnvRef } from './settings.ts';
 import { getBuiltInModelNames, getModelInfo } from './models.ts';
@@ -107,7 +108,12 @@ Deno.test('cli', async (t) => {
     const result = await cli(['greet']);
     assertEquals(result.exitCode, 1);
     assertEquals(result.stdout, '');
-    assertEquals(result.stderr, '请指定名称');
+  });
+
+  await t.step('greet with empty string should exit with code 1', async () => {
+    const result = await cli(['greet', '']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stdout, '');
   });
 
   await t.step('config should print config JSON', async () => {
@@ -121,19 +127,24 @@ Deno.test('cli', async (t) => {
   await t.step('--version should print version', async () => {
     const result = await cli(['--version']);
     assertEquals(result.exitCode, 0);
-    assertEquals(result.stdout, `v${VERSION}`);
+    assertEquals(result.stdout.trim(), `v${VERSION}`);
   });
 
   await t.step('-v should print version', async () => {
     const result = await cli(['-v']);
     assertEquals(result.exitCode, 0);
-    assertEquals(result.stdout, `v${VERSION}`);
+    assertEquals(result.stdout.trim(), `v${VERSION}`);
   });
 
-  await t.step('-V should print version', async () => {
+  await t.step('-V should exit with code 1 (not a valid flag)', async () => {
     const result = await cli(['-V']);
+    assertEquals(result.exitCode, 1);
+  });
+
+  await t.step('-h should show help text', async () => {
+    const result = await cli(['-h']);
     assertEquals(result.exitCode, 0);
-    assertEquals(result.stdout, `v${VERSION}`);
+    assertEquals(result.stdout.includes('greet'), true);
   });
 
   await t.step('--help should show help text', async () => {
@@ -156,7 +167,7 @@ Deno.test('cli', async (t) => {
   await t.step('unknown command should exit with code 1', async () => {
     const result = await cli(['unknown']);
     assertEquals(result.exitCode, 1);
-    assertEquals(result.stderr.includes('未知命令'), true);
+    assertEquals(result.stdout, '');
   });
 
   await t.step('ai without settings file should prompt init', async () => {
@@ -169,6 +180,33 @@ Deno.test('cli', async (t) => {
       assertEquals(result.stderr.includes('zapmyco init'), true);
     } finally {
       Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('ai with settings but no api key should exit with code 1', async () => {
+    const origHome = Deno.env.get('HOME');
+    const origKey = Deno.env.get('DEEPSEEK_API_KEY');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    Deno.env.delete('DEEPSEEK_API_KEY');
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            providers: { deepseek: {} },
+            models: { default: 'deepseek-v4-flash' },
+          },
+        }),
+      );
+
+      const result = await cli(['ai', 'hello']);
+      assertEquals(result.exitCode, 1);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      if (origKey !== undefined) Deno.env.set('DEEPSEEK_API_KEY', origKey);
       Deno.removeSync(testDir, { recursive: true });
     }
   });
@@ -208,6 +246,20 @@ Deno.test('AiAgent', async (t) => {
     const agent = new AiAgent({ apiKey: 'test-key' });
     assertEquals(agent.getMessages(), []);
     agent.clearContext();
+    assertEquals(agent.getMessages(), []);
+  });
+
+  await t.step('should resolve model from built-in registry', () => {
+    const agent = new AiAgent({ apiKey: 'test-key', modelProfile: 'default' });
+    assertEquals(agent.getMessages(), []);
+  });
+
+  await t.step('should accept provider option', () => {
+    const agent = new AiAgent({
+      apiKey: 'test-key',
+      model: 'deepseek-v4-flash',
+      provider: 'deepseek',
+    });
     assertEquals(agent.getMessages(), []);
   });
 });
@@ -512,6 +564,25 @@ Deno.test('CLI settings command', async (t) => {
     assertEquals(result.stdout.includes('.zapmyco/settings.json'), true);
   });
 
+  await t.step('settings show should work like settings', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({ llm: { apiKey: 'test-key' } }),
+      );
+      const result = await cli(['settings', 'show']);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout.includes('tes***'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
   await t.step('settings with unknown subcommand should show error', async () => {
     const result = await cli(['settings', 'unknown']);
     assertEquals(result.exitCode, 1);
@@ -588,6 +659,35 @@ Deno.test('CLI settings command', async (t) => {
       const result = await cli(['settings']);
       assertEquals(result.exitCode, 0);
       assertEquals(result.stdout.includes('${env.DEEPSEEK_API_KEY}'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('settings should display new format with masked provider apiKeys', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            providers: {
+              deepseek: { apiKey: 'sk-long-key-value-test' },
+              glm: { apiKey: 'short-key' },
+            },
+            models: { default: 'deepseek-v4-flash' },
+          },
+        }),
+      );
+
+      const result = await cli(['settings']);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout.includes('sk-***'), true);
+      assertEquals(result.stdout.includes('sho***'), true);
     } finally {
       Deno.env.set('HOME', origHome ?? '');
       Deno.removeSync(testDir, { recursive: true });

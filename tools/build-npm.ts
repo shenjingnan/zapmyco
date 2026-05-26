@@ -23,7 +23,10 @@ const outDir = './dist/npm';
 await emptyDir(outDir);
 
 await build({
-  entryPoints: ['./src/index.ts'],
+  entryPoints: [
+    { name: '.', path: './src/index.ts' },
+    { name: './cli', path: './src/cli.ts' },
+  ],
   outDir,
   importMap: './deno.json',
   shims: {
@@ -42,7 +45,7 @@ await build({
       url: 'https://github.com/shenjingnan/zapmyco/issues',
     },
     bin: {
-      zapmyco: './esm/src/index.js',
+      zapmyco: './esm/cli.js',
     },
     publishConfig: {
       provenance: true,
