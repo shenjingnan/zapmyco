@@ -183,6 +183,33 @@ Deno.test('cli', async (t) => {
       Deno.removeSync(testDir, { recursive: true });
     }
   });
+
+  await t.step('ai with settings but no api key should exit with code 1', async () => {
+    const origHome = Deno.env.get('HOME');
+    const origKey = Deno.env.get('DEEPSEEK_API_KEY');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    Deno.env.delete('DEEPSEEK_API_KEY');
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            providers: { deepseek: {} },
+            models: { default: 'deepseek-v4-flash' },
+          },
+        }),
+      );
+
+      const result = await cli(['ai', 'hello']);
+      assertEquals(result.exitCode, 1);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      if (origKey !== undefined) Deno.env.set('DEEPSEEK_API_KEY', origKey);
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
 });
 
 Deno.test('AiAgent', async (t) => {
@@ -632,6 +659,35 @@ Deno.test('CLI settings command', async (t) => {
       const result = await cli(['settings']);
       assertEquals(result.exitCode, 0);
       assertEquals(result.stdout.includes('${env.DEEPSEEK_API_KEY}'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('settings should display new format with masked provider apiKeys', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            providers: {
+              deepseek: { apiKey: 'sk-long-key-value-test' },
+              glm: { apiKey: 'short-key' },
+            },
+            models: { default: 'deepseek-v4-flash' },
+          },
+        }),
+      );
+
+      const result = await cli(['settings']);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout.includes('sk-***'), true);
+      assertEquals(result.stdout.includes('sho***'), true);
     } finally {
       Deno.env.set('HOME', origHome ?? '');
       Deno.removeSync(testDir, { recursive: true });
