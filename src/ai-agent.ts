@@ -4,6 +4,7 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.39';
 import { TextLineStream } from './text-line-stream.ts';
+import { loadSettings, resolveEnvRef } from './settings.ts';
 
 /** AiAgent 配置选项 */
 export interface AiAgentOptions {
@@ -37,18 +38,25 @@ export class AiAgent {
   private systemPrompt: string;
 
   constructor(options: AiAgentOptions = {}) {
-    const apiKey = options.apiKey ?? Deno.env.get('DEEPSEEK_API_KEY');
+    // 加载 ~/.zapmyco/settings.json（文件不存在时静默降级）
+    const settings = loadSettings();
+    const llm = settings?.llm;
+
+    // 解析 apiKey：options > settings.json(${VAR}解析) > 环境变量
+    const settingsApiKey = llm?.apiKey ? resolveEnvRef(llm.apiKey) : undefined;
+    const apiKey = options.apiKey ?? settingsApiKey ??
+      Deno.env.get('DEEPSEEK_API_KEY');
     if (!apiKey) {
       throw new Error(
-        'DEEPSEEK_API_KEY 未设置。请通过环境变量 DEEPSEEK_API_KEY 设置 API Key。',
+        'DEEPSEEK_API_KEY 未设置。请运行 \`zapmyco init\` 或设置环境变量 DEEPSEEK_API_KEY。',
       );
     }
 
     this.client = new Anthropic({
-      baseURL: options.baseURL ?? DEFAULT_BASE_URL,
+      baseURL: options.baseURL ?? llm?.baseURL ?? DEFAULT_BASE_URL,
       apiKey,
     });
-    this.model = options.model ?? DEFAULT_MODEL;
+    this.model = options.model ?? llm?.model ?? DEFAULT_MODEL;
     this.systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   }
 

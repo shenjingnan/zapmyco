@@ -1,6 +1,7 @@
 import { assertEquals, assertMatch, assertThrows } from 'jsr:@std/assert@1';
 import { cli, createConfig, greet, VERSION } from './index.ts';
 import { AiAgent } from './ai-agent.ts';
+import { resolveEnvRef } from './settings.ts';
 
 Deno.test('greet', async (t) => {
   await t.step('should return greeting message with the given name', () => {
@@ -114,6 +115,7 @@ Deno.test('cli', async (t) => {
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout.includes('greet'), true);
     assertEquals(result.stdout.includes('config'), true);
+    assertEquals(result.stdout.includes('init'), true);
     assertEquals(result.stdout.includes('ai'), true);
   });
 
@@ -122,6 +124,7 @@ Deno.test('cli', async (t) => {
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout.includes('greet'), true);
     assertEquals(result.stdout.includes('config'), true);
+    assertEquals(result.stdout.includes('init'), true);
   });
 
   await t.step('unknown command should exit with code 1', async () => {
@@ -130,10 +133,10 @@ Deno.test('cli', async (t) => {
     assertEquals(result.stderr.includes('未知命令'), true);
   });
 
-  await t.step('ai without API key should show error', async () => {
+  await t.step('ai without settings file should prompt init', async () => {
     const result = await cli(['ai']);
     assertEquals(result.exitCode, 1);
-    assertEquals(result.stderr.includes('DEEPSEEK_API_KEY'), true);
+    assertEquals(result.stderr.includes('zapmyco init'), true);
   });
 });
 
@@ -160,5 +163,50 @@ Deno.test('AiAgent', async (t) => {
     assertEquals(agent.getMessages(), []);
     agent.clearContext();
     assertEquals(agent.getMessages(), []);
+  });
+});
+
+Deno.test('resolveEnvRef', async (t) => {
+  await t.step('should return plain value as-is', () => {
+    assertEquals(resolveEnvRef('sk-test-key'), 'sk-test-key');
+    assertEquals(resolveEnvRef('https://example.com'), 'https://example.com');
+  });
+
+  await t.step('should resolve ${env.VAR} from environment', () => {
+    Deno.env.set('TEST_MY_VAR', 'test-resolved-value');
+    assertEquals(resolveEnvRef('${env.TEST_MY_VAR}'), 'test-resolved-value');
+    Deno.env.delete('TEST_MY_VAR');
+  });
+
+  await t.step('should throw when ${env.VAR} env var is not set', () => {
+    assertThrows(
+      () => resolveEnvRef('${env.NONEXISTENT_VAR_XYZ}'),
+      Error,
+      'NONEXISTENT_VAR_XYZ',
+    );
+  });
+
+  await t.step('should return plain ${VAR} as-is (without env. prefix)', () => {
+    assertEquals(resolveEnvRef('${SOME_VAR}'), '${SOME_VAR}');
+  });
+});
+
+Deno.test('CLI settings command', async (t) => {
+  await t.step('settings path should return file path', async () => {
+    const result = await cli(['settings', 'path']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout.includes('.zapmyco/settings.json'), true);
+  });
+
+  await t.step('settings with unknown subcommand should show error', async () => {
+    const result = await cli(['settings', 'unknown']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stderr.includes('未知子命令'), true);
+  });
+
+  await t.step('settings without file should show error', async () => {
+    const result = await cli(['settings']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(typeof result.stderr, 'string');
   });
 });
