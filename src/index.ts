@@ -295,9 +295,14 @@ export async function cli(args: string[]): Promise<CliResult> {
 }
 
 if (import.meta.main) {
+  const encoder = new TextEncoder();
   const result = await cli(Deno.args);
-  if (result.stderr) console.error(result.stderr);
-  if (result.stdout) console.log(result.stdout);
+  if (result.stderr) {
+    Deno.stderr.writeSync(encoder.encode(result.stderr + '\n'));
+  }
+  if (result.stdout) {
+    Deno.stdout.writeSync(encoder.encode(result.stdout + '\n'));
+  }
   Deno.exit(result.exitCode);
 }
 
