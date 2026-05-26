@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.21.0](https://github.com/shenjingnan/zapmyco/compare/v0.20.6...v0.21.0) (2026-05-26)
+
+### Features
+
+- **cli:** 集成 Commander.js 重构 CLI，修复非流式请求问题 (#242)
+  ([06d49cc](https://github.com/shenjingnan/zapmyco/commit/06d49cc))
+- 支持可配置的 maxTokens，扩展内置模型注册表字段 (#241)
+  ([463f18e](https://github.com/shenjingnan/zapmyco/commit/463f18e))
+- 重构 LLM 配置系统，支持多供应商和多模型配置档 (#239)
+  ([eb4e4ff](https://github.com/shenjingnan/zapmyco/commit/eb4e4ff))
+- 新增 ~/.zapmyco/settings.json 集中管理 LLM 配置 (#238)
+  ([23e3edc](https://github.com/shenjingnan/zapmyco/commit/23e3edc))
+- 为 install.sh 添加下载进度条 (#237)
+  ([b15fe9d](https://github.com/shenjingnan/zapmyco/commit/b15fe9d))
+
+### Ci
+
+- **deps:** bump actions/download-artifact from 7 to 8 (#235)
+  ([c45989b](https://github.com/shenjingnan/zapmyco/commit/c45989b))
+- **deps:** bump actions/upload-artifact from 6 to 7 (#236)
+  ([05e7ae3](https://github.com/shenjingnan/zapmyco/commit/05e7ae3))
+
 ## [0.20.6](https://github.com/shenjingnan/zapmyco/compare/v0.20.5...v0.20.6) (2026-05-25)
 
 ### Bug Fixes
