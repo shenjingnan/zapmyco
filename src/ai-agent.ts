@@ -22,6 +22,8 @@ export interface AiAgentOptions {
   modelProfile?: string;
   /** 供应商名称（对应 settings.json llm.providers 中的 key） */
   provider?: string;
+  /** 最大输出 tokens，默认从内置模型注册表读取 */
+  maxTokens?: number;
   /** 系统提示词 */
   systemPrompt?: string;
 }
@@ -42,6 +44,7 @@ const DEFAULT_SYSTEM_PROMPT = '你是一个 AI 编程助手，帮助用户解决
 export class AiAgent {
   private client: Anthropic;
   private model: string;
+  private maxTokens: number;
   private messages: Message[] = [];
   private systemPrompt: string;
 
@@ -87,6 +90,9 @@ export class AiAgent {
     // 7. 确定 baseURL：options > 注册表中的 baseURL > 默认值
     const baseURL = options.baseURL ?? modelInfo?.baseURL ?? DEFAULT_BASE_URL;
 
+    // 8. 确定 maxTokens：options > 注册表中的 maxOutputTokens > 默认值 4096
+    this.maxTokens = options.maxTokens ?? modelInfo?.maxOutputTokens ?? 4096;
+
     this.client = new Anthropic({ baseURL, apiKey });
     this.model = modelName;
     this.systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
@@ -102,7 +108,7 @@ export class AiAgent {
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 4096,
+      max_tokens: this.maxTokens,
       system: this.systemPrompt,
       messages: this.messages,
     });
@@ -128,7 +134,7 @@ export class AiAgent {
 
     const stream = this.client.messages.stream({
       model: this.model,
-      max_tokens: 4096,
+      max_tokens: this.maxTokens,
       system: this.systemPrompt,
       messages: this.messages,
     });
