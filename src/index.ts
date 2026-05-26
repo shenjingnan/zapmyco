@@ -68,6 +68,135 @@ export function createConfig(options?: ConfigOptions): Config {
   };
 }
 
+function getSettingsPath(): string {
+  return `${Deno.env.get('HOME') ?? '.'}/.zapmyco/settings.json`;
+}
+
+async function promptUser(question: string): Promise<string> {
+  const encoder = new TextEncoder();
+  Deno.stdout.writeSync(encoder.encode(question));
+  const buf = new Uint8Array(1024);
+  const n = await Deno.stdin.read(buf);
+  if (n === null) return '';
+  return new TextDecoder().decode(buf.subarray(0, n)).trim();
+}
+
+function getSettingsDir(): string {
+  return `${Deno.env.get('HOME') ?? '.'}/.zapmyco`;
+}
+
+async function handleInitCommand(): Promise<CliResult> {
+  const filePath = getSettingsPath();
+  const dir = getSettingsDir();
+
+  // 检查是否已存在
+  try {
+    Deno.statSync(filePath);
+    return {
+      exitCode: 1,
+      stdout: '',
+      stderr: `${filePath} 已存在。如需重新初始化，请先删除该文件。`,
+    };
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) {
+      return { exitCode: 1, stdout: '', stderr: String(err) };
+    }
+  }
+
+  // 交互式询问 API Key
+  const apiKey = await promptUser(
+    '? API Key（输入密钥，或直接回车使用环境变量 DEEPSEEK_API_KEY）: ',
+  );
+
+  // 写入配置文件
+  const settings = {
+    llm: {
+      apiKey: apiKey || '${env.DEEPSEEK_API_KEY}',
+      baseURL: 'https://api.deepseek.com/anthropic',
+      model: 'deepseek-v4-flash',
+    },
+  };
+
+  try {
+    Deno.mkdirSync(dir, { recursive: true });
+    Deno.writeTextFileSync(filePath, JSON.stringify(settings, null, 2) + '\n');
+  } catch (error) {
+    return { exitCode: 1, stdout: '', stderr: String(error) };
+  }
+
+  return {
+    exitCode: 0,
+    stdout: `已创建 ${filePath}\n请运行 \`zapmyco settings\` 查看配置。`,
+    stderr: '',
+  };
+}
+
+function maskApiKey(value: string): string {
+  const envRef = value.match(/^\$\{env\.(.+)\}$/);
+  if (envRef) {
+    return `\${env.${envRef[1]}}`;
+  }
+  if (value.length <= 8) {
+    return value.slice(0, 3) + '***';
+  }
+  return value.slice(0, 3) + '***' + value.slice(-4);
+}
+
+function handleSettingsCommand(args: string[]): CliResult {
+  const subcommand = args[0];
+
+  // settings path
+  if (subcommand === 'path') {
+    return { exitCode: 0, stdout: getSettingsPath(), stderr: '' };
+  }
+
+  // settings（默认：显示内容）
+  if (subcommand && subcommand !== 'show') {
+    return {
+      exitCode: 1,
+      stdout: '',
+      stderr: `未知子命令: ${subcommand}\n可用命令: settings, settings path`,
+    };
+  }
+
+  const filePath = getSettingsPath();
+  let settings: Record<string, unknown>;
+  try {
+    const content = Deno.readTextFileSync(filePath);
+    settings = JSON.parse(content);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: `${filePath} 不存在。请运行 \`zapmyco init\` 创建。`,
+      };
+    }
+    if (error instanceof Error && error.name === 'NotCapable') {
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: `权限不足: ${filePath}\n请使用 --allow-read 权限运行。`,
+      };
+    }
+    if (error instanceof SyntaxError) {
+      return { exitCode: 1, stdout: '', stderr: `${filePath} JSON 格式错误。` };
+    }
+    return { exitCode: 1, stdout: '', stderr: String(error) };
+  }
+
+  // 脱敏 apiKey
+  if (settings.llm && typeof settings.llm === 'object') {
+    const llm = settings.llm as Record<string, unknown>;
+    if (typeof llm.apiKey === 'string') {
+      llm.apiKey = maskApiKey(llm.apiKey);
+    }
+  }
+
+  const output = JSON.stringify(settings, null, 2);
+  return { exitCode: 0, stdout: output, stderr: '' };
+}
+
 /**
  * CLI 执行结果
  */
@@ -105,6 +234,19 @@ export async function cli(args: string[]): Promise<CliResult> {
   }
 
   if (command === 'ai') {
+    // 检查配置文件是否存在
+    const settingsPath = getSettingsPath();
+    try {
+      Deno.statSync(settingsPath);
+    } catch (_err) {
+      // 文件不存在，提示初始化
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: `未找到配置文件 ${settingsPath}\n请先运行 \`zapmyco init\` 初始化 LLM 配置。`,
+      };
+    }
+
     try {
       const agent = new AiAgent();
       await agent.startInteractiveChat();
@@ -113,6 +255,14 @@ export async function cli(args: string[]): Promise<CliResult> {
       const message = error instanceof Error ? error.message : String(error);
       return { exitCode: 1, stdout: '', stderr: message };
     }
+  }
+
+  if (command === 'init') {
+    return await handleInitCommand();
+  }
+
+  if (command === 'settings') {
+    return handleSettingsCommand(rest);
   }
 
   if (command === '--version' || command === '-v' || command === '-V') {
@@ -125,7 +275,10 @@ export async function cli(args: string[]): Promise<CliResult> {
     '用法:',
     '  greet <name>       向指定名称打招呼',
     '  config             显示配置信息',
+    '  init               初始化 LLM 配置',
     '  ai                 进入 AI 对话模式',
+    '  settings           显示 LLM 配置',
+    '  settings path      显示配置文件路径',
     '  --version, -v, -V  显示版本号',
     '  --help, -h         显示帮助信息',
   ].join('\n');
@@ -142,9 +295,14 @@ export async function cli(args: string[]): Promise<CliResult> {
 }
 
 if (import.meta.main) {
+  const encoder = new TextEncoder();
   const result = await cli(Deno.args);
-  if (result.stderr) console.error(result.stderr);
-  if (result.stdout) console.log(result.stdout);
+  if (result.stderr) {
+    Deno.stderr.writeSync(encoder.encode(result.stderr + '\n'));
+  }
+  if (result.stdout) {
+    Deno.stdout.writeSync(encoder.encode(result.stdout + '\n'));
+  }
   Deno.exit(result.exitCode);
 }
 
