@@ -44,8 +44,8 @@ export class AiAgent {
 
     // 解析 apiKey：options > settings.json(${VAR}解析) > 环境变量
     const settingsApiKey = llm?.apiKey ? resolveEnvRef(llm.apiKey) : undefined;
-    const apiKey = options.apiKey ?? settingsApiKey ??
-      Deno.env.get('DEEPSEEK_API_KEY');
+    const envApiKey = Deno.env.get('DEEPSEEK_API_KEY');
+    const apiKey = options.apiKey ?? settingsApiKey ?? envApiKey;
     if (!apiKey) {
       throw new Error(
         'DEEPSEEK_API_KEY 未设置。请运行 \`zapmyco init\` 或设置环境变量 DEEPSEEK_API_KEY。',
