@@ -2,6 +2,7 @@ import { assertEquals, assertMatch, assertThrows } from 'jsr:@std/assert@1';
 import { cli, createConfig, greet, VERSION } from './index.ts';
 import { AiAgent } from './ai-agent.ts';
 import { loadSettings, resolveEnvRef } from './settings.ts';
+import { getBuiltInModelNames, getModelInfo } from './models.ts';
 
 Deno.test('greet', async (t) => {
   await t.step('should return greeting message with the given name', () => {
@@ -66,6 +67,31 @@ Deno.test('VERSION', async (t) => {
 
   await t.step('should match semver format', () => {
     assertMatch(VERSION, /^\d+\.\d+\.\d+/);
+  });
+});
+
+Deno.test('getModelInfo', async (t) => {
+  await t.step('should return model info for known model', () => {
+    const info = getModelInfo('deepseek-v4-flash');
+    assertEquals(info?.provider, 'deepseek');
+    assertEquals(info?.baseURL, 'https://api.deepseek.com/anthropic');
+    assertEquals(info?.capabilities, ['text']);
+  });
+
+  await t.step('should return model info for vision model', () => {
+    const info = getModelInfo('glm-4v');
+    assertEquals(info?.provider, 'glm');
+    assertEquals(info?.capabilities, ['text', 'vision']);
+  });
+
+  await t.step('should return undefined for unknown model', () => {
+    assertEquals(getModelInfo('unknown-model'), undefined);
+  });
+
+  await t.step('getBuiltInModelNames should return all model names', () => {
+    const names = getBuiltInModelNames();
+    assertEquals(names.includes('deepseek-v4-flash'), true);
+    assertEquals(names.includes('glm-4v'), true);
   });
 });
 
@@ -258,9 +284,9 @@ Deno.test('loadSettings', async (t) => {
       );
 
       const result = loadSettings();
-      assertEquals(result?.llm?.apiKey, 'test-key');
-      assertEquals(result?.llm?.baseURL, 'https://test.com');
-      assertEquals(result?.llm?.model, 'test-model');
+      // 旧格式被转换为新格式
+      assertEquals(result?.llm?.providers?.default?.apiKey, 'test-key');
+      assertEquals(result?.llm?.models?.default, 'test-model');
     });
   });
 
@@ -273,9 +299,8 @@ Deno.test('loadSettings', async (t) => {
       );
 
       const result = loadSettings();
-      assertEquals(result?.llm?.apiKey, 'only-key');
-      assertEquals(result?.llm?.baseURL, undefined);
-      assertEquals(result?.llm?.model, undefined);
+      assertEquals(result?.llm?.providers?.default?.apiKey, 'only-key');
+      assertEquals(result?.llm?.models?.default, 'deepseek-v4-flash');
     });
   });
 
@@ -288,9 +313,8 @@ Deno.test('loadSettings', async (t) => {
       );
 
       const result = loadSettings();
-      assertEquals(result?.llm?.apiKey, undefined);
-      assertEquals(result?.llm?.baseURL, undefined);
-      assertEquals(result?.llm?.model, undefined);
+      assertEquals(result?.llm?.providers, undefined);
+      assertEquals(result?.llm?.models, undefined);
     });
   });
 
@@ -316,9 +340,8 @@ Deno.test('loadSettings', async (t) => {
       );
 
       const result = loadSettings();
-      assertEquals(result?.llm?.apiKey, undefined);
-      assertEquals(result?.llm?.baseURL, undefined);
-      assertEquals(result?.llm?.model, undefined);
+      assertEquals(result?.llm?.providers, undefined);
+      assertEquals(result?.llm?.models, undefined);
     });
   });
 
@@ -343,7 +366,73 @@ Deno.test('loadSettings', async (t) => {
       );
 
       const result = loadSettings();
-      assertEquals(result?.llm?.apiKey, 'key');
+      assertEquals(result?.llm?.providers?.default?.apiKey, 'key');
+    });
+  });
+
+  await t.step('should load new format (providers + models)', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            providers: {
+              deepseek: { apiKey: 'ds-key' },
+              glm: { apiKey: '${env.GLM_KEY}' },
+            },
+            models: {
+              default: 'deepseek-v4-flash',
+              advanced: 'deepseek-reasoner',
+              vision: 'glm-4v',
+            },
+          },
+        }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result?.llm?.providers?.deepseek?.apiKey, 'ds-key');
+      assertEquals(result?.llm?.providers?.glm?.apiKey, '${env.GLM_KEY}');
+      assertEquals(result?.llm?.models?.default, 'deepseek-v4-flash');
+      assertEquals(result?.llm?.models?.advanced, 'deepseek-reasoner');
+      assertEquals(result?.llm?.models?.vision, 'glm-4v');
+    });
+  });
+
+  await t.step('should convert legacy format to new format', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            apiKey: 'legacy-key',
+            baseURL: 'https://legacy.example.com',
+            model: 'deepseek-v4-flash',
+          },
+        }),
+      );
+
+      const result = loadSettings();
+      // 旧版 apiKey 应映射到 providers.default.apiKey
+      assertEquals(result?.llm?.providers?.default?.apiKey, 'legacy-key');
+      // 旧版 model 应映射到 models.default
+      assertEquals(result?.llm?.models?.default, 'deepseek-v4-flash');
+    });
+  });
+
+  await t.step('should convert legacy format without model to default', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: { apiKey: 'legacy-key' },
+        }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result?.llm?.models?.default, 'deepseek-v4-flash');
     });
   });
 });
@@ -375,6 +464,42 @@ Deno.test('AiAgent with settings', async (t) => {
       );
 
       const agent = new AiAgent({ apiKey: 'explicit-key' });
+      assertEquals(agent.getMessages(), []);
+    });
+  });
+
+  await t.step('should resolve model from profile', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            providers: { deepseek: { apiKey: 'test-key' } },
+            models: { advanced: 'deepseek-reasoner' },
+          },
+        }),
+      );
+
+      const agent = new AiAgent({ modelProfile: 'advanced' });
+      assertEquals(agent.getMessages(), []);
+    });
+  });
+
+  await t.step('should fall back to default profile when no profile specified', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            providers: { deepseek: { apiKey: 'test-key' } },
+            models: { default: 'deepseek-v4-flash' },
+          },
+        }),
+      );
+
+      const agent = new AiAgent();
       assertEquals(agent.getMessages(), []);
     });
   });
