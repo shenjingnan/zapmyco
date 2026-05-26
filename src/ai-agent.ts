@@ -2,7 +2,7 @@
  * AI Agent - 基于 @anthropic-ai/sdk 的 LLM 对话代理
  */
 
-import Anthropic from 'npm:@anthropic-ai/sdk@0.39';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.98';
 import { TextLineStream } from './text-line-stream.ts';
 import { loadSettings, resolveEnvRef } from './settings.ts';
 import { getModelInfo } from './models.ts';
