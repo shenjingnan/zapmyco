@@ -44,13 +44,16 @@ export class AiAgent {
 
     // 解析 apiKey：options > settings.json(${VAR}解析) > 环境变量
     const settingsApiKey = llm?.apiKey ? resolveEnvRef(llm.apiKey) : undefined;
-    const envApiKey = Deno.env.get('DEEPSEEK_API_KEY');
-    const apiKey = options.apiKey ?? settingsApiKey ?? envApiKey;
-    if (!apiKey) {
+
+    // 先检查可用性再取值，避免敏感数据流向错误消息
+    if (!options.apiKey && !settingsApiKey && !Deno.env.get('DEEPSEEK_API_KEY')) {
       throw new Error(
         'DEEPSEEK_API_KEY 未设置。请运行 \`zapmyco init\` 或设置环境变量 DEEPSEEK_API_KEY。',
       );
     }
+
+    const apiKey = options.apiKey ?? settingsApiKey ??
+      Deno.env.get('DEEPSEEK_API_KEY')!;
 
     this.client = new Anthropic({
       baseURL: options.baseURL ?? llm?.baseURL ?? DEFAULT_BASE_URL,

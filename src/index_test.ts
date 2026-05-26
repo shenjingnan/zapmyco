@@ -150,11 +150,23 @@ Deno.test('cli', async (t) => {
 
 Deno.test('AiAgent', async (t) => {
   await t.step('should throw when no API key provided', () => {
-    assertThrows(
-      () => new AiAgent({ apiKey: '' }),
-      Error,
-      'DEEPSEEK_API_KEY',
-    );
+    // 隔离测试环境：临时 HOME 防止 settings.json 干扰，清除环境变量
+    const origKey = Deno.env.get('DEEPSEEK_API_KEY');
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.delete('DEEPSEEK_API_KEY');
+    Deno.env.set('HOME', testDir);
+    try {
+      assertThrows(
+        () => new AiAgent({ apiKey: '' }),
+        Error,
+        'DEEPSEEK_API_KEY',
+      );
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      if (origKey !== undefined) Deno.env.set('DEEPSEEK_API_KEY', origKey);
+      Deno.removeSync(testDir, { recursive: true });
+    }
   });
 
   await t.step('should accept custom options', () => {
