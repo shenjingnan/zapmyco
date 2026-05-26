@@ -16,6 +16,10 @@ export interface BuiltInModel {
   baseURL: string;
   /** 模型能力列表 */
   capabilities: ModelCapability[];
+  /** 上下文窗口大小（tokens） */
+  contextWindow?: number;
+  /** 最大输出 tokens */
+  maxOutputTokens?: number;
 }
 
 /** 内置模型注册表 */
@@ -24,31 +28,50 @@ const BUILT_IN_MODELS: Record<string, BuiltInModel> = {
     provider: 'deepseek',
     baseURL: 'https://api.deepseek.com/anthropic',
     capabilities: ['text'],
+    contextWindow: 1_000_000,
+    maxOutputTokens: 384_000,
   },
   'deepseek-v4-pro': {
     provider: 'deepseek',
     baseURL: 'https://api.deepseek.com/anthropic',
     capabilities: ['text'],
+    contextWindow: 1_000_000,
+    maxOutputTokens: 384_000,
   },
   'deepseek-reasoner': {
     provider: 'deepseek',
     baseURL: 'https://api.deepseek.com/anthropic',
     capabilities: ['text'],
+    contextWindow: 128_000,
+    maxOutputTokens: 16_384,
   },
   'glm-4-flash': {
     provider: 'glm',
     baseURL: 'https://open.bigmodel.cn/api/anthropic',
     capabilities: ['text'],
+    contextWindow: 128_000,
+    maxOutputTokens: 16_384,
   },
   'glm-4v': {
     provider: 'glm',
     baseURL: 'https://open.bigmodel.cn/api/anthropic',
     capabilities: ['text', 'vision'],
+    contextWindow: 128_000,
+    maxOutputTokens: 16_384,
   },
   'glm-5v-turbo': {
     provider: 'glm',
     baseURL: 'https://open.bigmodel.cn/api/anthropic',
     capabilities: ['text', 'vision'],
+    contextWindow: 200_000,
+    maxOutputTokens: 128_000,
+  },
+  'glm-5.1': {
+    provider: 'glm',
+    baseURL: 'https://open.bigmodel.cn/api/anthropic',
+    capabilities: ['text'],
+    contextWindow: 200_000,
+    maxOutputTokens: 128_000,
   },
 };
 
