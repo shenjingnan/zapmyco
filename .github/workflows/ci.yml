@@ -32,10 +32,10 @@ jobs:
         run: deno check src/
 
       - name: 测试
-        run: deno test --allow-env
+        run: deno test --allow-env --allow-read --allow-write
 
       - name: 覆盖率报告
-        run: deno test --allow-env --coverage=coverage && deno coverage --lcov coverage > coverage/lcov.info
+        run: deno test --allow-env --allow-read --allow-write --coverage=coverage && deno coverage --lcov coverage > coverage/lcov.info
 
       - name: 上传覆盖率到 Codecov
         uses: codecov/codecov-action@v6
