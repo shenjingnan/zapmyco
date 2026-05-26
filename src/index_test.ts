@@ -1,7 +1,7 @@
 import { assertEquals, assertMatch, assertThrows } from 'jsr:@std/assert@1';
 import { cli, createConfig, greet, VERSION } from './index.ts';
 import { AiAgent } from './ai-agent.ts';
-import { resolveEnvRef } from './settings.ts';
+import { loadSettings, resolveEnvRef } from './settings.ts';
 
 Deno.test('greet', async (t) => {
   await t.step('should return greeting message with the given name', () => {
@@ -134,9 +134,17 @@ Deno.test('cli', async (t) => {
   });
 
   await t.step('ai without settings file should prompt init', async () => {
-    const result = await cli(['ai']);
-    assertEquals(result.exitCode, 1);
-    assertEquals(result.stderr.includes('zapmyco init'), true);
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      const result = await cli(['ai']);
+      assertEquals(result.exitCode, 1);
+      assertEquals(result.stderr.includes('zapmyco init'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
   });
 });
 
@@ -191,6 +199,175 @@ Deno.test('resolveEnvRef', async (t) => {
   });
 });
 
+/** 辅助函数：在临时 HOME 目录中执行测试 */
+function withTempHome(fn: (homeDir: string) => void): void {
+  const origHome = Deno.env.get('HOME');
+  const testDir = Deno.makeTempDirSync();
+  Deno.env.set('HOME', testDir);
+  try {
+    fn(testDir);
+  } finally {
+    Deno.env.set('HOME', origHome ?? '');
+    Deno.removeSync(testDir, { recursive: true });
+  }
+}
+
+Deno.test('loadSettings', async (t) => {
+  await t.step('should return null when file not found', () => {
+    withTempHome(() => {
+      const result = loadSettings();
+      assertEquals(result, null);
+    });
+  });
+
+  await t.step('should return null when HOME is not set', () => {
+    const origHome = Deno.env.get('HOME');
+    Deno.env.set('HOME', '');
+    try {
+      const result = loadSettings();
+      assertEquals(result, null);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+    }
+  });
+
+  await t.step('should load settings from file', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: {
+            apiKey: 'test-key',
+            baseURL: 'https://test.com',
+            model: 'test-model',
+          },
+        }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result?.llm?.apiKey, 'test-key');
+      assertEquals(result?.llm?.baseURL, 'https://test.com');
+      assertEquals(result?.llm?.model, 'test-model');
+    });
+  });
+
+  await t.step('should handle partial fields', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({ llm: { apiKey: 'only-key' } }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result?.llm?.apiKey, 'only-key');
+      assertEquals(result?.llm?.baseURL, undefined);
+      assertEquals(result?.llm?.model, undefined);
+    });
+  });
+
+  await t.step('should handle empty llm object', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({ llm: {} }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result?.llm?.apiKey, undefined);
+      assertEquals(result?.llm?.baseURL, undefined);
+      assertEquals(result?.llm?.model, undefined);
+    });
+  });
+
+  await t.step('should return {} when llm is not an object', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({ llm: 123 }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result, {});
+    });
+  });
+
+  await t.step('should skip non-string fields', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({ llm: { apiKey: 123, baseURL: true, model: null } }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result?.llm?.apiKey, undefined);
+      assertEquals(result?.llm?.baseURL, undefined);
+      assertEquals(result?.llm?.model, undefined);
+    });
+  });
+
+  await t.step('should throw on invalid JSON', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(`${home}/.zapmyco/settings.json`, '{invalid}');
+
+      assertThrows(() => loadSettings(), Error, 'JSON 格式错误');
+    });
+  });
+
+  await t.step('should ignore unknown fields', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: { apiKey: 'key', unknownField: 'ignored' },
+          otherSection: { foo: 'bar' },
+        }),
+      );
+
+      const result = loadSettings();
+      assertEquals(result?.llm?.apiKey, 'key');
+    });
+  });
+});
+
+Deno.test('AiAgent with settings', async (t) => {
+  await t.step('should load apiKey from settings file', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: { apiKey: 'from-settings', baseURL: 'https://test.com', model: 'test-model' },
+        }),
+      );
+
+      const agent = new AiAgent();
+      assertEquals(agent.getMessages(), []);
+    });
+  });
+
+  await t.step('options should override settings file', () => {
+    withTempHome((home) => {
+      Deno.mkdirSync(`${home}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${home}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: { apiKey: 'from-settings' },
+        }),
+      );
+
+      const agent = new AiAgent({ apiKey: 'explicit-key' });
+      assertEquals(agent.getMessages(), []);
+    });
+  });
+});
+
 Deno.test('CLI settings command', async (t) => {
   await t.step('settings path should return file path', async () => {
     const result = await cli(['settings', 'path']);
@@ -205,8 +382,102 @@ Deno.test('CLI settings command', async (t) => {
   });
 
   await t.step('settings without file should show error', async () => {
-    const result = await cli(['settings']);
-    assertEquals(result.exitCode, 1);
-    assertEquals(typeof result.stderr, 'string');
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      const result = await cli(['settings']);
+      assertEquals(result.exitCode, 1);
+      assertEquals(result.stderr.includes('不存在'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('settings should display config with masked apiKey', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: { apiKey: 'sk-test-key-value', baseURL: 'https://test.com', model: 'test-model' },
+        }),
+      );
+
+      const result = await cli(['settings']);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout.includes('sk-***'), true);
+      assertEquals(result.stdout.includes('sk-test-key-value'), false);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('settings should handle invalid JSON', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(`${testDir}/.zapmyco/settings.json`, 'not valid json');
+
+      const result = await cli(['settings']);
+      assertEquals(result.exitCode, 1);
+      assertEquals(result.stderr.includes('JSON 格式错误'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('settings should display ${env.VAR} apiKey as-is', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(
+        `${testDir}/.zapmyco/settings.json`,
+        JSON.stringify({
+          llm: { apiKey: '${env.DEEPSEEK_API_KEY}' },
+        }),
+      );
+
+      const result = await cli(['settings']);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout.includes('${env.DEEPSEEK_API_KEY}'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+});
+
+Deno.test('CLI init command', async (t) => {
+  await t.step('init with existing file should error', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      Deno.mkdirSync(`${testDir}/.zapmyco`, { recursive: true });
+      Deno.writeTextFileSync(`${testDir}/.zapmyco/settings.json`, '{}');
+
+      const result = await cli(['init']);
+      assertEquals(result.exitCode, 1);
+      assertEquals(result.stderr.includes('已存在'), true);
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('init command should be listed in help', async () => {
+    const result = await cli(['--help']);
+    assertEquals(result.stdout.includes('init'), true);
   });
 });
