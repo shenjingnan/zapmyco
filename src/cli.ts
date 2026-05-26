@@ -225,45 +225,59 @@ export async function cli(args: string[]): Promise<CliResult> {
       }
     });
 
-  // --- ai ---
-  program.command('ai')
-    .description('AI 对话模式')
+  // --- run ---
+  program.command('run')
+    .description('一次性执行 AI 任务，完成后退出')
     .option('--profile <name>', '指定模型配置档')
-    .argument('[content...]', '直接传入内容进行单次问答')
-    .action(async (contentArgs: string[] | undefined, options: { profile?: string }) => {
-      // 检查配置文件是否存在
+    .argument('<content...>', '任务描述')
+    .action(async (contentArgs: string[], options: { profile?: string }) => {
       const settingsPath = getSettingsPath();
       try {
         Deno.statSync(settingsPath);
       } catch {
         capturedStderr +=
           `未找到配置文件 ${settingsPath}\n请先运行 \`zapmyco init\` 初始化 LLM 配置。`;
-        throw new CommanderError(1, 'commander.aiError', capturedStderr);
+        throw new CommanderError(1, 'commander.runError', capturedStderr);
       }
 
       try {
         const agent = new AiAgent({ modelProfile: options.profile });
-        const inlineContent = contentArgs?.join(' ') ?? '';
+        const task = contentArgs.join(' ');
 
-        if (inlineContent) {
-          const response = await agent.chat(inlineContent);
-          capturedStdout += response;
-          return;
-        }
-
-        await agent.startInteractiveChat();
+        const encoder = new TextEncoder();
+        await agent.chatStream(task, (chunk) => {
+          Deno.stdout.writeSync(encoder.encode(chunk));
+        });
+        Deno.stdout.writeSync(encoder.encode('\n'));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         capturedStderr += message;
-        throw new CommanderError(1, 'commander.aiError', capturedStderr);
+        throw new CommanderError(1, 'commander.runError', capturedStderr);
       }
     });
 
   // --- 执行 ---
   try {
     if (args.length === 0) {
-      program.outputHelp();
-      return { exitCode: 0, stdout: capturedStdout, stderr: capturedStderr };
+      // 无参数时直接进入交互模式
+      const settingsPath = getSettingsPath();
+      try {
+        Deno.statSync(settingsPath);
+      } catch {
+        capturedStderr +=
+          `未找到配置文件 ${settingsPath}\n请先运行 \`zapmyco init\` 初始化 LLM 配置。`;
+        return { exitCode: 1, stdout: '', stderr: capturedStderr };
+      }
+
+      try {
+        const agent = new AiAgent();
+        await agent.startInteractiveChat();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        capturedStderr += message;
+        return { exitCode: 1, stdout: '', stderr: capturedStderr };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
     }
 
     await program.parseAsync(args, { from: 'user' });

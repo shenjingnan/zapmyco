@@ -140,8 +140,7 @@ ai-typescript-starter/
 | `deno task fmt:check`     | 格式检查                             |
 | `deno task check`         | 类型检查                             |
 | `deno task check:all`     | 完整检查 (fmt + lint + check + test) |
-| `deno task cli`           | 运行 CLI                             |
-| `deno task ai`            | AI 对话模式                          |
+| `deno task cli`           | 运行 CLI（交互模式/一次性任务）      |
 | `deno task release`       | 创建发布                             |
 | `deno task release:dry`   | 发布干运行 (不实际发布)              |
 | `deno task build:npm`     | dnt 构建 npm 包                      |
