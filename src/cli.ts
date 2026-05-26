@@ -245,10 +245,12 @@ export async function cli(args: string[]): Promise<CliResult> {
         const agent = new AiAgent({ modelProfile: options.profile });
         const inlineContent = contentArgs?.join(' ') ?? '';
 
+        const encoder = new TextEncoder();
         if (inlineContent) {
-          const response = await agent.chat(inlineContent);
-          capturedStdout += response;
-          return;
+          await agent.chatStream(inlineContent, (chunk) => {
+            Deno.stdout.writeSync(encoder.encode(chunk));
+          });
+          Deno.stdout.writeSync(encoder.encode('\n'));
         }
 
         await agent.startInteractiveChat();
