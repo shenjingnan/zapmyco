@@ -8,12 +8,12 @@
   "description": "基于 Deno 的 AI 驱动命令行工具",
   "exports": "./src/index.ts",
   "tasks": {
-    "cli": "deno run --allow-env --allow-net --allow-read=$HOME/.zapmyco src/index.ts",
-    "ai": "deno run --allow-env --allow-net --allow-read=$HOME/.zapmyco src/index.ts ai",
-    "init": "deno run --allow-env --allow-read --allow-write src/index.ts init",
-    "settings": "deno run --allow-env --allow-read=$HOME/.zapmyco src/index.ts settings",
-    "install:global": "deno install -g -n zapmyco --allow-env --allow-net --allow-read --allow-write src/index.ts",
-    "dev": "deno run --watch src/index.ts",
+    "cli": "deno run --allow-env --allow-net --allow-read=$HOME/.zapmyco src/cli.ts",
+    "ai": "deno run --allow-env --allow-net --allow-read=$HOME/.zapmyco src/cli.ts ai",
+    "init": "deno run --allow-env --allow-read --allow-write src/cli.ts init",
+    "settings": "deno run --allow-env --allow-read=$HOME/.zapmyco src/cli.ts settings",
+    "install:global": "deno install -g -n zapmyco --allow-env --allow-net --allow-read --allow-write src/cli.ts",
+    "dev": "deno run --watch src/cli.ts",
     "test": "deno test --allow-env --allow-read --allow-write",
     "test:coverage": "deno test --allow-env --allow-read --allow-write --coverage && deno coverage",
     "lint": "deno lint",
@@ -57,6 +57,7 @@
       "CHANGELOG.md",
       "AGENTS.md",
       "src/**/*_test.ts",
+      "src/cli.ts",
       "tools",
       "dist"
     ]

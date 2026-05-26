@@ -99,25 +99,30 @@ export class AiAgent {
   }
 
   /**
-   * 非流式对话 - 发送消息并获取完整回复
+   * 非流式对话（内部使用流式 API） - 发送消息并获取完整回复
    * @param input - 用户输入
    * @returns 完整回复文本
    */
   async chat(input: string): Promise<string> {
     this.messages.push({ role: 'user', content: input });
 
-    const response = await this.client.messages.create({
+    // 内部使用流式 API 以避免非流式请求被拒绝或超时
+    let fullContent = '';
+    const stream = this.client.messages.stream({
       model: this.model,
       max_tokens: this.maxTokens,
       system: this.systemPrompt,
       messages: this.messages,
     });
 
-    const firstBlock = response.content[0];
-    const content = firstBlock?.type === 'text' ? firstBlock.text : '';
-    this.messages.push({ role: 'assistant', content });
+    stream.on('text', (text: string) => {
+      fullContent += text;
+    });
 
-    return content;
+    await stream.finalMessage();
+    this.messages.push({ role: 'assistant', content: fullContent });
+
+    return fullContent;
   }
 
   /**
