@@ -351,6 +351,10 @@ async function main() {
   Deno.writeTextFileSync('CHANGELOG.md', updatedChangelog);
   console.log(`  ✓ CHANGELOG.md 已更新`);
 
+  // 在 git commit 前格式化代码（pre-commit hook 要求）
+  run(['deno', 'fmt']);
+  console.log(`  ✓ 代码格式化完成`);
+
   // 7. Git commit + tag + push
   run(['git', 'add', '-A']);
   run(['git', 'commit', '-m', `chore(release): v${newVersion}`]);
