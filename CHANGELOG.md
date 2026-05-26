@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.22.0](https://github.com/shenjingnan/zapmyco/compare/v0.21.0...v0.22.0) (2026-05-26)
+
+### Bug Fixes
+
+- **release:** 在 git commit 前运行 deno fmt 以通过 pre-commit hook
+  ([d38f1a8](https://github.com/shenjingnan/zapmyco/commit/d38f1a8))
+
+### Features
+
+- **cli:** 内联内容支持流式输出并自动进入交互模式 (#243)
+  ([5c5d59a](https://github.com/shenjingnan/zapmyco/commit/5c5d59a))
+
 ## [0.21.0](https://github.com/shenjingnan/zapmyco/compare/v0.20.6...v0.21.0) (2026-05-26)
 
 ### Features
