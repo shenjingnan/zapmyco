@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: 设置 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@v2.0.3
         with:
           deno-version: 2.x
 
@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: 设置 Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@v2.0.3
         with:
           deno-version: 2.x
 
@@ -96,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@v2.0.3
         with:
           deno-version: 2.x
 
@@ -113,7 +113,7 @@ jobs:
         run: choco install upx
 
       - name: 编译二进制文件
-        run: deno compile --no-check --allow-env --allow-net ${{ matrix.compile-target }} --output ${{ matrix.output }} src/index.ts
+        run: deno compile --no-check --allow-env --allow-net ${{ matrix.compile-target }} --output ${{ matrix.output }} src/cli.ts
 
       - name: 压缩二进制 (Linux)
         if: runner.os == 'Linux'

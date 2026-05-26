@@ -45,7 +45,7 @@ await build({
       url: 'https://github.com/shenjingnan/zapmyco/issues',
     },
     bin: {
-      zapmyco: './esm/cli.js',
+      zapmyco: './esm/src/cli.js',
     },
     publishConfig: {
       provenance: true,
@@ -60,5 +60,12 @@ await build({
   postBuild() {
     Deno.copyFileSync('LICENSE', `${outDir}/LICENSE`);
     Deno.copyFileSync('README.md', `${outDir}/README.md`);
+    // 为 CLI 入口添加 Node.js shebang，确保 OS 可以正确识别为 Node.js 脚本
+    const cliPath = `${outDir}/esm/src/cli.js`;
+    if (Deno.statSync(cliPath).isFile) {
+      const cliContent = Deno.readTextFileSync(cliPath);
+      Deno.writeTextFileSync(cliPath, '#!/usr/bin/env node\n' + cliContent);
+      Deno.chmodSync(cliPath, 0o755);
+    }
   },
 });
