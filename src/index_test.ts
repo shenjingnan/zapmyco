@@ -110,6 +110,12 @@ Deno.test('cli', async (t) => {
     assertEquals(result.stdout, '');
   });
 
+  await t.step('greet with empty string should exit with code 1', async () => {
+    const result = await cli(['greet', '']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stdout, '');
+  });
+
   await t.step('config should print config JSON', async () => {
     const result = await cli(['config']);
     assertEquals(result.exitCode, 0);
@@ -133,6 +139,12 @@ Deno.test('cli', async (t) => {
   await t.step('-V should exit with code 1 (not a valid flag)', async () => {
     const result = await cli(['-V']);
     assertEquals(result.exitCode, 1);
+  });
+
+  await t.step('-h should show help text', async () => {
+    const result = await cli(['-h']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout.includes('greet'), true);
   });
 
   await t.step('--help should show help text', async () => {
@@ -207,6 +219,20 @@ Deno.test('AiAgent', async (t) => {
     const agent = new AiAgent({ apiKey: 'test-key' });
     assertEquals(agent.getMessages(), []);
     agent.clearContext();
+    assertEquals(agent.getMessages(), []);
+  });
+
+  await t.step('should resolve model from built-in registry', () => {
+    const agent = new AiAgent({ apiKey: 'test-key', modelProfile: 'default' });
+    assertEquals(agent.getMessages(), []);
+  });
+
+  await t.step('should accept provider option', () => {
+    const agent = new AiAgent({
+      apiKey: 'test-key',
+      model: 'deepseek-v4-flash',
+      provider: 'deepseek',
+    });
     assertEquals(agent.getMessages(), []);
   });
 });
@@ -509,6 +535,12 @@ Deno.test('CLI settings command', async (t) => {
     const result = await cli(['settings', 'path']);
     assertEquals(result.exitCode, 0);
     assertEquals(result.stdout.includes('.zapmyco/settings.json'), true);
+  });
+
+  await t.step('settings show should work like settings', async () => {
+    const result = await cli(['settings', 'show']);
+    assertEquals(result.exitCode, 0);
+    assertEquals(result.stdout.includes('llm'), true);
   });
 
   await t.step('settings with unknown subcommand should show error', async () => {
