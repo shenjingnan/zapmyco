@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/shenjingnan/zapmyco/compare/v0.22.1...v0.22.2) (2026-05-27)
+
+### Bug Fixes
+
+- 升级 @anthropic-ai/sdk 至 v0.98 消除 punycode 弃用警告 (#245)
+  ([a0af891](https://github.com/shenjingnan/zapmyco/commit/a0af891))
+
 ## [0.22.1](https://github.com/shenjingnan/zapmyco/compare/v0.22.0...v0.22.1) (2026-05-26)
 
 ### Bug Fixes
