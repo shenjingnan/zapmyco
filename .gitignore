@@ -29,3 +29,8 @@ settings.local.json
 # Logs
 *.log
 .vercel
+
+
+# Added by cargo
+
+/target
