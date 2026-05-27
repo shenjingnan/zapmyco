@@ -9,11 +9,9 @@ description: 创建项目发布。当用户输入 /release 或要求发布新版
 
 ## 上下文获取
 
-以下命令将在技能加载时自动执行，结果将注入到上下文中供分析：
+以下脚本将在技能加载时自动执行，结果将注入到上下文中供分析：
 
-- 当前分支: !`git branch --show-current`
-- 最新 tag: !`git --no-pager tag --sort=-v:refname | head -3`
-- 自上次 tag 以来的 commits: !`git --no-pager log "$(git describe --tags --abbrev=0 2>/dev/null || 'HEAD')..HEAD" --oneline --no-decorate`
+- 上下文信息: !`bash .agents/skills/release/scripts/gather-context.sh`
 
 ## 你的任务
 
