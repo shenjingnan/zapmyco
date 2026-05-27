@@ -1,8 +1,7 @@
-/// 集成测试 - AiAgent 与 Anthropic API 交互
-
-use zapmyco::agent::{AiAgent, AiAgentOptions};
-use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+/// 集成测试 - AiAgent 与 Anthropic API 交互
+use zapmyco::agent::{AiAgent, AiAgentOptions};
 
 /// 模拟 Anthropic Messages API 非流式响应
 const MOCK_NON_STREAM_RESPONSE: &str = r#"{
@@ -19,8 +18,7 @@ const MOCK_NON_STREAM_RESPONSE: &str = r#"{
 }"#;
 
 /// 模拟 Anthropic Messages API 流式响应（SSE 格式）
-const MOCK_STREAM_RESPONSE: &str =
-"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_mock_002\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"deepseek-v4-flash\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\n\
+const MOCK_STREAM_RESPONSE: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_mock_002\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"deepseek-v4-flash\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\n\
 event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
 event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你好\"}}\n\n\
 event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"！\"}}\n\n\

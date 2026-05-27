@@ -1,5 +1,4 @@
 /// CLI 入口 — 基于 clap 的命令行界面
-
 use clap::{Parser, Subcommand};
 
 use crate::models::{get_built_in_model_names, get_model_info};
@@ -98,7 +97,16 @@ fn chrono_now() -> String {
     let month_days = [
         31,
         if is_leap_year { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut m = 0usize;
     for (i, &md) in month_days.iter().enumerate() {
@@ -148,7 +156,7 @@ fn cmd_init() -> Result<String, String> {
     };
 
     // 选择默认模型
-    let default_model = match prompt_model(&provider) {
+    let default_model = match prompt_model(provider) {
         Some(m) => m,
         None => return Ok(String::new()),
     };
@@ -169,15 +177,13 @@ fn cmd_init() -> Result<String, String> {
 
     // 写入文件
     let settings_dir = settings::get_settings_dir();
-    std::fs::create_dir_all(&settings_dir)
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
+    std::fs::create_dir_all(&settings_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
 
     let content = serde_json::to_string_pretty(&settings_data)
         .map_err(|e| format!("序列化配置失败: {}", e))?
         + "\n";
 
-    std::fs::write(&file_path, content)
-        .map_err(|e| format!("写入配置文件失败: {}", e))?;
+    std::fs::write(&file_path, content).map_err(|e| format!("写入配置文件失败: {}", e))?;
 
     Ok(format!(
         "已创建 {}\n请运行 `zapmyco settings` 查看配置。",
@@ -240,9 +246,7 @@ fn prompt_model(provider: &str) -> Option<String> {
     } else {
         all_models
             .into_iter()
-            .filter(|name| {
-                get_model_info(name).map_or(false, |info| info.provider == provider)
-            })
+            .filter(|name| get_model_info(name).is_some_and(|info| info.provider == provider))
             .collect()
     };
 
@@ -263,9 +267,7 @@ fn prompt_model(provider: &str) -> Option<String> {
             .with_vim_mode(true)
             .prompt()
             .ok()
-            .and_then(|selected| {
-                choices.iter().position(|(label, _)| label == selected)
-            })?;
+            .and_then(|selected| choices.iter().position(|(label, _)| label == selected))?;
 
         Some(choices[selected_idx].1.to_string())
     } else {
@@ -372,12 +374,8 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             println!("{}", output);
             Ok(())
         }
-        Some(Commands::Run { content, profile }) => {
-            cmd_run(&content, profile.as_deref()).await
-        }
-        None => {
-            cmd_interactive().await
-        }
+        Some(Commands::Run { content, profile }) => cmd_run(&content, profile.as_deref()).await,
+        None => cmd_interactive().await,
     }
 }
 
@@ -432,13 +430,17 @@ mod tests {
         // 使用临时 HOME 隔离 settings.json 的干扰
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
-        unsafe { std::env::set_var("HOME", dir.path()); }
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
 
         let result = cmd_run("hello", None).await;
         assert!(result.is_err());
 
         if let Some(h) = orig_home {
-            unsafe { std::env::set_var("HOME", h); }
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
 
@@ -446,7 +448,9 @@ mod tests {
     fn test_init_existing_file() {
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
-        unsafe { std::env::set_var("HOME", dir.path()); }
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
 
         // 创建已存在的配置文件
         let settings_dir = dir.path().join(".zapmyco");
@@ -458,7 +462,9 @@ mod tests {
         assert!(result.err().unwrap().contains("已存在"));
 
         if let Some(h) = orig_home {
-            unsafe { std::env::set_var("HOME", h); }
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
 
@@ -482,7 +488,9 @@ mod tests {
     fn test_settings_display_legacy_masked() {
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
-        unsafe { std::env::set_var("HOME", dir.path()); }
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
 
         let settings_dir = dir.path().join(".zapmyco");
         std::fs::create_dir_all(&settings_dir).unwrap();
@@ -499,7 +507,9 @@ mod tests {
         assert!(!output.contains("sk-test-key-value"));
 
         if let Some(h) = orig_home {
-            unsafe { std::env::set_var("HOME", h); }
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
 
@@ -507,7 +517,9 @@ mod tests {
     fn test_settings_display_env_var() {
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
-        unsafe { std::env::set_var("HOME", dir.path()); }
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
 
         let settings_dir = dir.path().join(".zapmyco");
         std::fs::create_dir_all(&settings_dir).unwrap();
@@ -523,7 +535,9 @@ mod tests {
         assert!(output.contains("${env.DEEPSEEK_API_KEY}"));
 
         if let Some(h) = orig_home {
-            unsafe { std::env::set_var("HOME", h); }
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
 
@@ -531,7 +545,9 @@ mod tests {
     fn test_settings_invalid_json() {
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
-        unsafe { std::env::set_var("HOME", dir.path()); }
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
 
         let settings_dir = dir.path().join(".zapmyco");
         std::fs::create_dir_all(&settings_dir).unwrap();
@@ -542,7 +558,9 @@ mod tests {
         assert!(result.err().unwrap().contains("JSON 格式错误"));
 
         if let Some(h) = orig_home {
-            unsafe { std::env::set_var("HOME", h); }
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
 
@@ -550,7 +568,9 @@ mod tests {
     fn test_settings_new_format_masked() {
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
-        unsafe { std::env::set_var("HOME", dir.path()); }
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
 
         let settings_dir = dir.path().join(".zapmyco");
         std::fs::create_dir_all(&settings_dir).unwrap();
@@ -567,7 +587,9 @@ mod tests {
         assert!(output.contains("sho***"));
 
         if let Some(h) = orig_home {
-            unsafe { std::env::set_var("HOME", h); }
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
 }

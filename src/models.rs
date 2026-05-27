@@ -1,10 +1,9 @@
-// Phase 2 将使用部分字段，暂时允许 dead_code
+//! Models - 内置模型注册表
+//!
+//! 集中维护所有内置模型的元信息（供应商归属、baseURL、能力）。
+//! settings.json 中只需引用模型名称，详细信息由此处提供。
+// Phase 2 will use these fields
 #![allow(dead_code)]
-
-/// Models - 内置模型注册表
-///
-/// 集中维护所有内置模型的元信息（供应商归属、baseURL、能力）。
-/// settings.json 中只需引用模型名称，详细信息由此处提供。
 
 /// 模型能力
 #[derive(Debug, Clone, PartialEq)]
@@ -131,7 +130,10 @@ mod tests {
     fn test_get_model_info_vision_model() {
         let info = get_model_info("glm-4v").unwrap();
         assert_eq!(info.provider, "glm");
-        assert_eq!(info.capabilities, &[ModelCapability::Text, ModelCapability::Vision]);
+        assert_eq!(
+            info.capabilities,
+            &[ModelCapability::Text, ModelCapability::Vision]
+        );
     }
 
     #[test]

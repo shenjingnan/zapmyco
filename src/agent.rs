@@ -1,5 +1,4 @@
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
-
 use anthropic_ai_sdk::client::AnthropicClient;
 use anthropic_ai_sdk::types::message::{
     ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient, MessageError,
@@ -293,32 +292,30 @@ fn resolve_api_key(
     llm: Option<&crate::settings::LlmSettings>,
     provider_name: &str,
 ) -> Result<String, String> {
-    if let Some(key) = explicit_key {
-        if !key.is_empty() {
-            return Ok(key.to_string());
-        }
+    if let Some(key) = explicit_key.filter(|k| !k.is_empty()) {
+        return Ok(key.to_string());
     }
 
-    if let Some(llm) = llm {
-        if let Some(providers) = &llm.providers {
-            if let Some(cfg) = providers.get(provider_name) {
-                if let Some(ref api_key) = cfg.api_key {
-                    if !api_key.is_empty() {
-                        return resolve_env_ref(api_key);
-                    }
-                }
-            }
-        }
+    if let Some(llm) = llm
+        && let Some(providers) = &llm.providers
+        && let Some(cfg) = providers.get(provider_name)
+        && let Some(ref api_key) = cfg.api_key
+        && !api_key.is_empty()
+    {
+        return resolve_env_ref(api_key);
     }
 
     // 回退到环境变量
-    if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
-        if !key.is_empty() {
-            return Ok(key);
-        }
+    if let Ok(key) = std::env::var("DEEPSEEK_API_KEY")
+        && !key.is_empty()
+    {
+        return Ok(key);
     }
 
-    Err("DEEPSEEK_API_KEY 未设置。请运行 `zapmyco init` 或设置环境变量 DEEPSEEK_API_KEY。".to_string())
+    Err(
+        "DEEPSEEK_API_KEY 未设置。请运行 `zapmyco init` 或设置环境变量 DEEPSEEK_API_KEY。"
+            .to_string(),
+    )
 }
 
 /// 从 ContentBlock 列表中提取纯文本

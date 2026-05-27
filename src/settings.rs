@@ -2,7 +2,6 @@
 #![allow(dead_code)]
 
 /// Settings - ~/.zapmyco/settings.json 配置管理
-
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -71,13 +70,17 @@ fn convert_legacy_settings(legacy: LegacyLlmSettings) -> LlmSettings {
     let mut providers = std::collections::HashMap::new();
     providers.insert(
         "default".to_string(),
-        ProviderConfig { api_key: legacy.api_key },
+        ProviderConfig {
+            api_key: legacy.api_key,
+        },
     );
 
     let mut models = std::collections::HashMap::new();
     models.insert(
         "default".to_string(),
-        legacy.model.unwrap_or_else(|| "deepseek-v4-flash".to_string()),
+        legacy
+            .model
+            .unwrap_or_else(|| "deepseek-v4-flash".to_string()),
     );
 
     LlmSettings {
@@ -91,7 +94,10 @@ fn convert_legacy_settings(legacy: LegacyLlmSettings) -> LlmSettings {
 /// - "${env.DEEPSEEK_API_KEY}" → 从环境变量 DEEPSEEK_API_KEY 读取
 /// - "sk-xxx" → 原样返回
 pub fn resolve_env_ref(value: &str) -> Result<String, String> {
-    if let Some(captures) = value.strip_prefix("${env.").and_then(|s| s.strip_suffix('}')) {
+    if let Some(captures) = value
+        .strip_prefix("${env.")
+        .and_then(|s| s.strip_suffix('}'))
+    {
         let env_var = captures;
         match std::env::var(env_var) {
             Ok(resolved) => Ok(resolved),
@@ -136,8 +142,8 @@ pub fn load_settings() -> Result<Option<Settings>, String> {
 
     // 兼容旧版格式
     if is_legacy_format(llm_raw) {
-        let legacy: LegacyLlmSettings =
-            serde_json::from_value(llm_raw.clone()).map_err(|e| format!("解析旧版配置失败: {}", e))?;
+        let legacy: LegacyLlmSettings = serde_json::from_value(llm_raw.clone())
+            .map_err(|e| format!("解析旧版配置失败: {}", e))?;
         return Ok(Some(Settings {
             llm: Some(convert_legacy_settings(legacy)),
         }));
@@ -151,12 +157,8 @@ pub fn load_settings() -> Result<Option<Settings>, String> {
             obj.iter()
                 .filter_map(|(name, cfg)| {
                     let api_key = cfg.get("apiKey").and_then(|v| v.as_str()).map(String::from);
-                    cfg.as_object().map(|_| {
-                        (
-                            name.clone(),
-                            ProviderConfig { api_key },
-                        )
-                    })
+                    cfg.as_object()
+                        .map(|_| (name.clone(), ProviderConfig { api_key }))
                 })
                 .collect()
         })
@@ -213,7 +215,7 @@ pub fn read_settings_json() -> Result<serde_json::Value, String> {
             file_path.display()
         )
     })?;
-    serde_json::from_str(&content).map_err(|_| format!("JSON 格式错误。"))
+    serde_json::from_str(&content).map_err(|_| "JSON 格式错误。".to_string())
 }
 
 /// 脱敏设置文件内容中的 apiKey
@@ -222,11 +224,11 @@ fn mask_settings_json(value: &mut serde_json::Value) {
         // 新版: llm.providers.<name>.apiKey
         if let Some(providers) = llm.get_mut("providers").and_then(|v| v.as_object_mut()) {
             for cfg in providers.values_mut() {
-                if let Some(obj) = cfg.as_object_mut() {
-                    if let Some(api_key) = obj.get("apiKey").and_then(|v| v.as_str()) {
-                        let masked = mask_api_key(api_key);
-                        obj.insert("apiKey".to_string(), serde_json::Value::String(masked));
-                    }
+                if let Some(obj) = cfg.as_object_mut()
+                    && let Some(api_key) = obj.get("apiKey").and_then(|v| v.as_str())
+                {
+                    let masked = mask_api_key(api_key);
+                    obj.insert("apiKey".to_string(), serde_json::Value::String(masked));
                 }
             }
         }
@@ -255,11 +257,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
         // SAFETY: test environment isolation
-        unsafe { std::env::set_var("HOME", dir.path()); }
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
         f(dir.path());
         match orig_home {
-            Some(h) => unsafe { std::env::set_var("HOME", h); },
-            None => unsafe { std::env::remove_var("HOME"); },
+            Some(h) => unsafe {
+                std::env::set_var("HOME", h);
+            },
+            None => unsafe {
+                std::env::remove_var("HOME");
+            },
         }
     }
 
@@ -275,13 +283,17 @@ mod tests {
     #[test]
     fn test_resolve_env_ref_from_env() {
         // SAFETY: test environment isolation
-        unsafe { std::env::set_var("TEST_MY_VAR", "test-resolved-value"); }
+        unsafe {
+            std::env::set_var("TEST_MY_VAR", "test-resolved-value");
+        }
         assert_eq!(
             resolve_env_ref("${env.TEST_MY_VAR}").unwrap(),
             "test-resolved-value"
         );
         // SAFETY: test environment isolation
-        unsafe { std::env::remove_var("TEST_MY_VAR"); }
+        unsafe {
+            std::env::remove_var("TEST_MY_VAR");
+        }
     }
 
     #[test]
@@ -293,10 +305,7 @@ mod tests {
 
     #[test]
     fn test_resolve_env_ref_without_env_prefix() {
-        assert_eq!(
-            resolve_env_ref("${SOME_VAR}").unwrap(),
-            "${SOME_VAR}"
-        );
+        assert_eq!(resolve_env_ref("${SOME_VAR}").unwrap(), "${SOME_VAR}");
     }
 
     #[test]
@@ -311,12 +320,16 @@ mod tests {
     fn test_load_settings_home_not_set() {
         let orig_home = std::env::var("HOME").ok();
         // SAFETY: test environment isolation
-        unsafe { std::env::set_var("HOME", ""); }
+        unsafe {
+            std::env::set_var("HOME", "");
+        }
         let result = load_settings().unwrap();
         assert!(result.is_none());
         if let Some(h) = orig_home {
             // SAFETY: test environment isolation
-            unsafe { std::env::set_var("HOME", h); }
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
         }
     }
 
@@ -334,7 +347,12 @@ mod tests {
             let result = load_settings().unwrap().unwrap();
             let llm = result.llm.as_ref().unwrap();
             assert_eq!(
-                llm.providers.as_ref().unwrap().get("default").unwrap().api_key,
+                llm.providers
+                    .as_ref()
+                    .unwrap()
+                    .get("default")
+                    .unwrap()
+                    .api_key,
                 Some("test-key".to_string())
             );
             assert_eq!(
@@ -350,13 +368,17 @@ mod tests {
             let settings_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&settings_dir).unwrap();
             let mut file = std::fs::File::create(settings_dir.join("settings.json")).unwrap();
-            file.write_all(br#"{"llm":{"apiKey":"only-key"}}"#)
-                .unwrap();
+            file.write_all(br#"{"llm":{"apiKey":"only-key"}}"#).unwrap();
 
             let result = load_settings().unwrap().unwrap();
             let llm = result.llm.as_ref().unwrap();
             assert_eq!(
-                llm.providers.as_ref().unwrap().get("default").unwrap().api_key,
+                llm.providers
+                    .as_ref()
+                    .unwrap()
+                    .get("default")
+                    .unwrap()
+                    .api_key,
                 Some("only-key".to_string())
             );
             assert_eq!(
@@ -407,7 +429,12 @@ mod tests {
             let result = load_settings().unwrap().unwrap();
             let llm = result.llm.as_ref().unwrap();
             assert_eq!(
-                llm.providers.as_ref().unwrap().get("deepseek").unwrap().api_key,
+                llm.providers
+                    .as_ref()
+                    .unwrap()
+                    .get("deepseek")
+                    .unwrap()
+                    .api_key,
                 Some("ds-key".to_string())
             );
             assert_eq!(
@@ -472,7 +499,12 @@ mod tests {
             let result = load_settings().unwrap().unwrap();
             let llm = result.llm.as_ref().unwrap();
             assert_eq!(
-                llm.providers.as_ref().unwrap().get("default").unwrap().api_key,
+                llm.providers
+                    .as_ref()
+                    .unwrap()
+                    .get("default")
+                    .unwrap()
+                    .api_key,
                 Some("key".to_string())
             );
         });
