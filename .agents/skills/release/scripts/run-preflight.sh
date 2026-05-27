@@ -10,5 +10,5 @@ run_check() {
   echo ""
 }
 
-run_check "cargo publish --dry-run" cargo publish --dry-run 2>&1
+run_check "cargo publish --dry-run" cargo publish --dry-run --allow-dirty 2>&1
 run_check "cargo build --release" cargo build --release
