@@ -1,4 +1,4 @@
-name: Rust Release
+name: Build Binaries
 
 on:
   release:
@@ -8,21 +8,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  publish-crates:
-    name: 发布到 crates.io
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: 发布到 crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
   build-binaries:
     name: 构建二进制
     runs-on: ${{ matrix.os }}
