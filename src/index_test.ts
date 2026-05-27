@@ -839,3 +839,63 @@ Deno.test('CLI init command with Inquirer.js prompts', async (t) => {
     }
   });
 });
+
+Deno.test('CLI init edge cases', async (t) => {
+  await t.step('should support custom provider with manual model input', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      const mockPrompts = {
+        select: <T>(config: {
+          message: string;
+          choices: ReadonlyArray<{ name: string; value: T }>;
+        }): Promise<T> => {
+          if (config.message === '选择 AI 供应商') {
+            return Promise.resolve('custom' as T);
+          }
+          // 自定义供应商不过滤模型，选择第一个可用模型
+          return Promise.resolve(config.choices[0]!.value);
+        },
+        password: () => Promise.resolve('sk-custom-key'),
+        input: () => Promise.resolve('my-custom-model'),
+      };
+
+      const result = await handleInitCommand(mockPrompts);
+      assertEquals(result.exitCode, 0);
+
+      const filePath = `${testDir}/.zapmyco/settings.json`;
+      const content = JSON.parse(Deno.readTextFileSync(filePath));
+      assertEquals(content.llm.providers.custom.apiKey, 'sk-custom-key');
+      assertEquals(content.llm.models.default, 'deepseek-v4-flash');
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('should handle ExitPromptError gracefully', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      const mockPrompts = {
+        select: <T>(_config: unknown): Promise<T> => {
+          const err = new Error('User force closed the prompt with SIGINT');
+          err.name = 'ExitPromptError';
+          throw err;
+        },
+        password: () => Promise.resolve(''),
+        input: () => Promise.resolve(''),
+      };
+
+      const result = await handleInitCommand(mockPrompts);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout, '');
+      assertEquals(result.stderr, '');
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+});
