@@ -21,7 +21,7 @@ description: 如何为 ZapMyCo 项目做出贡献
 2. **复现步骤** — 详细说明如何复现
 3. **预期行为** — 您期望发生什么
 4. **实际行为** — 实际发生了什么
-5. **环境信息** — 操作系统、Deno 版本等
+5. **环境信息** — 操作系统、Rust 版本 (`rustc --version`) 等
 
 ### 建议新功能
 
@@ -35,13 +35,15 @@ description: 如何为 ZapMyCo 项目做出贡献
 
 #### 开发环境设置
 
+需要安装 [Rust 工具链](https://rustup.rs)：
+
 ```bash
 # 克隆仓库
 git clone https://github.com/shenjingnan/zapmyco.git
 cd zapmyco
 
-# 初始化
-deno task dev
+# 验证
+cargo build
 ```
 
 #### 分支策略
@@ -74,7 +76,7 @@ deno task dev
 
 ```
 feat: add new CLI command
-fix(ai): handle empty input in AI agent
+fix(agent): handle empty input
 docs: update API reference
 ```
 
@@ -83,7 +85,7 @@ docs: update API reference
 1. Fork 仓库
 2. 创建功能分支（`git checkout -b feature/my-feature`）
 3. 进行更改
-4. 确保检查通过：`deno task check:all`
+4. 确保检查通过：`cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1`
 5. 提交更改
 6. 推送分支（`git push origin feature/my-feature`）
 7. 创建 Pull Request
@@ -91,8 +93,8 @@ docs: update API reference
 #### PR 检查清单
 
 - [ ] 代码通过所有测试
-- [ ] 代码通过 lint 检查
-- [ ] 代码通过类型检查
+- [ ] 代码通过 clippy 检查
+- [ ] 代码通过格式化检查
 - [ ] 新功能有对应测试
 - [ ] 文档已更新（如需要）
 - [ ] Commit 消息遵循规范
@@ -101,31 +103,31 @@ docs: update API reference
 
 ### 代码风格
 
+由 `cargo fmt` 强制执行（Rust Edition 2024）：
+
 - 2 空格缩进
 - 单引号
 - 必须有分号
 - 行宽 100 字符
-- 禁止 `any` 类型（warn）
 
 ### 质量检查
 
 ```bash
 # 运行所有检查
-deno task check:all
+cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1
 
 # 或逐步执行
-deno fmt --check    # 格式检查
-deno lint           # 代码检查
-deno check          # 类型检查
-deno test           # 测试
+cargo fmt --check             # 格式检查
+cargo clippy -- -D warnings   # Lint 检查
+cargo test -- --test-threads=1 # 测试
 ```
 
 ### 测试规范
 
-- 测试文件与源码同目录，遵循 `src/*_test.ts` 惯例
-- 使用 Deno 原生测试 API（`Deno.test`）和 `@std/assert`
-- 运行测试：`deno task test`
-- 覆盖率报告：`deno task test:coverage`
+- 单元测试：`src/*.rs` 中的 `#[cfg(test)] mod tests`
+- 集成测试：`tests/*.rs`
+- 运行测试：`cargo test`
+- 运行测试（单线程避免环境变量竞争）：`cargo test -- --test-threads=1`
 
 ## 获取帮助
 

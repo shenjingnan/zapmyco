@@ -1,84 +1,85 @@
 ---
 title: 发布流程
-description: ZapMyCo 的双平台自动化发布流程
+description: ZapMyCo 的自动化发布流程
 ---
 
-ZapMyCo 使用 Conventional Commits 驱动的自动化发布流程，一次发布同时推送到 JSR 和 npm。
+ZapMyCo 使用 GitHub Actions 驱动的自动化发布流程，一次发布同时推送到 crates.io 和多平台二进制文件。
 
 ## 发布架构
 
 ```mermaid
 flowchart LR
     subgraph Local["本地"]
-        A["deno run tools/release.ts<br/>解析 commits 推导版本"]
-        B["更新 deno.json 版本号"]
-        C["更新 CHANGELOG.md"]
-        D["git commit + tag + push"]
+        A["更新 Cargo.toml 版本号"]
+        B["git commit + tag + push"]
     end
 
     subgraph GitHub["GitHub Actions"]
-        E["检测新 Release"]
-        F["deno publish → JSR"]
-        G["dnt 构建 npm 包"]
-        H["npm publish"]
-        I["构建二进制文件"]
+        C["检测新 Release"]
+        D["cargo publish → crates.io"]
+        E["交叉编译 5 平台二进制"]
+        F["上传到 GitHub Release"]
     end
 
-    A --> B --> C --> D --> E
-    E --> F
-    E --> G --> H
-    E --> I
+    A --> B --> C
+    C --> D
+    C --> E --> F
 ```
 
-## 版本推导规则
+## 版本规范
 
-自动化版本推导基于 Conventional Commits：
+遵循语义化版本规范：
 
-| Commit 类型 | 版本变化 |
-|-------------|----------|
-| `BREAKING CHANGE` | major 版本（不兼容变更） |
-| `feat` | minor 版本（新功能） |
-| `fix` | patch 版本（Bug 修复） |
-| 其他 | 不触发版本变化 |
+| 版本变化 | 说明 |
+|----------|------|
+| major（1.0.0 → 2.0.0）| 不兼容的 API 变更 |
+| minor（1.0.0 → 1.1.0）| 向后兼容的新功能 |
+| patch（1.0.0 → 1.0.1）| 向后兼容的 Bug 修复 |
 
 ## 发布步骤
 
-### 1. 预检
+### 1. 更新版本号
 
-```bash
-deno task release:dry
+在 `Cargo.toml` 中手动更新 `version` 字段：
+
+```toml
+[package]
+name = "zapmyco"
+version = "0.2.0"  # 更新此字段
 ```
 
-预检模式会模拟完整的发布流程但不实际发布，可用于验证版本推导和 CHANGELOG 生成。
-
-### 2. 正式发布
+### 2. 提交并打标签
 
 ```bash
-deno task release
+git add Cargo.toml
+git commit -m "chore(release): v0.2.0"
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin HEAD --tags
 ```
 
-### 3. 自动化流程
+### 3. 创建 GitHub Release
 
-发布脚本自动执行：
+```bash
+gh release create v0.2.0 --title "v0.2.0" --generate-notes
+```
 
-1. 解析 Conventional Commits，推导版本号
-2. 更新 `deno.json` 中的版本号
-3. 生成/更新 `CHANGELOG.md`
-4. 创建 Git commit 和 tag
-5. 推送到远程仓库
-6. 创建 GitHub Release
+### 4. 自动化流程
 
 GitHub Actions 检测到新 Release 后自动执行：
 
-- `deno publish` — 发布到 JSR
-- dnt 构建 + `npm publish` — 发布到 npm
-- 编译打包各平台二进制文件
+- `cargo publish` — 发布到 crates.io
+- 交叉编译 5 平台二进制文件：
+  - Linux x86_64 / ARM64
+  - macOS ARM64 / x86_64
+  - Windows x86_64
+- 上传二进制文件和 SHA256SUMS 到 Release
 
 ## 安装特定版本
 
-你可以通过 GitHub Releases 页面查看所有已发布版本，并安装特定版本：
-
 ```bash
-# 安装指定版本
-ZAPMYCO_VERSION=v0.20.0 curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+# 通过 cargo（需要 Rust 工具链）
+cargo install zapmyco --version 0.2.0
+
+# 通过 install 脚本
+ZAPMYCO_VERSION=v0.2.0 curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
 ```
