@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.3](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
+
+### Other
+
+- *(release)* 将上下文获取命令抽取为独立脚本 ([#255](https://github.com/shenjingnan/zapmyco/pull/255))
+
 ### Added
 
 - Initial project setup
