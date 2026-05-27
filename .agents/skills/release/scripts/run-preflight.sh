@@ -10,4 +10,5 @@ run_check() {
   echo ""
 }
 
-run_check "release dry-run" deno run -A tools/release.ts --dry-run "$@"
+run_check "cargo publish --dry-run" cargo publish --dry-run 2>&1
+run_check "cargo build --release" cargo build --release

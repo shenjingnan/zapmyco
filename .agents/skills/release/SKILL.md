@@ -1,13 +1,11 @@
 ---
 name: release
 description: 创建项目发布。当用户输入 /release 或要求发布新版本时使用
-argument-hint: '[tag]'
-arguments: [tag]
 ---
 
 # Release Command
 
-创建项目发布。
+创建项目发布到 crates.io 和 GitHub Releases。
 
 ## 上下文获取
 
@@ -21,61 +19,50 @@ arguments: [tag]
 
 ### 1. 分析干跑结果
 
-查看 `---[release dry-run]---` 中的输出：
+查看 `---[cargo publish --dry-run]---` 中的输出：
 
-- 确认当前版本、推导的版本号和 bump 类型
+- 确认版本号、依赖检查、构建是否通过
 - 如果干跑失败，分析原因并告知用户
 
-### 2. 确定发布参数
-
-根据用户输入的参数确定最终发布命令（`$tag` 会自动替换为用户输入的参数）：
-
-| 用户意图               | 执行命令                                  |
-| ---------------------- | ----------------------------------------- |
-| `/release`（标准发布） | `deno run -A tools/release.ts`            |
-| `/release beta`        | `deno run -A tools/release.ts --tag $tag` |
-| `/release alpha`       | `deno run -A tools/release.ts --tag $tag` |
-| 仅预检，不发布         | 告知用户干跑结果即可                      |
-
-如果用户没有指定 tag，直接进行标准发布；如果指定了 tag（如 beta、alpha、rc），使用 `--tag $tag`
-参数执行发布。
-
-### 3. 执行发布
+### 2. 执行发布
 
 ```bash
-# 示例：标准发布
-deno run -A tools/release.ts
-
-# 示例：beta 发布
-deno run -A tools/release.ts --tag beta
-# 用户输入 /release beta，$tag 自动替换为 beta
+# 更新 Cargo.toml 版本号（手动更新 version 字段）
+# 然后运行：
+cargo publish
 ```
 
-发布成功后告知用户版本号和 GitHub Release 链接。
+发布成功后告知用户版本号。
+
+### 3. GitHub Release
+
+crates.io 发布完成后，创建 GitHub Release 触发 CI 自动构建多平台二进制：
+
+```bash
+git tag -a v<version> -m "v<version>"
+git push origin --tags
+gh release create v<version> --title "v<version>" --generate-notes
+```
 
 ## 发布流程
 
-`tools/release.ts` 会自动执行以下操作：
+1. 更新 `Cargo.toml` 中的 `version` 字段
+2. 提交版本更新: `git commit -m "chore(release): v<version>"`
+3. 运行 `cargo publish --dry-run` 预检
+4. 发布到 crates.io: `cargo publish`
+5. 创建 GitHub Release: `gh release create`
 
-1. 前置检查：分支为 main、工作区干净、gh 已认证
-2. 解析 conventional commits，推导版本号
-3. 更新 `deno.json` 版本号
-4. 更新 `CHANGELOG.md`
-5. 创建 Git commit + tag
-6. 推送到远程仓库
-7. 创建 GitHub Release
+## GitHub Actions 自动发布
+
+创建 GitHub Release 后，CI 会自动执行：
+
+- 多平台交叉编译（linux-x64/arm64, macos-arm64/x64, windows-x64）
+- 上传二进制文件和 SHA256SUMS 到 Release
 
 ## 版本规范
 
 遵循语义化版本规范：
 
-- **major**: 不兼容的 API 变更
-- **minor**: 向后兼容的新功能
-- **patch**: 向后兼容的 Bug 修复
-
-## GitHub Actions 自动发布
-
-发布新 Release 后，CI 会自动执行：
-
-- `deno publish` → JSR
-- dnt 构建 + `npm publish --provenance` → npm
+- **major**: 不兼容的 API 变更（1.0.0 → 2.0.0）
+- **minor**: 向后兼容的新功能（1.0.0 → 1.1.0）
+- **patch**: 向后兼容的 Bug 修复（1.0.0 → 1.0.1）
