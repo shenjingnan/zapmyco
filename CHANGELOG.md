@@ -346,6 +346,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.22.3](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
 
+### Fixed
+
+- *(build)* 同步 Cargo.lock 版本号到 0.22.2 ([#262](https://github.com/shenjingnan/zapmyco/pull/262))
+- *(release)* 删除异常的 v{version} tag 并回退版本号到 0.22.2
+- *(ci)* 修复 release 工作流并发控制和权限问题 ([#260](https://github.com/shenjingnan/zapmyco/pull/260))
+- *(test)* 修复 test_version_constant 硬编码版本号导致发布失败 ([#257](https://github.com/shenjingnan/zapmyco/pull/257))
+
+### Other
+
+- *(ci)* 重命名 CI 工作流名称 ([#261](https://github.com/shenjingnan/zapmyco/pull/261))
+- *(release)* 明确发布流程二阶段职责划分 ([#258](https://github.com/shenjingnan/zapmyco/pull/258))
+- release v0.22.3 ([#256](https://github.com/shenjingnan/zapmyco/pull/256))
+- *(release)* 将上下文获取命令抽取为独立脚本 ([#255](https://github.com/shenjingnan/zapmyco/pull/255))
+
+## [0.22.3](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
+
 ### Other
 
 - *(release)* 将上下文获取命令抽取为独立脚本 ([#255](https://github.com/shenjingnan/zapmyco/pull/255))

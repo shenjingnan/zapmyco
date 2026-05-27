@@ -2353,7 +2353,7 @@ dependencies = [
 
 [[package]]
 name = "zapmyco"
-version = "0.22.2"
+version = "0.22.3"
 dependencies = [
  "anthropic-ai-sdk",
  "anyhow",
