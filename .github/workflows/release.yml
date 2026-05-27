@@ -5,17 +5,17 @@ on:
     branches:
       - main
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Job 1: 创建 Release PR（由 release-plz 根据 commits 自动计算版本号）
+  # Job 2: 创建/更新 Release PR（在 publish 之后执行，确保 tag 已创建）
   release-plz-pr:
-    name: 创建 Release PR
+    needs: [publish]
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    name: 创建/更新 Release PR
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -36,13 +36,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Job 2: 发布到 crates.io + 创建 GitHub Release
+  # Job 1: 发布到 crates.io + 创建 GitHub Release
   publish:
     name: 发布到 crates.io
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
+      pull-requests: read
     outputs:
       tag_name: ${{ steps.get-tag.outputs.tag_name }}
     steps:
