@@ -1,6 +1,6 @@
 version: 2
 updates:
-  - package-ecosystem: 'npm'
+  - package-ecosystem: 'cargo'
     directory: '/'
     schedule:
       interval: 'weekly'
@@ -14,27 +14,6 @@ updates:
     commit-message:
       prefix: 'chore'
       include: 'scope'
-    groups:
-      dev-dependencies:
-        patterns:
-          - '@biomejs/*'
-          - '@types/*'
-          - '@vitest/*'
-          - 'vitest'
-          - 'typescript'
-          - 'tsdown'
-          - 'tsx'
-        update-types:
-          - 'minor'
-          - 'patch'
-      lint-tools:
-        patterns:
-          - 'cspell'
-          - 'husky'
-          - 'lint-staged'
-        update-types:
-          - 'minor'
-          - 'patch'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
