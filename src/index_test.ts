@@ -170,10 +170,16 @@ Deno.test('cli', async (t) => {
     }
   });
 
-  await t.step('unknown command should exit with code 1', async () => {
-    const result = await cli(['unknown']);
+  await t.step('single unknown arg should hint about quotes', async () => {
+    const result = await cli(['你好']);
     assertEquals(result.exitCode, 1);
-    assertEquals(result.stdout, '');
+    assertEquals(result.stderr.includes('添加引号'), true);
+  });
+
+  await t.step('unknown command should hint about quotes', async () => {
+    const result = await cli(['hello', 'world']);
+    assertEquals(result.exitCode, 1);
+    assertEquals(result.stderr.includes('添加引号'), true);
   });
 
   await t.step('run without settings file should prompt init', async () => {
@@ -192,6 +198,11 @@ Deno.test('cli', async (t) => {
 
   await t.step('run without content should exit with code 1', async () => {
     const result = await cli(['run']);
+    assertEquals(result.exitCode, 1);
+  });
+
+  await t.step('run with multiple content args should error', async () => {
+    const result = await cli(['run', 'hello', 'world']);
     assertEquals(result.exitCode, 1);
   });
 

@@ -296,8 +296,8 @@ export async function cli(args: string[]): Promise<CliResult> {
   program.command('run')
     .description('一次性执行 AI 任务，完成后退出')
     .option('--profile <name>', '指定模型配置档')
-    .argument('<content...>', '任务描述')
-    .action(async (contentArgs: string[], options: { profile?: string }) => {
+    .argument('<content>', '任务描述（需用引号包裹）')
+    .action(async (content: string, options: { profile?: string }) => {
       const settingsPath = getSettingsPath();
       try {
         Deno.statSync(settingsPath);
@@ -309,7 +309,7 @@ export async function cli(args: string[]): Promise<CliResult> {
 
       try {
         const agent = new AiAgent({ modelProfile: options.profile });
-        const task = contentArgs.join(' ');
+        const task = content;
 
         const encoder = new TextEncoder();
         await agent.chatStream(task, (chunk) => {
@@ -345,6 +345,46 @@ export async function cli(args: string[]): Promise<CliResult> {
         return { exitCode: 1, stdout: '', stderr: capturedStderr };
       }
       return { exitCode: 0, stdout: '', stderr: '' };
+    }
+
+    const KNOWN_COMMANDS = ['greet', 'config', 'init', 'settings', 'run'];
+    // 未知命令→提示用户是否加引号重试
+    if (
+      args.length >= 1 &&
+      !KNOWN_COMMANDS.includes(args[0]!) &&
+      !args[0]!.startsWith('-')
+    ) {
+      capturedStderr += `未知命令 '${args[0]}'。如果希望执行 AI 任务，请添加引号：zapmyco '${
+        args.join(' ')
+      }'\n`;
+
+      // 交互式重试（仅在终端中）
+      let shouldRetry = false;
+      try {
+        if (Deno.stdin.isTerminal()) {
+          const prompts = await loadDefaultPrompts();
+          const action = await prompts.select({
+            message: '请选择操作',
+            choices: [
+              { name: '重试（添加引号执行 AI 任务）', value: 'retry' },
+              { name: '退出', value: 'exit' },
+            ],
+            theme: { keybindings: ['vim'] },
+          });
+          shouldRetry = action === 'retry';
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'ExitPromptError') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+      }
+
+      if (!shouldRetry) {
+        return { exitCode: 1, stdout: '', stderr: capturedStderr };
+      }
+      // retry：清除错误提示，将参数合并为单串作为 run 命令的内容
+      capturedStderr = '';
+      args = ['run', args.join(' ')];
     }
 
     await program.parseAsync(args, { from: 'user' });
