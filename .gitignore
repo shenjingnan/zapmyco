@@ -21,6 +21,9 @@ Thumbs.db
 # Editor
 settings.local.json
 
+# Claude Code
+.claude/
+
 # dotenv environment variable files
 .env
 .env.*
