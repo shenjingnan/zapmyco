@@ -251,24 +251,11 @@ pub fn display_settings() -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::run_with_temp_home;
     use std::io::Write;
 
     fn with_temp_home(f: fn(&std::path::Path)) {
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        // SAFETY: test environment isolation
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
-        f(dir.path());
-        match orig_home {
-            Some(h) => unsafe {
-                std::env::set_var("HOME", h);
-            },
-            None => unsafe {
-                std::env::remove_var("HOME");
-            },
-        }
+        run_with_temp_home(f);
     }
 
     #[test]

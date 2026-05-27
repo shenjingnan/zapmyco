@@ -382,6 +382,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::run_with_temp_home;
 
     #[test]
     fn test_greet_with_name() {
@@ -446,26 +447,15 @@ mod tests {
 
     #[test]
     fn test_init_existing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.json"), "{}").unwrap();
 
-        // 创建已存在的配置文件
-        let settings_dir = dir.path().join(".zapmyco");
-        std::fs::create_dir_all(&settings_dir).unwrap();
-        std::fs::write(settings_dir.join("settings.json"), "{}").unwrap();
-
-        let result = cmd_init();
-        assert!(result.is_err());
-        assert!(result.err().unwrap().contains("已存在"));
-
-        if let Some(h) = orig_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
+            let result = cmd_init();
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("已存在"));
+        });
     }
 
     #[test]
@@ -486,110 +476,70 @@ mod tests {
 
     #[test]
     fn test_settings_display_legacy_masked() {
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"apiKey":"sk-test-key-value","baseURL":"https://test.com","model":"test-model"}}"#,
+            )
+            .unwrap();
 
-        let settings_dir = dir.path().join(".zapmyco");
-        std::fs::create_dir_all(&settings_dir).unwrap();
-        std::fs::write(
-            settings_dir.join("settings.json"),
-            r#"{"llm":{"apiKey":"sk-test-key-value","baseURL":"https://test.com","model":"test-model"}}"#,
-        )
-        .unwrap();
-
-        let result = cmd_settings(None);
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        assert!(output.contains("sk-***"));
-        assert!(!output.contains("sk-test-key-value"));
-
-        if let Some(h) = orig_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
+            let result = cmd_settings(None);
+            assert!(result.is_ok());
+            let output = result.unwrap();
+            assert!(output.contains("sk-***"));
+            assert!(!output.contains("sk-test-key-value"));
+        });
     }
 
     #[test]
     fn test_settings_display_env_var() {
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"apiKey":"${env.DEEPSEEK_API_KEY}"}}"#,
+            )
+            .unwrap();
 
-        let settings_dir = dir.path().join(".zapmyco");
-        std::fs::create_dir_all(&settings_dir).unwrap();
-        std::fs::write(
-            settings_dir.join("settings.json"),
-            r#"{"llm":{"apiKey":"${env.DEEPSEEK_API_KEY}"}}"#,
-        )
-        .unwrap();
-
-        let result = cmd_settings(None);
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        assert!(output.contains("${env.DEEPSEEK_API_KEY}"));
-
-        if let Some(h) = orig_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
+            let result = cmd_settings(None);
+            assert!(result.is_ok());
+            let output = result.unwrap();
+            assert!(output.contains("${env.DEEPSEEK_API_KEY}"));
+        });
     }
 
     #[test]
     fn test_settings_invalid_json() {
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.json"), "not valid json").unwrap();
 
-        let settings_dir = dir.path().join(".zapmyco");
-        std::fs::create_dir_all(&settings_dir).unwrap();
-        std::fs::write(settings_dir.join("settings.json"), "not valid json").unwrap();
-
-        let result = cmd_settings(None);
-        assert!(result.is_err());
-        assert!(result.err().unwrap().contains("JSON 格式错误"));
-
-        if let Some(h) = orig_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
+            let result = cmd_settings(None);
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("JSON 格式错误"));
+        });
     }
 
     #[test]
     fn test_settings_new_format_masked() {
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"providers":{"deepseek":{"apiKey":"sk-long-key-value-test"},"glm":{"apiKey":"short-key"}},"models":{"default":"deepseek-v4-flash"}}}"#,
+            )
+            .unwrap();
 
-        let settings_dir = dir.path().join(".zapmyco");
-        std::fs::create_dir_all(&settings_dir).unwrap();
-        std::fs::write(
-            settings_dir.join("settings.json"),
-            r#"{"llm":{"providers":{"deepseek":{"apiKey":"sk-long-key-value-test"},"glm":{"apiKey":"short-key"}},"models":{"default":"deepseek-v4-flash"}}}"#,
-        )
-        .unwrap();
-
-        let result = cmd_settings(None);
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        assert!(output.contains("sk-***"));
-        assert!(output.contains("sho***"));
-
-        if let Some(h) = orig_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
+            let result = cmd_settings(None);
+            assert!(result.is_ok());
+            let output = result.unwrap();
+            assert!(output.contains("sk-***"));
+            assert!(output.contains("sho***"));
+        });
     }
 }
