@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.4](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
+
+### Other
+
+- 添加 settings 模块的完整测试覆盖 ([#264](https://github.com/shenjingnan/zapmyco/pull/264))
+
 ## [0.22.3](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
 
 ### Fixed
