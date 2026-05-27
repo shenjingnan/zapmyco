@@ -50,21 +50,13 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-  test-macos:
-    name: 测试 (macOS)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: 测试
-        run: cargo test -- --test-threads=1
-
-  test-windows:
-    name: 测试 (Windows)
-    runs-on: windows-latest
+  test:
+    name: 测试 (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
 
