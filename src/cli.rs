@@ -301,8 +301,8 @@ fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
     }
 }
 
-/// run 命令 - 一次性执行 AI 任务
-async fn cmd_run(content: &str, profile: Option<&str>) -> Result<String, String> {
+/// run 命令 - 一次性执行 AI 任务（流式输出）
+async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
     if !file_path.exists() {
@@ -322,8 +322,15 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<String, String>
     };
 
     let mut agent = crate::agent::AiAgent::new(options)?;
-    let response = agent.chat(content).await?;
-    Ok(response)
+    let _response = agent
+        .chat_stream(content, |chunk| {
+            print!("{}", chunk);
+            use std::io::Write;
+            std::io::stdout().flush().ok();
+        })
+        .await?;
+    println!();
+    Ok(())
 }
 
 /// 无参模式 - 启动交互式聊天
@@ -366,9 +373,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             Ok(())
         }
         Some(Commands::Run { content, profile }) => {
-            let output = cmd_run(&content, profile.as_deref()).await?;
-            println!("{}", output);
-            Ok(())
+            cmd_run(&content, profile.as_deref()).await
         }
         None => {
             cmd_interactive().await
