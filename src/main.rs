@@ -1,9 +1,5 @@
-mod cli;
-mod models;
-mod settings;
-
 use clap::Parser;
-use cli::Cli;
+use zapmyco::cli::{self, Cli};
 
 #[tokio::main]
 async fn main() {

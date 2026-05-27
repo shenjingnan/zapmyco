@@ -444,4 +444,54 @@ mod tests {
             "${env.DEEPSEEK_API_KEY}"
         );
     }
+
+    #[test]
+    fn test_load_settings_invalid_json() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.json"), "{invalid}").unwrap();
+
+            let result = load_settings();
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("JSON 格式错误"));
+        });
+    }
+
+    #[test]
+    fn test_load_settings_unknown_fields() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"apiKey":"key","unknownField":"ignored"},"otherSection":{"foo":"bar"}}"#,
+            )
+            .unwrap();
+
+            let result = load_settings().unwrap().unwrap();
+            let llm = result.llm.as_ref().unwrap();
+            assert_eq!(
+                llm.providers.as_ref().unwrap().get("default").unwrap().api_key,
+                Some("key".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn test_load_settings_skip_non_string() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"apiKey":123,"baseURL":true,"model":null}}"#,
+            )
+            .unwrap();
+
+            let result = load_settings().unwrap().unwrap();
+            assert!(result.llm.as_ref().unwrap().providers.is_none());
+            assert!(result.llm.as_ref().unwrap().models.is_none());
+        });
+    }
 }

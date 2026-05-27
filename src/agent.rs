@@ -1,0 +1,441 @@
+/// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
+
+use anthropic_ai_sdk::client::AnthropicClient;
+use anthropic_ai_sdk::types::message::{
+    ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient, MessageError,
+    RequiredMessageParams, Role, StreamEvent,
+};
+use futures_util::StreamExt;
+
+use crate::models::get_model_info;
+use crate::settings::{load_settings, resolve_env_ref};
+
+/// AiAgent 配置选项
+#[derive(Debug, Default)]
+pub struct AiAgentOptions {
+    /// API Key，默认从 settings.json 或 DEEPSEEK_API_KEY 环境变量读取
+    pub api_key: Option<String>,
+    /// API 基础 URL，默认从内置模型注册表读取
+    pub base_url: Option<String>,
+    /// 模型名称，默认从 modelProfile 或内置模型注册表读取
+    pub model: Option<String>,
+    /// 模型配置档名称（对应 settings.json llm.models 中的 key）
+    pub model_profile: Option<String>,
+    /// 供应商名称（对应 settings.json llm.providers 中的 key）
+    pub provider: Option<String>,
+    /// 最大输出 tokens
+    pub max_tokens: Option<u32>,
+    /// 系统提示词
+    pub system_prompt: Option<String>,
+}
+
+const DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic";
+const DEFAULT_MODEL: &str = "deepseek-v4-flash";
+const DEFAULT_SYSTEM_PROMPT: &str = "你是一个 AI 编程助手，帮助用户解决编程问题。";
+const DEFAULT_MAX_TOKENS: u32 = 4096;
+
+/// 对话消息
+#[derive(Debug, Clone)]
+pub struct ConversationMessage {
+    pub role: String,
+    pub content: String,
+}
+
+/// AI Agent 类 - 封装 LLM 对话功能
+pub struct AiAgent {
+    client: AnthropicClient,
+    model: String,
+    max_tokens: u32,
+    system_prompt: String,
+    messages: Vec<ConversationMessage>,
+}
+
+impl AiAgent {
+    /// 创建新的 AiAgent 实例
+    ///
+    /// 从 settings.json 和环境变量自动解析配置，参数可覆盖默认值。
+    pub fn new(options: AiAgentOptions) -> Result<Self, String> {
+        // 加载 ~/.zapmyco/settings.json
+        let settings = load_settings().unwrap_or(None);
+        let llm = settings.as_ref().and_then(|s| s.llm.as_ref());
+
+        // 1. 确定模型配置档名称
+        let profile_name = options.model_profile.as_deref().unwrap_or("default");
+
+        // 2. 从配置档解析模型名称
+        let profile_model_name = llm
+            .and_then(|l| l.models.as_ref())
+            .and_then(|m| m.get(profile_name))
+            .map(|s| s.as_str());
+
+        // 3. 最终模型名称：options.model > 配置档模型名 > 默认值
+        let model_name = options
+            .model
+            .as_deref()
+            .or(profile_model_name)
+            .unwrap_or(DEFAULT_MODEL);
+
+        // 4. 从内置注册表查找模型信息
+        let model_info = get_model_info(model_name);
+
+        // 5. 确定供应商名称：options.provider > 注册表中的供应商 > 'default'
+        let provider_name = options
+            .provider
+            .as_deref()
+            .or(model_info.map(|i| i.provider))
+            .unwrap_or("default");
+
+        // 6. 解析 apiKey：options > settings.providers[provider].apiKey > 环境变量
+        let api_key = resolve_api_key(options.api_key.as_deref(), llm, provider_name)?;
+
+        // 7. 确定 baseURL：options > 注册表中的 baseURL > 默认值
+        let base_url = options
+            .base_url
+            .as_deref()
+            .or(model_info.map(|i| i.base_url))
+            .unwrap_or(DEFAULT_BASE_URL);
+
+        // 8. 确定 maxTokens：options > 注册表中的 maxOutputTokens > 默认值 4096
+        let max_tokens = options
+            .max_tokens
+            .or(model_info.and_then(|i| i.max_output_tokens))
+            .unwrap_or(DEFAULT_MAX_TOKENS);
+
+        // 9. 构建 Anthropic 客户端（使用兼容 API）
+        let client = AnthropicClient::builder(api_key, "2023-06-01")
+            .with_api_base_url(base_url)
+            .build::<MessageError>()
+            .map_err(|e| format!("创建 AI 客户端失败: {}", e))?;
+
+        let system_prompt = options
+            .system_prompt
+            .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
+
+        Ok(Self {
+            client,
+            model: model_name.to_string(),
+            max_tokens,
+            system_prompt,
+            messages: Vec::new(),
+        })
+    }
+
+    /// 非流式对话 - 发送消息并获取完整回复
+    pub async fn chat(&mut self, input: &str) -> Result<String, String> {
+        self.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: input.to_string(),
+        });
+
+        let params = self.build_params(false)?;
+
+        let response = self
+            .client
+            .create_message(Some(&params))
+            .await
+            .map_err(|e| format!("API 请求失败: {}", e))?;
+
+        let full_content = extract_text_from_blocks(&response.content);
+
+        self.messages.push(ConversationMessage {
+            role: "assistant".to_string(),
+            content: full_content.clone(),
+        });
+
+        Ok(full_content)
+    }
+
+    /// 流式对话 - 发送消息并通过回调逐块获取回复
+    pub async fn chat_stream(
+        &mut self,
+        input: &str,
+        on_chunk: impl FnMut(&str),
+    ) -> Result<String, String> {
+        self.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: input.to_string(),
+        });
+
+        let params = self.build_params(true)?;
+
+        let mut stream = self
+            .client
+            .create_message_streaming(&params)
+            .await
+            .map_err(|e| format!("API 流式请求失败: {}", e))?;
+
+        let mut full_content = String::new();
+        let mut callback = on_chunk;
+
+        while let Some(event) = stream.next().await {
+            match event.map_err(|e| format!("流式读取失败: {}", e))? {
+                StreamEvent::ContentBlockDelta {
+                    delta: ContentBlockDelta::TextDelta { text },
+                    ..
+                } => {
+                    full_content.push_str(&text);
+                    callback(&text);
+                }
+                StreamEvent::Error { error } => {
+                    return Err(format!("API 错误: {} - {}", error.type_, error.message));
+                }
+                _ => {}
+            }
+        }
+
+        self.messages.push(ConversationMessage {
+            role: "assistant".to_string(),
+            content: full_content.clone(),
+        });
+
+        Ok(full_content)
+    }
+
+    /// 启动交互式对话 - 从 stdin 读取输入，流式输出到 stdout
+    pub async fn start_interactive_chat(&mut self) -> Result<(), String> {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        eprintln!("进入 AI 对话模式");
+        eprintln!("模型: {}", self.model);
+        eprintln!("输入 /exit 退出，/clear 清空上下文");
+        eprintln!("---");
+
+        let stdin = tokio::io::stdin();
+        let reader = BufReader::new(stdin);
+        let mut lines = reader.lines();
+
+        while let Ok(Some(line)) = lines.next_line().await {
+            let trimmed = line.trim().to_string();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            if trimmed == "/exit" {
+                eprintln!("\n再见！");
+                break;
+            }
+
+            if trimmed == "/clear" {
+                self.messages.clear();
+                eprintln!("上下文已清空");
+                continue;
+            }
+
+            eprintln!("\n❯ {}\n", trimmed);
+
+            let content = trimmed.clone();
+            let result = self
+                .chat_stream(&content, |chunk| {
+                    print!("{}", chunk);
+                    use std::io::Write;
+                    std::io::stdout().flush().ok();
+                })
+                .await;
+
+            match result {
+                Ok(_) => {
+                    eprintln!("\n---");
+                }
+                Err(e) => {
+                    eprintln!("\n[错误] {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 清空对话上下文
+    pub fn clear_context(&mut self) {
+        self.messages.clear();
+    }
+
+    /// 获取当前对话历史
+    pub fn get_messages(&self) -> &[ConversationMessage] {
+        &self.messages
+    }
+
+    /// 构建请求参数
+    fn build_params(&self, stream: bool) -> Result<CreateMessageParams, String> {
+        let api_messages: Vec<Message> = self
+            .messages
+            .iter()
+            .map(|msg| {
+                let role = match msg.role.as_str() {
+                    "assistant" => Role::Assistant,
+                    _ => Role::User,
+                };
+                Message::new_text(role, &msg.content)
+            })
+            .collect();
+
+        let required = RequiredMessageParams {
+            model: self.model.clone(),
+            messages: api_messages,
+            max_tokens: self.max_tokens,
+        };
+
+        let mut params = CreateMessageParams::new(required);
+        if !self.system_prompt.is_empty() {
+            params = params.with_system(&self.system_prompt);
+        }
+        if stream {
+            params = params.with_stream(true);
+        }
+
+        Ok(params)
+    }
+}
+
+/// 解析 API Key
+fn resolve_api_key(
+    explicit_key: Option<&str>,
+    llm: Option<&crate::settings::LlmSettings>,
+    provider_name: &str,
+) -> Result<String, String> {
+    if let Some(key) = explicit_key {
+        if !key.is_empty() {
+            return Ok(key.to_string());
+        }
+    }
+
+    if let Some(llm) = llm {
+        if let Some(providers) = &llm.providers {
+            if let Some(cfg) = providers.get(provider_name) {
+                if let Some(ref api_key) = cfg.api_key {
+                    if !api_key.is_empty() {
+                        return resolve_env_ref(api_key);
+                    }
+                }
+            }
+        }
+    }
+
+    // 回退到环境变量
+    if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
+        if !key.is_empty() {
+            return Ok(key);
+        }
+    }
+
+    Err("DEEPSEEK_API_KEY 未设置。请运行 `zapmyco init` 或设置环境变量 DEEPSEEK_API_KEY。".to_string())
+}
+
+/// 从 ContentBlock 列表中提取纯文本
+fn extract_text_from_blocks(blocks: &[ContentBlock]) -> String {
+    blocks
+        .iter()
+        .filter_map(|block| {
+            if let ContentBlock::Text { text } = block {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_no_api_key() {
+        // 使用临时 HOME 隔离 settings.json 的干扰
+        let dir = tempfile::tempdir().unwrap();
+        let orig_home = std::env::var("HOME").ok();
+        let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
+        // SAFETY: test isolation
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+            std::env::remove_var("DEEPSEEK_API_KEY");
+        }
+
+        let result = AiAgent::new(AiAgentOptions {
+            api_key: Some("".to_string()),
+            ..Default::default()
+        });
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("DEEPSEEK_API_KEY"));
+
+        // SAFETY: restore env
+        unsafe {
+            if let Some(h) = orig_home {
+                std::env::set_var("HOME", h);
+            }
+            if let Some(k) = orig_key {
+                std::env::set_var("DEEPSEEK_API_KEY", k);
+            }
+        }
+    }
+
+    #[test]
+    fn test_agent_custom_options() {
+        let agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            base_url: Some("https://custom.example.com".to_string()),
+            model: Some("test-model".to_string()),
+            ..Default::default()
+        });
+        assert!(agent.is_ok());
+        let agent = agent.unwrap();
+        assert_eq!(agent.get_messages().len(), 0);
+    }
+
+    #[test]
+    fn test_agent_manage_context() {
+        let mut agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(agent.get_messages().len(), 0);
+        agent.clear_context();
+        assert_eq!(agent.get_messages().len(), 0);
+    }
+
+    #[test]
+    fn test_agent_resolve_model_from_registry() {
+        let agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            model_profile: Some("default".to_string()),
+            ..Default::default()
+        });
+        // Without settings file, "default" profile won't find any model
+        // and should fall back to DEFAULT_MODEL
+        assert!(agent.is_ok());
+        let agent = agent.unwrap();
+        assert_eq!(agent.get_messages().len(), 0);
+    }
+
+    #[test]
+    fn test_agent_with_provider() {
+        let agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            model: Some("deepseek-v4-flash".to_string()),
+            provider: Some("deepseek".to_string()),
+            ..Default::default()
+        });
+        assert!(agent.is_ok());
+    }
+
+    #[test]
+    fn test_extract_text_from_blocks() {
+        let blocks = vec![
+            ContentBlock::Text {
+                text: "Hello".to_string(),
+            },
+            ContentBlock::Text {
+                text: " World".to_string(),
+            },
+        ];
+        assert_eq!(extract_text_from_blocks(&blocks), "Hello World");
+    }
+
+    #[test]
+    fn test_extract_text_from_blocks_empty() {
+        let blocks: Vec<ContentBlock> = vec![];
+        assert_eq!(extract_text_from_blocks(&blocks), "");
+    }
+}
