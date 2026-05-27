@@ -513,4 +513,350 @@ mod tests {
             assert!(result.llm.as_ref().unwrap().models.is_none());
         });
     }
+
+    #[test]
+    fn test_get_settings_dir() {
+        with_temp_home(|home| {
+            let dir = get_settings_dir();
+            assert_eq!(dir, home.join(".zapmyco"));
+        });
+    }
+
+    #[test]
+    fn test_get_settings_path_format() {
+        with_temp_home(|home| {
+            let path = get_settings_path();
+            assert_eq!(path, home.join(".zapmyco/settings.json"));
+        });
+    }
+
+    #[test]
+    fn test_get_settings_path_home_not_set() {
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::remove_var("HOME");
+        }
+        let path = get_settings_path();
+        assert_eq!(path, std::path::PathBuf::from("./.zapmyco/settings.json"));
+        if let Some(h) = orig_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_settings_dir_home_not_set() {
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::remove_var("HOME");
+        }
+        let dir = get_settings_dir();
+        assert_eq!(dir, std::path::PathBuf::from("./.zapmyco"));
+        if let Some(h) = orig_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
+    }
+
+    #[test]
+    fn test_read_settings_json_file_not_found() {
+        with_temp_home(|_home| {
+            let result = read_settings_json();
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("不存在"));
+        });
+    }
+
+    #[test]
+    fn test_read_settings_json_valid_file() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"apiKey":"test"}}"#,
+            )
+            .unwrap();
+
+            let result = read_settings_json().unwrap();
+            assert_eq!(result["llm"]["apiKey"].as_str().unwrap(), "test");
+        });
+    }
+
+    #[test]
+    fn test_read_settings_json_invalid_file() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.json"), "not-json").unwrap();
+
+            let result = read_settings_json();
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("JSON 格式错误"));
+        });
+    }
+
+    #[test]
+    fn test_mask_api_key_exactly_8_chars() {
+        assert_eq!(mask_api_key("12345678"), "123***");
+    }
+
+    #[test]
+    fn test_mask_api_key_4_chars() {
+        assert_eq!(mask_api_key("abcd"), "abc***");
+    }
+
+    #[test]
+    fn test_mask_api_key_empty() {
+        assert_eq!(mask_api_key(""), "***");
+    }
+
+    #[test]
+    fn test_resolve_env_ref_empty() {
+        assert_eq!(resolve_env_ref("").unwrap(), "");
+    }
+
+    #[test]
+    fn test_resolve_env_ref_incomplete_prefix() {
+        // "${env.}" resolves to empty env var name, which fails
+        let result = resolve_env_ref("${env.}");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_env_ref_no_closing_brace() {
+        assert_eq!(resolve_env_ref("${env.MY_VAR").unwrap(), "${env.MY_VAR");
+    }
+
+    #[test]
+    fn test_resolve_env_ref_no_env_prefix() {
+        assert_eq!(resolve_env_ref("${}").unwrap(), "${}");
+    }
+
+    #[test]
+    fn test_convert_legacy_full() {
+        let legacy = LegacyLlmSettings {
+            api_key: Some("sk-key".to_string()),
+            base_url: Some("https://test.com".to_string()),
+            model: Some("glm-4v".to_string()),
+        };
+        let result = convert_legacy_settings(legacy);
+        assert_eq!(
+            result
+                .providers
+                .as_ref()
+                .unwrap()
+                .get("default")
+                .unwrap()
+                .api_key,
+            Some("sk-key".to_string())
+        );
+        assert_eq!(
+            result.models.as_ref().unwrap().get("default").unwrap(),
+            "glm-4v"
+        );
+    }
+
+    #[test]
+    fn test_convert_legacy_minimal() {
+        let legacy = LegacyLlmSettings {
+            api_key: None,
+            base_url: None,
+            model: None,
+        };
+        let result = convert_legacy_settings(legacy);
+        assert!(
+            result
+                .providers
+                .as_ref()
+                .unwrap()
+                .get("default")
+                .unwrap()
+                .api_key
+                .is_none()
+        );
+        assert_eq!(
+            result.models.as_ref().unwrap().get("default").unwrap(),
+            "deepseek-v4-flash"
+        );
+    }
+
+    #[test]
+    fn test_is_legacy_format_with_api_key() {
+        let value = serde_json::json!({"apiKey": "sk-test", "baseURL": "https://test.com"});
+        assert!(is_legacy_format(&value));
+    }
+
+    #[test]
+    fn test_is_legacy_format_with_model() {
+        let value = serde_json::json!({"model": "deepseek-v4-flash"});
+        assert!(is_legacy_format(&value));
+    }
+
+    #[test]
+    fn test_is_legacy_format_non_string_api_key() {
+        let value = serde_json::json!({"apiKey": 123});
+        assert!(!is_legacy_format(&value));
+    }
+
+    #[test]
+    fn test_is_legacy_format_new_format() {
+        let value = serde_json::json!({"providers": {"deepseek": {"apiKey": "key"}}, "models": {"default": "model"}});
+        assert!(!is_legacy_format(&value));
+    }
+
+    #[test]
+    fn test_is_legacy_format_not_an_object() {
+        let value = serde_json::json!("just a string");
+        assert!(!is_legacy_format(&value));
+    }
+
+    #[test]
+    fn test_is_legacy_format_empty_object() {
+        let value = serde_json::json!({});
+        assert!(!is_legacy_format(&value));
+    }
+
+    #[test]
+    fn test_mask_settings_json_no_llm() {
+        let mut value = serde_json::json!({"other": "data"});
+        mask_settings_json(&mut value);
+        assert_eq!(value, serde_json::json!({"other": "data"}));
+    }
+
+    #[test]
+    fn test_mask_settings_json_empty_providers() {
+        let mut value = serde_json::json!({"llm": {"providers": {}}});
+        mask_settings_json(&mut value);
+        assert_eq!(value, serde_json::json!({"llm": {"providers": {}}}));
+    }
+
+    #[test]
+    fn test_mask_settings_json_new_format() {
+        let mut value = serde_json::json!({
+            "llm": {
+                "providers": {
+                    "deepseek": {"apiKey": "sk-secret-key-1234"},
+                    "glm": {"apiKey": "glm-key-value-test"}
+                }
+            }
+        });
+        mask_settings_json(&mut value);
+        assert_eq!(
+            value["llm"]["providers"]["deepseek"]["apiKey"],
+            "sk-***1234"
+        );
+        assert_eq!(value["llm"]["providers"]["glm"]["apiKey"], "glm***test");
+    }
+
+    #[test]
+    fn test_mask_settings_json_legacy_format() {
+        let mut value = serde_json::json!({
+            "llm": {
+                "apiKey": "sk-legacy-key-value"
+            }
+        });
+        mask_settings_json(&mut value);
+        assert_eq!(value["llm"]["apiKey"], "sk-***alue");
+    }
+
+    #[test]
+    fn test_load_settings_no_llm_field() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"otherSection":{"foo":"bar"}}"#,
+            )
+            .unwrap();
+
+            let result = load_settings().unwrap().unwrap();
+            assert!(result.llm.is_none());
+        });
+    }
+
+    #[test]
+    fn test_load_settings_new_format_providers_only() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"providers":{"deepseek":{"apiKey":"key"}}}}"#,
+            )
+            .unwrap();
+
+            let result = load_settings().unwrap().unwrap();
+            let llm = result.llm.unwrap();
+            assert!(llm.providers.is_some());
+            assert!(llm.models.is_none());
+        });
+    }
+
+    #[test]
+    fn test_load_settings_new_format_models_only() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"models":{"default":"deepseek-v4-flash"}}}"#,
+            )
+            .unwrap();
+
+            let result = load_settings().unwrap().unwrap();
+            let llm = result.llm.unwrap();
+            assert!(llm.providers.is_none());
+            assert!(llm.models.is_some());
+        });
+    }
+
+    #[test]
+    fn test_load_settings_legacy_model_only() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"model":"glm-4v"}}"#,
+            )
+            .unwrap();
+
+            let result = load_settings().unwrap().unwrap();
+            let llm = result.llm.unwrap();
+            assert_eq!(llm.models.unwrap().get("default").unwrap(), "glm-4v");
+        });
+    }
+
+    #[test]
+    fn test_display_settings_new_format_providers() {
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.json"),
+                r#"{"llm":{"providers":{"deepseek":{"apiKey":"sk-test-1234"}}}}"#,
+            )
+            .unwrap();
+
+            let result = display_settings().unwrap();
+            let api_key = result["llm"]["providers"]["deepseek"]["apiKey"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(api_key, "sk-***1234");
+        });
+    }
+
+    #[test]
+    fn test_display_settings_missing_file() {
+        with_temp_home(|_home| {
+            let result = display_settings();
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("不存在"));
+        });
+    }
 }
