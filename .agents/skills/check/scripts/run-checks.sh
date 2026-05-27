@@ -10,8 +10,7 @@ run_check() {
   echo ""
 }
 
-run_check "deno fmt --check" deno fmt --check
-run_check "deno lint" deno lint
-run_check "deno check src/" deno check src/
-run_check "deno test" deno test --allow-env
-run_check "cspell" npx cspell '**/*.ts' '**/*.md'
+run_check "cargo fmt --check" cargo fmt --check
+run_check "cargo clippy" cargo clippy -- -D warnings
+run_check "cargo test" cargo test -- --test-threads=1
+run_check "cargo build" cargo build

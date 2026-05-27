@@ -1,5 +1,5 @@
 #!/bin/bash
-# build.sh - 构建 npm 包，捕获输出，始终返回 0
+# build.sh - 构建 Rust 项目，捕获输出，始终返回 0
 # 被 build skill 的 !`bash ...` 调用，将结果注入 LLM 上下文
 
 run_check() {
@@ -10,19 +10,15 @@ run_check() {
   echo ""
 }
 
-run_check "deno check src/" deno check src/
-run_check "deno run -A tools/build-npm.ts" deno run -A tools/build-npm.ts
+run_check "cargo check" cargo check
+run_check "cargo build --release" cargo build --release
 
-echo "---[verify dist/npm/]---"
-if [ -d "dist/npm" ] && [ -f "dist/npm/package.json" ] && [ -f "dist/npm/esm/src/index.js" ] && [ -d "dist/npm/types" ]; then
+echo "---[verify target/release/]---"
+if [ -f "target/release/zapmyco" ]; then
   echo "✓ 构建产物验证通过"
-  echo "  目录: dist/npm/"
-  echo "  文件: package.json, esm/src/index.js, types/, ..."
-  ls -lh dist/npm/
-elif [ -d "dist/npm" ]; then
-  echo "⚠ 构建产物部分缺失"
-  ls -lh dist/npm/
+  echo "  文件: target/release/zapmyco"
+  ls -lh target/release/zapmyco
 else
-  echo "✗ dist/npm/ 目录不存在"
+  echo "✗ target/release/zapmyco 不存在"
 fi
 echo ""

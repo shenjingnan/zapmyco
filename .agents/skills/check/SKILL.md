@@ -1,11 +1,11 @@
 ---
 name: check
-description: 运行完整的代码质量检查（格式化、Lint、类型检查、测试、拼写检查）。当用户输入 /check、/lint、/test、/spellcheck、/typecheck 或要求代码检查、测试、类型检查、格式化、拼写检查时使用
+description: 运行完整的代码质量检查（格式化、Lint、类型检查、测试）。当用户输入 /check、/lint、/test、/typecheck 或要求代码检查、测试、类型检查、格式化时使用
 ---
 
 # Check Command
 
-运行完整的代码质量检查，包括格式化检查、Lint、类型检查、测试和拼写检查。
+运行完整的代码质量检查，包括格式化检查、Lint、测试和编译检查。
 
 ## 上下文获取
 
@@ -25,39 +25,37 @@ description: 运行完整的代码质量检查（格式化、Lint、类型检查
 
 按以下优先级依次处理：
 
-1. **格式化问题** — 运行 `deno fmt` 自动修复
-2. **Lint 问题** — 分析 `deno lint` 输出并修复代码中的 lint 错误
-3. **类型错误** — 分析 `deno check` 输出并修复类型错误
-4. **测试失败** — 分析 `deno test` 输出并修复失败的测试
-5. **拼写错误** — 修复拼写错误，或更新 `cspell.json` 添加自定义词汇
+1. **格式化问题** — 运行 `cargo fmt` 自动修复
+2. **Lint 问题** — 分析 `cargo clippy` 输出并修复代码中的问题
+3. **测试失败** — 分析 `cargo test` 输出并修复失败的测试
+4. **编译错误** — 分析 `cargo build` 输出并修复编译错误
 
 ### 3. 最终验证
 
 修复完成后，重新运行完整检查确认全部通过：
 
 ```bash
-deno fmt --check && deno lint && deno check src/ && deno test --allow-env && npx cspell '**/*.ts' '**/*.md'
+cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1 && cargo build
 ```
 
 ## 配置参考
 
-| 工具       | 配置方式      | 用途                |
-| ---------- | ------------- | ------------------- |
-| Deno fmt   | `deno.json`   | 代码格式化          |
-| Deno lint  | `deno.json`   | 代码检查            |
-| Deno check | `deno.json`   | TypeScript 类型检查 |
-| Deno test  | `deno.json`   | 测试运行            |
-| cspell     | `cspell.json` | 拼写检查            |
+| 工具          | 配置方式       | 用途             |
+| ------------- | -------------- | ---------------- |
+| Cargo fmt     | `rustfmt.toml`  | 代码格式化       |
+| Clippy        | `deno.json`    | Lint 检查        |
+| Cargo test    | `Cargo.toml`   | 测试运行         |
+| Cargo check   | `Cargo.toml`   | 编译检查         |
 
 ## 代码风格
 
 - 缩进: 2 空格
 - 引号: 单引号
-- 分号: 必须有
 - 行宽: 100 字符
+- 由 `cargo fmt` 强制执行
 
 ## 测试规范
 
-- 测试文件: `src/*_test.ts`（与源码同目录）
-- 框架: Deno 原生测试 API + `@std/assert`
-- 覆盖率: `deno test --allow-env --coverage && deno coverage`
+- 测试文件: `src/*.rs` 中的 `#[cfg(test)] mod tests`
+- 框架: Rust 内置 `#[test]` + `assert_eq!` / `assert!`
+- 运行: `cargo test`（单线程: `cargo test -- --test-threads=1`）

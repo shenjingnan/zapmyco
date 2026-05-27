@@ -10,8 +10,5 @@ run_check() {
   echo ""
 }
 
-run_check "deno audit" deno audit
-run_check "deno audit --level=high" deno audit --level=high
-run_check "deno audit --socket" deno audit --socket
-run_check "deno outdated" deno outdated
-run_check "deno outdated --compatible" deno outdated --compatible
+run_check "cargo audit" cargo audit 2>/dev/null || echo "提示: 请安装 cargo audit (cargo install cargo-audit)"
+run_check "cargo deny check" cargo deny check 2>/dev/null || echo "提示: 请安装 cargo deny (cargo install cargo-deny)"

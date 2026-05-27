@@ -1,6 +1,6 @@
 ---
 title: ZapMyCo
-description: 基于 Deno 的 AI 驱动命令行工具
+description: 基于 Rust 的 AI 驱动命令行工具
 ---
 
 <p align="center">
@@ -9,46 +9,42 @@ description: 基于 Deno 的 AI 驱动命令行工具
 
 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
   <a href="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml"><img src="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://www.npmjs.com/package/zapmyco"><img src="https://img.shields.io/npm/v/zapmyco.svg?color=brightgreen" alt="NPM" /></a>
-  <a href="https://jsr.io/@zapmyco/zapmyco"><img src="https://jsr.io/badges/@zapmyco/zapmyco" alt="JSR" /></a>
+  <a href="https://crates.io/crates/zapmyco"><img src="https://img.shields.io/crates/v/zapmyco.svg?color=brightgreen" alt="crates.io" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg" alt="License: MIT" /></a>
 </div>
 
-**ZapMyCo** 是一个基于 Deno 的 AI 驱动命令行工具，提供现代化的 CLI 交互体验和 AI Agent 集成能力。
+**ZapMyCo** 是一个基于 Rust 的 AI 驱动命令行工具，提供与 LLM 的交互式聊天体验。
 
 ## 特性
 
-- **现代技术栈** — TypeScript + Deno 2.x 运行时
-- **AI 集成** — 内置 AI Agent 对话模式，终端中的智能交互
-- **双平台发布** — 自动发布到 JSR 和 npm，支持多平台二进制分发
-- **零依赖运行** — 预编译二进制文件，无需安装运行时
-- **自动化发布** — Conventional Commits 驱动的自动化版本管理和发布
+- **Rust 实现** — 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动
+- **AI 集成** — 内置 AI Agent 对话模式，支持流式输出
+- **多平台分发** — crates.io 发布 + 5 平台预编译二进制
+- **多供应商** — 内置 DeepSeek、GLM（智谱）模型，支持自定义
+- **自动化发布** — GitHub Actions 驱动的自动构建、测试和发布
 
 ## 快速安装
 
 ```bash
-# 二进制安装（推荐，无需运行时）
+# 通过 cargo 安装（需要 Rust 工具链）
+cargo install zapmyco
+
+# 或直接下载二进制（无需安装 Rust）
 curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
-
-# 或通过 npm
-npx zapmyco --help
-
-# 或通过 JSR / Deno
-deno run -A jsr:@zapmyco/zapmyco --help
 ```
 
 ## 快速使用
 
 ```bash
+# 初始化配置
+zapmyco init
+
 # 查看帮助
 zapmyco --help
 
 # 打招呼
 zapmyco greet World
 
-# 查看配置
-zapmyco config
-
 # AI 对话模式
-zapmyco ai
+zapmyco
 ```

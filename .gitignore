@@ -20,6 +20,10 @@ Thumbs.db
 
 # Editor
 settings.local.json
+.claude/settings.local.json
+
+# Claude Code
+.claude/
 
 # dotenv environment variable files
 .env
@@ -29,3 +33,8 @@ settings.local.json
 # Logs
 *.log
 .vercel
+
+
+# Added by cargo
+
+/target

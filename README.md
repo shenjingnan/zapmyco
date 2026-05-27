@@ -6,39 +6,23 @@
 
 <p align="center">
   <a href="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml"><img src="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://codecov.io/gh/shenjingnan/zapmyco"><img src="https://codecov.io/gh/shenjingnan/zapmyco/branch/main/graph/badge.svg" alt="Codecov"></a>
-  <a href="https://www.npmjs.com/package/zapmyco"><img src="https://img.shields.io/npm/v/zapmyco.svg?color=brightgreen" alt="NPM"></a>
-  <a href="https://jsr.io/@zapmyco/zapmyco"><img src="https://jsr.io/badges/@zapmyco/zapmyco" alt="JSR"></a>
+  <a href="https://crates.io/crates/zapmyco"><img src="https://img.shields.io/crates/v/zapmyco.svg?color=brightgreen" alt="crates.io"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg" alt="License: MIT"></a>
 </p>
 
-基于 Deno 的 AI 驱动命令行工具。
+基于 Rust 的 AI 驱动命令行工具，提供与 LLM 的交互式聊天体验。
 
 ## 安装方式
 
-### 二进制下载（无需安装运行时）
-
-每个版本都会发布预编译的二进制文件，一行命令即可安装：
+### 通过 cargo 安装
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
-
-# Windows (PowerShell)
-iwr https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.ps1 -useb | iex
+cargo install zapmyco
 ```
 
-安装脚本支持通过环境变量指定版本和安装目录：
+### 二进制下载（无需安装 Rust）
 
-```bash
-# 安装指定版本
-ZAPMYCO_VERSION=vX.X.X curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
-
-# 安装到自定义目录
-ZAPMYCO_INSTALL=~/tools curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
-```
-
-如果你更倾向于直接下载二进制文件，也可以从下表选择对应平台：
+每个版本都会发布预编译的二进制文件：
 
 | 平台    | 架构          | 下载链接                                                                                                           |
 | ------- | ------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -48,134 +32,134 @@ ZAPMYCO_INSTALL=~/tools curl -fsSL https://raw.githubusercontent.com/shenjingnan
 | macOS   | Intel         | [zapmyco-macos-x64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-x64)             |
 | Windows | x86_64        | [zapmyco-windows-x64.exe](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-windows-x64.exe) |
 
-### 通过 npm 安装
+### 从源码编译
 
 ```bash
-npx zapmyco --help
+git clone https://github.com/shenjingnan/zapmyco.git
+cd zapmyco
+cargo build --release
+# 产物位于 target/release/zapmyco
 ```
 
-### 通过 JSR / Deno 运行
+## 快速开始
+
+### 1. 初始化配置
 
 ```bash
-deno run --allow-env --allow-net jsr:@zapmyco/zapmyco --help
+zapmyco init
+```
+
+交互式向导会引导你完成：
+- 选择 AI 供应商（DeepSeek / GLM / 自定义）
+- 配置 API Key（直接输入或使用环境变量）
+- 选择默认模型
+
+### 2. 使用
+
+```bash
+# 一次性 AI 任务
+zapmyco run "用中文介绍 Rust 语言的特点"
+
+# 交互式对话模式
+zapmyco
+
+# 查看配置
+zapmyco settings
+zapmyco settings path
+```
+
+### 环境变量
+
+```bash
+# 直接设置 API Key
+export DEEPSEEK_API_KEY=sk-your-key-here
+
+# 或在 init 向导中选择使用环境变量引用
+# 存储为 ${env.DEEPSEEK_API_KEY}
 ```
 
 ## 特性
 
-- **现代技术栈**: TypeScript + Deno 2.x 运行时
-- **测试框架**: Deno Test - 内置测试运行器
-- **代码质量**: deno lint + deno fmt + cspell (拼写检查)
-- **AI 集成**: 内置 CLAUDE.md 和 .claude/ 目录配置
-- **CI/CD**: GitHub Actions 自动化测试和发布
-- **双平台发布**: 自动发布到 JSR 和 npm (通过 dnt)
+- **Rust 实现**: 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动
+- **多供应商**: 内置 DeepSeek 和 GLM（智谱）模型支持，可自定义供应商
+- **流式输出**: AI 回复实时逐字显示
+- **交互式对话**: 支持 `/exit`、`/clear` 命令的终端聊天模式
+- **配置管理**: 自动兼容旧版配置格式，支持 `${env.VAR}` 语法
+- **CI/CD**: GitHub Actions 自动化测试和 5 平台交叉编译
 
-## 快速开始
+## 命令参考
 
-### 使用模板
-
-点击仓库页面的 "Use this template" 按钮创建新项目。
-
-### 安装
-
-```bash
-# 克隆项目
-git clone https://github.com/your-username/your-project.git
-cd your-project
-```
-
-> 本项目基于 Deno 运行时，无需手动安装依赖。Deno 会自动处理模块缓存。
-
-### 开发
-
-```bash
-# 开发模式
-deno task dev
-
-# 测试
-deno task test
-
-# 代码检查
-deno task lint
-
-# 类型检查
-deno task check
-
-# 完整检查
-deno task check:all
-```
+| 命令 | 说明 |
+|------|------|
+| `zapmyco` | 无参启动交互式对话模式 |
+| `zapmyco run <prompt>` | 一次性执行 AI 任务 |
+| `zapmyco init` | 交互式初始化向导 |
+| `zapmyco settings` | 显示 LLM 配置（API Key 自动脱敏） |
+| `zapmyco settings path` | 显示配置文件路径 |
+| `zapmyco config` | 显示应用配置 |
+| `zapmyco greet <name>` | 打招呼（示例命令） |
+| `zapmyco --help` | 显示帮助信息 |
+| `zapmyco --version` | 显示版本号 |
 
 ## 项目结构
 
 ```
-ai-typescript-starter/
-├── .claude/              # Claude Code 配置
-│   ├── skills/           # 技能定义
-│   └── CLAUDE.md         # 项目上下文
-├── .github/              # GitHub 配置
-│   └── workflows/        # CI/CD 工作流
-├── docs/                 # 文档
-├── examples/             # 示例代码
-├── src/                  # 源代码
-│   ├── index.ts          # 主入口 & CLI
-│   ├── index_test.ts     # 测试文件（与源码同目录）
-│   ├── ai-agent.ts       # AI Agent 对话模块
-│   └── text-line-stream.ts # 文本行流工具
-├── tools/                # 构建/发布脚本
-│   ├── build-npm.ts      # dnt npm 构建
-│   └── release.ts        # 自动化发布
-├── AGENTS.md             # AI Agent 配置
-├── deno.json             # Deno 配置
-└── dist/                 # 构建产物
+zapmyco/
+├── Cargo.toml              # Rust 项目配置和依赖管理
+├── .github/workflows/
+│   ├── ci.yml              # Rust CI（fmt + clippy + test + build）
+│   └── release.yml         # 发布流水线（crates.io + 多平台二进制）
+├── src/
+│   ├── main.rs             # 二进制入口
+│   ├── lib.rs              # 库入口
+│   ├── cli.rs              # clap CLI 定义
+│   ├── agent.rs            # AiAgent（Anthropic API 封装）
+│   ├── models.rs           # 内置模型注册表
+│   └── settings.rs         # ~/.zapmyco/settings.json 管理
+├── tests/
+│   └── integration_test.rs # 集成测试（wiremock）
+└── AGENTS.md               # AI 辅助开发上下文
 ```
 
-## 可用脚本
+## 内置模型
 
-| 命令                      | 说明                                 |
-| ------------------------- | ------------------------------------ |
-| `deno task dev`           | 开发模式 (watch)                     |
-| `deno task test`          | 运行测试                             |
-| `deno task test:coverage` | 测试覆盖率报告                       |
-| `deno task lint`          | 代码检查                             |
-| `deno task fmt`           | 格式化代码                           |
-| `deno task fmt:check`     | 格式检查                             |
-| `deno task check`         | 类型检查                             |
-| `deno task check:all`     | 完整检查 (fmt + lint + check + test) |
-| `deno task cli`           | 运行 CLI（交互模式/一次性任务）      |
-| `deno task release`       | 创建发布                             |
-| `deno task release:dry`   | 发布干运行 (不实际发布)              |
-| `deno task build:npm`     | dnt 构建 npm 包                      |
+| 模型 | 供应商 | 上下文窗口 |
+|------|--------|-----------|
+| deepseek-v4-flash | DeepSeek | 1M tokens |
+| deepseek-v4-pro | DeepSeek | 1M tokens |
+| deepseek-reasoner | DeepSeek | 128K tokens |
+| glm-4-flash | GLM（智谱） | 128K tokens |
+| glm-4v | GLM（智谱） | 128K tokens（支持视觉） |
+| glm-5v-turbo | GLM（智谱） | 200K tokens（支持视觉） |
+| glm-5.1 | GLM（智谱） | 200K tokens |
 
-## AI 辅助开发
+## 开发
 
-本项目专为 AI 辅助开发设计，内置了完善的 AI 工程约束：
+```bash
+# 构建
+cargo build
 
-### CLAUDE.md
+# 测试（单线程避免环境变量竞争）
+cargo test -- --test-threads=1
 
-为 Claude Code 提供项目上下文和开发规范。
+# 格式检查和 Lint
+cargo fmt --check
+cargo clippy -- -D warnings
 
-### .claude/ 目录
+# 完整检查
+cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1
+```
 
-- `skills/` - 项目技能定义 (`update-readme`, `resolve-git-conflicts` 等)
-- `CLAUDE.md` - 项目上下文和开发规范
+## 技术栈
 
-Slash 命令通过内置 skills 提供，支持 `/build`, `/test`, `/lint`, `/typecheck`, `/spellcheck`,
-`/release`, `/commit-push-pr` 等。
-
-## 贡献指南
-
-请参阅 [贡献指南](https://zapmyco-docs.vercel.app/community/contributing)
-了解代码风格、测试规范、提交规范和发布流程等详细内容。
-
-## 文档
-
-请访问 [文档站点](https://zapmyco-docs.vercel.app) 查看完整的在线文档，包括：
-
-- [快速开始](https://zapmyco-docs.vercel.app/quickstart)
-- [CLI 使用指南](https://zapmyco-docs.vercel.app/guide/cli-usage)
-- [AI 代理功能](https://zapmyco-docs.vercel.app/guide/ai-agent)
-- [架构说明](https://zapmyco-docs.vercel.app/advanced/architecture)
-- [发布流程](https://zapmyco-docs.vercel.app/advanced/release-flow)
-- [贡献指南](https://zapmyco-docs.vercel.app/community/contributing)
+| 技术 | 用途 |
+|------|------|
+| Rust 1.95+ | 编程语言 |
+| clap 4.x | CLI 参数解析 |
+| anthropic-ai-sdk | Anthropic Messages API 客户端 |
+| inquire | 交互式终端提示 |
+| tokio | 异步运行时 |
+| serde / serde_json | JSON 序列化 |
 
 ## 许可证
 

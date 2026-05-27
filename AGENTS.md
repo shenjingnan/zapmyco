@@ -1,72 +1,81 @@
-# CLAUDE.md - AI 原生 TypeScript 启动模板 (Deno)
+# CLAUDE.md - AI 原生 Rust CLI 工具
 
 本文档为 Claude Code 提供项目上下文和开发规范。
 
 ## 项目概述
 
-**ai-typescript-starter** 是一个 AI 原生的 TypeScript 启动模板，专为 AI 辅助开发时代打造。\
-基于 **Deno 2.x** 运行时，发布到 **JSR**。
+**zapmyco** 是一个 AI 驱动的命令行工具，基于 Anthropic 兼容 API 提供交互式 LLM 聊天会话。\
+基于 **Rust** 运行时，发布到 **crates.io** 和 **GitHub Releases**。
 
 ## 技术栈
 
-| 技术       | 版本     | 用途                                            |
-| ---------- | -------- | ----------------------------------------------- |
-| Deno       | 2.8+     | 运行时 / TypeScript 编译 / 测试 / Lint / Format |
-| TypeScript | 原生支持 | 编程语言                                        |
-| cspell     | 8.x      | 拼写检查 (npm)                                  |
-| JSR        | —        | 包发布 registry                                 |
+| 技术           | 版本   | 用途                         |
+| -------------- | ------ | ---------------------------- |
+| Rust           | 1.95+  | 编程语言 / 编译 / 测试 / Lint / Format |
+| clap           | 4.x    | CLI 参数解析                 |
+| anthropic-ai-sdk | 0.2 | Anthropic Messages API 客户端 |
+| inquire        | 0.7    | 交互式终端提示               |
+| tokio          | 1.x    | 异步运行时                   |
+| serde          | 1.x    | JSON 配置序列化/反序列化     |
+| cargo-audit    | —      | 依赖安全审计（可选安装）     |
 
 ## 快速命令参考
 
 ```bash
 # 开发
-deno run src/index.ts                # 直接运行
-deno run --watch src/index.ts        # 开发模式 (watch)
+cargo run                           # 直接运行（无参进入交互模式）
+cargo run -- greet <name>           # 打招呼
+cargo run -- config                 # 显示配置
+cargo run -- init                   # 交互式初始化向导
+cargo run -- settings               # 显示 LLM 配置
+cargo run -- settings path          # 显示配置路径
+cargo run -- run "prompt"           # 一次性 AI 任务
+cargo watch -x run                  # 开发模式 (需 cargo-watch)
 
 # 测试
-deno test                            # 运行测试
-deno test --coverage                 # 覆盖率收集
-deno coverage                        # 查看覆盖率报告
+cargo test                          # 运行测试
+cargo test -- --test-threads=1      # 单线程测试（避免 env 竞争）
 
 # 代码质量
-deno lint                            # 代码检查
-deno fmt                             # 格式化代码
-deno fmt --check                     # 格式检查
-deno check src/                      # 类型检查
-deno fmt --check && deno lint && deno check src/ && deno test  # 完整检查
+cargo fmt                           # 格式化代码
+cargo fmt --check                   # 格式检查
+cargo clippy                        # Lint 检查
+cargo clippy -- -D warnings         # 严格 Lint 检查
+cargo test                          # 测试
+cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1  # 完整检查
+
+# 构建
+cargo build                         # 调试构建
+cargo build --release               # 发布构建
+
+# 文档
+cargo doc --open                    # 生成并打开 API 文档
 
 # 发布
-deno publish                         # 发布到 JSR
-deno publish --dry-run               # 发布预检（不实际发布）
+cargo publish --dry-run             # 发布预检
+cargo publish                       # 发布到 crates.io
 ```
 
 ## 代码风格规范
 
-由 `deno fmt` 和 `deno lint` 强制执行，配置在 `deno.json` 中：
+由 `cargo fmt` 和 `cargo clippy` 强制执行（Rust Edition 2024）：
 
 - **缩进**: 2 空格
-- **引号**: 单引号
+- **引号**: 单引号（除字符串外）
 - **分号**: 必须有
 - **行宽**: 最大 100 字符
 - **尾随逗号**: 默认
-
-### TypeScript 规范
-
-- 严格模式开启
-- 禁止 `any` 类型 (warn)
-- 显式定义公共函数返回类型
-- 使用 `const` 优先，`let` 仅在必要时使用
-- 使用可选链 (`?.`) 和空值合并 (`??`)
 
 ### 命名约定
 
 | 类型      | 约定                 | 示例           |
 | --------- | -------------------- | -------------- |
-| 文件      | kebab-case           | `my-module.ts` |
-| 类        | PascalCase           | `MyClass`      |
-| 函数/变量 | camelCase            | `myFunction`   |
+| 文件      | snake_case           | `my_module.rs` |
+| 类/结构体 | PascalCase           | `MyStruct`     |
+| 函数/变量 | snake_case           | `my_function`  |
 | 常量      | SCREAMING_SNAKE_CASE | `MAX_COUNT`    |
-| 类型/接口 | PascalCase           | `UserConfig`   |
+| 类型/trait| PascalCase           | `UserConfig`   |
+| 枚举      | PascalCase           | `ModelRole`    |
 
 ## Git 工作流
 
@@ -98,60 +107,53 @@ deno publish --dry-run               # 发布预检（不实际发布）
 - `test` - 测试
 - `chore` - 构建/工具
 
-**示例**:
-
-```
-feat: add new utility function
-fix(utils): handle null case in formatDate
-docs: update README with new examples
-```
-
 ## 测试规范
 
 ### 测试文件位置
 
-- 遵循 Deno 惯例: `src/*_test.ts`（与源码同目录）
-- 使用 Deno 原生测试 API + `@std/assert`
+- 单元测试: `src/*.rs` 中的 `#[cfg(test)] mod tests`
+- 集成测试: `tests/*.rs`
 
 ### 测试格式
 
-```typescript
-import { assertEquals, assertThrows } from 'jsr:@std/assert';
-import { myFunction } from './index.ts';
+```rust
+use crate::my_function;
 
-Deno.test('MyModule', async (t) => {
-  await t.step('should return correct value when input is valid', () => {
-    assertEquals(myFunction('valid'), 'expected');
-  });
+#[test]
+fn test_my_function() {
+    assert_eq!(my_function("valid"), "expected");
+}
 
-  await t.step('should throw error when input is invalid', () => {
-    assertThrows(() => myFunction(''), TypeError);
-  });
-});
+#[test]
+fn test_error_case() {
+    assert!(my_function("").is_err());
+}
 ```
 
 ### 测试覆盖率
 
-- 运行 `deno test --coverage && deno coverage`
-- 生成 lcov 报告:
-  `deno test --coverage=coverage && deno coverage --lcov coverage > coverage/lcov.info`
+```bash
+cargo tarpaulin                     # 需要 cargo-tarpaulin
+```
 
 ## 关键规则
 
-1. **提交前检查**: 确保 `deno fmt --check && deno lint && deno check src/ && deno test` 全部通过
-2. **类型安全**: 避免使用 `any`，优先使用具体类型或泛型
+1. **提交前检查**: 确保 `cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1` 全部通过
+2. **类型安全**: 避免不必要的 `unwrap()`，优先使用 `?` 或模式匹配
 3. **文档更新**: 新功能需更新相关文档
 4. **测试覆盖**: 新代码需要有对应的测试
 5. **中文优先**: 所有文档、commit 信息、PR 信息、注释等有必要的场景优先使用中文
 
 ## 可用 Slash Commands
 
-| 命令       | 说明     |
-| ---------- | -------- |
-| `/build`   | 构建项目 |
-| `/test`    | 运行测试 |
-| `/lint`    | 代码检查 |
-| `/release` | 创建发布 |
+| 命令       | 说明                     |
+| ---------- | ------------------------ |
+| `/build`   | 构建项目（release）      |
+| `/test`    | 运行测试                 |
+| `/check`   | 完整代码质量检查         |
+| `/lint`    | Lint 检查                |
+| `/release` | 创建发布                 |
+| `/spellcheck` | 拼写检查             |
 
 ## 常见问题
 
@@ -160,7 +162,7 @@ Deno.test('MyModule', async (t) => {
 1. 创建功能分支: `git checkout -b feature/my-feature`
 2. 实现功能代码
 3. 编写测试用例
-4. 运行检查: `deno fmt --check && deno lint && deno check src/ && deno test`
+4. 运行检查: `cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1`
 5. 提交代码: `git commit -m "feat: add my feature"`
 6. 创建 PR
 
@@ -175,6 +177,7 @@ Deno.test('MyModule', async (t) => {
 
 ### 如何发布新版本？
 
-1. 在 `deno.json` 中更新 `version` 字段
-2. 运行 `deno publish --dry-run` 预检
-3. 创建 GitHub Release（触发自动发布到 JSR）
+1. 在 `Cargo.toml` 中更新 `version` 字段
+2. 提交版本更新
+3. 运行 `cargo publish --dry-run` 预检
+4. 创建 GitHub Release（触发自动发布到 crates.io 和多平台二进制构建）

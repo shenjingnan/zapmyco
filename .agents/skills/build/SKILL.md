@@ -21,16 +21,16 @@ description: 构建 npm 包或编译二进制文件。当用户输入 /build 或
 
 逐项检查每个步骤的输出，判断是否有错误：
 
-1. **类型检查** — 检查 `deno check` 输出，修复类型错误
-2. **构建输出** — 检查 dnt 构建日志，修复构建错误
-3. **产物验证** — 确认 `dist/npm/` 目录包含 `package.json`、`esm/src/index.js`、`types/`
+1. **类型检查** — 检查 `cargo check` 输出，修复类型错误
+2. **构建输出** — 检查 `cargo build --release` 输出，修复构建错误
+3. **产物验证** — 确认 `target/release/zapmyco` 文件存在
 
 ### 2. 修复问题
 
 如果构建失败，根据错误类型修复：
 
-1. **类型错误** — 分析 `deno check` 输出并修复类型错误，然后重新运行 `/build`
-2. **构建错误** — 分析 dnt 输出并修复问题，然后重新运行 `/build`
+1. **类型错误** — 分析 `cargo check` 输出并修复类型错误，然后重新运行 `/build`
+2. **构建错误** — 分析编译输出并修复问题，然后重新运行 `/build`
 
 ### 3. 构建成功
 
@@ -38,26 +38,16 @@ description: 构建 npm 包或编译二进制文件。当用户输入 /build 或
 
 ## 构建配置
 
-- 构建工具: dnt (Deno to npm)
-- 输出格式: CommonJS + ESM
-- 类型声明: 自动生成 .d.ts
-- Source Map: 启用
-
-## 预期输出
-
-```
-dist/
-├── npm/
-│   ├── package.json
-│   ├── esm/src/index.js      # ESM 入口
-│   ├── types/src/index.d.ts  # 类型声明
-│   └── ...
-```
+- 构建工具: Cargo (Rust)
+- 输出格式: 静态链接的 ELF/Mach-O/PE 二进制文件
+- 产物位置: `target/release/zapmyco`
 
 ## 编译二进制
 
-如果用户要求编译独立可执行文件，直接在 shell 中执行：
+如果用户要求编译独立可执行文件：
 
 ```bash
-deno compile --allow-env --allow-net -o dist/zapmyco src/index.ts
+cargo build --release
 ```
+
+产物位于 `target/release/zapmyco`。
