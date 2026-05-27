@@ -54,9 +54,6 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 运行测试（发布前质量门禁）
-        run: cargo test
-
       - name: 记录当前最新 tag
         id: pre-tag
         run: echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"

@@ -57,7 +57,7 @@ git push origin main
 
 ### 6. 说明后续流程
 
-推送完成后，告知用户后续将自动进行：
+推送完成后，告知用户后续将进入 **Phase 2（CI 自动化）**，流程如下：
 
 1. **GitHub Actions 自动创建 Release PR**
    - `release-plz-pr` Job 扫描 main 上的 conventional commits
@@ -65,6 +65,7 @@ git push origin main
    - 更新 `Cargo.toml` 版本号
    - 更新 `CHANGELOG.md`
    - 创建 Release PR
+   - ※ 不再重复运行测试（Phase 1 已完成）
 
 2. **用户审核并合并 Release PR**
    - 前往 GitHub 仓库查看自动创建的 Release PR
@@ -81,17 +82,22 @@ git push origin main
 
 ```
 多次 feat/fix PR 合并到 main     ← 日常开发
+         ↓                                    ┐
+决定发布 → 执行 /release skill                 │ Phase 1
+  ├─ 检查分支 & commits                        │ 本地 Skill
+  ├─ git pull --ff-only                       │
+  ├─ cargo test                               │
+  └─ git push origin main                     ┘
          ↓
-决定发布 → 执行 /release skill
-         ↓
-git push main → GitHub Actions
-         ↓
+GitHub Actions                                ┐
+         │                                    │ Phase 2
+         ↓                                    │ CI 自动化
 Job 1: release-plz release-pr
   ├─ 创建 Release PR（自动计算版本号 + 更新 CHANGELOG）
          ↓
 用户审核并合并 Release PR
          ↓
-Job 2: release-plz release
+Job 2: release-plz release                    ┘
   ├─ 发布到 crates.io
   ├─ 创建 GitHub tag + Release
   ↓
