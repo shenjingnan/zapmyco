@@ -35,6 +35,21 @@ jobs:
       - name: 构建
         run: cargo build --release
 
+      - name: 安装 cargo-tarpaulin
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+
+      - name: 生成覆盖率报告
+        run: cargo tarpaulin --out lcov --output-dir coverage
+
+      - name: 上传覆盖率到 Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: ./coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
   test-macos:
     name: 测试 (macOS)
     runs-on: macos-latest
