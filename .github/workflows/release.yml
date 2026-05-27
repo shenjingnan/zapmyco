@@ -1,75 +1,30 @@
-name: Release
+name: Rust Release
 
 on:
   release:
     types: [published]
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  publish-jsr:
-    name: 发布到 JSR
+  publish-crates:
+    name: 发布到 crates.io
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-
     steps:
-      - name: 检出代码仓库
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-      - name: 设置 Deno
-        uses: denoland/setup-deno@v2.0.3
-        with:
-          deno-version: 2.x
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: 发布到 JSR
-        run: deno publish
-
-  publish-npm:
-    name: 发布到 npm
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: 检出代码仓库
-        uses: actions/checkout@v6
-
-      - name: 设置 Deno
-        uses: denoland/setup-deno@v2.0.3
-        with:
-          deno-version: 2.x
-
-      - name: dnt 构建 npm 包
-        env:
-          TAG_NAME: ${{ github.event.release.tag_name }}
-        run: deno run -A tools/build-npm.ts "${TAG_NAME#v}"
-
-      - name: 设置 pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: latest
-
-      - name: 设置 Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: 发布到 npm（Trusted Publishing）
-        env:
-          NODE_AUTH_TOKEN: ''
-        run: |
-          cd dist/npm
-          if echo "${{ github.event.release.tag_name }}" | grep -q '-'; then
-            TAG=$(echo "${{ github.event.release.tag_name }}" | sed 's/.*-\([a-z]*\).*/\1/')
-            pnpm publish --no-git-checks --provenance --access public --tag "$TAG"
-          else
-            pnpm publish --no-git-checks --provenance --access public
-          fi
+      - name: 发布到 crates.io
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   build-binaries:
-    name: 构建二进制 (${{ matrix.output }})
+    name: 构建二进制
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -78,56 +33,48 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            compile-target: '--target x86_64-unknown-linux-gnu'
+            target: x86_64-unknown-linux-gnu
             output: zapmyco-linux-x64
           - os: ubuntu-latest
-            compile-target: '--target aarch64-unknown-linux-gnu'
+            target: aarch64-unknown-linux-gnu
             output: zapmyco-linux-arm64
           - os: macos-latest
-            compile-target: ''
+            target: aarch64-apple-darwin
             output: zapmyco-macos-arm64
           - os: macos-latest
-            compile-target: '--target x86_64-apple-darwin'
+            target: x86_64-apple-darwin
             output: zapmyco-macos-x64
           - os: windows-latest
-            compile-target: ''
+            target: x86_64-pc-windows-msvc
             output: zapmyco-windows-x64.exe
 
     steps:
       - uses: actions/checkout@v6
 
-      - uses: denoland/setup-deno@v2.0.3
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
         with:
-          deno-version: 2.x
+          targets: ${{ matrix.target }}
 
-      - name: 安装 UPX (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y upx
-
-      - name: 安装交叉编译工具 (ARM64)
-        if: matrix.compile-target == '--target aarch64-unknown-linux-gnu'
-        run: sudo apt-get install -y binutils-aarch64-linux-gnu
-
-      - name: 安装 UPX (Windows)
-        if: runner.os == 'Windows'
-        run: choco install upx
-
-      - name: 编译二进制文件
-        run: deno compile --no-check --allow-env --allow-net ${{ matrix.compile-target }} --output ${{ matrix.output }} src/cli.ts
-
-      - name: 压缩二进制 (Linux)
-        if: runner.os == 'Linux'
+      - name: 安装交叉编译工具 (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
-          if [ "${{ matrix.compile-target }}" = "--target aarch64-unknown-linux-gnu" ]; then
-            aarch64-linux-gnu-strip ${{ matrix.output }}
-          else
-            strip ${{ matrix.output }}
-          fi
-          upx --best --lzma ${{ matrix.output }}
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: 构建
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 压缩二进制 (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          strip target/${{ matrix.target }}/release/zapmyco
+          cp target/${{ matrix.target }}/release/zapmyco ${{ matrix.output }}
 
       - name: 压缩二进制 (Windows)
         if: runner.os == 'Windows'
-        run: upx --best --lzma ${{ matrix.output }}
+        run: copy target\${{ matrix.target }}\release\zapmyco.exe ${{ matrix.output }}
 
       - name: 计算 SHA256
         shell: bash
@@ -138,17 +85,18 @@ jobs:
             shasum -a 256 ${{ matrix.output }} > checksums-${{ matrix.output }}.txt
           fi
 
-      - name: 上传 checksum 文件
+      - name: 上传 checksum
         uses: actions/upload-artifact@v7
         with:
           name: checksums-${{ matrix.output }}
           path: checksums-${{ matrix.output }}.txt
           retention-days: 1
 
-      - name: 上传到 Release
-        run: gh release upload ${{ github.event.release.tag_name }} "${{ matrix.output }}"
+      - name: 上传二进制到 Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" "${{ matrix.output }}"
 
   generate-checksums:
     name: 生成 SHA256SUMS
@@ -169,6 +117,7 @@ jobs:
         run: cat *.txt | sort > SHA256SUMS
 
       - name: 上传 SHA256SUMS 到 Release
-        run: gh release upload ${{ github.event.release.tag_name }} SHA256SUMS
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" SHA256SUMS
