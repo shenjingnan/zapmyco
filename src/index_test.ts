@@ -1,5 +1,5 @@
 import { assertEquals, assertMatch, assertThrows } from 'jsr:@std/assert@1';
-import { cli } from './cli.ts';
+import { cli, handleInitCommand } from './cli.ts';
 import { createConfig, greet, VERSION } from './index.ts';
 import { AiAgent } from './ai-agent.ts';
 import { loadSettings, resolveEnvRef } from './settings.ts';
@@ -727,5 +727,115 @@ Deno.test('CLI init command', async (t) => {
   await t.step('init command should be listed in help', async () => {
     const result = await cli(['--help']);
     assertEquals(result.stdout.includes('init'), true);
+  });
+});
+
+Deno.test('CLI init command with Inquirer.js prompts', async (t) => {
+  await t.step('should create settings with deepseek provider and selected model', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      // 模拟用户选择: DeepSeek -> 输入 api key -> 选择默认模型
+      const mockPrompts = {
+        select: <T>(config: {
+          message: string;
+          choices: ReadonlyArray<{ name: string; value: T }>;
+        }): Promise<T> => {
+          if (config.message === '选择 AI 供应商') {
+            return Promise.resolve('deepseek' as T);
+          }
+          if (config.message === '选择默认模型') {
+            return Promise.resolve('deepseek-v4-flash' as T);
+          }
+          return Promise.resolve(config.choices[0]!.value);
+        },
+        password: () => Promise.resolve('sk-test-key-12345'),
+        input: () => Promise.resolve('deepseek-v4-flash'),
+      };
+
+      const result = await handleInitCommand(mockPrompts);
+      assertEquals(result.exitCode, 0);
+      assertEquals(result.stdout.includes('已创建'), true);
+
+      // 验证生成的文件内容
+      const filePath = `${testDir}/.zapmyco/settings.json`;
+      const content = JSON.parse(Deno.readTextFileSync(filePath));
+      assertEquals(content.llm.providers.deepseek.apiKey, 'sk-test-key-12345');
+      assertEquals(content.llm.models.default, 'deepseek-v4-flash');
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('should use env var reference when api key is empty', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      const mockPrompts = {
+        select: <T>(config: {
+          message: string;
+          choices: ReadonlyArray<{ name: string; value: T }>;
+        }): Promise<T> => {
+          if (config.message === '选择 AI 供应商') {
+            return Promise.resolve('deepseek' as T);
+          }
+          return Promise.resolve('deepseek-v4-flash' as T);
+        },
+        password: () => Promise.resolve(''),
+        input: () => Promise.resolve('deepseek-v4-flash'),
+      };
+
+      const result = await handleInitCommand(mockPrompts);
+      assertEquals(result.exitCode, 0);
+
+      const filePath = `${testDir}/.zapmyco/settings.json`;
+      const content = JSON.parse(Deno.readTextFileSync(filePath));
+      assertEquals(content.llm.providers.deepseek.apiKey, '${env.DEEPSEEK_API_KEY}');
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  });
+
+  await t.step('should support glm provider and model filtering', async () => {
+    const origHome = Deno.env.get('HOME');
+    const testDir = Deno.makeTempDirSync();
+    Deno.env.set('HOME', testDir);
+    try {
+      let modelFilterVerified = false;
+      const mockPrompts = {
+        select: <T>(config: {
+          message: string;
+          choices: ReadonlyArray<{ name: string; value: T }>;
+        }): Promise<T> => {
+          if (config.message === '选择 AI 供应商') {
+            return Promise.resolve('glm' as T);
+          }
+          // 验证模型列表只包含 glm 模型（不包含 deepseek 模型）
+          const models = config.choices.map((c) => c.value);
+          assertEquals((models as string[]).includes('deepseek-v4-flash'), false);
+          assertEquals((models as string[]).includes('glm-4-flash'), true);
+          modelFilterVerified = true;
+          return Promise.resolve('glm-4-flash' as T);
+        },
+        password: () => Promise.resolve('sk-glm-key'),
+        input: () => Promise.resolve('glm-4-flash'),
+      };
+
+      const result = await handleInitCommand(mockPrompts);
+      assertEquals(result.exitCode, 0);
+      assertEquals(modelFilterVerified, true);
+
+      const filePath = `${testDir}/.zapmyco/settings.json`;
+      const content = JSON.parse(Deno.readTextFileSync(filePath));
+      assertEquals(content.llm.providers.glm.apiKey, 'sk-glm-key');
+      assertEquals(content.llm.models.default, 'glm-4-flash');
+    } finally {
+      Deno.env.set('HOME', origHome ?? '');
+      Deno.removeSync(testDir, { recursive: true });
+    }
   });
 });
