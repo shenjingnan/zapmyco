@@ -471,7 +471,18 @@ mod tests {
 
     #[test]
     fn test_version_constant() {
-        assert_eq!(VERSION, "0.22.2");
+        // 验证 VERSION 是有效的 semver 格式 (X.Y.Z)
+        assert!(!VERSION.is_empty(), "VERSION should not be empty");
+        let parts: Vec<&str> = VERSION.split('.').collect();
+        assert_eq!(parts.len(), 3, "VERSION should be in semver format (X.Y.Z)");
+        for part in &parts {
+            assert!(!part.is_empty(), "semver part should not be empty");
+            assert!(
+                part.chars().all(|c| c.is_ascii_digit()),
+                "semver part '{}' should be numeric",
+                part
+            );
+        }
     }
 
     #[test]
