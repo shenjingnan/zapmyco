@@ -37,11 +37,12 @@ deno fmt --check                     # 格式检查
 deno check                           # 类型检查
 deno fmt --check && deno lint && deno check && deno test  # 完整检查
 
-# 发布
-deno run -A tools/release.ts            # 自动化发布（版本推导 + CHANGELOG + GitHub Release）
-deno run -A tools/release.ts --dry-run  # 发布预检
-deno run -A tools/build-npm.ts          # dnt 构建 npm 包（CI 中自动执行）
-deno publish                            # 直接发布到 JSR（CI 中自动执行）
+# 发布（release-plz 自动化）
+# 提交 conventional commits → push 到 main → release-plz 自动创建 release PR
+# 合并 release PR → 自动发布到 crates.io + GitHub Release → 构建多平台二进制
+# 版本号由 release-plz 根据 commits 自动推导，无需手动修改
+cargo test                               # 发布前确保测试通过
+# 更多细节请参考 .agents/skills/release/SKILL.md
 ```
 
 ## 代码风格规范
@@ -189,19 +190,16 @@ Deno.test('MyModule', async (t) => {
 
 ### 如何发布新版本？
 
-使用 Deno 原生发布脚本：
+使用 release-plz 自动化发布（参考 `.agents/skills/release/SKILL.md` 获取完整流程）：
 
-1. 确保 `gh` CLI 已安装并认证：`gh auth status`
-2. 运行 `deno run -A tools/release.ts --dry-run` 预检
-3. 确认版本推导和 CHANGELOG 无误
-4. 运行 `deno run -A tools/release.ts` 正式发布
-5. 脚本会自动：
-   - 解析 conventional commits，推导版本号（`BREAKING CHANGE` → major, `feat` → minor, `fix` →
-     patch）
-   - 更新 `deno.json` 版本号
-   - 更新 `CHANGELOG.md`
-   - 创建 Git commit + tag 并推送
-   - 创建 GitHub Release
-6. GitHub Actions 检测到新 Release 后自动执行：
-   - `deno publish` → JSR
-   - dnt 构建 + `npm publish --provenance` → npm
+1. 确保 commits 遵循 conventional commits 规范（`feat:`、`fix:` 等）
+2. 推送到 main 分支
+3. release-plz 自动创建 release PR（含版本号 + CHANGELOG 更新）
+4. 审查并合并 release PR
+5. 自动发布到 crates.io 并创建 GitHub Release
+6. CI 自动构建多平台二进制并上传到 Release
+
+版本号由 release-plz 根据 conventional commits 自动推导：
+- `BREAKING CHANGE` → major
+- `feat` → minor
+- `fix` / `refactor` / `docs` 等 → patch
