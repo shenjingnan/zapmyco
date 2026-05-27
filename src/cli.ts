@@ -5,6 +5,7 @@
 import { Command, CommanderError } from 'npm:commander@14';
 import { createConfig, greet, VERSION } from './index.ts';
 import { AiAgent } from './ai-agent.ts';
+import { getBuiltInModelNames, getModelInfo } from './models.ts';
 
 /**
  * CLI 执行结果
@@ -26,16 +27,28 @@ function getSettingsDir(): string {
   return `${Deno.env.get('HOME') ?? '.'}/.zapmyco`;
 }
 
-async function promptUser(question: string): Promise<string> {
-  const encoder = new TextEncoder();
-  Deno.stdout.writeSync(encoder.encode(question));
-  const buf = new Uint8Array(1024);
-  const n = await Deno.stdin.read(buf);
-  if (n === null) return '';
-  return new TextDecoder().decode(buf.subarray(0, n)).trim();
+export interface InquirerPrompts {
+  select: <T>(config: {
+    message: string;
+    choices: ReadonlyArray<{ name: string; value: T }>;
+    default?: T;
+    theme?: { keybindings?: ReadonlyArray<'vim' | 'emacs'> };
+  }) => Promise<T>;
+  password: (config: { message: string; mask?: boolean }) => Promise<string>;
+  input: (config: { message: string; default?: string }) => Promise<string>;
 }
 
-async function handleInitCommand(): Promise<CliResult> {
+/** 默认使用 @inquirer/prompts 实现（动态导入以避免模块加载时的权限问题） */
+async function loadDefaultPrompts(): Promise<InquirerPrompts> {
+  const { select, password, input } = await import(
+    'npm:@inquirer/prompts@7'
+  );
+  return { select, password, input };
+}
+
+export async function handleInitCommand(
+  prompts?: InquirerPrompts,
+): Promise<CliResult> {
   const filePath = getSettingsPath();
   const dir = getSettingsDir();
 
@@ -53,23 +66,77 @@ async function handleInitCommand(): Promise<CliResult> {
     }
   }
 
-  // 交互式询问 API Key
-  const apiKey = await promptUser(
-    '? DeepSeek API Key（输入密钥，或直接回车使用环境变量 DEEPSEEK_API_KEY）: ',
-  );
+  // 使用传入的 prompts 或动态加载 @inquirer/prompts
+  const p = prompts ?? await loadDefaultPrompts();
 
-  // 写入配置文件（新结构）
+  // 交互式问答（捕获 SIGINT 优雅退出）
+  let provider: string;
+  let apiKey: string;
+  let defaultModel: string;
+  try {
+    // 第1步: 选择供应商
+    provider = await p.select({
+      message: '选择 AI 供应商',
+      choices: [
+        { name: 'DeepSeek', value: 'deepseek' },
+        { name: 'GLM（智谱）', value: 'glm' },
+        { name: '自定义', value: 'custom' },
+      ],
+      theme: { keybindings: ['vim'] },
+    });
+
+    // 第2步: 输入 API Key
+    apiKey = await p.password({
+      message: '输入 API Key（留空则使用环境变量）',
+      mask: true,
+    });
+
+    // 第3步: 选择默认模型
+    const allModels = getBuiltInModelNames();
+    const filteredModels = allModels.filter((name) => {
+      const info = getModelInfo(name);
+      return provider === 'custom' || info?.provider === provider;
+    });
+
+    if (filteredModels.length > 0) {
+      defaultModel = await p.select({
+        message: '选择默认模型',
+        choices: filteredModels.map((name) => {
+          const info = getModelInfo(name);
+          const contextLabel = info?.contextWindow
+            ? `（${
+              info.contextWindow >= 1_000_000
+                ? `${(info.contextWindow / 1_000_000).toFixed(0)}M`
+                : `${(info.contextWindow / 1000).toFixed(0)}K`
+            } 上下文）`
+            : '';
+          return { name: `${name} ${contextLabel}`, value: name };
+        }),
+        theme: { keybindings: ['vim'] },
+      });
+    } else {
+      defaultModel = await p.input({
+        message: '输入模型名称',
+        default: 'deepseek-v4-flash',
+      });
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'ExitPromptError') {
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+    throw err;
+  }
+
+  // 构建配置
   const settings = {
     llm: {
       providers: {
-        deepseek: {
+        [provider]: {
           apiKey: apiKey || '${env.DEEPSEEK_API_KEY}',
         },
       },
       models: {
-        advanced: 'deepseek-reasoner',
-        default: 'deepseek-v4-flash',
-        light: 'deepseek-v4-flash',
+        default: defaultModel,
       },
     },
   };
