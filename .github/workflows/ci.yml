@@ -41,7 +41,7 @@ jobs:
           tool: cargo-tarpaulin
 
       - name: 生成覆盖率报告
-        run: cargo tarpaulin --out lcov --output-dir coverage
+        run: cargo tarpaulin --out lcov --output-dir coverage -- --test-threads=1
 
       - name: 上传覆盖率到 Codecov
         uses: codecov/codecov-action@v6
