@@ -1,101 +1,28 @@
 #!/bin/sh
 # ZapMyCo 安装脚本
 # 用法: curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
-#        ZAPMYCO_VERSION=v0.18.0 sh install.sh
+#
+# 注意：此脚本将自动转向 cargo-dist 生成的官方安装器，
+# cargo-dist 安装器会自动检测平台、下载二进制归档、验证完整性并配置 PATH。
 
 set -eu
 
 REPO='shenjingnan/zapmyco'
-BINARY_NAME='zapmyco'
-INSTALL_DIR="${ZAPMYCO_INSTALL:-${HOME}/.zapmyco}"
-BIN_DIR="${INSTALL_DIR}/bin"
-VERSION="${ZAPMYCO_VERSION:-latest}"
 
-# ---- 平台检测 ----
+# 使用 GitHub Releases 上的 cargo-dist 安装器（始终获取最新版本）
+INSTALLER_URL="https://github.com/${REPO}/releases/latest/download/zapmyco-installer.sh"
 
-OS="$(uname -s)"
-ARCH="$(uname -m)"
+echo "⬇️  正在下载 zapmyco 安装器..."
+echo ""
 
-case "$OS" in
-  Darwin) OS='macos' ;;
-  Linux)  OS='linux' ;;
-  *)
-    echo "❌ 错误: 不支持的操作系统: $OS (仅支持 macOS / Linux)"
-    echo "   Windows 用户请使用: iwr https://raw.githubusercontent.com/${REPO}/main/install.ps1 -useb | iex"
-    exit 1
-    ;;
-esac
-
-case "$ARCH" in
-  x86_64|amd64) ARCH='x64' ;;
-  aarch64|arm64) ARCH='arm64' ;;
-  *)
-    echo "❌ 错误: 不支持的架构: $ARCH (仅支持 x86_64 / arm64)"
-    exit 1
-    ;;
-esac
-
-# ---- 构造下载 URL ----
-
-BINARY="zapmyco-${OS}-${ARCH}"
-
-if [ "$VERSION" = 'latest' ]; then
-  BASE_URL="https://github.com/${REPO}/releases/latest/download"
+if command -v curl > /dev/null 2>&1; then
+  curl -fsSL "$INSTALLER_URL" | sh
+elif command -v wget > /dev/null 2>&1; then
+  wget -qO- "$INSTALLER_URL" | sh
 else
-  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
-fi
-
-DOWNLOAD_URL="${BASE_URL}/${BINARY}"
-
-# ---- 安装 ----
-
-mkdir -p "$BIN_DIR"
-
-echo "⬇️  正在下载 ${BINARY} ..."
-curl -fSL "$DOWNLOAD_URL" -o "${BIN_DIR}/${BINARY_NAME}" --progress-bar
-chmod +x "${BIN_DIR}/${BINARY_NAME}"
-
-# ---- 完整性验证 ----
-
-if [ -z "${ZAPMYCO_NO_VERIFY:-}" ]; then
-  SHA256SUMS_FILE=$(mktemp)
-  if curl -fsSL "${BASE_URL}/SHA256SUMS" -o "$SHA256SUMS_FILE" 2>/dev/null; then
-    EXPECTED=$(grep "  ${BINARY}$" "$SHA256SUMS_FILE" | awk '{print $1}')
-    COMPUTED=$(shasum -a 256 "${BIN_DIR}/${BINARY_NAME}" | awk '{print $1}')
-
-    if [ "$EXPECTED" = "$COMPUTED" ]; then
-      echo "🔐 文件完整性验证通过"
-    else
-      echo "❌ 错误: 文件完整性验证失败！SHA256 不匹配"
-      echo "   期望: $EXPECTED"
-      echo "   实际: $COMPUTED"
-      rm -f "${BIN_DIR}/${BINARY_NAME}" "$SHA256SUMS_FILE"
-      exit 1
-    fi
-    rm -f "$SHA256SUMS_FILE"
-  else
-    echo "⚠️  警告: 无法下载 SHA256SUMS，跳过完整性验证（可设置 ZAPMYCO_NO_VERIFY=1 跳过此警告）"
-  fi
-fi
-
-echo ""
-echo "✅ 安装完成！"
-echo "   二进制文件: ${BIN_DIR}/${BINARY_NAME}"
-echo ""
-
-# 检测是否已在 PATH 中
-if ! command -v "${BINARY_NAME}" >/dev/null 2>&1; then
-  SHELL_NAME="$(basename "${SHELL:-sh}")"
-  case "$SHELL_NAME" in
-    zsh) PROFILE_FILE="${ZDOTDIR:-$HOME}/.zshrc" ;;
-    bash) PROFILE_FILE="${HOME}/.bashrc" ;;
-    *) PROFILE_FILE="${HOME}/.profile" ;;
-  esac
-
-  echo "   请将以下内容添加到 ${PROFILE_FILE}:"
-  echo "   export PATH=\"\$PATH:${BIN_DIR}\""
+  echo "❌ 错误: 未找到 curl 或 wget，请先安装其中之一"
   echo ""
-  echo "   然后执行: source ${PROFILE_FILE}"
+  echo "   或者你可以直接使用 cargo 安装:"
+  echo "   cargo install zapmyco"
+  exit 1
 fi
-
-echo "   现在试试: ${BINARY_NAME} --help"

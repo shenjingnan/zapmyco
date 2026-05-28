@@ -1,5 +1,8 @@
 name: Release
 
+# 注意：此文件名为 release.yml 是因为 crates.io trusted publishing
+# 要求 workflow 文件名必须与此匹配。请勿更改文件名。
+
 on:
   push:
     branches:
@@ -9,34 +12,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Job 2: 创建/更新 Release PR（在 publish 之后执行，确保 tag 已创建）
-  release-plz-pr:
-    needs: [publish]
-    concurrency:
-      group: release-plz-${{ github.ref }}
-      cancel-in-progress: false
-    name: 创建/更新 Release PR
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: 运行 release-plz
-        uses: release-plz/action@v0.5
-        with:
-          command: release-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Job 1: 发布到 crates.io + 创建 GitHub Release
+  # Job 1: 发布到 crates.io + 创建 git tag
   publish:
     name: 发布到 crates.io
     runs-on: ubuntu-latest
@@ -55,11 +31,7 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 记录当前最新 tag
-        id: pre-tag
-        run: echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
-
-      - name: 运行 release-plz
+      - name: 运行 release-plz（创建 tag + 发布到 crates.io）
         id: release
         uses: release-plz/action@v0.5
         with:
@@ -85,140 +57,47 @@ jobs:
             echo "无新版本发布"
           fi
 
-  # Job 3: 构建多平台二进制（仅当有新 release 时执行）
-  build-binaries:
-    name: 构建二进制 (${{ matrix.output }})
+  # Job 2: 触发 cargo-dist 构建多平台二进制
+  trigger-dist:
+    name: 触发 cargo-dist 构建
     needs: publish
     if: needs.publish.outputs.tag_name != ''
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            output: zapmyco-linux-x64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            output: zapmyco-linux-arm64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            output: zapmyco-macos-arm64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            output: zapmyco-macos-x64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            output: zapmyco-windows-x64.exe
+      actions: write
+    steps:
+      - name: 触发 cargo-dist 发布工作流
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.publish.outputs.tag_name }}
+        run: |
+          echo "触发 cargo-dist 构建版本: $TAG"
+          gh workflow run dist.yml -f tag="$TAG" --ref "$TAG"
 
+  # Job 3: 创建/更新 Release PR（准备下一个版本）
+  release-plz-pr:
+    needs: publish
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    name: 创建/更新 Release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
+
+      - name: 运行 release-plz
+        uses: release-plz/action@v0.5
         with:
-          targets: ${{ matrix.target }}
-
-      - name: 安装交叉编译工具 (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo dpkg --add-architecture arm64
-          # 限制默认 apt 源只使用 amd64（避免添加 arm64 架构后它们也尝试获取 arm64 包导致 404）
-          sudo find /etc/apt/sources.list.d/ -name '*.sources' -exec sed -i '/^Types: deb$/a\Architectures: amd64' {} \;
-          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list 2>/dev/null || true
-          # Ubuntu Ports 是官方 ARM64 源
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main universe" | sudo tee /etc/apt/sources.list.d/arm64.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-updates main universe" | sudo tee -a /etc/apt/sources.list.d/arm64.list
-          sudo apt-get update -qq
-          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
-
-      - name: 构建
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: 压缩二进制 (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          if [ '${{ matrix.target }}' = 'aarch64-unknown-linux-gnu' ]; then
-            STRIP=aarch64-linux-gnu-strip
-          else
-            STRIP=strip
-          fi
-          $STRIP target/${{ matrix.target }}/release/zapmyco
-          cp target/${{ matrix.target }}/release/zapmyco ${{ matrix.output }}
-
-      - name: 压缩二进制 (Windows)
-        if: runner.os == 'Windows'
-        run: copy target\${{ matrix.target }}\release\zapmyco.exe ${{ matrix.output }}
-
-      - name: 计算 SHA256
-        shell: bash
-        run: |
-          if command -v sha256sum &> /dev/null; then
-            sha256sum ${{ matrix.output }} > checksums-${{ matrix.output }}.txt
-          else
-            shasum -a 256 ${{ matrix.output }} > checksums-${{ matrix.output }}.txt
-          fi
-
-      - name: 上传 checksum
-        uses: actions/upload-artifact@v7
-        with:
-          name: checksums-${{ matrix.output }}
-          path: checksums-${{ matrix.output }}.txt
-          retention-days: 1
-
-      - name: 上传二进制到 Release
-        shell: bash
+          command: release-pr
         env:
-          TAG: ${{ needs.publish.outputs.tag_name }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for i in 1 2 3; do
-            gh release upload "$TAG" "${{ matrix.output }}" && break
-            echo "上传失败（尝试 $i/3），等待 5 秒后重试..."
-            sleep 5
-          done
-
-  # Job 4: 生成合并的 SHA256SUMS（在所有二进制构建完成后）
-  generate-checksums:
-    name: 生成 SHA256SUMS
-    runs-on: ubuntu-latest
-    needs: [publish, build-binaries]
-    if: needs.publish.outputs.tag_name != ''
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: 下载所有 checksum 文件
-        uses: actions/download-artifact@v8
-        with:
-          pattern: checksums-*
-          merge-multiple: true
-
-      - name: 合并为 SHA256SUMS
-        run: cat *.txt | sort > SHA256SUMS
-
-      - name: 上传 SHA256SUMS 到 Release
-        env:
-          TAG: ${{ needs.publish.outputs.tag_name }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$TAG" SHA256SUMS
-
-      - name: 更新 Release 说明（追加安装引导）
-        env:
-          TAG: ${{ needs.publish.outputs.tag_name }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TEMPLATE=$(cat .github/RELEASE_TEMPLATE.md)
-          BODY=$(gh release view "$TAG" --json body --jq '.body')
-          {
-            echo "${TEMPLATE}"
-            echo ""
-            echo "${BODY}"
-          } > /tmp/release-body.md
-          gh release edit "$TAG" --notes-file /tmp/release-body.md
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

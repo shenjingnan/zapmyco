@@ -23,3 +23,8 @@ futures-util = "0.3.32"
 [dev-dependencies]
 tempfile = "3"
 wiremock = "0.6.5"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
