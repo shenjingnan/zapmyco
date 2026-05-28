@@ -7,6 +7,14 @@ use std::path::PathBuf;
 
 const SETTINGS_RELATIVE_PATH: &str = ".zapmyco/settings.json";
 
+/// 获取用户 home 目录（跨平台：macOS/Linux 用 $HOME，Windows 用 %USERPROFILE%）
+pub fn get_home_dir() -> PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string())
+        .into()
+}
+
 /// 供应商配置
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -37,14 +45,12 @@ pub struct Settings {
 
 /// 获取设置文件路径
 pub fn get_settings_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(SETTINGS_RELATIVE_PATH)
+    get_home_dir().join(SETTINGS_RELATIVE_PATH)
 }
 
 /// 获取设置目录路径
 pub fn get_settings_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".zapmyco")
+    get_home_dir().join(".zapmyco")
 }
 
 /// 旧版 LLM 配置格式
