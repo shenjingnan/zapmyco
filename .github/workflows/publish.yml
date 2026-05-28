@@ -20,6 +20,8 @@ jobs:
       contents: write
       id-token: write
       pull-requests: read
+    outputs:
+      tag_name: ${{ steps.get-tag.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -36,6 +38,49 @@ jobs:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 检测新 tag
+        id: get-tag
+        run: |
+          RELEASES='${{ steps.release.outputs.releases }}'
+          if [ -n "$RELEASES" ] && [ "$RELEASES" != "[]" ] && [ "$RELEASES" != "null" ]; then
+            TAG=$(echo "$RELEASES" | jq -r '.[0].tag // empty')
+            if [ -n "$TAG" ]; then
+              echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+              echo "检测到新版本: $TAG"
+            else
+              echo "tag_name=" >> "$GITHUB_OUTPUT"
+              echo "无新版本发布"
+            fi
+          else
+            echo "tag_name=" >> "$GITHUB_OUTPUT"
+            echo "无新版本发布"
+          fi
+
+  trigger-dist:
+    name: 触发 cargo-dist 构建发布
+    needs: publish
+    if: needs.publish.outputs.tag_name != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 触发 cargo-dist 发布工作流
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.publish.outputs.tag_name }}
+        run: |
+          echo "触发 cargo-dist 构建版本: $TAG"
+          gh workflow run release.yml \
+            -f tag="$TAG" \
+            --ref "$TAG" \
+            --repo "${{ github.repository }}"
 
   # Job 2: 创建/更新 Release PR（准备下一个版本）
   release-plz-pr:
