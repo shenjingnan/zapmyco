@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.8](https://github.com/shenjingnan/zapmyco/compare/v0.22.7...v0.22.8) - 2026-05-28
+
+### Fixed
+
+- *(ci)* 限制默认 apt 源为 amd64 避免添加 arm64 后安全源 404
+
 ## [0.22.7](https://github.com/shenjingnan/zapmyco/compare/v0.22.6...v0.22.7) - 2026-05-28
 
 ### Fixed
