@@ -353,7 +353,6 @@ async fn cmd_interactive() -> Result<(), String> {
 
 /// uninstall 命令 — 卸载 zapmyco
 fn cmd_uninstall() -> Result<(), String> {
-    let home = std::env::var("HOME").map_err(|_| "无法获取 HOME 目录".to_string())?;
     let zapmyco_dir = settings::get_settings_dir();
     let exe_path = std::env::current_exe().ok();
 
@@ -365,7 +364,7 @@ fn cmd_uninstall() -> Result<(), String> {
     // Phase 1: 确认阶段 — 只收集用户意愿，不执行删除
     // 此时按 Ctrl+C 可安全终止，不会丢失任何数据
     // ——————————————————————————————————————————————
-    let receipt_dir = std::path::PathBuf::from(&home).join(".config/zapmyco");
+    let receipt_dir = settings::get_home_dir().join(".config/zapmyco");
     let has_receipt = receipt_dir.exists();
     let has_zapmyco_dir = zapmyco_dir.exists();
 
@@ -397,11 +396,17 @@ fn cmd_uninstall() -> Result<(), String> {
         eprintln!("  {RED}✗{RESET} 删除 {} 失败: {}", zapmyco_dir.display(), e);
     }
 
-    // 二进制文件（自动删除）
+    // 二进制文件（自动删除，Windows 不支持自删运行中的进程）
+    #[cfg(not(windows))]
     if let Some(ref path) = exe_path
         && let Err(e) = std::fs::remove_file(path)
     {
         eprintln!("  {RED}✗{RESET} 删除二进制文件失败: {}", e);
+    }
+
+    #[cfg(windows)]
+    if let Some(ref path) = exe_path {
+        println!("请手动删除二进制文件: {}", path.display());
     }
 
     println!();
