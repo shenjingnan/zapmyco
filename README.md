@@ -30,8 +30,14 @@ curl -fsSL https://zapmyco.com/install.sh | sh
 
 **Windows (PowerShell)**
 
+在 PowerShell 中（推荐）:
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-installer.ps1 | iex"
+irm https://zapmyco.com/install.ps1 | iex
+```
+
+在 cmd.exe 中:
+```powershell
+powershell -c "irm https://zapmyco.com/install.ps1 | iex"
 ```
 
 安装脚本会自动检测平台、下载对应二进制归档、验证完整性，并配置 PATH。
