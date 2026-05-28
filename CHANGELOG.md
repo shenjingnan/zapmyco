@@ -344,6 +344,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.18](https://github.com/shenjingnan/zapmyco/compare/v0.22.17...v0.22.18) - 2026-05-28
+
+### Other
+
+- 清理项目中残留的 Deno 引用 ([#290](https://github.com/shenjingnan/zapmyco/pull/290))
+- 简化 README.md，移除已迁移至贡献指南的重复内容 ([#289](https://github.com/shenjingnan/zapmyco/pull/289))
+- 更新安装脚本 URL 为 zapmyco.com ([#287](https://github.com/shenjingnan/zapmyco/pull/287))
+
 ## [0.22.17](https://github.com/shenjingnan/zapmyco/compare/v0.22.16...v0.22.17) - 2026-05-28
 
 ### Fixed
