@@ -25,7 +25,7 @@ cargo install zapmyco
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-installer.sh | sh
+curl -fsSL https://zapmyco.com/install.sh | sh
 ```
 
 **Windows (PowerShell)**
