@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.22.20](https://github.com/shenjingnan/zapmyco/compare/v0.22.19...v0.22.20) - 2026-05-28
+
+### Fixed
+
+- 调整 Logo SVG 视口宽度使文字居中 ([#295](https://github.com/shenjingnan/zapmyco/pull/295))
+- 修复 CI 中 rust-toolchain.toml 导致 rustfmt/clippy 组件不可用的问题 ([#293](https://github.com/shenjingnan/zapmyco/pull/293))
+
 ## [0.22.19](https://github.com/shenjingnan/zapmyco/compare/v0.22.18...v0.22.19) - 2026-05-28
 
 ### Other
