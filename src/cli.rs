@@ -1,5 +1,6 @@
 /// CLI 入口 — 基于 clap 的命令行界面
 use clap::{Parser, Subcommand};
+use std::io::IsTerminal;
 
 use crate::models::{get_built_in_model_names, get_model_info};
 use crate::settings;
@@ -355,15 +356,25 @@ async fn cmd_interactive() -> Result<(), String> {
 fn cmd_uninstall() -> Result<(), String> {
     let zapmyco_dir = settings::get_settings_dir();
     let exe_path = std::env::current_exe().ok();
+    let receipt_dir = settings::get_home_dir().join(".config/zapmyco");
+    let has_receipt = receipt_dir.exists();
+    let has_zapmyco_dir = zapmyco_dir.exists();
+
+    // 非 TTY 环境（CI/管道）跳过交互提示，避免 Windows CI 中 inquire 挂起
+    if !std::io::stdin().is_terminal() {
+        return execute_uninstall(
+            &receipt_dir,
+            &zapmyco_dir,
+            has_receipt,
+            true, // want_keep_zapmyco: 非交互模式下默认保留，避免误删
+            exe_path.as_deref(),
+        );
+    }
 
     // ——————————————————————————————————————————————
     // Phase 1: 确认阶段 — 只收集用户意愿，不执行删除
     // 此时按 Ctrl+C 可安全终止，不会丢失任何数据
     // ——————————————————————————————————————————————
-    let receipt_dir = settings::get_home_dir().join(".config/zapmyco");
-    let has_receipt = receipt_dir.exists();
-    let has_zapmyco_dir = zapmyco_dir.exists();
-
     let want_keep_zapmyco = if has_zapmyco_dir {
         match inquire::Confirm::new("是否保留记忆和配置？")
             .with_default(true)
@@ -638,7 +649,7 @@ mod tests {
 
     #[test]
     fn test_uninstall_receipt_only() {
-        // 非 TTY 环境下（如测试），最终确认提示会失败，卸载应安全终止
+        // 非 TTY 环境下，cmd_uninstall 跳过交互确认直接执行卸载
         run_with_temp_home(|home| {
             let receipt_dir = home.join(".config/zapmyco");
             std::fs::create_dir_all(&receipt_dir).unwrap();
@@ -651,7 +662,8 @@ mod tests {
             assert!(receipt_dir.exists());
             let result = cmd_uninstall();
             assert!(result.is_ok());
-            assert!(receipt_dir.exists(), "非 TTY 环境下卸载不应删除任何文件");
+            // 非 TTY 模式下跳过确认直接执行，收据被删除
+            assert!(!receipt_dir.exists(), "收据目录应被删除");
         });
     }
 
