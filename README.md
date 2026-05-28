@@ -118,6 +118,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 | `zapmyco init` | 交互式初始化向导 |
 | `zapmyco settings` | 显示 LLM 配置（API Key 自动脱敏） |
 | `zapmyco settings path` | 显示配置文件路径 |
+| `zapmyco uninstall` | 卸载 zapmyco（清理配置、收据、二进制文件） |
 | `zapmyco config` | 显示应用配置 |
 | `zapmyco greet <name>` | 打招呼（示例命令） |
 | `zapmyco --help` | 显示帮助信息 |
