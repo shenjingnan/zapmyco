@@ -387,9 +387,11 @@ fn cmd_uninstall() -> Result<(), String> {
     // ——————————————————————————————————————————————
     // 最终确认 — 给用户一次反悔机会
     // ——————————————————————————————————————————————
-    let confirmed = match inquire::Select::new("是否确认卸载？", vec!["确认", "再想想"]).prompt()
+    let confirmed = match inquire::Confirm::new("是否确认卸载？")
+        .with_default(true)
+        .prompt()
     {
-        Ok(choice) => choice == "确认",
+        Ok(val) => val,
         Err(_) => {
             println!();
             println!("谢，不删之恩~ 🥹");
