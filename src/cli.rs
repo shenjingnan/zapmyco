@@ -376,7 +376,11 @@ fn cmd_uninstall() -> Result<(), String> {
         );
         match inquire::Confirm::new(&msg).with_default(true).prompt() {
             Ok(val) => val,
-            Err(_) => return Ok(()), // Ctrl+C，安全终止，不显示再见
+            Err(_) => {
+                println!();
+                println!("谢，不删之恩~ 🥹");
+                return Ok(());
+            } // Ctrl+C，安全终止
         }
     } else {
         true
@@ -388,10 +392,16 @@ fn cmd_uninstall() -> Result<(), String> {
     let confirmed = match inquire::Select::new("是否确认卸载？", vec!["确认", "再想想"]).prompt()
     {
         Ok(choice) => choice == "确认",
-        Err(_) => return Ok(()), // Ctrl+C / 非 TTY，安全终止，不显示再见
+        Err(_) => {
+            println!();
+            println!("谢，不删之恩~ 🥹");
+            return Ok(());
+        } // Ctrl+C / 非 TTY，安全终止
     };
 
     if !confirmed {
+        println!();
+        println!("谢，不删之恩~ 🥹");
         return Ok(());
     }
 
