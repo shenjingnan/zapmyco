@@ -375,10 +375,10 @@ fn cmd_uninstall() -> Result<(), String> {
              选择「否」将删除该目录，且无法恢复记忆数据。",
             zapmyco_dir.display()
         );
-        inquire::Confirm::new(&msg)
-            .with_default(true)
-            .prompt()
-            .unwrap_or(true)
+        match inquire::Confirm::new(&msg).with_default(true).prompt() {
+            Ok(val) => val,
+            Err(_) => return Ok(()), // Ctrl+C，安全终止，不显示再见
+        }
     } else {
         true
     };
