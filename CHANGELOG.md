@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.6](https://github.com/shenjingnan/zapmyco/compare/v0.22.5...v0.22.6) - 2026-05-28
+
+### Fixed
+
+- *(ci)* 修复 ARM64 交叉编译缺少 OpenSSL 和 Windows 上传重试
+
 ## [0.22.5](https://github.com/shenjingnan/zapmyco/compare/v0.22.4...v0.22.5) - 2026-05-28
 
 ### Fixed
