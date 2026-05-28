@@ -435,25 +435,9 @@ fn cmd_uninstall() -> Result<(), String> {
     };
 
     // ——————————————————————————————————————————————
-    // Shell rc 配置检查提醒 + 总结
+    // 总结
     // ——————————————————————————————————————————————
-    let shell_rc_files = [
-        "~/.profile",
-        "~/.bashrc",
-        "~/.bash_profile",
-        "~/.bash_login",
-        "~/.zshrc",
-        "~/.zshenv",
-        "~/.config/fish/conf.d/zapmyco.env.fish",
-    ];
-    println!("\nShell 配置检查：");
-    println!("  安装程序可能修改了以下文件，请手动检查并移除不再需要的行：");
-    for f in &shell_rc_files {
-        println!("    {}", f);
-    }
-
-    println!("\n---");
-    println!("已执行以下清理：");
+    println!();
     println!(
         "  {} 安装收据",
         if receipt_deleted {
