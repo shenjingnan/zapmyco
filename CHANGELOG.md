@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.11](https://github.com/shenjingnan/zapmyco/compare/v0.22.10...v0.22.11) - 2026-05-28
+
+### Added
+
+- 为 Release 页面添加安装引导模板 ([#272](https://github.com/shenjingnan/zapmyco/pull/272))
+
 ## [0.22.10](https://github.com/shenjingnan/zapmyco/compare/v0.22.9...v0.22.10) - 2026-05-28
 
 ### Fixed
