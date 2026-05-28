@@ -5,13 +5,13 @@
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+curl -fsSL https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-installer.sh | sh
 ```
 
-**Windows**
+**Windows (PowerShell)**
 
 ```powershell
-iwr https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.ps1 -useb | iex
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-installer.ps1 | iex"
 ```
 
 ### 通过 cargo 安装
@@ -24,17 +24,17 @@ cargo install zapmyco
 
 ### 手动下载
 
-本 Release 提供以下预编译二进制文件，下载后赋予执行权限即可使用：
+本 Release 提供以下预编译二进制归档，下载解压后即可使用：
 
 | 平台 | 架构 | 文件 |
 |------|------|------|
-| Linux | x86_64 | `zapmyco-linux-x64` |
-| Linux | ARM64 | `zapmyco-linux-arm64` |
-| macOS | Apple Silicon | `zapmyco-macos-arm64` |
-| macOS | Intel | `zapmyco-macos-x64` |
-| Windows | x86_64 | `zapmyco-windows-x64.exe` |
+| Linux | x86_64 | `zapmyco-x86_64-unknown-linux-gnu.tar.xz` |
+| Linux | ARM64 | `zapmyco-aarch64-unknown-linux-gnu.tar.xz` |
+| macOS | Apple Silicon | `zapmyco-aarch64-apple-darwin.tar.xz` |
+| macOS | Intel | `zapmyco-x86_64-apple-darwin.tar.xz` |
+| Windows | x86_64 | `zapmyco-x86_64-pc-windows-msvc.zip` |
 
-完整性校验文件：`SHA256SUMS`
+完整性校验文件：`sha256.sum`
 
 ## 🚀 快速开始
 

@@ -20,17 +20,33 @@
 cargo install zapmyco
 ```
 
-### 二进制下载（无需安装 Rust）
+### 一键安装脚本（推荐，无需安装 Rust）
 
-每个版本都会发布预编译的二进制文件：
+**macOS / Linux**
 
-| 平台    | 架构          | 下载链接                                                                                                           |
-| ------- | ------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Linux   | x86_64        | [zapmyco-linux-x64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-x64)             |
-| Linux   | ARM64         | [zapmyco-linux-arm64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-linux-arm64)         |
-| macOS   | Apple Silicon | [zapmyco-macos-arm64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-arm64)         |
-| macOS   | Intel         | [zapmyco-macos-x64](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-macos-x64)             |
-| Windows | x86_64        | [zapmyco-windows-x64.exe](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-windows-x64.exe) |
+```bash
+curl -fsSL https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-installer.sh | sh
+```
+
+**Windows (PowerShell)**
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-installer.ps1 | iex"
+```
+
+安装脚本会自动检测平台、下载对应二进制归档、验证完整性，并配置 PATH。
+
+### 手动下载
+
+每个版本都会发布预编译的二进制归档（`.tar.xz` / `.zip`）：
+
+| 平台    | 架构          | 下载链接                                                                                                                             |
+| ------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux   | x86_64        | [zapmyco-x86_64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-unknown-linux-gnu.tar.xz) |
+| Linux   | ARM64         | [zapmyco-aarch64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-unknown-linux-gnu.tar.xz) |
+| macOS   | Apple Silicon | [zapmyco-aarch64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-apple-darwin.tar.xz) |
+| macOS   | Intel         | [zapmyco-x86_64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-apple-darwin.tar.xz) |
+| Windows | x86_64        | [zapmyco-x86_64-pc-windows-msvc.zip](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-pc-windows-msvc.zip) |
 
 ### 从源码编译
 
@@ -108,7 +124,9 @@ zapmyco/
 ├── Cargo.toml              # Rust 项目配置和依赖管理
 ├── .github/workflows/
 │   ├── ci.yml              # Rust CI（fmt + clippy + test + build）
-│   └── release.yml         # 发布流水线（crates.io + 多平台二进制）
+│   ├── release-plz.yml     # release-plz 自动版本发布（crates.io + git tag）
+│   └── release.yml         # cargo-dist 多平台二进制构建 & GitHub Release（自动生成）
+├── dist-workspace.toml     # cargo-dist 工作区配置（分发设置）
 ├── src/
 │   ├── main.rs             # 二进制入口
 │   ├── lib.rs              # 库入口
