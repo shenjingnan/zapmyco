@@ -117,28 +117,6 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 | `zapmyco --help` | 显示帮助信息 |
 | `zapmyco --version` | 显示版本号 |
 
-## 项目结构
-
-```
-zapmyco/
-├── Cargo.toml              # Rust 项目配置和依赖管理
-├── .github/workflows/
-│   ├── ci.yml              # Rust CI（fmt + clippy + test + build）
-│   ├── publish.yml         # release-plz 自动版本发布（crates.io + git tag）
-│   ├── release.yml         # cargo-dist 多平台二进制构建 & GitHub Release（自动生成）
-├── dist-workspace.toml     # cargo-dist 工作区配置（分发设置）
-├── src/
-│   ├── main.rs             # 二进制入口
-│   ├── lib.rs              # 库入口
-│   ├── cli.rs              # clap CLI 定义
-│   ├── agent.rs            # AiAgent（Anthropic API 封装）
-│   ├── models.rs           # 内置模型注册表
-│   └── settings.rs         # ~/.zapmyco/settings.json 管理
-├── tests/
-│   └── integration_test.rs # 集成测试（wiremock）
-└── AGENTS.md               # AI 辅助开发上下文
-```
-
 ## 内置模型
 
 | 模型 | 供应商 | 上下文窗口 |
@@ -151,22 +129,9 @@ zapmyco/
 | glm-5v-turbo | GLM（智谱） | 200K tokens（支持视觉） |
 | glm-5.1 | GLM（智谱） | 200K tokens |
 
-## 开发
+## 贡献指南
 
-```bash
-# 构建
-cargo build
-
-# 测试（单线程避免环境变量竞争）
-cargo test -- --test-threads=1
-
-# 格式检查和 Lint
-cargo fmt --check
-cargo clippy -- -D warnings
-
-# 完整检查
-cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1
-```
+请参阅 [贡献指南](https://docs.zapmyco.com/community/contributing) 了解如何参与项目开发和贡献代码。
 
 ## 技术栈
 
