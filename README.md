@@ -133,17 +133,6 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 
 请参阅 [贡献指南](https://docs.zapmyco.com/community/contributing) 了解如何参与项目开发和贡献代码。
 
-## 技术栈
-
-| 技术 | 用途 |
-|------|------|
-| Rust 1.95+ | 编程语言 |
-| clap 4.x | CLI 参数解析 |
-| anthropic-ai-sdk | Anthropic Messages API 客户端 |
-| inquire | 交互式终端提示 |
-| tokio | 异步运行时 |
-| serde / serde_json | JSON 序列化 |
-
 ## 许可证
 
 [MIT](LICENSE) © 2026 shenjingnan
