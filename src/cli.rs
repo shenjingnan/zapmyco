@@ -405,9 +405,8 @@ fn cmd_uninstall() -> Result<(), String> {
         summary.push_str("  • 删除二进制文件\n");
     }
 
-    let confirmed = match inquire::Select::new(&summary, vec!["确认卸载", "我再想想"]).prompt()
-    {
-        Ok(choice) => choice == "确认卸载",
+    let confirmed = match inquire::Select::new(&summary, vec!["确认", "再想想"]).prompt() {
+        Ok(choice) => choice == "确认",
         Err(inquire::InquireError::OperationCanceled) => return Ok(()), // Ctrl+C，安全终止
         Err(_) => true, // 非 TTY（测试/脚本），自动继续
     };
