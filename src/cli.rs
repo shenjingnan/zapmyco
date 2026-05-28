@@ -356,10 +356,6 @@ fn cmd_uninstall() -> Result<(), String> {
     let zapmyco_dir = settings::get_settings_dir();
     let exe_path = std::env::current_exe().ok();
 
-    const GREEN: &str = "\x1b[32m";
-    const RED: &str = "\x1b[31m";
-    const RESET: &str = "\x1b[0m";
-
     // ——————————————————————————————————————————————
     // Phase 1: 确认阶段 — 只收集用户意愿，不执行删除
     // 此时按 Ctrl+C 可安全终止，不会丢失任何数据
@@ -408,27 +404,46 @@ fn cmd_uninstall() -> Result<(), String> {
     // ——————————————————————————————————————————————
     // Phase 2: 执行阶段 — 统一删除
     // ——————————————————————————————————————————————
+    execute_uninstall(
+        &receipt_dir,
+        &zapmyco_dir,
+        has_receipt,
+        want_keep_zapmyco,
+        exe_path.as_deref(),
+    )
+}
+
+/// 执行卸载清理（不含用户交互，可测试）
+fn execute_uninstall(
+    receipt_dir: &std::path::Path,
+    zapmyco_dir: &std::path::Path,
+    has_receipt: bool,
+    want_keep_zapmyco: bool,
+    exe_path: Option<&std::path::Path>,
+) -> Result<(), String> {
+    const RED: &str = "\x1b[31m";
+    const RESET: &str = "\x1b[0m";
 
     // 安装收据（自动清理）
-    if has_receipt && let Err(e) = std::fs::remove_dir_all(&receipt_dir) {
+    if has_receipt && let Err(e) = std::fs::remove_dir_all(receipt_dir) {
         eprintln!("  {RED}✗{RESET} 删除安装收据失败: {}", e);
     }
 
     // ~/.zapmyco/（用户已确认）
-    if !want_keep_zapmyco && let Err(e) = std::fs::remove_dir_all(&zapmyco_dir) {
+    if !want_keep_zapmyco && let Err(e) = std::fs::remove_dir_all(zapmyco_dir) {
         eprintln!("  {RED}✗{RESET} 删除 {} 失败: {}", zapmyco_dir.display(), e);
     }
 
     // 二进制文件（自动删除，Windows 不支持自删运行中的进程）
     #[cfg(not(windows))]
-    if let Some(ref path) = exe_path
+    if let Some(path) = exe_path
         && let Err(e) = std::fs::remove_file(path)
     {
         eprintln!("  {RED}✗{RESET} 删除二进制文件失败: {}", e);
     }
 
     #[cfg(windows)]
-    if let Some(ref path) = exe_path {
+    if let Some(path) = exe_path {
         println!("请手动删除二进制文件: {}", path.display());
     }
 
@@ -637,6 +652,91 @@ mod tests {
             let result = cmd_uninstall();
             assert!(result.is_ok());
             assert!(receipt_dir.exists(), "非 TTY 环境下卸载不应删除任何文件");
+        });
+    }
+
+    #[test]
+    fn test_execute_clean_state() {
+        // 没有文件需要删除时，应正常返回
+        run_with_temp_home(|home| {
+            let result = execute_uninstall(
+                &home.join(".config/zapmyco"),
+                &home.join(".zapmyco"),
+                false, // has_receipt
+                true,  // want_keep_zapmyco
+                None,  // exe_path
+            );
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn test_execute_receipt_only() {
+        // 删除收据，保留 ~/.zapmyco/
+        run_with_temp_home(|home| {
+            let receipt_dir = home.join(".config/zapmyco");
+            std::fs::create_dir_all(&receipt_dir).unwrap();
+            std::fs::write(receipt_dir.join("receipt.json"), r#"{"version":"0.22.20"}"#).unwrap();
+
+            let result = execute_uninstall(
+                &receipt_dir,
+                &home.join(".zapmyco"),
+                true, // has_receipt
+                true, // want_keep_zapmyco
+                None,
+            );
+            assert!(result.is_ok());
+            assert!(!receipt_dir.exists(), "收据目录应该被删除");
+        });
+    }
+
+    #[test]
+    fn test_execute_remove_zapmyco_dir() {
+        // 用户选择不保留记忆 → 删除 ~/.zapmyco/
+        run_with_temp_home(|home| {
+            let zapmyco_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&zapmyco_dir).unwrap();
+            std::fs::write(zapmyco_dir.join("settings.json"), "{}").unwrap();
+
+            let result = execute_uninstall(
+                &home.join(".config/zapmyco"),
+                &zapmyco_dir,
+                false, // has_receipt
+                false, // want_keep_zapmyco → 删除
+                None,
+            );
+            assert!(result.is_ok());
+            assert!(!zapmyco_dir.exists(), "~/.zapmyco/ 应该被删除");
+        });
+    }
+
+    #[test]
+    fn test_execute_binary_deletion_error() {
+        // 删除不存在的二进制文件 → 打印错误，不 panic
+        run_with_temp_home(|home| {
+            let result = execute_uninstall(
+                &home.join(".config/zapmyco"),
+                &home.join(".zapmyco"),
+                false,
+                true,
+                Some(&home.join("nonexistent-binary")),
+            );
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn test_execute_receipt_delete_error() {
+        // has_receipt=true 但目录不存在 → 打印错误，不 panic
+        run_with_temp_home(|home| {
+            let result = execute_uninstall(
+                &home.join(".config/zapmyco"),
+                &home.join(".zapmyco"),
+                true, // has_receipt 但目录不存在
+                true,
+                None,
+            );
+            assert!(result.is_ok());
         });
     }
 
