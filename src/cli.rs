@@ -381,22 +381,12 @@ fn cmd_uninstall() -> Result<(), String> {
         true
     };
 
-    let want_delete_binary = if let Some(ref path) = exe_path {
-        let msg = format!("是否同时删除二进制文件 ({})？", path.display());
-        inquire::Confirm::new(&msg)
-            .with_default(false)
-            .prompt()
-            .unwrap_or(false)
-    } else {
-        false
-    };
-
     // ——————————————————————————————————————————————
     // Phase 2: 执行阶段 — 统一删除，不再需要用户交互
     // ——————————————————————————————————————————————
     println!();
 
-    // 安装收据（自动清理，无需确认）
+    // 安装收据（自动清理）
     let receipt_deleted = if has_receipt {
         match std::fs::remove_dir_all(&receipt_dir) {
             Ok(()) => {
@@ -428,21 +418,17 @@ fn cmd_uninstall() -> Result<(), String> {
         false
     };
 
-    // 二进制文件（用户已确认）
-    let binary_deleted = if want_delete_binary {
-        if let Some(ref path) = exe_path {
-            match std::fs::remove_file(path) {
-                Ok(()) => {
-                    println!("✔ 已删除 {}", path.display());
-                    true
-                }
-                Err(e) => {
-                    eprintln!("⚠ 删除二进制文件失败: {}", e);
-                    false
-                }
+    // 二进制文件（自动删除）
+    let binary_deleted = if let Some(ref path) = exe_path {
+        match std::fs::remove_file(path) {
+            Ok(()) => {
+                println!("✔ 已删除 {}", path.display());
+                true
             }
-        } else {
-            false
+            Err(e) => {
+                eprintln!("⚠ 删除二进制文件失败: {}", e);
+                false
+            }
         }
     } else {
         false
