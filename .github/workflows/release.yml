@@ -1,4 +1,4 @@
-name: Release-plz
+name: Release
 
 # 注意：此文件名为 release.yml 是因为 crates.io trusted publishing
 # 要求 workflow 文件名必须与此匹配。请勿更改文件名。
