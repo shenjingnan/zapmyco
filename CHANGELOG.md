@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.5](https://github.com/shenjingnan/zapmyco/compare/v0.22.4...v0.22.5) - 2026-05-28
+
+### Fixed
+
+- *(ci)* 修复 release-plz tag 检测机制，改用 releases output 而非 git describe
+
 ## [0.22.4] - 2026-05-27
 
 ### Other
