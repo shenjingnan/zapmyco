@@ -360,10 +360,44 @@ fn cmd_uninstall() -> Result<(), String> {
     println!("即将卸载 zapmyco...\n");
 
     // ——————————————————————————————————————————————
-    // 1. 自动删除安装收据目录 ~/.config/zapmyco/
+    // Phase 1: 确认阶段 — 只收集用户意愿，不执行删除
+    // 此时按 Ctrl+C 可安全终止，不会丢失任何数据
     // ——————————————————————————————————————————————
     let receipt_dir = std::path::PathBuf::from(&home).join(".config/zapmyco");
-    let receipt_deleted = if receipt_dir.exists() {
+    let has_receipt = receipt_dir.exists();
+    let has_zapmyco_dir = zapmyco_dir.exists();
+
+    let want_delete_zapmyco = if has_zapmyco_dir {
+        let msg = format!(
+            "检测到 {} 目录（含配置、记忆、skill 等信息）。\n\
+             删除后即使重装 zapmyco 也无法恢复这些数据。\n是否删除？",
+            zapmyco_dir.display()
+        );
+        inquire::Confirm::new(&msg)
+            .with_default(false)
+            .prompt()
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    let want_delete_binary = if let Some(ref path) = exe_path {
+        let msg = format!("是否同时删除二进制文件 ({})？", path.display());
+        inquire::Confirm::new(&msg)
+            .with_default(false)
+            .prompt()
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    // ——————————————————————————————————————————————
+    // Phase 2: 执行阶段 — 统一删除，不再需要用户交互
+    // ——————————————————————————————————————————————
+    println!();
+
+    // 安装收据（自动清理，无需确认）
+    let receipt_deleted = if has_receipt {
         match std::fs::remove_dir_all(&receipt_dir) {
             Ok(()) => {
                 println!("✔ 已清理安装收据 ({})", receipt_dir.display());
@@ -375,52 +409,28 @@ fn cmd_uninstall() -> Result<(), String> {
             }
         }
     } else {
-        println!("— 未找到安装收据");
         false
     };
 
-    // ——————————————————————————————————————————————
-    // 2. 询问是否删除 ~/.zapmyco/（含配置、记忆、skill）
-    // ——————————————————————————————————————————————
-    let zapmyco_existed = zapmyco_dir.exists();
-    let zapmyco_deleted = if zapmyco_existed {
-        let msg = format!(
-            "检测到 {} 目录（含配置、记忆、skill 等信息）。\n\
-             删除后即使重装 zapmyco 也无法恢复这些数据。\n是否删除？",
-            zapmyco_dir.display()
-        );
-        if inquire::Confirm::new(&msg)
-            .with_default(false)
-            .prompt()
-            .unwrap_or(false)
-        {
-            match std::fs::remove_dir_all(&zapmyco_dir) {
-                Ok(()) => {
-                    println!("✔ 已删除 {}", zapmyco_dir.display());
-                    true
-                }
-                Err(e) => {
-                    eprintln!("⚠ 删除 {} 失败: {}", zapmyco_dir.display(), e);
-                    false
-                }
+    // ~/.zapmyco/（用户已确认）
+    let zapmyco_deleted = if want_delete_zapmyco {
+        match std::fs::remove_dir_all(&zapmyco_dir) {
+            Ok(()) => {
+                println!("✔ 已删除 {}", zapmyco_dir.display());
+                true
             }
-        } else {
-            false
+            Err(e) => {
+                eprintln!("⚠ 删除 {} 失败: {}", zapmyco_dir.display(), e);
+                false
+            }
         }
     } else {
         false
     };
 
-    // ——————————————————————————————————————————————
-    // 3. 询问是否自删二进制
-    // ——————————————————————————————————————————————
-    let binary_deleted = if let Some(ref path) = exe_path {
-        let msg = format!("是否同时删除二进制文件 ({})？", path.display());
-        if inquire::Confirm::new(&msg)
-            .with_default(false)
-            .prompt()
-            .unwrap_or(false)
-        {
+    // 二进制文件（用户已确认）
+    let binary_deleted = if want_delete_binary {
+        if let Some(ref path) = exe_path {
             match std::fs::remove_file(path) {
                 Ok(()) => {
                     println!("✔ 已删除 {}", path.display());
@@ -435,12 +445,11 @@ fn cmd_uninstall() -> Result<(), String> {
             false
         }
     } else {
-        eprintln!("⚠ 无法获取当前二进制路径，请手动删除");
         false
     };
 
     // ——————————————————————————————————————————————
-    // 4. Shell rc 配置检查提醒
+    // Shell rc 配置检查提醒 + 总结
     // ——————————————————————————————————————————————
     let shell_rc_files = [
         "~/.profile",
@@ -457,9 +466,6 @@ fn cmd_uninstall() -> Result<(), String> {
         println!("    {}", f);
     }
 
-    // ——————————————————————————————————————————————
-    // 5. 总结
-    // ——————————————————————————————————————————————
     println!("\n---");
     println!("已执行以下清理：");
     println!(
@@ -475,7 +481,7 @@ fn cmd_uninstall() -> Result<(), String> {
             "  ✔ 已删除 {}（配置、记忆、skill 等）",
             zapmyco_dir.display()
         );
-    } else if zapmyco_existed {
+    } else if has_zapmyco_dir {
         println!(
             "  ✗ 已保留 {}（配置、记忆、skill 等）",
             zapmyco_dir.display()
