@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.10](https://github.com/shenjingnan/zapmyco/compare/v0.22.9...v0.22.10) - 2026-05-28
+
+### Fixed
+
+- *(ci)* generate-checksums 添加 checkout 步骤避免 gh release upload 失败
+
 ## [0.22.9](https://github.com/shenjingnan/zapmyco/compare/v0.22.8...v0.22.9) - 2026-05-28
 
 ### Fixed
