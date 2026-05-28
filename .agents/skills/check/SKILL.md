@@ -43,7 +43,7 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads
 | 工具          | 配置方式       | 用途             |
 | ------------- | -------------- | ---------------- |
 | Cargo fmt     | `rustfmt.toml`  | 代码格式化       |
-| Clippy        | `deno.json`    | Lint 检查        |
+| Clippy        | `clippy.toml` / `Cargo.toml` | Lint 检查        |
 | Cargo test    | `Cargo.toml`   | 测试运行         |
 | Cargo check   | `Cargo.toml`   | 编译检查         |
 

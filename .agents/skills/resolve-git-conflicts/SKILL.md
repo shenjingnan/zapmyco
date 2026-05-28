@@ -61,7 +61,7 @@ digraph conflicts {
 
 | 类型       | 文件示例                                                        | 优先级 |
 | ---------- | --------------------------------------------------------------- | ------ |
-| 锁文件     | `deno.lock`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock` | 最高   |
+| 锁文件     | `Cargo.lock`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock` | 最高   |
 | 文档文件   | `*.md`, `*.txt`, `*.rst`                                        | 高     |
 | 配置文件   | `*.json`, `*.yaml`, `*.toml`, `*.env`                           | 高     |
 | 代码文件   | `*.ts`, `*.js`, `*.py`, `*.java` 等                             | 中     |
@@ -78,9 +78,9 @@ digraph conflicts {
 **锁文件** — 删除后重新生成：
 
 ```bash
-rm deno.lock
-deno cache src/index.ts
-git add deno.lock
+rm Cargo.lock
+cargo generate-lockfile
+git add Cargo.lock
 ```
 
 **文档文件** — 合并双方内容，保留两边的改动。
@@ -117,12 +117,12 @@ git add deno.lock
 ```bash
 # 确认没有遗漏的冲突（与上下文中的 `---[conflicted files]---` 对比）
 git --no-pager diff --name-only --diff-filter=U
-# 类型检查
-deno check src/
+# 编译检查
+cargo check
 # 运行测试
-deno test
+cargo test
 # Lint 检查
-deno lint
+cargo clippy
 ```
 
 如果验证失败，定位失败原因，判断是否与冲突解决有关，必要时回到 Step 2 重新分析。
@@ -174,7 +174,7 @@ git checkout --theirs <file>
 | 错误                                    | 正确做法                                    |
 | --------------------------------------- | ------------------------------------------- |
 | 直接 `git checkout --theirs .` 批量解决 | 逐文件分析，批量仅适用于锁文件              |
-| 忽略验证步骤直接 commit                 | 必须运行 deno check + deno test + deno lint |
+| 忽略验证步骤直接 commit                 | 必须运行 cargo check + cargo test + cargo clippy |
 | 解决冲突后忘记 `git add`                | 每个文件解决后立即 add                      |
 | 不看冲突内容直接选一边                  | 必须读取并理解冲突语义                      |
 | 在 rebase 中用 `git commit`             | rebase 中应使用 `git rebase --continue`     |

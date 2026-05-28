@@ -1,6 +1,6 @@
 {
   "name": "ZapMyCo",
-  "description": "基于 Deno 的 AI 驱动命令行工具",
+  "description": "基于 Rust 的 AI 驱动命令行工具",
   "favicon": "/favicon.svg",
   "logo": {
     "light": "/logo-text.svg",
@@ -25,7 +25,7 @@
     "columns": {
       "brand": {
         "name": "ZapMyCo",
-        "description": "基于 Deno 的 AI 驱动命令行工具"
+        "description": "基于 Rust 的 AI 驱动命令行工具"
       },
       "groups": [
         {

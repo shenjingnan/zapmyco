@@ -31,5 +31,5 @@ description: 根据项目当前状态更新根目录 README.md
 ## 注意事项
 
 - 不要添加与项目无关的具体业务描述
-- 所有命令示例使用 `cargo` 而非 `deno`/`npm`
+- 所有命令示例使用 `cargo`
 - 构建产物位于 `target/release/zapmyco`
