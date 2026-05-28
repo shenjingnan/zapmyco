@@ -36,6 +36,8 @@ pub enum Commands {
         /// 子命令: path, show
         subcommand: Option<String>,
     },
+    /// 卸载 zapmyco（清理配置、收据、二进制文件）
+    Uninstall,
     /// 一次性执行 AI 任务，完成后退出
     Run {
         /// 任务描述
@@ -349,6 +351,160 @@ async fn cmd_interactive() -> Result<(), String> {
     agent.start_interactive_chat().await
 }
 
+/// uninstall 命令 — 卸载 zapmyco
+fn cmd_uninstall() -> Result<(), String> {
+    let home = std::env::var("HOME").map_err(|_| "无法获取 HOME 目录".to_string())?;
+    let zapmyco_dir = settings::get_settings_dir();
+    let exe_path = std::env::current_exe().ok();
+
+    println!("即将卸载 zapmyco...\n");
+
+    // ——————————————————————————————————————————————
+    // 1. 自动删除安装收据目录 ~/.config/zapmyco/
+    // ——————————————————————————————————————————————
+    let receipt_dir = std::path::PathBuf::from(&home).join(".config/zapmyco");
+    let receipt_deleted = if receipt_dir.exists() {
+        match std::fs::remove_dir_all(&receipt_dir) {
+            Ok(()) => {
+                println!("✔ 已清理安装收据 ({})", receipt_dir.display());
+                true
+            }
+            Err(e) => {
+                eprintln!("⚠ 删除安装收据失败: {}", e);
+                false
+            }
+        }
+    } else {
+        println!("— 未找到安装收据");
+        false
+    };
+
+    // ——————————————————————————————————————————————
+    // 2. 询问是否删除 ~/.zapmyco/（含配置、记忆、skill）
+    // ——————————————————————————————————————————————
+    let zapmyco_existed = zapmyco_dir.exists();
+    let zapmyco_deleted = if zapmyco_existed {
+        let msg = format!(
+            "检测到 {} 目录（含配置、记忆、skill 等信息）。\n\
+             删除后即使重装 zapmyco 也无法恢复这些数据。\n是否删除？",
+            zapmyco_dir.display()
+        );
+        if inquire::Confirm::new(&msg)
+            .with_default(false)
+            .prompt()
+            .unwrap_or(false)
+        {
+            match std::fs::remove_dir_all(&zapmyco_dir) {
+                Ok(()) => {
+                    println!("✔ 已删除 {}", zapmyco_dir.display());
+                    true
+                }
+                Err(e) => {
+                    eprintln!("⚠ 删除 {} 失败: {}", zapmyco_dir.display(), e);
+                    false
+                }
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // ——————————————————————————————————————————————
+    // 3. 询问是否自删二进制
+    // ——————————————————————————————————————————————
+    let binary_deleted = if let Some(ref path) = exe_path {
+        let msg = format!("是否同时删除二进制文件 ({})？", path.display());
+        if inquire::Confirm::new(&msg)
+            .with_default(false)
+            .prompt()
+            .unwrap_or(false)
+        {
+            match std::fs::remove_file(path) {
+                Ok(()) => {
+                    println!("✔ 已删除 {}", path.display());
+                    true
+                }
+                Err(e) => {
+                    eprintln!("⚠ 删除二进制文件失败: {}", e);
+                    false
+                }
+            }
+        } else {
+            false
+        }
+    } else {
+        eprintln!("⚠ 无法获取当前二进制路径，请手动删除");
+        false
+    };
+
+    // ——————————————————————————————————————————————
+    // 4. Shell rc 配置检查提醒
+    // ——————————————————————————————————————————————
+    let shell_rc_files = [
+        "~/.profile",
+        "~/.bashrc",
+        "~/.bash_profile",
+        "~/.bash_login",
+        "~/.zshrc",
+        "~/.zshenv",
+        "~/.config/fish/conf.d/zapmyco.env.fish",
+    ];
+    println!("\nShell 配置检查：");
+    println!("  安装程序可能修改了以下文件，请手动检查并移除不再需要的行：");
+    for f in &shell_rc_files {
+        println!("    {}", f);
+    }
+
+    // ——————————————————————————————————————————————
+    // 5. 总结
+    // ——————————————————————————————————————————————
+    println!("\n---");
+    println!("已执行以下清理：");
+    println!(
+        "  {} 安装收据",
+        if receipt_deleted {
+            "✔ 已删除"
+        } else {
+            "— 无需处理"
+        }
+    );
+    if zapmyco_deleted {
+        println!(
+            "  ✔ 已删除 {}（配置、记忆、skill 等）",
+            zapmyco_dir.display()
+        );
+    } else if zapmyco_existed {
+        println!(
+            "  ✗ 已保留 {}（配置、记忆、skill 等）",
+            zapmyco_dir.display()
+        );
+    } else {
+        println!("  — 未找到配置目录");
+    }
+    if let Some(ref path) = exe_path {
+        println!(
+            "  {} {}",
+            if binary_deleted {
+                "✔ 已删除"
+            } else {
+                "✗ 已保留"
+            },
+            path.display()
+        );
+    }
+
+    println!();
+    println!("如需手动删除剩余文件，可执行：");
+    println!("  cargo uninstall zapmyco");
+    println!("  rm -rf ~/.zapmyco");
+    println!();
+    println!("有缘再见~ 👋");
+
+    Ok(())
+}
+
 /// CLI 入口 - 解析参数并执行对应操作
 pub async fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
@@ -374,6 +530,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             println!("{}", output);
             Ok(())
         }
+        Some(Commands::Uninstall) => cmd_uninstall(),
         Some(Commands::Run { content, profile }) => cmd_run(&content, profile.as_deref()).await,
         None => cmd_interactive().await,
     }
@@ -519,6 +676,34 @@ mod tests {
             assert!(result.is_ok());
             let output = result.unwrap();
             assert!(output.contains("${env.DEEPSEEK_API_KEY}"));
+        });
+    }
+
+    #[test]
+    fn test_uninstall_clean_state() {
+        // 没有需要清理的文件时，卸载应正常完成
+        run_with_temp_home(|_home| {
+            let result = cmd_uninstall();
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn test_uninstall_receipt_only() {
+        // 只有安装收据时，收据应被自动删除，无需用户交互
+        run_with_temp_home(|home| {
+            let receipt_dir = home.join(".config/zapmyco");
+            std::fs::create_dir_all(&receipt_dir).unwrap();
+            std::fs::write(
+                receipt_dir.join("zapmyco-receipt.json"),
+                r#"{"version":"0.22.20"}"#,
+            )
+            .unwrap();
+
+            assert!(receipt_dir.exists());
+            let result = cmd_uninstall();
+            assert!(result.is_ok());
+            assert!(!receipt_dir.exists(), "安装收据应被自动删除");
         });
     }
 
