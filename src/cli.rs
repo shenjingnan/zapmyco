@@ -367,18 +367,18 @@ fn cmd_uninstall() -> Result<(), String> {
     let has_receipt = receipt_dir.exists();
     let has_zapmyco_dir = zapmyco_dir.exists();
 
-    let want_delete_zapmyco = if has_zapmyco_dir {
+    let want_keep_zapmyco = if has_zapmyco_dir {
         let msg = format!(
-            "检测到 {} 目录（含配置、记忆、skill 等信息）。\n\
-             删除后即使重装 zapmyco 也无法恢复这些数据。\n是否删除？",
+            "是否保留 {} 目录？\n\
+             选择「否」将删除该目录，且无法恢复记忆数据。",
             zapmyco_dir.display()
         );
         inquire::Confirm::new(&msg)
-            .with_default(false)
+            .with_default(true)
             .prompt()
-            .unwrap_or(false)
+            .unwrap_or(true)
     } else {
-        false
+        true
     };
 
     let want_delete_binary = if let Some(ref path) = exe_path {
@@ -413,7 +413,7 @@ fn cmd_uninstall() -> Result<(), String> {
     };
 
     // ~/.zapmyco/（用户已确认）
-    let zapmyco_deleted = if want_delete_zapmyco {
+    let zapmyco_deleted = if !want_keep_zapmyco {
         match std::fs::remove_dir_all(&zapmyco_dir) {
             Ok(()) => {
                 println!("✔ 已删除 {}", zapmyco_dir.display());
