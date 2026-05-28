@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.22.19](https://github.com/shenjingnan/zapmyco/compare/v0.22.18...v0.22.19) - 2026-05-28
+
+### Other
+
+- 清理 CHANGELOG.md 中残留的旧项目过期条目 ([#291](https://github.com/shenjingnan/zapmyco/pull/291))
+
 ## [0.22.18](https://github.com/shenjingnan/zapmyco/compare/v0.22.17...v0.22.18) - 2026-05-28
 
 ### Other
