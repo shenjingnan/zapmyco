@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.16](https://github.com/shenjingnan/zapmyco/compare/v0.22.15...v0.22.16) - 2026-05-28
+
+### Fixed
+
+- *(ci)* 使用 PAT_TOKEN 替代 GITHUB_TOKEN 使 tag push 触发 cargo-dist ([#283](https://github.com/shenjingnan/zapmyco/pull/283))
+
 ## [0.22.15](https://github.com/shenjingnan/zapmyco/compare/v0.22.14...v0.22.15) - 2026-05-28
 
 ### Other
