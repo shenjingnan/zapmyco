@@ -143,7 +143,12 @@ jobs:
       - name: 压缩二进制 (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
-          strip target/${{ matrix.target }}/release/zapmyco
+          if [ '${{ matrix.target }}' = 'aarch64-unknown-linux-gnu' ]; then
+            STRIP=aarch64-linux-gnu-strip
+          else
+            STRIP=strip
+          fi
+          $STRIP target/${{ matrix.target }}/release/zapmyco
           cp target/${{ matrix.target }}/release/zapmyco ${{ matrix.output }}
 
       - name: 压缩二进制 (Windows)
