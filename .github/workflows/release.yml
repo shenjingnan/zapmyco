@@ -214,11 +214,11 @@ jobs:
           TAG: ${{ needs.publish.outputs.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TEMPLATE=$(cat RELEASE_TEMPLATE.md)
+          TEMPLATE=$(cat .github/RELEASE_TEMPLATE.md)
           BODY=$(gh release view "$TAG" --json body --jq '.body')
           {
             echo "${TEMPLATE}"
             echo ""
             echo "${BODY}"
           } > /tmp/release-body.md
-          gh release edit "$TAG" --body-file /tmp/release-body.md
+          gh release edit "$TAG" --notes-file /tmp/release-body.md
