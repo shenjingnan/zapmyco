@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.14](https://github.com/shenjingnan/zapmyco/compare/v0.22.13...v0.22.14) - 2026-05-28
+
+### Fixed
+
+- 修复 release 工作流中缺少 checkout 步骤导致触发 cargo-dist 失败的问题 ([#279](https://github.com/shenjingnan/zapmyco/pull/279))
+
 ## [0.22.13](https://github.com/shenjingnan/zapmyco/compare/v0.22.12...v0.22.13) - 2026-05-28
 
 ### Added
