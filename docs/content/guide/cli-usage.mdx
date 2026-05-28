@@ -1,6 +1,6 @@
 ---
 title: CLI 使用指南
-description: ZapMyCo 命令行工具的详细使用说明
+description: ZapMyCo 命令行工具的完整命令参考
 ---
 
 ZapMyCo 提供简洁的命令行接口，支持以下命令。
@@ -12,51 +12,125 @@ ZapMyCo 提供简洁的命令行接口，支持以下命令。
 | `--help`, `-h` | 显示帮助信息 |
 | `--version`, `-V` | 显示版本号 |
 
-## 命令列表
+## 命令速查表
+
+| 命令 | 功能 | 需要先 init？ |
+|------|------|:----------:|
+| `zapmyco`（默认） | 进入交互式 AI 对话模式 | 是 |
+| `zapmyco init` | 初始化 LLM 配置向导 | — |
+| `zapmyco run <content>` | 一次性执行 AI 任务 | 是 |
+| `zapmyco settings [subcommand]` | 显示或管理 LLM 配置 | 否 |
+| `zapmyco greet <name>` | 向指定名称打招呼（示例命令） | 否 |
+| `zapmyco config` | 显示应用配置 | 否 |
+| `zapmyco uninstall` | 卸载 zapmyco | 否 |
+
+## 命令详解
 
 ### 交互模式（默认）
 
-直接运行 `zapmyco` 进入交互式 AI 对话模式：
+直接运行 `zapmyco`（不带任何参数）进入交互式 AI 对话模式：
 
 ```bash
 zapmyco
 ```
 
-启动后将进入交互式对话界面，支持多轮对话。输入 `/exit` 退出，`/clear` 清空上下文。
+启动后将进入交互式对话界面，支持多轮连续对话。输入 `/exit` 退出，`/clear` 清空对话上下文。
 
-### `init`
+详细使用说明请参见 [AI 代理功能](/guide/ai-agent)。
 
-交互式初始化向导，配置 AI 供应商和 API Key：
+---
+
+### `init` — 初始化配置
+
+交互式初始化向导，用于配置 AI 供应商和 API Key：
 
 ```bash
 zapmyco init
 ```
 
-按提示依次选择供应商、输入 API Key、选择默认模型。
+向导分为三步：
 
-### `run <content>`
+1. **选择 AI 供应商** — DeepSeek / GLM（智谱）/ 自定义
+2. **配置 API Key** — 支持直接输入，或使用 `${env.VAR_NAME}` 引用环境变量（推荐）
+3. **选择默认模型** — 根据所选供应商过滤可用的内置模型，显示上下文窗口信息
+
+当 `~/.zapmyco/settings.json` 已存在时，`init` 会拒绝运行：
+
+```
+/home/user/.zapmyco/settings.json 已存在。如需重新初始化，请先删除该文件。
+```
+
+如需重新初始化，请手动删除配置文件后再运行 `init`：
+
+```bash
+rm ~/.zapmyco/settings.json
+zapmyco init
+```
+
+向导每一步都支持 `Ctrl+C` 安全退出。
+
+---
+
+### `run` — 一次性执行 AI 任务
 
 一次性执行 AI 任务，完成后自动退出：
 
 ```bash
-zapmyco run 帮我写一个 hello world
+zapmyco run "用中文介绍 Rust 语言的特点"
 zapmyco run --profile advanced 重构这个模块
 ```
 
-`--profile` 参数指定模型配置档（对应 `settings.json` 中 `llm.models` 的 key）。
+**参数说明**
 
-### `settings [subcommand]`
+| 参数 | 必需 | 说明 |
+|------|:--:|------|
+| `<content>` | 是 | 任务描述或提示词 |
+| `--profile <name>` | 否 | 指定模型配置档（对应 `settings.json` 中 `llm.models` 的 key） |
 
-显示或管理 LLM 配置：
+**前置条件**：必须先通过 `zapmyco init` 完成初始化配置。
+
+**错误场景**
+
+- 未找到配置文件时提示运行 `zapmyco init`
+- 任务描述为空时返回错误：`任务描述不能为空`
+
+**行为说明**：AI 响应以**流式输出**方式逐字显示，完成后自动退出。
+
+---
+
+### `settings` — 配置管理
+
+显示或管理 LLM 运行时配置：
 
 ```bash
-zapmyco settings          # 显示配置（API Key 自动脱敏）
+zapmyco settings          # 显示完整配置（API Key 自动脱敏）
 zapmyco settings path     # 显示配置文件路径
+zapmyco settings show     # 等同于无参数，显示完整配置
 ```
 
-### `greet <name>`
+**子命令说明**
 
-向指定名称打招呼。
+| 子命令 | 行为 |
+|--------|------|
+| 无参数 或 `show` | 读取 `~/.zapmyco/settings.json`，API Key 自动脱敏显示（如 `sk-***`） |
+| `path` | 仅输出配置文件路径 |
+
+**脱敏规则**：API Key 显示前 3 个字符加 `***`（如 `sk-***`、`sho***`），避免敏感信息泄露。
+
+**错误场景**
+
+- 未知子命令会报错：`未知子命令: xxx\n可用命令: settings, settings path`
+- JSON 格式错误会给出中文提示
+
+**与 `config` 命令的区别**：
+- `settings` 显示的是**用户配置**（`~/.zapmyco/settings.json`，存储 AI 供应商和模型设置）
+- `config` 显示的是**应用配置**（硬编码的调试标志、日志级别等）
+
+---
+
+### `greet` — 打招呼
+
+向指定名称打招呼。这是一个示例/演示命令，不涉及 AI 功能。
 
 ```bash
 zapmyco greet World
@@ -64,11 +138,26 @@ zapmyco greet World
 
 zapmyco greet 张三
 # 输出: Hello, 张三!
+
+zapmyco greet "John Doe"
+# 输出: Hello, John Doe!
 ```
 
-### `config`
+**参数说明**
 
-显示当前应用配置。
+| 参数 | 必需 | 说明 |
+|------|:--:|------|
+| `<name>` | 是 | 要打招呼的名称，支持 Unicode 字符和空格 |
+
+**错误场景**
+
+- 名称为空时返回错误：`name cannot be empty`
+
+---
+
+### `config` — 应用配置
+
+显示当前应用配置信息：
 
 ```bash
 zapmyco config
@@ -80,6 +169,45 @@ zapmyco config
 # }
 ```
 
+**输出字段说明**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `debug` | boolean | 调试模式开关（当前固定为 `false`） |
+| `logLevel` | string | 日志级别（当前固定为 `info`） |
+| `createdAt` | string | 命令执行时的 UTC 时间戳（ISO 8601 格式） |
+
+此命令显示的是**应用内置配置**，与 `settings` 显示的用户配置不同。
+
+---
+
+### `uninstall` — 卸载
+
+卸载 zapmyco，清理配置文件、安装收据和二进制文件：
+
+```bash
+zapmyco uninstall
+```
+
+卸载过程分为两个阶段：
+
+**Phase 1 — 确认阶段**
+- 询问是否保留记忆和配置（`~/.zapmyco/` 目录）
+- 再次确认是否卸载
+- 此阶段可按 `Ctrl+C` 安全终止，不会删除任何数据
+
+**Phase 2 — 执行阶段**
+- 删除安装收据目录 `~/.config/zapmyco/`
+- 若用户选择不保留，删除 `~/.zapmyco/`（含 settings.json、记忆等）
+- 删除当前运行的二进制文件
+
+**平台差异**
+
+| 平台 | 二进制删除方式 |
+|------|--------------|
+| macOS / Linux | 自动删除自身二进制文件 |
+| Windows | 提示用户手动删除二进制文件 |
+
 ## 使用示例
 
 ```bash
@@ -89,20 +217,24 @@ zapmyco --version
 # 初始化配置
 zapmyco init
 
-# 打招呼
-zapmyco greet World
-
-# 查看配置
-zapmyco config
-
-# 查看设置
-zapmyco settings
+# 一次性 AI 任务
+zapmyco run 帮我查一下今天的日期
 
 # 交互式 AI 对话
 zapmyco
 
-# 一次性 AI 任务
-zapmyco run 帮我查一下今天的日期
+# 查看配置
+zapmyco settings
+zapmyco settings path
+
+# 打招呼
+zapmyco greet World
+
+# 查看应用配置
+zapmyco config
+
+# 卸载
+zapmyco uninstall
 
 # 查看帮助
 zapmyco --help
