@@ -369,7 +369,7 @@ fn cmd_uninstall() -> Result<(), String> {
     let has_zapmyco_dir = zapmyco_dir.exists();
 
     let want_keep_zapmyco = if has_zapmyco_dir {
-        match inquire::Confirm::new("是否保留历史记忆？")
+        match inquire::Confirm::new("是否保留记忆和配置？")
             .with_default(true)
             .prompt()
         {
