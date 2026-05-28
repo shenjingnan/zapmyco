@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.17](https://github.com/shenjingnan/zapmyco/compare/v0.22.16...v0.22.17) - 2026-05-28
+
+### Fixed
+
+- 添加 rust-toolchain.toml 锁定 Rust 工具链版本为 1.95 ([#285](https://github.com/shenjingnan/zapmyco/pull/285))
+
 ## [0.22.16](https://github.com/shenjingnan/zapmyco/compare/v0.22.15...v0.22.16) - 2026-05-28
 
 ### Fixed
