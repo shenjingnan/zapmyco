@@ -1,5 +1,5 @@
 <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
-	 width="100%" viewBox="0 0 1580 320" enable-background="new 0 0 1580 320" xml:space="preserve">
+	 width="100%" viewBox="0 0 1660 320" enable-background="new 0 0 1660 320" xml:space="preserve">
 <g transform="translate(-39.583999999999996, -31.071999999999996) scale(0.304)">
 <path fill="#FEFEFE" opacity="1.000000" stroke="none"
 	d="
@@ -9358,5 +9358,5 @@ M404.735474,340.145874
 	C402.873810,342.118713 403.679413,341.219055 404.735474,340.145874
 z"/>
 </g>
-<text x="328" y="250" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="280" font-weight="700" fill="#ffffff" letter-spacing="-2">Zapmyco</text>
+<text x="400" y="250" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="280" font-weight="700" fill="#ffffff" letter-spacing="-2">Zapmyco</text>
 </svg>
