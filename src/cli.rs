@@ -388,8 +388,7 @@ fn cmd_uninstall() -> Result<(), String> {
     let confirmed = match inquire::Select::new("是否确认卸载？", vec!["确认", "再想想"]).prompt()
     {
         Ok(choice) => choice == "确认",
-        Err(inquire::InquireError::OperationCanceled) => return Ok(()), // Ctrl+C，安全终止
-        Err(_) => true, // 非 TTY（测试/脚本），自动继续
+        Err(_) => return Ok(()), // Ctrl+C / 非 TTY，安全终止，不显示再见
     };
 
     if !confirmed {
@@ -614,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_uninstall_receipt_only() {
-        // 只有安装收据时，收据应被自动删除，无需用户交互
+        // 非 TTY 环境下（如测试），最终确认提示会失败，卸载应安全终止
         run_with_temp_home(|home| {
             let receipt_dir = home.join(".config/zapmyco");
             std::fs::create_dir_all(&receipt_dir).unwrap();
@@ -627,7 +626,7 @@ mod tests {
             assert!(receipt_dir.exists());
             let result = cmd_uninstall();
             assert!(result.is_ok());
-            assert!(!receipt_dir.exists(), "安装收据应被自动删除");
+            assert!(receipt_dir.exists(), "非 TTY 环境下卸载不应删除任何文件");
         });
     }
 
