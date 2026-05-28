@@ -369,12 +369,9 @@ fn cmd_uninstall() -> Result<(), String> {
     let has_zapmyco_dir = zapmyco_dir.exists();
 
     let want_keep_zapmyco = if has_zapmyco_dir {
-        let msg = format!(
-            "是否保留 {} ？（选择「否」将删除且无法恢复记忆）",
-            zapmyco_dir.display()
-        );
-        match inquire::Confirm::new(&msg).with_default(true).prompt() {
-            Ok(val) => val,
+        let msg = format!("删除 {} ？（删除后无法恢复记忆）", zapmyco_dir.display());
+        match inquire::Confirm::new(&msg).with_default(false).prompt() {
+            Ok(val) => !val,
             Err(_) => {
                 println!();
                 println!("谢，不删之恩~ 🥹");
