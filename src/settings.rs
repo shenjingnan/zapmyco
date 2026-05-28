@@ -539,8 +539,10 @@ mod tests {
     #[test]
     fn test_get_settings_path_home_not_set() {
         let orig_home = std::env::var("HOME").ok();
+        let orig_userprofile = std::env::var("USERPROFILE").ok();
         unsafe {
             std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
         }
         let path = get_settings_path();
         assert_eq!(path, std::path::PathBuf::from("./.zapmyco/settings.json"));
@@ -549,19 +551,31 @@ mod tests {
                 std::env::set_var("HOME", h);
             }
         }
+        if let Some(up) = orig_userprofile {
+            unsafe {
+                std::env::set_var("USERPROFILE", up);
+            }
+        }
     }
 
     #[test]
     fn test_get_settings_dir_home_not_set() {
         let orig_home = std::env::var("HOME").ok();
+        let orig_userprofile = std::env::var("USERPROFILE").ok();
         unsafe {
             std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
         }
         let dir = get_settings_dir();
         assert_eq!(dir, std::path::PathBuf::from("./.zapmyco"));
         if let Some(h) = orig_home {
             unsafe {
                 std::env::set_var("HOME", h);
+            }
+        }
+        if let Some(up) = orig_userprofile {
+            unsafe {
+                std::env::set_var("USERPROFILE", up);
             }
         }
     }
