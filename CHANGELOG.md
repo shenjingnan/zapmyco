@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.12](https://github.com/shenjingnan/zapmyco/compare/v0.22.11...v0.22.12) - 2026-05-28
+
+### Fixed
+
+- 修复 Release 模板路径和 gh 参数错误 ([#274](https://github.com/shenjingnan/zapmyco/pull/274))
+
 ## [0.22.11](https://github.com/shenjingnan/zapmyco/compare/v0.22.10...v0.22.11) - 2026-05-28
 
 ### Added
