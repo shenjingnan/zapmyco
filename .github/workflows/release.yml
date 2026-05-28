@@ -60,6 +60,7 @@ jobs:
         run: echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
 
       - name: 运行 release-plz
+        id: release
         uses: release-plz/action@v0.5
         with:
           command: release
@@ -69,11 +70,16 @@ jobs:
       - name: 检测新 tag
         id: get-tag
         run: |
-          NEW_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')
-          PRE_TAG="${{ steps.pre-tag.outputs.tag }}"
-          if [ -n "$NEW_TAG" ] && [ "$NEW_TAG" != "$PRE_TAG" ]; then
-            echo "tag_name=$NEW_TAG" >> "$GITHUB_OUTPUT"
-            echo "检测到新版本: $NEW_TAG"
+          RELEASES='${{ steps.release.outputs.releases }}'
+          if [ -n "$RELEASES" ] && [ "$RELEASES" != "[]" ] && [ "$RELEASES" != "null" ]; then
+            TAG=$(echo "$RELEASES" | jq -r '.[0].tag // empty')
+            if [ -n "$TAG" ]; then
+              echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+              echo "检测到新版本: $TAG"
+            else
+              echo "tag_name=" >> "$GITHUB_OUTPUT"
+              echo "无新版本发布"
+            fi
           else
             echo "tag_name=" >> "$GITHUB_OUTPUT"
             echo "无新版本发布"
