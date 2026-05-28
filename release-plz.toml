@@ -8,4 +8,4 @@ git_release_enable = false
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
 
-# 下游 cargo-dist（dist.yml）由 release.yml 中的 trigger-dist job 通过 gh workflow run 触发
+# 下游 cargo-dist（release.yml）由 publish.yml 中的 trigger-dist job 通过 gh workflow run 触发

@@ -1,0 +1,65 @@
+name: Publish
+
+# 注意：此文件已从 release.yml 重命名为 publish.yml
+# 如 crates.io OIDC 配置引用了此 workflow，请同步更新
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Job 1: 发布到 crates.io + 创建 git tag
+  publish:
+    name: 发布到 crates.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 运行 release-plz（创建 tag + 发布到 crates.io）
+        id: release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 2: 创建/更新 Release PR（准备下一个版本）
+  release-plz-pr:
+    needs: publish
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    name: 创建/更新 Release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 运行 release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

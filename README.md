@@ -124,8 +124,8 @@ zapmyco/
 ├── Cargo.toml              # Rust 项目配置和依赖管理
 ├── .github/workflows/
 │   ├── ci.yml              # Rust CI（fmt + clippy + test + build）
-│   ├── release.yml         # release-plz 自动版本发布（crates.io + git tag）[注: crates.io trusted publishing 要求此文件名]
-│   └── dist.yml            # cargo-dist 多平台二进制构建 & GitHub Release（自动生成）
+│   ├── publish.yml         # release-plz 自动版本发布（crates.io + git tag）
+│   ├── release.yml         # cargo-dist 多平台二进制构建 & GitHub Release（自动生成）
 ├── dist-workspace.toml     # cargo-dist 工作区配置（分发设置）
 ├── src/
 │   ├── main.rs             # 二进制入口
