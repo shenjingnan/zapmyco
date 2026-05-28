@@ -344,6 +344,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.15](https://github.com/shenjingnan/zapmyco/compare/v0.22.14...v0.22.15) - 2026-05-28
+
+### Other
+
+- *(ci)* 重构发布工作流，合并 cargo-dist 到 release.yml ([#281](https://github.com/shenjingnan/zapmyco/pull/281))
+
 ## [0.22.14](https://github.com/shenjingnan/zapmyco/compare/v0.22.13...v0.22.14) - 2026-05-28
 
 ### Fixed
