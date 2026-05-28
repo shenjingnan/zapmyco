@@ -21,6 +21,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+#[non_exhaustive]
 pub enum Commands {
     /// 向指定名称打招呼
     Greet {
