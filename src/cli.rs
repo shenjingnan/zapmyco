@@ -357,8 +357,6 @@ fn cmd_uninstall() -> Result<(), String> {
     let zapmyco_dir = settings::get_settings_dir();
     let exe_path = std::env::current_exe().ok();
 
-    println!("即将卸载 zapmyco...\n");
-
     const GREEN: &str = "\x1b[32m";
     const RED: &str = "\x1b[31m";
     const RESET: &str = "\x1b[0m";
@@ -386,101 +384,26 @@ fn cmd_uninstall() -> Result<(), String> {
     };
 
     // ——————————————————————————————————————————————
-    // Phase 2: 执行阶段 — 统一删除，不再需要用户交互
+    // Phase 2: 执行阶段 — 统一删除
     // ——————————————————————————————————————————————
-    println!();
 
     // 安装收据（自动清理）
-    let receipt_deleted = if has_receipt {
-        match std::fs::remove_dir_all(&receipt_dir) {
-            Ok(()) => {
-                println!(
-                    "  {GREEN}✔{RESET} 已清理安装收据 ({})",
-                    receipt_dir.display()
-                );
-                true
-            }
-            Err(e) => {
-                eprintln!("  {RED}✗{RESET} 删除安装收据失败: {}", e);
-                false
-            }
-        }
-    } else {
-        false
-    };
+    if has_receipt && let Err(e) = std::fs::remove_dir_all(&receipt_dir) {
+        eprintln!("  {RED}✗{RESET} 删除安装收据失败: {}", e);
+    }
 
     // ~/.zapmyco/（用户已确认）
-    let zapmyco_deleted = if !want_keep_zapmyco {
-        match std::fs::remove_dir_all(&zapmyco_dir) {
-            Ok(()) => {
-                println!(
-                    "  {GREEN}✔{RESET} 已删除 {}（配置、记忆、skill 等）",
-                    zapmyco_dir.display()
-                );
-                true
-            }
-            Err(e) => {
-                eprintln!("  {RED}✗{RESET} 删除 {} 失败: {}", zapmyco_dir.display(), e);
-                false
-            }
-        }
-    } else {
-        false
-    };
+    if !want_keep_zapmyco && let Err(e) = std::fs::remove_dir_all(&zapmyco_dir) {
+        eprintln!("  {RED}✗{RESET} 删除 {} 失败: {}", zapmyco_dir.display(), e);
+    }
 
     // 二进制文件（自动删除）
-    let binary_deleted = if let Some(ref path) = exe_path {
-        match std::fs::remove_file(path) {
-            Ok(()) => {
-                println!("  {GREEN}✔{RESET} 已删除 {}", path.display());
-                true
-            }
-            Err(e) => {
-                eprintln!("  {RED}✗{RESET} 删除二进制文件失败: {}", e);
-                false
-            }
-        }
-    } else {
-        println!("  — 无法获取二进制路径，请手动删除");
-        false
-    };
-
-    // ——————————————————————————————————————————————
-    // 总结
-    // ——————————————————————————————————————————————
-    println!();
-    if receipt_deleted {
-        println!("  {GREEN}✔{RESET} 已清理安装收据");
-    } else {
-        println!("  — 无需处理安装收据");
-    }
-    if zapmyco_deleted {
-        println!(
-            "  {GREEN}✔{RESET} 已删除 {}（配置、记忆、skill 等）",
-            zapmyco_dir.display()
-        );
-    } else if has_zapmyco_dir {
-        println!(
-            "  {GREEN}✔{RESET} 已保留 {}（配置、记忆、skill 等）",
-            zapmyco_dir.display()
-        );
-    } else {
-        println!("  — 未找到配置目录");
-    }
-    if let Some(ref path) = exe_path {
-        println!(
-            "  {}{}{} {}",
-            if binary_deleted { GREEN } else { RED },
-            if binary_deleted { "✔" } else { "✗" },
-            RESET,
-            path.display()
-        );
+    if let Some(ref path) = exe_path
+        && let Err(e) = std::fs::remove_file(path)
+    {
+        eprintln!("  {RED}✗{RESET} 删除二进制文件失败: {}", e);
     }
 
-    println!();
-    println!("如需手动删除剩余文件，可执行：");
-    println!("  cargo uninstall zapmyco");
-    println!("  rm -rf ~/.zapmyco");
     println!();
     println!("有缘再见~ 👋");
 
