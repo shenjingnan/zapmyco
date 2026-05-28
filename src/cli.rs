@@ -383,6 +383,40 @@ fn cmd_uninstall() -> Result<(), String> {
     };
 
     // ——————————————————————————————————————————————
+    // Phase 1.5: 最终确认 — 给用户一次反悔机会
+    // ——————————————————————————————————————————————
+    let will_delete_zapmyco = !want_keep_zapmyco;
+    let mut summary = String::from("即将执行以下操作：\n");
+    if has_receipt {
+        summary.push_str("  • 删除安装收据\n");
+    }
+    if will_delete_zapmyco {
+        summary.push_str(&format!(
+            "  • 删除 {}（配置、记忆、skill 等）\n",
+            zapmyco_dir.display()
+        ));
+    } else if has_zapmyco_dir {
+        summary.push_str(&format!(
+            "  • 保留 {}（配置、记忆、skill 等）\n",
+            zapmyco_dir.display()
+        ));
+    }
+    if exe_path.is_some() {
+        summary.push_str("  • 删除二进制文件\n");
+    }
+
+    let confirmed = match inquire::Select::new(&summary, vec!["确认卸载", "我再想想"]).prompt()
+    {
+        Ok(choice) => choice == "确认卸载",
+        Err(inquire::InquireError::OperationCanceled) => return Ok(()), // Ctrl+C，安全终止
+        Err(_) => true, // 非 TTY（测试/脚本），自动继续
+    };
+
+    if !confirmed {
+        return Ok(());
+    }
+
+    // ——————————————————————————————————————————————
     // Phase 2: 执行阶段 — 统一删除
     // ——————————————————————————————————————————————
 
