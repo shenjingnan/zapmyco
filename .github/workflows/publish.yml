@@ -35,7 +35,7 @@ jobs:
         with:
           command: release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   # Job 2: 创建/更新 Release PR（准备下一个版本）
   release-plz-pr:
