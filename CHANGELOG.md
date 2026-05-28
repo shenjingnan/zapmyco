@@ -344,13 +344,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.22.4](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
+## [0.22.4] - 2026-05-27
 
 ### Other
 
 - 添加 settings 模块的完整测试覆盖 ([#264](https://github.com/shenjingnan/zapmyco/pull/264))
 
-## [0.22.3](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
+## [0.22.3] - 2026-05-27
 
 ### Fixed
 
@@ -366,30 +366,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - release v0.22.3 ([#256](https://github.com/shenjingnan/zapmyco/pull/256))
 - *(release)* 将上下文获取命令抽取为独立脚本 ([#255](https://github.com/shenjingnan/zapmyco/pull/255))
 
-## [0.22.3](https://github.com/shenjingnan/zapmyco/releases/tag/v{version}) - 2026-05-27
-
-### Other
-
-- *(release)* 将上下文获取命令抽取为独立脚本 ([#255](https://github.com/shenjingnan/zapmyco/pull/255))
-
-### Added
-
-- Initial project setup
-- TypeScript 5.x configuration
-- Vitest testing framework
-- Biome linter and formatter
-- cspell spell checker
-- tsup build configuration
-- release-it for version management
-- Husky git hooks
-- lint-staged configuration
-- GitHub Actions CI/CD workflows
-- Issue templates (bug report, feature request)
-- Dependabot configuration
-- GitHub Copilot instructions
-- Claude Code integration (.claude directory)
-- Documentation (architecture, API, contributing)
-
 ## [0.1.0] - 2026-03-26
 
 ### Added
@@ -400,5 +376,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CI/CD pipeline
 - Documentation
 
-[Unreleased]: https://github.com/shenjingnan/ai-typescript-starter/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/shenjingnan/zapmyco/compare/v0.22.4...HEAD
+[0.22.4]: https://github.com/shenjingnan/zapmyco/releases/tag/v0.22.4
+[0.22.3]: https://github.com/shenjingnan/zapmyco/releases/tag/v0.22.3
 [0.1.0]: https://github.com/shenjingnan/ai-typescript-starter/releases/tag/v0.1.0
