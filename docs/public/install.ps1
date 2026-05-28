@@ -1,5 +1,5 @@
 # ZapMyCo 安装脚本 (Windows PowerShell)
-# 用法: iwr https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.ps1 -useb | iex
+# 用法: irm https://zapmyco.com/install.ps1 | iex
 #
 # 注意：此脚本将自动转向 cargo-dist 生成的官方安装器，
 # cargo-dist 安装器会自动检测平台、下载二进制归档、验证完整性并配置 PATH。
