@@ -359,6 +359,10 @@ fn cmd_uninstall() -> Result<(), String> {
 
     println!("即将卸载 zapmyco...\n");
 
+    const GREEN: &str = "\x1b[32m";
+    const RED: &str = "\x1b[31m";
+    const RESET: &str = "\x1b[0m";
+
     // ——————————————————————————————————————————————
     // Phase 1: 确认阶段 — 只收集用户意愿，不执行删除
     // 此时按 Ctrl+C 可安全终止，不会丢失任何数据
@@ -390,11 +394,14 @@ fn cmd_uninstall() -> Result<(), String> {
     let receipt_deleted = if has_receipt {
         match std::fs::remove_dir_all(&receipt_dir) {
             Ok(()) => {
-                println!("✔ 已清理安装收据 ({})", receipt_dir.display());
+                println!(
+                    "  {GREEN}✔{RESET} 已清理安装收据 ({})",
+                    receipt_dir.display()
+                );
                 true
             }
             Err(e) => {
-                eprintln!("⚠ 删除安装收据失败: {}", e);
+                eprintln!("  {RED}✗{RESET} 删除安装收据失败: {}", e);
                 false
             }
         }
@@ -406,11 +413,14 @@ fn cmd_uninstall() -> Result<(), String> {
     let zapmyco_deleted = if !want_keep_zapmyco {
         match std::fs::remove_dir_all(&zapmyco_dir) {
             Ok(()) => {
-                println!("✔ 已删除 {}", zapmyco_dir.display());
+                println!(
+                    "  {GREEN}✔{RESET} 已删除 {}（配置、记忆、skill 等）",
+                    zapmyco_dir.display()
+                );
                 true
             }
             Err(e) => {
-                eprintln!("⚠ 删除 {} 失败: {}", zapmyco_dir.display(), e);
+                eprintln!("  {RED}✗{RESET} 删除 {} 失败: {}", zapmyco_dir.display(), e);
                 false
             }
         }
@@ -422,15 +432,16 @@ fn cmd_uninstall() -> Result<(), String> {
     let binary_deleted = if let Some(ref path) = exe_path {
         match std::fs::remove_file(path) {
             Ok(()) => {
-                println!("✔ 已删除 {}", path.display());
+                println!("  {GREEN}✔{RESET} 已删除 {}", path.display());
                 true
             }
             Err(e) => {
-                eprintln!("⚠ 删除二进制文件失败: {}", e);
+                eprintln!("  {RED}✗{RESET} 删除二进制文件失败: {}", e);
                 false
             }
         }
     } else {
+        println!("  — 无法获取二进制路径，请手动删除");
         false
     };
 
@@ -438,22 +449,19 @@ fn cmd_uninstall() -> Result<(), String> {
     // 总结
     // ——————————————————————————————————————————————
     println!();
-    println!(
-        "  {} 安装收据",
-        if receipt_deleted {
-            "✔ 已删除"
-        } else {
-            "— 无需处理"
-        }
-    );
+    if receipt_deleted {
+        println!("  {GREEN}✔{RESET} 已清理安装收据");
+    } else {
+        println!("  — 无需处理安装收据");
+    }
     if zapmyco_deleted {
         println!(
-            "  ✔ 已删除 {}（配置、记忆、skill 等）",
+            "  {GREEN}✔{RESET} 已删除 {}（配置、记忆、skill 等）",
             zapmyco_dir.display()
         );
     } else if has_zapmyco_dir {
         println!(
-            "  ✗ 已保留 {}（配置、记忆、skill 等）",
+            "  {GREEN}✔{RESET} 已保留 {}（配置、记忆、skill 等）",
             zapmyco_dir.display()
         );
     } else {
@@ -461,12 +469,10 @@ fn cmd_uninstall() -> Result<(), String> {
     }
     if let Some(ref path) = exe_path {
         println!(
-            "  {} {}",
-            if binary_deleted {
-                "✔ 已删除"
-            } else {
-                "✗ 已保留"
-            },
+            "  {}{}{} {}",
+            if binary_deleted { GREEN } else { RED },
+            if binary_deleted { "✔" } else { "✗" },
+            RESET,
             path.display()
         );
     }
