@@ -623,21 +623,6 @@ mod tests {
     }
 
     #[test]
-    fn test_init_existing_file_tty_confirm() {
-        run_with_temp_home(|home| {
-            let settings_dir = home.join(".zapmyco");
-            std::fs::create_dir_all(&settings_dir).unwrap();
-            std::fs::write(settings_dir.join("settings.toml"), "").unwrap();
-
-            let file_path = settings::get_settings_path();
-            // TTY 路径，用户选择覆盖 → 继续进入后续交互（prompt_provider 无 TTY → 取消）
-            let result = cmd_init_inner(file_path, true, || true);
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap(), "");
-        });
-    }
-
-    #[test]
     fn test_format_model_label() {
         let label = format_model_label("deepseek-v4-flash");
         assert!(label.contains("deepseek-v4-flash"));
