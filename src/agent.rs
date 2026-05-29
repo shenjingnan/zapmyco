@@ -1,11 +1,11 @@
+use futures_util::StreamExt;
+use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
-use anthropic_ai_sdk::client::AnthropicClient;
-use anthropic_ai_sdk::types::message::{
+use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
+use zapmyco_anthropic_ai_sdk::types::message::{
     ContentBlock, ContentBlockDelta, CreateMessageParams, CreateMessageResponse, Message,
     MessageClient, MessageError, RequiredMessageParams, Role, StreamEvent,
 };
-use futures_util::StreamExt;
-use std::time::Instant;
 
 use crate::conversation_logger::ConversationLogger;
 use crate::models::get_model_info;
