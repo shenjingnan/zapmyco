@@ -141,12 +141,18 @@ fn is_leap(year: i64) -> bool {
 fn cmd_init() -> Result<String, String> {
     let file_path = settings::get_settings_path();
 
-    // 检查是否已存在
+    // 检查是否已存在，给用户覆盖选择
     if file_path.exists() {
-        return Err(format!(
-            "{} 已存在。如需重新初始化，请先删除该文件。",
-            file_path.display()
-        ));
+        let overwrite = inquire::Confirm::new("配置文件已存在，是否覆盖？")
+            .with_default(false)
+            .with_help_message("选择「是」将覆盖现有配置")
+            .prompt()
+            .ok()
+            .unwrap_or(false);
+
+        if !overwrite {
+            return Ok("已取消初始化。".to_string());
+        }
     }
 
     // 交互式问答（每一步都支持 Ctrl+C 优雅退出）
@@ -240,6 +246,7 @@ fn prompt_api_key() -> Option<String> {
     let key = inquire::Password::new("输入 API Key")
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
         .with_help_message("留空则使用 ${env.DEEPSEEK_API_KEY}")
+        .without_confirmation()
         .prompt()
         .ok()?;
 
@@ -568,15 +575,16 @@ mod tests {
     }
 
     #[test]
-    fn test_init_existing_file() {
+    fn test_init_existing_file_skip() {
         run_with_temp_home(|home| {
             let settings_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&settings_dir).unwrap();
             std::fs::write(settings_dir.join("settings.toml"), "").unwrap();
 
+            // 无 TTY 环境下 Confirm 返回 None → unwrap_or(false) → 跳过
             let result = cmd_init();
-            assert!(result.is_err());
-            assert!(result.err().unwrap().contains("已存在"));
+            assert!(result.is_ok());
+            assert!(result.unwrap().contains("已取消"));
         });
     }
 
