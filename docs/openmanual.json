@@ -4,9 +4,10 @@
   "favicon": "/favicon.svg",
   "logo": {
     "light": "/logo-text.svg",
-    "dark": "/logo-text-dark.svg"
+    "dark": "/logo-text-dark.svg",
+    "position": "header"
   },
-  "siteUrl": "https://zapmyco-docs.vercel.app",
+  "siteUrl": "https://docs.zapmyco.com",
   "locale": "zh",
   "header": {
     "links": [
