@@ -125,6 +125,26 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 | `zapmyco --help` | 显示帮助信息 |
 | `zapmyco --version` | 显示版本号 |
 
+## Shell 自动补全
+
+zapmyco 支持为 Bash、Zsh、Fish 和 PowerShell 生成 shell 补全脚本，按 Tab 即可自动补全子命令和参数：
+
+```bash
+# Bash（添加到 ~/.bashrc）
+eval "$(zapmyco completion bash)"
+
+# Zsh（添加到 ~/.zshrc）
+eval "$(zapmyco completion zsh)"
+
+# Fish
+zapmyco completion fish | source
+
+# PowerShell（添加到 $PROFILE）
+zapmyco completion powershell | Out-String | Invoke-Expression
+```
+
+启用后，输入 `zapmyco ` 然后按 Tab 即可看到所有可用子命令。
+
 ## 内置模型
 
 | 模型 | 供应商 | 上下文窗口 |
