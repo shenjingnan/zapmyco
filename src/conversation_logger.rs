@@ -2,7 +2,8 @@
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+use chrono::Local;
 
 const CONVERSATIONS_DIR: &str = "conversations";
 
@@ -107,80 +108,12 @@ fn get_log_dir() -> Result<PathBuf, String> {
 /// - PID: 进程 ID，区分不同进程
 /// - NANOS: 纳秒尾数（6位），区分同进程内多次启动
 fn generate_session_id() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let nanos = now.subsec_nanos();
-
-    // 将 Unix 时间戳转为 YYMMDDHHMMSS
-    let ts = unix_ts_to_compact(secs);
-
+    let now = Local::now();
+    let ts = now.format("%y%m%d%H%M%S").to_string();
     let pid = std::process::id();
-    let nanos_tail = nanos % 1_000_000; // 取后6位
+    let nanos_tail = now.timestamp_subsec_nanos() % 1_000_000;
 
     format!("{}-{}-{:06}", ts, pid, nanos_tail)
-}
-
-/// 将 Unix 时间戳转换为 YYMMDDHHMMSS 格式
-fn unix_ts_to_compact(secs: u64) -> String {
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-
-    let mut y = 1970i64;
-    let mut remaining = days as i64;
-
-    loop {
-        let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if remaining < days_in_year {
-            break;
-        }
-        remaining -= days_in_year;
-        y += 1;
-    }
-
-    let is_leap_year = is_leap(y);
-    let month_days = [
-        31,
-        if is_leap_year { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-
-    let mut m = 0usize;
-    for (i, &md) in month_days.iter().enumerate() {
-        if remaining < md {
-            m = i + 1;
-            break;
-        }
-        remaining -= md;
-    }
-    if m == 0 {
-        m = 12;
-    }
-    let d = remaining + 1;
-
-    let yy = (y % 100) as u64;
-
-    format!(
-        "{:02}{:02}{:02}{:02}{:02}{:02}",
-        yy, m, d, hours, minutes, seconds,
-    )
-}
-
-fn is_leap(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 #[cfg(test)]
@@ -213,60 +146,6 @@ mod tests {
         let id2 = generate_session_id();
         // 极短时间内两次调用可能时间戳相同，但纳秒不同
         assert_ne!(id1, id2, "两次调用 session_id 应不同");
-    }
-
-    #[test]
-    fn test_unix_ts_to_compact() {
-        // 2026-05-29T12:34:56Z
-        // 从 1970-01-01 到 2026-05-29 的天数需要计算
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        let result = unix_ts_to_compact(now.as_secs());
-        assert_eq!(result.len(), 12, "YYMMDDHHMMSS 应为 12 位");
-        // 所有字符都是数字
-        assert!(
-            result.chars().all(|c| c.is_ascii_digit()),
-            "应全为数字: {}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_unix_ts_to_compact_known_value() {
-        // 2026-05-29T00:00:00Z = ?
-        // 从 1970 到 2026: 56 年
-        // 闰年: 1972,76,80,84,88,92,96,2000,04,08,12,16,20,24 = 14
-        // 天数 = 56*365 + 14 = 20440 + 14 = 20454
-        // 2026-01-01 = 20454 天
-        // 2026-05-29 = Jan(31) + Feb(28) + Mar(31) + Apr(30) + May(29) - 1 = 148 天
-        // 总天数 = 20454 + 148 = 20602
-        let secs = 20602u64 * 86400;
-        let result = unix_ts_to_compact(secs);
-        assert_eq!(result, "260529000000");
-    }
-
-    #[test]
-    fn test_unix_ts_to_compact_leap_year_feb() {
-        // 2024-02-29T12:00:00Z (leap year)
-        // Days: 1970..2024 = 54 years
-        // Leap years: 1972,76,80,84,88,92,96,2000,04,08,12,16,20,24 = 14
-        // Days to 2024-01-01: 54*365 + 13 = 19710 + 13 = 19723 (2024 hasn't completed yet)
-        // Wait, let me recalculate: from 1970 to 2024 is 54 years
-        // 54*365 = 19710 days
-        // Leap years from 1970 to 2023 inclusive: 1972,76,80,84,88,92,96,2000,04,08,12,16,20 = 13
-        // Total days to 2024-01-01 = 19710 + 13 = 19723
-        // Jan: 31, Feb: 29 days, so Feb 29 is day 31+29-1=59 from Jan 1
-        // Total = 19723 + 59 = 19782 days + 12h
-        let days_to_2024_jan1: u64 = 19723;
-        let jan_days: u64 = 31;
-        // feb_days = 29 (leap year)
-        // Feb 29 = Jan(31) + 29 - 1 = 59th day of year (0-indexed)
-        let day_of_year: u64 = jan_days + 28; // 0-indexed: Jan(31) + Feb 1-28 = 59
-        let total_days = days_to_2024_jan1 + day_of_year;
-        let secs = total_days * 86400 + 12 * 3600;
-        let result = unix_ts_to_compact(secs);
-        assert_eq!(result, "240229120000");
     }
 
     #[test]

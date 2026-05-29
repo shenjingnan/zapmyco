@@ -8,6 +8,7 @@ use zapmyco_anthropic_ai_sdk::types::message::{
 };
 
 use crate::conversation_logger::ConversationLogger;
+use crate::datetime;
 use crate::models::get_model_info;
 use crate::settings::{is_conversation_log_enabled, load_settings, resolve_env_ref};
 
@@ -267,7 +268,7 @@ impl AiAgent {
                 },
                 "error": resp_error,
             });
-            let ts = crate::agent::iso_timestamp_now();
+            let ts = datetime::iso_timestamp_now();
             let _ = logger.append_record(ts, duration_ms, request_value, response_value);
         }
 
@@ -429,75 +430,10 @@ fn log_round_trip(
     response: &CreateMessageResponse,
     duration_ms: u64,
 ) {
-    let ts = iso_timestamp_now();
+    let ts = datetime::iso_timestamp_now();
     let request_value = serde_json::to_value(params).unwrap_or_default();
     let response_value = serde_json::to_value(response).unwrap_or_default();
     let _ = logger.append_record(ts, duration_ms, request_value, response_value);
-}
-
-/// 生成 ISO 8601 时间戳
-fn iso_timestamp_now() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-
-    let mut y = 1970i64;
-    let mut remaining = days as i64;
-
-    loop {
-        let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if remaining < days_in_year {
-            break;
-        }
-        remaining -= days_in_year;
-        y += 1;
-    }
-
-    let is_leap_year = is_leap(y);
-    let month_days = [
-        31,
-        if is_leap_year { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-
-    let mut m = 0usize;
-    for (i, &md) in month_days.iter().enumerate() {
-        if remaining < md {
-            m = i + 1;
-            break;
-        }
-        remaining -= md;
-    }
-    if m == 0 {
-        m = 12;
-    }
-    let d = remaining + 1;
-
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, hours, minutes, seconds,
-    )
-}
-
-fn is_leap(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 #[cfg(test)]
