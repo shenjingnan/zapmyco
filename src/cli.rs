@@ -139,19 +139,30 @@ fn is_leap(year: i64) -> bool {
 
 /// init 命令 - 交互式初始化向导
 fn cmd_init() -> Result<String, String> {
-    let file_path = settings::get_settings_path();
-
-    // 检查是否已存在，交互式环境询问是否覆盖，非交互环境（CI）直接报错
-    if file_path.exists() {
-        if std::io::stdin().is_terminal() {
-            let overwrite = inquire::Confirm::new("配置文件已存在，是否覆盖？")
+    cmd_init_inner(
+        settings::get_settings_path(),
+        std::io::stdin().is_terminal(),
+        || {
+            inquire::Confirm::new("配置文件已存在，是否覆盖？")
                 .with_default(false)
                 .with_help_message("选择「是」将覆盖现有配置")
                 .prompt()
                 .ok()
-                .unwrap_or(false);
+                .unwrap_or(false)
+        },
+    )
+}
 
-            if !overwrite {
+/// init 内部实现，支持注入参数以方便测试
+fn cmd_init_inner(
+    file_path: std::path::PathBuf,
+    is_terminal: bool,
+    confirm_overwrite: impl FnOnce() -> bool,
+) -> Result<String, String> {
+    // 检查是否已存在，交互式环境询问是否覆盖，非交互环境（CI）直接报错
+    if file_path.exists() {
+        if is_terminal {
+            if !confirm_overwrite() {
                 return Ok("已取消初始化。".to_string());
             }
         } else {
@@ -588,10 +599,41 @@ mod tests {
             std::fs::create_dir_all(&settings_dir).unwrap();
             std::fs::write(settings_dir.join("settings.toml"), "").unwrap();
 
-            // 非 TTY 环境下 is_terminal() = false → 直接报错
-            let result = cmd_init();
+            let file_path = settings::get_settings_path();
+            // 非 TTY 路径
+            let result = cmd_init_inner(file_path, false, || true);
             assert!(result.is_err());
             assert!(result.err().unwrap().contains("已存在"));
+        });
+    }
+
+    #[test]
+    fn test_init_existing_file_tty_skip() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.toml"), "").unwrap();
+
+            let file_path = settings::get_settings_path();
+            // TTY 路径，用户选择不覆盖
+            let result = cmd_init_inner(file_path, true, || false);
+            assert!(result.is_ok());
+            assert!(result.unwrap().contains("已取消初始化"));
+        });
+    }
+
+    #[test]
+    fn test_init_existing_file_tty_confirm() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.toml"), "").unwrap();
+
+            let file_path = settings::get_settings_path();
+            // TTY 路径，用户选择覆盖 → 继续进入后续交互（prompt_provider 无 TTY → 取消）
+            let result = cmd_init_inner(file_path, true, || true);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), "");
         });
     }
 
