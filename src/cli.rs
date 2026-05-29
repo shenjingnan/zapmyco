@@ -4,6 +4,8 @@ use std::io::IsTerminal;
 
 use crate::models::{get_built_in_model_names, get_model_info};
 use crate::settings;
+use crate::settings::{LlmSettings, ProviderConfig, Settings};
+use std::collections::HashMap;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -166,26 +168,32 @@ fn cmd_init() -> Result<String, String> {
     };
 
     // 构建配置
-    let settings_data = serde_json::json!({
-        "llm": {
-            "providers": {
-                provider: {
-                    "apiKey": api_key
-                }
-            },
-            "models": {
-                "default": default_model
-            }
-        }
-    });
+    let settings_data = Settings {
+        llm: Some(LlmSettings {
+            providers: Some({
+                let mut map = HashMap::new();
+                map.insert(
+                    provider.to_string(),
+                    ProviderConfig {
+                        api_key: Some(api_key),
+                    },
+                );
+                map
+            }),
+            models: Some({
+                let mut map = HashMap::new();
+                map.insert("default".to_string(), default_model);
+                map
+            }),
+        }),
+    };
 
     // 写入文件
     let settings_dir = settings::get_settings_dir();
     std::fs::create_dir_all(&settings_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
 
-    let content = serde_json::to_string_pretty(&settings_data)
-        .map_err(|e| format!("序列化配置失败: {}", e))?
-        + "\n";
+    let content =
+        toml::to_string(&settings_data).map_err(|e| format!("序列化配置失败: {}", e))? + "\n";
 
     std::fs::write(&file_path, content).map_err(|e| format!("写入配置文件失败: {}", e))?;
 
@@ -296,10 +304,7 @@ fn format_model_label(name: &str) -> String {
 fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
     match subcommand {
         Some("path") => Ok(settings_path()),
-        Some("show") | None => {
-            let masked = settings::display_settings()?;
-            Ok(serde_json::to_string_pretty(&masked).unwrap_or_default())
-        }
+        Some("show") | None => settings::display_settings(),
         Some(unknown) => Err(format!(
             "未知子命令: {}\n可用命令: settings, settings path",
             unknown
@@ -527,7 +532,7 @@ mod tests {
     #[test]
     fn test_settings_path_contains_zapmyco() {
         let path = settings_path();
-        assert!(path.contains(".zapmyco/settings.json"));
+        assert!(path.contains(".zapmyco/settings.toml"));
     }
 
     #[test]
@@ -545,7 +550,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_no_settings() {
-        // 使用临时 HOME 隔离 settings.json 的干扰
+        // 使用临时 HOME 隔离 settings.toml 的干扰
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
         unsafe {
@@ -567,7 +572,7 @@ mod tests {
         run_with_temp_home(|home| {
             let settings_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&settings_dir).unwrap();
-            std::fs::write(settings_dir.join("settings.json"), "{}").unwrap();
+            std::fs::write(settings_dir.join("settings.toml"), "").unwrap();
 
             let result = cmd_init();
             assert!(result.is_err());
@@ -603,13 +608,13 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_display_legacy_masked() {
+    fn test_settings_display_toml_masked() {
         run_with_temp_home(|home| {
             let settings_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&settings_dir).unwrap();
             std::fs::write(
-                settings_dir.join("settings.json"),
-                r#"{"llm":{"apiKey":"sk-test-key-value","baseURL":"https://test.com","model":"test-model"}}"#,
+                settings_dir.join("settings.toml"),
+                "[llm]\n\n[llm.providers.deepseek]\napiKey = \"sk-test-key-value\"\n",
             )
             .unwrap();
 
@@ -627,8 +632,8 @@ mod tests {
             let settings_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&settings_dir).unwrap();
             std::fs::write(
-                settings_dir.join("settings.json"),
-                r#"{"llm":{"apiKey":"${env.DEEPSEEK_API_KEY}"}}"#,
+                settings_dir.join("settings.toml"),
+                "[llm]\n\n[llm.providers.default]\napiKey = \"${env.DEEPSEEK_API_KEY}\"\n",
             )
             .unwrap();
 
@@ -709,7 +714,7 @@ mod tests {
         run_with_temp_home(|home| {
             let zapmyco_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&zapmyco_dir).unwrap();
-            std::fs::write(zapmyco_dir.join("settings.json"), "{}").unwrap();
+            std::fs::write(zapmyco_dir.join("settings.toml"), "").unwrap();
 
             let result = execute_uninstall(
                 &home.join(".config/zapmyco"),
@@ -754,15 +759,15 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_invalid_json() {
+    fn test_settings_invalid_toml() {
         run_with_temp_home(|home| {
             let settings_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&settings_dir).unwrap();
-            std::fs::write(settings_dir.join("settings.json"), "not valid json").unwrap();
+            std::fs::write(settings_dir.join("settings.toml"), "{invalid}").unwrap();
 
             let result = cmd_settings(None);
             assert!(result.is_err());
-            assert!(result.err().unwrap().contains("JSON 格式错误"));
+            assert!(result.err().unwrap().contains("TOML 格式错误"));
         });
     }
 
@@ -772,8 +777,8 @@ mod tests {
             let settings_dir = home.join(".zapmyco");
             std::fs::create_dir_all(&settings_dir).unwrap();
             std::fs::write(
-                settings_dir.join("settings.json"),
-                r#"{"llm":{"providers":{"deepseek":{"apiKey":"sk-long-key-value-test"},"glm":{"apiKey":"short-key"}},"models":{"default":"deepseek-v4-flash"}}}"#,
+                settings_dir.join("settings.toml"),
+                "[llm]\n\n[llm.providers.deepseek]\napiKey = \"sk-long-key-value-test\"\n\n[llm.providers.glm]\napiKey = \"short-key\"\n\n[llm.models]\ndefault = \"deepseek-v4-flash\"\n",
             )
             .unwrap();
 

@@ -53,7 +53,7 @@ zapmyco/
 │   ├── cli.rs              # clap CLI 定义
 │   ├── agent.rs            # AiAgent（Anthropic API 封装）
 │   ├── models.rs           # 7 个内置模型注册表
-│   └── settings.rs         # ~/.zapmyco/settings.json 管理
+│   └── settings.rs         # ~/.zapmyco/settings.toml 管理
 ├── tests/
 │   └── integration_test.rs # 集成测试 (wiremock)
 └── AGENTS.md               # AI 辅助开发上下文
@@ -88,11 +88,11 @@ AI 对话核心模块，封装 `anthropic-ai-sdk`：
 - `chat_stream()` — 流式对话（SSE 事件解析）
 - `start_interactive_chat()` — 终端交互模式
 
-配置解析链：`options` > `settings.json` > 环境变量
+配置解析链：`options` > `settings.toml` > 环境变量
 
 ### 配置管理（`src/settings.rs`）
 
-管理 `~/.zapmyco/settings.json`：
+管理 `~/.zapmyco/settings.toml`：
 
 - 旧版格式（扁平 apiKey/baseURL/model）→ 新版格式（providers/models）自动迁移
 - `${env.VAR}` 环境变量引用解析

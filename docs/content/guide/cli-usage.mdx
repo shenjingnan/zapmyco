@@ -54,16 +54,16 @@ zapmyco init
 2. **配置 API Key** — 支持直接输入，或使用 `${env.VAR_NAME}` 引用环境变量（推荐）
 3. **选择默认模型** — 根据所选供应商过滤可用的内置模型，显示上下文窗口信息
 
-当 `~/.zapmyco/settings.json` 已存在时，`init` 会拒绝运行：
+当 `~/.zapmyco/settings.toml` 已存在时，`init` 会拒绝运行：
 
 ```
-/home/user/.zapmyco/settings.json 已存在。如需重新初始化，请先删除该文件。
+/home/user/.zapmyco/settings.toml 已存在。如需重新初始化，请先删除该文件。
 ```
 
 如需重新初始化，请手动删除配置文件后再运行 `init`：
 
 ```bash
-rm ~/.zapmyco/settings.json
+rm ~/.zapmyco/settings.toml
 zapmyco init
 ```
 
@@ -85,7 +85,7 @@ zapmyco run --profile advanced 重构这个模块
 | 参数 | 必需 | 说明 |
 |------|:--:|------|
 | `<content>` | 是 | 任务描述或提示词 |
-| `--profile <name>` | 否 | 指定模型配置档（对应 `settings.json` 中 `llm.models` 的 key） |
+| `--profile <name>` | 否 | 指定模型配置档（对应 `settings.toml` 中 `llm.models` 的 key） |
 
 **前置条件**：必须先通过 `zapmyco init` 完成初始化配置。
 
@@ -112,7 +112,7 @@ zapmyco settings show     # 等同于无参数，显示完整配置
 
 | 子命令 | 行为 |
 |--------|------|
-| 无参数 或 `show` | 读取 `~/.zapmyco/settings.json`，API Key 自动脱敏显示（如 `sk-***`） |
+| 无参数 或 `show` | 读取 `~/.zapmyco/settings.toml`，API Key 自动脱敏显示（如 `sk-***`） |
 | `path` | 仅输出配置文件路径 |
 
 **脱敏规则**：API Key 显示前 3 个字符加 `***`（如 `sk-***`、`sho***`），避免敏感信息泄露。
@@ -123,7 +123,7 @@ zapmyco settings show     # 等同于无参数，显示完整配置
 - JSON 格式错误会给出中文提示
 
 **与 `config` 命令的区别**：
-- `settings` 显示的是**用户配置**（`~/.zapmyco/settings.json`，存储 AI 供应商和模型设置）
+- `settings` 显示的是**用户配置**（`~/.zapmyco/settings.toml`，存储 AI 供应商和模型设置）
 - `config` 显示的是**应用配置**（硬编码的调试标志、日志级别等）
 
 ---
@@ -198,7 +198,7 @@ zapmyco uninstall
 
 **Phase 2 — 执行阶段**
 - 删除安装收据目录 `~/.config/zapmyco/`
-- 若用户选择不保留，删除 `~/.zapmyco/`（含 settings.json、记忆等）
+- 若用户选择不保留，删除 `~/.zapmyco/`（含 settings.toml、记忆等）
 - 删除当前运行的二进制文件
 
 **平台差异**
