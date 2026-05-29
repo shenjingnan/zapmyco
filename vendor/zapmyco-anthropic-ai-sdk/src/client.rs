@@ -492,7 +492,7 @@ impl AnthropicClient {
         let response = request.send().await.map_err(|e| E::from(e.to_string()))?;
 
         let status = response.status();
-        
+
         if !status.is_success() {
             let error_body = response
                 .text()
@@ -525,13 +525,8 @@ impl AnthropicClient {
     where
         E: StdError + From<String>,
     {
-        self.send_request_with_beta_bytes::<(), E>(
-            reqwest::Method::GET,
-            path,
-            None,
-            beta_header,
-        )
-        .await
+        self.send_request_with_beta_bytes::<(), E>(reqwest::Method::GET, path, None, beta_header)
+            .await
     }
 
     /// Sends a DELETE request with a beta header
@@ -587,11 +582,9 @@ impl AnthropicClient {
     {
         let url = format!("{}{}", self.api_base_url, path);
 
-        let part = reqwest::multipart::Part::bytes(file_content)
-            .file_name(file_name.to_string());
+        let part = reqwest::multipart::Part::bytes(file_content).file_name(file_name.to_string());
 
-        let form = reqwest::multipart::Form::new()
-            .part("file", part);
+        let form = reqwest::multipart::Form::new().part("file", part);
 
         let response = self
             .client

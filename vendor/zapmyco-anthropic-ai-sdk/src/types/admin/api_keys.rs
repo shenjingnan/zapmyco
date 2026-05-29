@@ -279,6 +279,7 @@ pub struct AdminUpdateApiKeyParams {
     pub status: Option<ApiKeyStatus>,
 }
 
+#[allow(clippy::new_without_default)]
 impl AdminUpdateApiKeyParams {
     /// Create a new UpdateApiKeyParams with default values
     pub fn new() -> Self {
