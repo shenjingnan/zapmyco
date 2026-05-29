@@ -189,7 +189,11 @@ pub enum MessageContent {
 pub enum ContentBlock {
     /// Text content
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        citations: Option<Vec<serde_json::Value>>,
+    },
     /// Image content
     #[serde(rename = "image")]
     Image { source: ImageSource },
@@ -278,6 +282,27 @@ pub struct Metadata {
     pub fields: std::collections::HashMap<String, String>,
 }
 
+/// Container for code execution
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct Container {
+    pub id: String,
+    pub expires_at: String,
+}
+
+/// Details about why the model refused to respond
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct RefusalStopDetails {
+    /// Category of refusal (e.g., 'cyber', 'bio')
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// Explanation of the refusal
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+    /// Type of the refusal details
+    #[serde(rename = "type")]
+    pub type_: String,
+}
+
 /// Response from creating a message
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CreateMessageResponse {
@@ -298,10 +323,16 @@ pub struct CreateMessageResponse {
     pub type_: String,
     /// Usage statistics
     pub usage: Usage,
+    /// Container for code execution (if applicable)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<Container>,
+    /// Details about refusal (if stopped due to refusal)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_details: Option<RefusalStopDetails>,
 }
 
 /// Reason for stopping message generation
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
     EndTurn,
@@ -309,24 +340,85 @@ pub enum StopReason {
     StopSequence,
     ToolUse,
     Refusal,
+    /// The model paused and will continue later
+    #[serde(rename = "pause_turn")]
+    PauseTurn,
+}
+
+/// Breakdown of cached tokens by TTL
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct CacheCreation {
+    /// 1-hour TTL cache entry tokens
+    pub ephemeral_1h_input_tokens: u32,
+    /// 5-minute TTL cache entry tokens
+    pub ephemeral_5m_input_tokens: u32,
+}
+
+/// Breakdown of output tokens by category
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct OutputTokensDetails {
+    /// Tokens used for internal reasoning/thinking
+    pub thinking_tokens: u32,
+}
+
+/// Server-side tool usage counts
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ServerToolUsage {
+    /// Number of web fetch requests made by the server
+    pub web_fetch_requests: u32,
+    /// Number of web search requests made by the server
+    pub web_search_requests: u32,
 }
 
 /// Token usage statistics
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Usage {
     /// Input tokens used
     pub input_tokens: u32,
     /// Output tokens used
     pub output_tokens: u32,
+    /// Input tokens used to create the cache entry (cache miss)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u32>,
+    /// Input tokens read from the cache (cache hit)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u32>,
+    /// Breakdown of cached tokens by TTL
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation: Option<CacheCreation>,
+    /// Breakdown of output tokens by category
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens_details: Option<OutputTokensDetails>,
+    /// Geographic region where inference was performed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inference_geo: Option<String>,
+    /// Service tier used ('standard', 'priority', or 'batch')
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
+    /// Server-side tool usage counts
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_tool_use: Option<ServerToolUsage>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct StreamUsage {
     /// Input tokens used (may be missing in some events)
     #[serde(default)]
     pub input_tokens: u32,
     /// Output tokens used
     pub output_tokens: u32,
+    /// Input tokens used to create the cache entry (cache miss)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u32>,
+    /// Input tokens read from the cache (cache hit)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u32>,
+    /// Breakdown of output tokens by category
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens_details: Option<OutputTokensDetails>,
+    /// Server-side tool usage counts
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_tool_use: Option<ServerToolUsage>,
 }
 
 impl Message {
@@ -353,7 +445,10 @@ impl Message {
 impl ContentBlock {
     /// Create a new text block
     pub fn text(text: impl Into<String>) -> Self {
-        Self::Text { text: text.into() }
+        Self::Text {
+            text: text.into(),
+            citations: None,
+        }
     }
 
     /// Create a new image block
@@ -424,6 +519,12 @@ pub struct MessageStartContent {
     pub stop_reason: Option<StopReason>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
+    /// Container for code execution (if applicable)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<Container>,
+    /// Details about refusal (if stopped due to refusal)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_details: Option<RefusalStopDetails>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -437,6 +538,8 @@ pub enum ContentBlockDelta {
     ThinkingDelta { thinking: String },
     #[serde(rename = "signature_delta")]
     SignatureDelta { signature: String },
+    #[serde(rename = "citations_delta")]
+    CitationsDelta { citation: serde_json::Value },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
