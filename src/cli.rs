@@ -348,6 +348,7 @@ fn build_settings(provider: &str, api_key: &str, default_model: &str) -> Setting
                 map
             }),
         }),
+        conversation_log: None,
     }
 }
 
