@@ -1,5 +1,6 @@
 /// CLI 入口 — 基于 clap 的命令行界面
 use clap::{Parser, Subcommand};
+use std::io::IsTerminal;
 
 use crate::models::{get_built_in_model_names, get_model_info};
 use crate::settings;
@@ -355,15 +356,25 @@ async fn cmd_interactive() -> Result<(), String> {
 fn cmd_uninstall() -> Result<(), String> {
     let zapmyco_dir = settings::get_settings_dir();
     let exe_path = std::env::current_exe().ok();
+    let receipt_dir = settings::get_home_dir().join(".config/zapmyco");
+    let has_receipt = receipt_dir.exists();
+    let has_zapmyco_dir = zapmyco_dir.exists();
+
+    // 非 TTY 环境（CI/管道）跳过交互提示，避免 Windows CI 中 inquire 挂起
+    if !std::io::stdin().is_terminal() {
+        return execute_uninstall(
+            &receipt_dir,
+            &zapmyco_dir,
+            has_receipt,
+            true, // want_keep_zapmyco: 非交互模式下默认保留，避免误删
+            exe_path.as_deref(),
+        );
+    }
 
     // ——————————————————————————————————————————————
     // Phase 1: 确认阶段 — 只收集用户意愿，不执行删除
     // 此时按 Ctrl+C 可安全终止，不会丢失任何数据
     // ——————————————————————————————————————————————
-    let receipt_dir = settings::get_home_dir().join(".config/zapmyco");
-    let has_receipt = receipt_dir.exists();
-    let has_zapmyco_dir = zapmyco_dir.exists();
-
     let want_keep_zapmyco = if has_zapmyco_dir {
         match inquire::Confirm::new("是否保留记忆和配置？")
             .with_default(true)
@@ -638,7 +649,7 @@ mod tests {
 
     #[test]
     fn test_uninstall_receipt_only() {
-        // 非 TTY 环境下（如测试），最终确认提示会失败，卸载应安全终止
+        // 非 TTY 环境下，cmd_uninstall 跳过交互确认直接执行卸载
         run_with_temp_home(|home| {
             let receipt_dir = home.join(".config/zapmyco");
             std::fs::create_dir_all(&receipt_dir).unwrap();
@@ -651,7 +662,8 @@ mod tests {
             assert!(receipt_dir.exists());
             let result = cmd_uninstall();
             assert!(result.is_ok());
-            assert!(receipt_dir.exists(), "非 TTY 环境下卸载不应删除任何文件");
+            // 非 TTY 模式下跳过确认直接执行，收据被删除
+            assert!(!receipt_dir.exists(), "收据目录应被删除");
         });
     }
 
@@ -770,5 +782,58 @@ mod tests {
             assert!(output.contains("sk-***"));
             assert!(output.contains("sho***"));
         });
+    }
+
+    #[test]
+    fn test_config_output() {
+        let output = cmd_config().unwrap();
+        assert!(output.contains("debug"));
+        assert!(output.contains("logLevel"));
+        assert!(output.contains("createdAt"));
+    }
+
+    #[test]
+    fn test_is_leap_year() {
+        assert!(is_leap(2000)); // 能被 400 整除
+        assert!(!is_leap(1900)); // 能被 100 整除但不能被 400
+        assert!(is_leap(2024));
+        assert!(!is_leap(2023));
+        assert!(!is_leap(2025));
+    }
+
+    #[test]
+    fn test_chrono_now_format() {
+        let now = chrono_now();
+        // ISO 8601 格式: "2026-05-28T13:27:31Z"
+        assert_eq!(now.len(), 20, "应为 'YYYY-MM-DDTHH:MM:SSZ' 格式");
+        assert!(now.ends_with('Z'), "时间戳应以 Z 结尾: {}", now);
+        assert!(now.contains('T'), "时间戳应包含 T 分隔符: {}", now);
+        // 验证日期部分可解析
+        let date_part = &now[..10];
+        assert!(
+            date_part.chars().filter(|&c| c == '-').count() == 2,
+            "日期部分应为 YYYY-MM-DD: {}",
+            date_part
+        );
+    }
+
+    #[test]
+    fn test_format_model_label_unknown() {
+        let label = format_model_label("unknown-model");
+        assert!(label.contains("unknown-model"));
+    }
+
+    #[test]
+    fn test_format_model_label_with_context() {
+        let label = format_model_label("deepseek-v4-flash");
+        assert!(label.contains("deepseek-v4-flash"));
+        assert!(label.contains("1M"));
+    }
+
+    #[test]
+    fn test_format_model_label_glm() {
+        let label = format_model_label("glm-4v");
+        assert!(label.contains("glm-4v"));
+        assert!(label.contains("128K"));
     }
 }

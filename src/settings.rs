@@ -539,8 +539,10 @@ mod tests {
     #[test]
     fn test_get_settings_path_home_not_set() {
         let orig_home = std::env::var("HOME").ok();
+        let orig_userprofile = std::env::var("USERPROFILE").ok();
         unsafe {
             std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
         }
         let path = get_settings_path();
         assert_eq!(path, std::path::PathBuf::from("./.zapmyco/settings.json"));
@@ -549,19 +551,31 @@ mod tests {
                 std::env::set_var("HOME", h);
             }
         }
+        if let Some(up) = orig_userprofile {
+            unsafe {
+                std::env::set_var("USERPROFILE", up);
+            }
+        }
     }
 
     #[test]
     fn test_get_settings_dir_home_not_set() {
         let orig_home = std::env::var("HOME").ok();
+        let orig_userprofile = std::env::var("USERPROFILE").ok();
         unsafe {
             std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
         }
         let dir = get_settings_dir();
         assert_eq!(dir, std::path::PathBuf::from("./.zapmyco"));
         if let Some(h) = orig_home {
             unsafe {
                 std::env::set_var("HOME", h);
+            }
+        }
+        if let Some(up) = orig_userprofile {
+            unsafe {
+                std::env::set_var("USERPROFILE", up);
             }
         }
     }
@@ -864,5 +878,43 @@ mod tests {
             assert!(result.is_err());
             assert!(result.err().unwrap().contains("不存在"));
         });
+    }
+
+    #[test]
+    fn test_load_settings_read_error() {
+        // 设置一个文件路径为目录，导致 read_to_string 返回非 NotFound 错误
+        with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            // 创建一个同名目录而不是文件，导致读取错误
+            // read_to_string 在路径是目录时会返回一个非 NotFound 的错误
+            let file_path = settings_dir.join("settings.json");
+            std::fs::create_dir_all(&file_path).unwrap();
+            let result = load_settings();
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_none());
+        });
+    }
+
+    #[test]
+    fn test_mask_settings_json_legacy_empty_key() {
+        let mut value = serde_json::json!({
+            "llm": {
+                "apiKey": ""
+            }
+        });
+        mask_settings_json(&mut value);
+        assert_eq!(value["llm"]["apiKey"], "***");
+    }
+
+    #[test]
+    fn test_resolve_env_ref_empty_env_var_name() {
+        let result = resolve_env_ref("${env.}");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mask_api_key_3_chars() {
+        assert_eq!(mask_api_key("abc"), "abc***");
     }
 }
