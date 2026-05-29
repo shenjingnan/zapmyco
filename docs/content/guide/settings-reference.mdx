@@ -1,11 +1,13 @@
 ---
 title: 配置文件参考
-description: ~/.zapmyco/settings.toml 所有字段说明与示例
 ---
 
-`~/.zapmyco/settings.toml` 是 ZapMyCo 的 LLM 配置文件，用于管理 AI 供应商和模型映射。
+`.zapmyco/settings.toml` 是 ZapMyCo 核心配置文件，**必须存在**才能运行 AI 相关命令。
 
-> 该文件**完全可选**。如果不存在，ZapMyCo 会回退到 `DEEPSEEK_API_KEY` 环境变量和默认模型 `deepseek-v4-flash`。
+> - macOS/Linux: `~/.zapmyco/settings.toml`
+> - Windows: `%USERPROFILE%\.zapmyco\settings.toml`
+>
+> 若文件不存在，请先运行 `zapmyco init` 生成。
 
 ## 完整示例
 
@@ -20,7 +22,7 @@ apiKey = "${env.GLM_API_KEY}"
 
 [llm.models]
 default = "deepseek-v4-flash"
-advanced = "deepseek-reasoner"
+advanced = "deepseek-v4-pro"
 ```
 
 ## 字段参考
@@ -49,7 +51,7 @@ LLM 配置总入口，所有供应商和模型设置均在此下定义。
 ```toml
 [llm.models]
 default = "deepseek-v4-flash"
-advanced = "deepseek-reasoner"
+advanced = "deepseek-v4-pro"
 ```
 
 通过 CLI 选择配置档：
@@ -100,3 +102,19 @@ ZapMyCo 按以下顺序确定最终使用的配置（高优先级覆盖低优先
 | `zapmyco init` | 交互式初始化向导，自动生成 settings.toml |
 | `zapmyco settings` | 显示当前配置（密钥已脱敏） |
 | `zapmyco settings path` | 显示 settings.toml 文件路径 |
+
+## FAQ
+
+### 为什么选择 TOML 而不是 JSON 或 YAML？
+
+ZapMyCo 最早使用 JSON 作为配置格式，在 v0.23.0 迁移到了 TOML，主要考虑：
+
+| 对比项 | JSON | YAML | TOML |
+|--------|:----:|:----:|:----:|
+| 注释支持 | ❌ 不支持 | ✅ 支持 | ✅ 支持 |
+| 键名引号 | 必须用 `"` | 不需要 | 不需要 |
+| 缩进敏感 | ❌ | ✅ 是（容易出错） | ❌ |
+| 类型系统 | 有限 | 丰富但有歧义 | 清晰且明确 |
+| Rust 生态集成 | 需 serde_json | 需 serde_yaml | 原生 `toml` + serde |
+
+TOML 在保持简洁可读的同时，避免了 YAML 的缩进陷阱，也补上了 JSON 缺少注释的短板，与 Rust/serde 生态的集成也十分成熟。
