@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.24.0](https://github.com/shenjingnan/zapmyco/compare/v0.23.0...v0.24.0) - 2026-05-29
+
+### Other
+
+- 添加 settings.toml 配置参考文档并移除代码默认行为 ([#307](https://github.com/shenjingnan/zapmyco/pull/307))
+- 将配置文件从 settings.json 迁移到 settings.toml ([#306](https://github.com/shenjingnan/zapmyco/pull/306))
+- 添加拼写检查工具 typos 到 CI、pre-commit 和 check 脚本 ([#304](https://github.com/shenjingnan/zapmyco/pull/304))
+
 ## [0.23.0](https://github.com/shenjingnan/zapmyco/compare/v0.22.20...v0.23.0) - 2026-05-29
 
 ### Added
