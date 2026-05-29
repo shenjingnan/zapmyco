@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.24.1](https://github.com/shenjingnan/zapmyco/compare/v0.24.0...v0.24.1) - 2026-05-29
+
+### Added
+
+- *(init)* 简化 init 流程 — 移除 API Key 二次确认并支持覆盖配置 ([#308](https://github.com/shenjingnan/zapmyco/pull/308))
+
+### Other
+
+- *(docs)* 将 LOGO 移至 Header 并更新站点 URL ([#311](https://github.com/shenjingnan/zapmyco/pull/311))
+- 提升单测覆盖率 — 从 82 到 110 (+28 个新测试) ([#310](https://github.com/shenjingnan/zapmyco/pull/310))
+
 ## [0.24.0](https://github.com/shenjingnan/zapmyco/compare/v0.23.0...v0.24.0) - 2026-05-29
 
 ### Other
