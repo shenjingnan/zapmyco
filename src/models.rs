@@ -148,4 +148,35 @@ mod tests {
         assert!(names.contains(&"glm-4v"));
         assert_eq!(names.len(), 7);
     }
+
+    #[test]
+    fn test_all_models_have_valid_metadata() {
+        for name in get_built_in_model_names() {
+            let info = get_model_info(name).unwrap();
+            assert!(!info.provider.is_empty(), "模型 {} 的 provider 为空", name);
+            assert!(!info.base_url.is_empty(), "模型 {} 的 base_url 为空", name);
+            assert!(
+                info.capabilities.contains(&ModelCapability::Text),
+                "模型 {} 缺少 Text 能力",
+                name
+            );
+            assert!(
+                info.context_window.is_some_and(|n| n > 0),
+                "模型 {} 的 context_window 应大于 0",
+                name
+            );
+            assert!(
+                info.max_output_tokens.is_some_and(|n| n > 0),
+                "模型 {} 的 max_output_tokens 应大于 0",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_model_capability_equality() {
+        assert_eq!(ModelCapability::Text, ModelCapability::Text);
+        assert_eq!(ModelCapability::Vision, ModelCapability::Vision);
+        assert_ne!(ModelCapability::Text, ModelCapability::Vision);
+    }
 }

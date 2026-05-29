@@ -256,6 +256,11 @@ impl AiAgent {
         self.messages.clear();
     }
 
+    /// 获取当前使用的模型名称
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
     /// 获取当前对话历史
     pub fn get_messages(&self) -> &[ConversationMessage] {
         &self.messages
@@ -376,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_agent_no_settings_file() {
-        run_with_temp_home(|home| {
+        run_with_temp_home(|_home| {
             // 不创建任何配置文件 → 应报错提示 init
             let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
             unsafe {
@@ -606,5 +611,119 @@ mod tests {
             // 验证 agent 初始化正确且系统提示词已设置
             assert_eq!(agent.get_messages().len(), 0);
         });
+    }
+
+    #[test]
+    fn test_extract_text_from_blocks_mixed() {
+        let blocks = vec![
+            ContentBlock::Text {
+                text: "Hello".to_string(),
+            },
+            ContentBlock::ToolUse {
+                id: "id1".to_string(),
+                name: "my_tool".to_string(),
+                input: serde_json::Value::Null,
+            },
+            ContentBlock::Text {
+                text: " World".to_string(),
+            },
+        ];
+        assert_eq!(extract_text_from_blocks(&blocks), "Hello World");
+    }
+
+    #[test]
+    fn test_extract_text_from_blocks_only_non_text() {
+        let blocks = vec![ContentBlock::ToolUse {
+            id: "id1".to_string(),
+            name: "my_tool".to_string(),
+            input: serde_json::Value::Null,
+        }];
+        assert_eq!(extract_text_from_blocks(&blocks), "");
+    }
+
+    #[test]
+    fn test_agent_model_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                model: Some("custom-model".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.model(), "custom-model");
+        });
+    }
+
+    #[test]
+    fn test_agent_model_from_profile() {
+        run_with_temp_home(|home| {
+            create_test_settings(
+                home,
+                "[llm]\n\n[llm.models]\nadvanced = \"deepseek-reasoner\"\n",
+            );
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                model_profile: Some("advanced".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.model(), "deepseek-reasoner");
+        });
+    }
+
+    #[test]
+    fn test_resolve_api_key_provider_none_key() {
+        use crate::settings::{LlmSettings, ProviderConfig};
+        use std::collections::HashMap;
+
+        let mut providers = HashMap::new();
+        providers.insert("deepseek".to_string(), ProviderConfig { api_key: None });
+        let llm = LlmSettings {
+            providers: Some(providers),
+            models: None,
+        };
+        // Provider 有配置但 api_key 为 None → 应该落到 env 或报错
+        let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
+        unsafe {
+            std::env::remove_var("DEEPSEEK_API_KEY");
+        }
+        let result = resolve_api_key(None, Some(&llm), "deepseek");
+        assert!(result.is_err());
+        if let Some(k) = orig_key {
+            unsafe {
+                std::env::set_var("DEEPSEEK_API_KEY", k);
+            }
+        }
+    }
+
+    #[test]
+    fn test_resolve_api_key_provider_empty_key() {
+        use crate::settings::{LlmSettings, ProviderConfig};
+        use std::collections::HashMap;
+
+        let mut providers = HashMap::new();
+        providers.insert(
+            "deepseek".to_string(),
+            ProviderConfig {
+                api_key: Some(String::new()),
+            },
+        );
+        let llm = LlmSettings {
+            providers: Some(providers),
+            models: None,
+        };
+        // Provider 有配置但 api_key 为空串 → 应该落到 env 或报错
+        let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
+        unsafe {
+            std::env::remove_var("DEEPSEEK_API_KEY");
+        }
+        let result = resolve_api_key(None, Some(&llm), "deepseek");
+        assert!(result.is_err());
+        if let Some(k) = orig_key {
+            unsafe {
+                std::env::set_var("DEEPSEEK_API_KEY", k);
+            }
+        }
     }
 }
