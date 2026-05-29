@@ -441,9 +441,10 @@ async fn cmd_interactive() -> Result<(), String> {
 
 /// uninstall 命令 — 卸载 zapmyco
 fn cmd_uninstall() -> Result<(), String> {
+    let home = settings::get_home_dir();
     let zapmyco_dir = settings::get_settings_dir();
     let exe_path = std::env::current_exe().ok();
-    let receipt_dir = settings::get_home_dir().join(".config/zapmyco");
+    let receipt_dir = home.join(".config/zapmyco");
     let has_receipt = receipt_dir.exists();
     let has_zapmyco_dir = zapmyco_dir.exists();
 
@@ -455,6 +456,7 @@ fn cmd_uninstall() -> Result<(), String> {
             has_receipt,
             true, // want_keep_zapmyco: 非交互模式下默认保留，避免误删
             exe_path.as_deref(),
+            &home,
         );
     }
 
@@ -508,6 +510,7 @@ fn cmd_uninstall() -> Result<(), String> {
         has_receipt,
         want_keep_zapmyco,
         exe_path.as_deref(),
+        &home,
     )
 }
 
@@ -518,9 +521,13 @@ fn execute_uninstall(
     has_receipt: bool,
     want_keep_zapmyco: bool,
     exe_path: Option<&std::path::Path>,
+    home: &std::path::Path,
 ) -> Result<(), String> {
     const RED: &str = "\x1b[31m";
     const RESET: &str = "\x1b[0m";
+
+    // Shell 补全配置清理
+    remove_shell_completion(home);
 
     // 安装收据（自动清理）
     if has_receipt && let Err(e) = std::fs::remove_dir_all(receipt_dir) {
@@ -594,6 +601,35 @@ fn completion_line(shell: &str) -> &'static str {
         "zsh" => "eval \"$(zapmyco completion zsh)\"",
         "fish" => "zapmyco completion fish | source",
         _ => panic!("不支持的 shell: {}", shell),
+    }
+}
+
+/// 移除所有已知 shell 配置文件中的补全行
+fn remove_shell_completion(home: &std::path::Path) {
+    let shells = ["bash", "zsh", "fish"];
+    for &shell in &shells {
+        let config_path = shell_config_path(shell, home);
+        if !config_path.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&config_path) else {
+            continue;
+        };
+        let line = completion_line(shell);
+        let original_lines: Vec<&str> = content.lines().collect();
+        let filtered: Vec<&str> = original_lines
+            .iter()
+            .filter(|l| l.trim() != line)
+            .copied()
+            .collect();
+
+        if filtered.len() < original_lines.len() {
+            let mut result = filtered.join("\n");
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            let _ = std::fs::write(&config_path, result);
+        }
     }
 }
 
@@ -1016,6 +1052,7 @@ mod tests {
                 false, // has_receipt
                 true,  // want_keep_zapmyco
                 None,  // exe_path
+                home,
             );
             assert!(result.is_ok());
         });
@@ -1035,6 +1072,7 @@ mod tests {
                 true, // has_receipt
                 true, // want_keep_zapmyco
                 None,
+                home,
             );
             assert!(result.is_ok());
             assert!(!receipt_dir.exists(), "收据目录应该被删除");
@@ -1055,6 +1093,7 @@ mod tests {
                 false, // has_receipt
                 false, // want_keep_zapmyco → 删除
                 None,
+                home,
             );
             assert!(result.is_ok());
             assert!(!zapmyco_dir.exists(), "~/.zapmyco/ 应该被删除");
@@ -1071,6 +1110,7 @@ mod tests {
                 false,
                 true,
                 Some(&home.join("nonexistent-binary")),
+                home,
             );
             assert!(result.is_ok());
         });
@@ -1090,6 +1130,7 @@ mod tests {
                 false,
                 true,
                 Some(&bin_path),
+                home,
             );
             assert!(result.is_ok());
             // 二进制文件应被删除
@@ -1107,6 +1148,7 @@ mod tests {
                 true, // has_receipt 但目录不存在
                 true,
                 None,
+                home,
             );
             assert!(result.is_ok());
         });
@@ -1562,5 +1604,148 @@ mod tests {
         // sh 会被 detect_shell 过滤掉，但 setup_shell_completion_inner 使用 panic
         // 直接传 "sh" 给它就会 panic，这是预期的
         // 测试 detect_shell 已经 cover 了这个场景
+    }
+
+    // ————————————————————————————————
+    // remove_shell_completion 测试
+    // ————————————————————————————————
+
+    #[test]
+    fn test_remove_completion_removes_line() {
+        run_with_temp_home(|home| {
+            let zshrc = home.join(".zshrc");
+            std::fs::write(
+                &zshrc,
+                "export FOO=bar\neval \"$(zapmyco completion zsh)\"\nexport BAR=baz\n",
+            )
+            .unwrap();
+
+            remove_shell_completion(home);
+
+            let content = std::fs::read_to_string(&zshrc).unwrap();
+            assert!(!content.contains("zapmyco completion zsh"));
+            assert!(content.contains("export FOO=bar"));
+            assert!(content.contains("export BAR=baz"));
+        });
+    }
+
+    #[test]
+    fn test_remove_completion_noop() {
+        run_with_temp_home(|home| {
+            let zshrc = home.join(".zshrc");
+            std::fs::write(&zshrc, "export FOO=bar\nexport BAR=baz\n").unwrap();
+
+            remove_shell_completion(home);
+
+            let content = std::fs::read_to_string(&zshrc).unwrap();
+            assert_eq!(content, "export FOO=bar\nexport BAR=baz\n");
+        });
+    }
+
+    #[test]
+    fn test_remove_completion_all_shells() {
+        run_with_temp_home(|home| {
+            // 同时配置三种 shell
+            std::fs::write(
+                home.join(".bash_profile"),
+                "eval \"$(zapmyco completion bash)\"\n",
+            )
+            .unwrap();
+            std::fs::write(home.join(".zshrc"), "eval \"$(zapmyco completion zsh)\"\n").unwrap();
+            std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+            std::fs::write(
+                home.join(".config/fish/config.fish"),
+                "zapmyco completion fish | source\n",
+            )
+            .unwrap();
+
+            remove_shell_completion(home);
+
+            // 所有补全行都应被移除
+            let bash_content = std::fs::read_to_string(home.join(".bash_profile")).unwrap();
+            assert!(!bash_content.contains("zapmyco completion bash"));
+
+            let zsh_content = std::fs::read_to_string(home.join(".zshrc")).unwrap();
+            assert!(!zsh_content.contains("zapmyco completion zsh"));
+
+            let fish_content =
+                std::fs::read_to_string(home.join(".config/fish/config.fish")).unwrap();
+            assert!(!fish_content.contains("zapmyco completion fish"));
+        });
+    }
+
+    #[test]
+    fn test_uninstall_removes_completion() {
+        run_with_temp_home(|home| {
+            // 模拟 init 后的状态：有收据，shell 配置中有补全行
+            let receipt_dir = home.join(".config/zapmyco");
+            std::fs::create_dir_all(&receipt_dir).unwrap();
+            std::fs::write(
+                receipt_dir.join("zapmyco-receipt.json"),
+                r#"{"version":"0.24.2"}"#,
+            )
+            .unwrap();
+
+            let zshrc = home.join(".zshrc");
+            std::fs::write(
+                &zshrc,
+                "export FOO=bar\neval \"$(zapmyco completion zsh)\"\n",
+            )
+            .unwrap();
+
+            // 执行卸载（非 TTY 模式下直接执行）
+            let result = cmd_uninstall();
+            assert!(result.is_ok());
+
+            // 验证补全行已移除
+            let content = std::fs::read_to_string(&zshrc).unwrap();
+            assert!(!content.contains("zapmyco completion zsh"));
+            // 其他内容应保留
+            assert!(content.contains("export FOO=bar"));
+        });
+    }
+
+    #[test]
+    fn test_remove_completion_file_not_exists() {
+        // 没有 shell 配置文件，应正常运行不 panic
+        run_with_temp_home(|home| {
+            remove_shell_completion(home);
+            // 没有文件被创建
+            assert!(!home.join(".zshrc").exists());
+            assert!(!home.join(".bashrc").exists());
+            assert!(!home.join(".bash_profile").exists());
+        });
+    }
+
+    #[test]
+    fn test_remove_completion_only_line_in_file() {
+        run_with_temp_home(|home| {
+            let zshrc = home.join(".zshrc");
+            std::fs::write(&zshrc, "eval \"$(zapmyco completion zsh)\"\n").unwrap();
+
+            remove_shell_completion(home);
+
+            let content = std::fs::read_to_string(&zshrc).unwrap();
+            assert!(content.is_empty(), "文件只有补全行时，应变为空");
+        });
+    }
+
+    #[test]
+    fn test_remove_completion_multiple_occurrences() {
+        run_with_temp_home(|home| {
+            let zshrc = home.join(".zshrc");
+            std::fs::write(
+                &zshrc,
+                "eval \"$(zapmyco completion zsh)\"\nexport FOO=bar\neval \"$(zapmyco completion zsh)\"\n",
+            )
+            .unwrap();
+
+            remove_shell_completion(home);
+
+            let content = std::fs::read_to_string(&zshrc).unwrap();
+            assert!(!content.contains("zapmyco completion zsh"));
+            assert_eq!(content.matches("zapmyco completion zsh").count(), 0);
+            assert!(content.contains("export FOO=bar"));
+        });
     }
 }
