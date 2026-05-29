@@ -54,9 +54,16 @@ impl AiAgent {
     ///
     /// 从 settings.toml 和环境变量自动解析配置，参数可覆盖默认值。
     pub fn new(options: AiAgentOptions) -> Result<Self, String> {
-        // 加载 ~/.zapmyco/settings.toml
-        let settings = load_settings().unwrap_or(None);
-        let llm = settings.as_ref().and_then(|s| s.llm.as_ref());
+        // 加载 ~/.zapmyco/settings.toml，文件必须存在
+        let settings = load_settings()
+            .map_err(|e| format!("读取配置文件失败: {}", e))?
+            .ok_or_else(|| {
+                format!(
+                    "未找到配置文件 {}。请先运行 `zapmyco init` 初始化 LLM 配置。",
+                    crate::settings::get_settings_path().display()
+                )
+            })?;
+        let llm = settings.llm.as_ref();
 
         // 1. 确定模型配置档名称
         let profile_name = options.model_profile.as_deref().unwrap_or("default");
@@ -336,85 +343,124 @@ fn extract_text_from_blocks(blocks: &[ContentBlock]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::run_with_temp_home;
 
     #[test]
     fn test_agent_no_api_key() {
-        // 使用临时 HOME 隔离 settings.toml 的干扰
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
-        // SAFETY: test isolation
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-            std::env::remove_var("DEEPSEEK_API_KEY");
-        }
+        run_with_temp_home(|home| {
+            // 创建最小配置
+            create_test_settings(home, "[llm]\n");
 
-        let result = AiAgent::new(AiAgentOptions {
-            api_key: Some("".to_string()),
-            ..Default::default()
-        });
-        assert!(result.is_err());
-        assert!(result.err().unwrap().contains("DEEPSEEK_API_KEY"));
-
-        // SAFETY: restore env
-        unsafe {
-            if let Some(h) = orig_home {
-                std::env::set_var("HOME", h);
+            // 移除环境变量，确保走 settings 流程
+            let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
+            // SAFETY: test isolation via run_with_temp_home
+            unsafe {
+                std::env::remove_var("DEEPSEEK_API_KEY");
             }
+
+            let result = AiAgent::new(AiAgentOptions {
+                api_key: Some("".to_string()),
+                ..Default::default()
+            });
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("DEEPSEEK_API_KEY"));
+
+            // SAFETY: restore env
             if let Some(k) = orig_key {
-                std::env::set_var("DEEPSEEK_API_KEY", k);
+                unsafe {
+                    std::env::set_var("DEEPSEEK_API_KEY", k);
+                }
             }
-        }
+        });
+    }
+
+    #[test]
+    fn test_agent_no_settings_file() {
+        run_with_temp_home(|home| {
+            // 不创建任何配置文件 → 应报错提示 init
+            let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
+            unsafe {
+                std::env::remove_var("DEEPSEEK_API_KEY");
+            }
+            let result = AiAgent::new(AiAgentOptions::default());
+            assert!(result.is_err());
+            let err = result.err().unwrap();
+            assert!(err.contains("zapmyco init"));
+
+            if let Some(k) = orig_key {
+                unsafe {
+                    std::env::set_var("DEEPSEEK_API_KEY", k);
+                }
+            }
+        });
+    }
+
+    /// 在临时 HOME 下创建测试用 settings.toml
+    fn create_test_settings(home: &std::path::Path, content: &str) {
+        let dir = home.join(".zapmyco");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.toml"), content).unwrap();
     }
 
     #[test]
     fn test_agent_custom_options() {
-        let agent = AiAgent::new(AiAgentOptions {
-            api_key: Some("test-key".to_string()),
-            base_url: Some("https://custom.example.com".to_string()),
-            model: Some("test-model".to_string()),
-            ..Default::default()
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                base_url: Some("https://custom.example.com".to_string()),
+                model: Some("test-model".to_string()),
+                ..Default::default()
+            });
+            assert!(agent.is_ok());
+            let agent = agent.unwrap();
+            assert_eq!(agent.get_messages().len(), 0);
         });
-        assert!(agent.is_ok());
-        let agent = agent.unwrap();
-        assert_eq!(agent.get_messages().len(), 0);
     }
 
     #[test]
     fn test_agent_manage_context() {
-        let mut agent = AiAgent::new(AiAgentOptions {
-            api_key: Some("test-key".to_string()),
-            ..Default::default()
-        })
-        .unwrap();
-        assert_eq!(agent.get_messages().len(), 0);
-        agent.clear_context();
-        assert_eq!(agent.get_messages().len(), 0);
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.get_messages().len(), 0);
+            agent.clear_context();
+            assert_eq!(agent.get_messages().len(), 0);
+        });
     }
 
     #[test]
     fn test_agent_resolve_model_from_registry() {
-        let agent = AiAgent::new(AiAgentOptions {
-            api_key: Some("test-key".to_string()),
-            model_profile: Some("default".to_string()),
-            ..Default::default()
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                model_profile: Some("default".to_string()),
+                ..Default::default()
+            });
+            // No "default" profile in settings, falls back to DEFAULT_MODEL
+            assert!(agent.is_ok());
+            let agent = agent.unwrap();
+            assert_eq!(agent.get_messages().len(), 0);
         });
-        // Without settings file, "default" profile won't find any model
-        // and should fall back to DEFAULT_MODEL
-        assert!(agent.is_ok());
-        let agent = agent.unwrap();
-        assert_eq!(agent.get_messages().len(), 0);
     }
 
     #[test]
     fn test_agent_with_provider() {
-        let agent = AiAgent::new(AiAgentOptions {
-            api_key: Some("test-key".to_string()),
-            model: Some("deepseek-v4-flash".to_string()),
-            provider: Some("deepseek".to_string()),
-            ..Default::default()
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                model: Some("deepseek-v4-flash".to_string()),
+                provider: Some("deepseek".to_string()),
+                ..Default::default()
+            });
+            assert!(agent.is_ok());
         });
-        assert!(agent.is_ok());
     }
 
     #[test]
@@ -548,14 +594,17 @@ mod tests {
 
     #[test]
     fn test_build_params_with_system_prompt() {
-        let agent = AiAgent::new(AiAgentOptions {
-            api_key: Some("test-key".to_string()),
-            system_prompt: Some("你是一个测试助手".to_string()),
-            ..Default::default()
-        })
-        .unwrap();
-        // build_params 是私有方法，通过 chat 间接测试参数构建
-        // 验证 agent 初始化正确且系统提示词已设置
-        assert_eq!(agent.get_messages().len(), 0);
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                system_prompt: Some("你是一个测试助手".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            // build_params 是私有方法，通过 chat 间接测试参数构建
+            // 验证 agent 初始化正确且系统提示词已设置
+            assert_eq!(agent.get_messages().len(), 0);
+        });
     }
 }

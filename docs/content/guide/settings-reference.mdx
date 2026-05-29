@@ -1,0 +1,120 @@
+---
+title: 配置文件参考
+---
+
+`.zapmyco/settings.toml` 是 ZapMyCo 核心配置文件，**必须存在**才能运行 AI 相关命令。
+
+> - macOS/Linux: `~/.zapmyco/settings.toml`
+> - Windows: `%USERPROFILE%\.zapmyco\settings.toml`
+>
+> 若文件不存在，请先运行 `zapmyco init` 生成。
+
+## 完整示例
+
+```toml
+[llm]
+
+[llm.providers.deepseek]
+apiKey = "${env.DEEPSEEK_API_KEY}"
+
+[llm.providers.glm]
+apiKey = "${env.GLM_API_KEY}"
+
+[llm.models]
+default = "deepseek-v4-flash"
+advanced = "deepseek-v4-pro"
+```
+
+## 字段参考
+
+### `[llm]`
+
+LLM 配置总入口，所有供应商和模型设置均在此下定义。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `providers` | 表 | 否 | AI 供应商 API 密钥配置 |
+| `models` | 表 | 否 | 模型名称到内置模型的映射表 |
+
+### `[llm.providers.<name>]`
+
+供应商配置。`<name>` 由你自定义，例如 `deepseek`、`glm`。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `apiKey` | 字符串 | 否 | API 密钥。支持 `${env.VAR}` 语法引用环境变量 |
+
+### `[llm.models]`
+
+模型配置档映射。**键**是你自定义的配置档名称（如 `default`），**值**是内置模型的名称。
+
+```toml
+[llm.models]
+default = "deepseek-v4-flash"
+advanced = "deepseek-v4-pro"
+```
+
+通过 CLI 选择配置档：
+
+```bash
+zapmyco run --profile advanced "你的问题"
+```
+
+## `${env.VAR}` 语法
+
+配置文件中可直接引用环境变量，避免在文件中明文存储密钥：
+
+```toml
+apiKey = "${env.DEEPSEEK_API_KEY}"
+```
+
+运行时 ZapMyCo 会自动将 `${env.DEEPSEEK_API_KEY}` 替换为环境变量 `DEEPSEEK_API_KEY` 的值。
+
+> 使用 `zapmyco settings` 查看配置时，环境变量引用会原样显示（不会脱敏），而明文密钥会被脱敏：`sk-***abcd`。
+
+## 内置模型列表
+
+ZapMyCo 内置以下模型，可直接在 `[llm.models]` 中引用：
+
+| 模型名称 | 供应商 | Base URL | 上下文窗口 | 最大输出 | 能力 |
+|----------|--------|----------|:----------:|:--------:|:----:|
+| `deepseek-v4-flash` | deepseek | `https://api.deepseek.com/anthropic` | 1,000,000 | 384,000 | 文本 |
+| `deepseek-v4-pro` | deepseek | `https://api.deepseek.com/anthropic` | 1,000,000 | 384,000 | 文本 |
+| `deepseek-reasoner` | deepseek | `https://api.deepseek.com/anthropic` | 128,000 | 16,384 | 文本 |
+| `glm-4-flash` | glm | `https://open.bigmodel.cn/api/anthropic` | 128,000 | 16,384 | 文本 |
+| `glm-4v` | glm | `https://open.bigmodel.cn/api/anthropic` | 128,000 | 16,384 | 文本、视觉 |
+| `glm-5v-turbo` | glm | `https://open.bigmodel.cn/api/anthropic` | 200,000 | 128,000 | 文本、视觉 |
+| `glm-5.1` | glm | `https://open.bigmodel.cn/api/anthropic` | 200,000 | 128,000 | 文本 |
+
+## 配置优先级
+
+ZapMyCo 按以下顺序确定最终使用的配置（高优先级覆盖低优先级）：
+
+1. **CLI 显式参数**（如 `--profile`）
+2. **settings.toml** 中的值
+3. **环境变量**（如 `DEEPSEEK_API_KEY`）
+4. **内置默认值**（模型 `deepseek-v4-flash`）
+
+## 相关命令
+
+| 命令 | 说明 |
+|------|------|
+| `zapmyco init` | 交互式初始化向导，自动生成 settings.toml |
+| `zapmyco settings` | 显示当前配置（密钥已脱敏） |
+| `zapmyco settings path` | 显示 settings.toml 文件路径 |
+
+## FAQ
+
+### 为什么选择 TOML 而不是 JSON 或 YAML？
+
+ZapMyCo 最早使用 JSON 作为配置格式，在 v0.23.0 迁移到了 TOML，主要考虑：
+
+| 对比项 | JSON | YAML | TOML |
+|--------|:----:|:----:|:----:|
+| 注释支持 | ❌ 不支持 | ✅ 支持 | ✅ 支持 |
+| 键名引号 | 必须用 `"` | 不需要 | 不需要 |
+| 缩进敏感 | ❌ | ✅ 是（容易出错） | ❌ |
+| 类型系统 | 有限 | 丰富但有歧义 | 清晰且明确 |
+| Rust 生态集成 | 需 serde_json | 需 serde_yaml | 原生 `toml` + serde |
+
+TOML 在保持简洁可读的同时，避免了 YAML 的缩进陷阱，也补上了 JSON 缺少注释的短板，与 Rust/serde 生态的集成也十分成熟。

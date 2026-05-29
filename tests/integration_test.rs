@@ -3,6 +3,20 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 /// 集成测试 - AiAgent 与 Anthropic API 交互
 use zapmyco::agent::{AiAgent, AiAgentOptions};
 
+/// 创建临时 HOME 和 settings.toml，避免 CI 环境缺少配置文件
+fn setup_temp_home() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let settings_dir = dir.path().join(".zapmyco");
+    std::fs::create_dir_all(&settings_dir).expect("Failed to create .zapmyco dir");
+    std::fs::write(settings_dir.join("settings.toml"), "[llm]\n")
+        .expect("Failed to write settings.toml");
+    // SAFETY: single-threaded test execution ensures no race on HOME
+    unsafe {
+        std::env::set_var("HOME", dir.path());
+    }
+    dir
+}
+
 /// 模拟 Anthropic Messages API 非流式响应
 const MOCK_NON_STREAM_RESPONSE: &str = r#"{
     "id": "msg_mock_001",
@@ -37,6 +51,7 @@ const MOCK_ERROR_RESPONSE: &str = r#"{
 
 #[tokio::test]
 async fn test_agent_non_streaming() {
+    let _home = setup_temp_home();
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -70,6 +85,7 @@ async fn test_agent_non_streaming() {
 
 #[tokio::test]
 async fn test_agent_streaming() {
+    let _home = setup_temp_home();
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -107,6 +123,7 @@ async fn test_agent_streaming() {
 
 #[tokio::test]
 async fn test_agent_api_error() {
+    let _home = setup_temp_home();
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -134,6 +151,7 @@ async fn test_agent_api_error() {
 
 #[tokio::test]
 async fn test_agent_clear_context() {
+    let _home = setup_temp_home();
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
