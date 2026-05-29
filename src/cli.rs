@@ -6,6 +6,7 @@ use crate::models::{get_built_in_model_names, get_model_info};
 use crate::settings;
 use crate::settings::{LlmSettings, ProviderConfig, Settings};
 use std::collections::HashMap;
+use std::time::SystemTime;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -76,11 +77,13 @@ fn cmd_config() -> Result<String, String> {
 }
 
 fn chrono_now() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
+    chrono_now_at(SystemTime::now())
+}
+
+fn chrono_now_at(now: SystemTime) -> String {
+    use std::time::UNIX_EPOCH;
+    let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let secs = duration.as_secs();
     // Simple UTC timestamp in ISO 8601 format
     let days = secs / 86400;
     let time_secs = secs % 86400;
@@ -192,34 +195,10 @@ fn cmd_init_inner(
     };
 
     // 构建配置
-    let settings_data = Settings {
-        llm: Some(LlmSettings {
-            providers: Some({
-                let mut map = HashMap::new();
-                map.insert(
-                    provider.to_string(),
-                    ProviderConfig {
-                        api_key: Some(api_key),
-                    },
-                );
-                map
-            }),
-            models: Some({
-                let mut map = HashMap::new();
-                map.insert("default".to_string(), default_model);
-                map
-            }),
-        }),
-    };
+    let settings_data = build_settings(provider, &api_key, &default_model);
 
     // 写入文件
-    let settings_dir = settings::get_settings_dir();
-    std::fs::create_dir_all(&settings_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    let content =
-        toml::to_string(&settings_data).map_err(|e| format!("序列化配置失败: {}", e))? + "\n";
-
-    std::fs::write(&file_path, content).map_err(|e| format!("写入配置文件失败: {}", e))?;
+    write_settings(&file_path, &settings_data)?;
 
     Ok(format!(
         "已创建 {}\n请运行 `zapmyco settings` 查看配置。",
@@ -277,15 +256,7 @@ fn prompt_api_key() -> Option<String> {
 
 /// 选择默认模型（显示上下文窗口信息）
 fn prompt_model(provider: &str) -> Option<String> {
-    let all_models = get_built_in_model_names();
-    let filtered_models: Vec<&str> = if provider == "custom" {
-        all_models
-    } else {
-        all_models
-            .into_iter()
-            .filter(|name| get_model_info(name).is_some_and(|info| info.provider == provider))
-            .collect()
-    };
+    let filtered_models = filter_models_by_provider(provider);
 
     if !filtered_models.is_empty() {
         // 构建带上下文信息的显示标签
@@ -313,6 +284,57 @@ fn prompt_model(provider: &str) -> Option<String> {
             .prompt()
             .ok()
     }
+}
+
+/// 根据供应商筛选可用模型列表
+fn filter_models_by_provider(provider: &str) -> Vec<&'static str> {
+    let all_models = get_built_in_model_names();
+    if provider == "custom" {
+        all_models
+    } else {
+        all_models
+            .into_iter()
+            .filter(|name| get_model_info(name).is_some_and(|info| info.provider == provider))
+            .collect()
+    }
+}
+
+/// 构建 Settings 结构体
+fn build_settings(provider: &str, api_key: &str, default_model: &str) -> Settings {
+    Settings {
+        llm: Some(LlmSettings {
+            providers: Some({
+                let mut map = HashMap::new();
+                map.insert(
+                    provider.to_string(),
+                    ProviderConfig {
+                        api_key: Some(api_key.to_string()),
+                    },
+                );
+                map
+            }),
+            models: Some({
+                let mut map = HashMap::new();
+                map.insert("default".to_string(), default_model.to_string());
+                map
+            }),
+        }),
+    }
+}
+
+/// 写入 Settings 到配置文件
+fn write_settings(file_path: &std::path::Path, settings: &Settings) -> Result<String, String> {
+    let settings_dir = settings::get_settings_dir();
+    std::fs::create_dir_all(&settings_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
+
+    let content = toml::to_string(&settings).map_err(|e| format!("序列化配置失败: {}", e))? + "\n";
+
+    std::fs::write(file_path, content).map_err(|e| format!("写入配置文件失败: {}", e))?;
+
+    Ok(format!(
+        "已创建 {}\n请运行 `zapmyco settings` 查看配置。",
+        file_path.display()
+    ))
 }
 
 /// 格式化模型标签（含上下文窗口信息）
@@ -352,10 +374,7 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
         return Err("任务描述不能为空".to_string());
     }
 
-    let options = crate::agent::AiAgentOptions {
-        model_profile: profile.map(|s| s.to_string()),
-        ..Default::default()
-    };
+    let options = build_run_options(profile);
 
     let mut agent = crate::agent::AiAgent::new(options)?;
     let _response = agent
@@ -367,6 +386,14 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
         .await?;
     println!();
     Ok(())
+}
+
+/// 构建 run 命令的 AiAgentOptions
+fn build_run_options(profile: Option<&str>) -> crate::agent::AiAgentOptions {
+    crate::agent::AiAgentOptions {
+        model_profile: profile.map(|s| s.to_string()),
+        ..Default::default()
+    }
 }
 
 /// 无参模式 - 启动交互式聊天
@@ -555,6 +582,21 @@ mod tests {
     }
 
     #[test]
+    fn test_greet_long_name() {
+        let long_name = "a".repeat(1000);
+        let result = cmd_greet(&long_name).unwrap();
+        assert_eq!(result.len(), long_name.len() + 8); // "Hello, " (7) + name + "!" (1) = name.len() + 8
+        assert!(result.starts_with("Hello, "));
+        assert!(result.ends_with('!'));
+    }
+
+    #[test]
+    fn test_greet_special_chars() {
+        assert_eq!(cmd_greet("user@company").unwrap(), "Hello, user@company!");
+        assert_eq!(cmd_greet("hello.world").unwrap(), "Hello, hello.world!");
+    }
+
+    #[test]
     fn test_settings_path_contains_zapmyco() {
         let path = settings_path();
         assert!(path.contains(".zapmyco/settings.toml"));
@@ -565,6 +607,33 @@ mod tests {
         let result = cmd_settings(Some("unknown"));
         assert!(result.is_err());
         assert!(result.err().unwrap().contains("未知子命令"));
+    }
+
+    #[test]
+    fn test_settings_path_subcommand() {
+        let result = cmd_settings(Some("path"));
+        assert!(result.is_ok());
+        assert!(result.unwrap().ends_with(".zapmyco/settings.toml"));
+    }
+
+    #[test]
+    fn test_settings_show_subcommand() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\n\n[llm.models]\ndefault = \"deepseek-v4-flash\"\n",
+            )
+            .unwrap();
+
+            let show_result = cmd_settings(Some("show"));
+            let none_result = cmd_settings(None);
+            assert!(show_result.is_ok());
+            assert!(none_result.is_ok());
+            // show 和 None 应该返回一致的输出（当前逻辑上它们相同）
+            assert_eq!(show_result.unwrap(), none_result.unwrap());
+        });
     }
 
     #[tokio::test]
@@ -590,6 +659,18 @@ mod tests {
                 std::env::set_var("HOME", h);
             }
         }
+    }
+
+    #[test]
+    fn test_build_run_options_no_profile() {
+        let options = build_run_options(None);
+        assert!(options.model_profile.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_profile() {
+        let options = build_run_options(Some("advanced"));
+        assert_eq!(options.model_profile.unwrap(), "advanced");
     }
 
     #[test]
@@ -619,6 +700,73 @@ mod tests {
             let result = cmd_init_inner(file_path, true, || false);
             assert!(result.is_ok());
             assert!(result.unwrap().contains("已取消初始化"));
+        });
+    }
+
+    #[test]
+    fn test_filter_models_by_provider_deepseek() {
+        let models = filter_models_by_provider("deepseek");
+        assert!(models.contains(&"deepseek-v4-flash"));
+        assert!(models.contains(&"deepseek-v4-pro"));
+        assert!(models.contains(&"deepseek-reasoner"));
+        assert_eq!(models.len(), 3);
+    }
+
+    #[test]
+    fn test_filter_models_by_provider_glm() {
+        let models = filter_models_by_provider("glm");
+        assert!(models.contains(&"glm-4-flash"));
+        assert!(models.contains(&"glm-4v"));
+        assert!(models.contains(&"glm-5v-turbo"));
+        assert!(models.contains(&"glm-5.1"));
+        assert_eq!(models.len(), 4);
+    }
+
+    #[test]
+    fn test_filter_models_by_provider_custom() {
+        let models = filter_models_by_provider("custom");
+        assert_eq!(models.len(), 7);
+    }
+
+    #[test]
+    fn test_filter_models_by_provider_unknown() {
+        let models = filter_models_by_provider("nonexistent");
+        assert!(models.is_empty());
+    }
+
+    #[test]
+    fn test_build_settings_valid() {
+        let settings = build_settings("deepseek", "${env.DEEPSEEK_API_KEY}", "deepseek-v4-flash");
+        let llm = settings.llm.as_ref().unwrap();
+        assert_eq!(
+            llm.providers
+                .as_ref()
+                .unwrap()
+                .get("deepseek")
+                .unwrap()
+                .api_key,
+            Some("${env.DEEPSEEK_API_KEY}".to_string())
+        );
+        assert_eq!(
+            llm.models.as_ref().unwrap().get("default").unwrap(),
+            "deepseek-v4-flash"
+        );
+    }
+
+    #[test]
+    fn test_write_settings_creates_file() {
+        run_with_temp_home(|home| {
+            let file_path = home.join("custom_settings.toml");
+            let settings = build_settings("glm", "test-key", "glm-4v");
+            let result = write_settings(&file_path, &settings);
+            assert!(result.is_ok());
+            assert!(result.unwrap().contains("custom_settings.toml"));
+            assert!(file_path.exists());
+
+            // 验证文件内容包含正确的 TOML 结构
+            let content = std::fs::read_to_string(&file_path).unwrap();
+            assert!(content.contains("glm-4v"), "应该包含模型名称");
+            assert!(content.contains("test-key"), "应该包含 API Key");
         });
     }
 
@@ -786,6 +934,27 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
+    fn test_execute_binary_successful_deletion() {
+        run_with_temp_home(|home| {
+            let bin_path = home.join("zapmyco");
+            std::fs::write(&bin_path, "fake binary content").unwrap();
+            assert!(bin_path.exists());
+
+            let result = execute_uninstall(
+                &home.join(".config/zapmyco"),
+                &home.join(".zapmyco"),
+                false,
+                true,
+                Some(&bin_path),
+            );
+            assert!(result.is_ok());
+            // 二进制文件应被删除
+            assert!(!bin_path.exists(), "二进制文件应被删除");
+        });
+    }
+
+    #[test]
     fn test_execute_receipt_delete_error() {
         // has_receipt=true 但目录不存在 → 打印错误，不 panic
         run_with_temp_home(|home| {
@@ -835,9 +1004,18 @@ mod tests {
     #[test]
     fn test_config_output() {
         let output = cmd_config().unwrap();
-        assert!(output.contains("debug"));
-        assert!(output.contains("logLevel"));
-        assert!(output.contains("createdAt"));
+        let val: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(val["debug"], serde_json::Value::Bool(false));
+        assert_eq!(
+            val["logLevel"],
+            serde_json::Value::String("info".to_string())
+        );
+        let created = val["createdAt"].as_str().unwrap();
+        assert_eq!(created.len(), 20);
+        assert!(created.ends_with('Z'));
+        assert!(created.contains('T'));
+        // 确保只有 3 个字段
+        assert_eq!(val.as_object().unwrap().len(), 3, "config 应只有 3 个字段");
     }
 
     #[test]
@@ -866,6 +1044,71 @@ mod tests {
     }
 
     #[test]
+    fn test_chrono_now_at_epoch() {
+        use std::time::UNIX_EPOCH;
+        assert_eq!(chrono_now_at(UNIX_EPOCH), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn test_chrono_now_at_leap_year() {
+        use std::time::{Duration, UNIX_EPOCH};
+        // 2024-02-29T12:00:00Z: days from epoch to 2024-02-29
+        // 1970..2024 = 54 years
+        // Days = 54*365 + leap_days (1972,76,80,84,88,92,96,2000,04,08,12,16,20,24 = 14)
+        //   + 31 (Jan) + 29 (Feb) - 1 = 19722 days
+        // = 19722 * 86400 + 12*3600 = 1704002400 + 43200 = 1704045600
+        let jan_1_2024: u64 = 1704067200; // 2024-01-01T00:00:00Z
+        let feb_29_2024_12_00 = jan_1_2024 + 31 * 86400 + 28 * 86400 + 12 * 3600; // Jan(31) + Feb(28)days + 12h
+        let now = UNIX_EPOCH + Duration::from_secs(feb_29_2024_12_00);
+        assert_eq!(chrono_now_at(now), "2024-02-29T12:00:00Z");
+    }
+
+    #[test]
+    fn test_chrono_now_at_year_end() {
+        use std::time::{Duration, UNIX_EPOCH};
+        // 2025-12-31T23:59:59Z
+        // 2025-01-01T00:00:00Z = 1735689600
+        let jan_1_2025: u64 = 1735689600;
+        // Dec 31 is day 364 (0-indexed), so 364 days from Jan 1
+        let dec_31_2025_23_59_59 = jan_1_2025 + 364 * 86400 + 23 * 3600 + 59 * 60 + 59;
+        let now = UNIX_EPOCH + Duration::from_secs(dec_31_2025_23_59_59);
+        assert_eq!(chrono_now_at(now), "2025-12-31T23:59:59Z");
+    }
+
+    #[test]
+    fn test_chrono_now_at_year_start() {
+        use std::time::{Duration, UNIX_EPOCH};
+        // 2026-01-01T00:00:01Z
+        let jan_1_2026: u64 = 1767225600; // 2026-01-01T00:00:00Z
+        let now = UNIX_EPOCH + Duration::from_secs(jan_1_2026 + 1);
+        assert_eq!(chrono_now_at(now), "2026-01-01T00:00:01Z");
+    }
+
+    #[test]
+    fn test_chrono_now_at_non_leap_feb() {
+        use std::time::{Duration, UNIX_EPOCH};
+        // 2023-03-01T00:00:00Z — verify Feb has 28 days in non-leap year
+        // 2023-01-01T00:00:00Z = 1672531200
+        let jan_1_2023: u64 = 1672531200;
+        // Jan(31) + Feb(28) days = 59 days
+        let mar_1_2023 = jan_1_2023 + 59 * 86400;
+        let now = UNIX_EPOCH + Duration::from_secs(mar_1_2023);
+        assert_eq!(chrono_now_at(now), "2023-03-01T00:00:00Z");
+    }
+
+    #[test]
+    fn test_chrono_now_at_century_leap() {
+        use std::time::{Duration, UNIX_EPOCH};
+        // 2000-03-01T00:00:00Z — 2000 is divisible by 400, so it's a leap year
+        // 2000-01-01T00:00:00Z = 946684800
+        let jan_1_2000: u64 = 946684800;
+        // Jan(31) + Feb(29) days = 60 days
+        let mar_1_2000 = jan_1_2000 + 60 * 86400;
+        let now = UNIX_EPOCH + Duration::from_secs(mar_1_2000);
+        assert_eq!(chrono_now_at(now), "2000-03-01T00:00:00Z");
+    }
+
+    #[test]
     fn test_format_model_label_unknown() {
         let label = format_model_label("unknown-model");
         assert!(label.contains("unknown-model"));
@@ -883,5 +1126,12 @@ mod tests {
         let label = format_model_label("glm-4v");
         assert!(label.contains("glm-4v"));
         assert!(label.contains("128K"));
+    }
+
+    #[test]
+    fn test_format_model_label_1m_boundary() {
+        // deepseek-v4-flash 恰好 1_000_000，验证 M 格式
+        let label = format_model_label("deepseek-v4-flash");
+        assert!(label.contains("1M"), "1M 应显示为 1M");
     }
 }
