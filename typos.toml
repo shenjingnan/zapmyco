@@ -1,0 +1,3 @@
+[default.extend-words]
+# 测试中 mask 后的预期值 "sk-***alue"，并非拼写错误
+alue = "alue"

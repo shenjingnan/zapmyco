@@ -35,3 +35,5 @@ settings.local.json
 # Added by cargo
 
 /target
+
+.vscode
