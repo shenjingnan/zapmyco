@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.25.0](https://github.com/shenjingnan/zapmyco/compare/v0.24.3...v0.25.0) - 2026-05-29
+
+### Added
+
+- *(log)* 新增对话日志记录 — 持久化 LLM 请求/响应到 ~/.zapmyco/conversations/ ([#318](https://github.com/shenjingnan/zapmyco/pull/318))
+
 ## [0.24.3](https://github.com/shenjingnan/zapmyco/compare/v0.24.2...v0.24.3) - 2026-05-29
 
 ### Fixed
