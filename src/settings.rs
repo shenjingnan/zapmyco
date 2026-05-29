@@ -33,11 +33,36 @@ pub struct LlmSettings {
     pub models: Option<std::collections::HashMap<String, String>>,
 }
 
+/// 对话日志配置
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationLogSettings {
+    /// 是否启用对话日志（默认 true）
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
 /// 顶层配置
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm: Option<LlmSettings>,
+    /// 对话日志配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_log: Option<ConversationLogSettings>,
+}
+
+/// 检查对话日志是否启用（默认启用）
+pub fn is_conversation_log_enabled(settings: &Settings) -> bool {
+    settings
+        .conversation_log
+        .as_ref()
+        .map(|c| c.enabled)
+        .unwrap_or(true)
 }
 
 /// 获取设置文件路径
@@ -128,7 +153,10 @@ impl Settings {
             }),
             models: llm.models.clone(),
         });
-        Settings { llm }
+        Settings {
+            llm,
+            conversation_log: self.conversation_log.clone(),
+        }
     }
 }
 
@@ -498,6 +526,7 @@ advanced = "deepseek-reasoner"
                     "deepseek-v4-flash".to_string(),
                 )])),
             }),
+            conversation_log: None,
         };
         let masked = settings.masked();
         assert_eq!(
@@ -526,6 +555,7 @@ advanced = "deepseek-reasoner"
                 )])),
                 models: None,
             }),
+            conversation_log: None,
         };
         let masked = settings.masked();
         assert_eq!(
@@ -545,7 +575,10 @@ advanced = "deepseek-reasoner"
 
     #[test]
     fn test_masked_no_llm() {
-        let settings = Settings { llm: None };
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+        };
         let masked = settings.masked();
         assert!(masked.llm.is_none());
     }

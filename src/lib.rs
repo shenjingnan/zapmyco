@@ -3,6 +3,7 @@
 
 pub mod agent;
 pub mod cli;
+pub mod conversation_logger;
 pub mod models;
 pub mod settings;
 

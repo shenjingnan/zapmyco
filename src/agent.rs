@@ -1,13 +1,15 @@
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
 use anthropic_ai_sdk::client::AnthropicClient;
 use anthropic_ai_sdk::types::message::{
-    ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient, MessageError,
-    RequiredMessageParams, Role, StreamEvent,
+    ContentBlock, ContentBlockDelta, CreateMessageParams, CreateMessageResponse, Message,
+    MessageClient, MessageError, RequiredMessageParams, Role, StreamEvent,
 };
 use futures_util::StreamExt;
+use std::time::Instant;
 
+use crate::conversation_logger::ConversationLogger;
 use crate::models::get_model_info;
-use crate::settings::{load_settings, resolve_env_ref};
+use crate::settings::{is_conversation_log_enabled, load_settings, resolve_env_ref};
 
 /// AiAgent 配置选项
 #[derive(Debug, Default)]
@@ -47,6 +49,7 @@ pub struct AiAgent {
     max_tokens: u32,
     system_prompt: String,
     messages: Vec<ConversationMessage>,
+    logger: Option<ConversationLogger>,
 }
 
 impl AiAgent {
@@ -117,12 +120,26 @@ impl AiAgent {
             .system_prompt
             .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
+        // 初始化对话日志记录器
+        let logger = if is_conversation_log_enabled(&settings) {
+            match ConversationLogger::new() {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    eprintln!("[警告] 初始化对话日志失败: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             client,
             model: model_name.to_string(),
             max_tokens,
             system_prompt,
             messages: Vec::new(),
+            logger,
         })
     }
 
@@ -134,6 +151,7 @@ impl AiAgent {
         });
 
         let params = self.build_params(false)?;
+        let start = Instant::now();
 
         let response = self
             .client
@@ -141,12 +159,19 @@ impl AiAgent {
             .await
             .map_err(|e| format!("API 请求失败: {}", e))?;
 
+        let duration_ms = start.elapsed().as_millis() as u64;
+
         let full_content = extract_text_from_blocks(&response.content);
 
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
             content: full_content.clone(),
         });
+
+        // 记录日志
+        if let Some(ref logger) = self.logger {
+            log_round_trip(logger, &params, &response, duration_ms);
+        }
 
         Ok(full_content)
     }
@@ -163,6 +188,7 @@ impl AiAgent {
         });
 
         let params = self.build_params(true)?;
+        let start = Instant::now();
 
         let mut stream = self
             .client
@@ -173,8 +199,21 @@ impl AiAgent {
         let mut full_content = String::new();
         let mut callback = on_chunk;
 
+        // 从流事件中重建完整响应
+        let mut resp_id = String::new();
+        let mut resp_model = self.model.clone();
+        let mut resp_stop_reason: Option<String> = None;
+        let mut resp_input_tokens: u32 = 0;
+        let mut resp_output_tokens: u32 = 0;
+        let mut resp_error: Option<String> = None;
+
         while let Some(event) = stream.next().await {
             match event.map_err(|e| format!("流式读取失败: {}", e))? {
+                StreamEvent::MessageStart { message } => {
+                    resp_id = message.id;
+                    resp_model = message.model;
+                    resp_input_tokens = message.usage.input_tokens;
+                }
                 StreamEvent::ContentBlockDelta {
                     delta: ContentBlockDelta::TextDelta { text },
                     ..
@@ -182,17 +221,49 @@ impl AiAgent {
                     full_content.push_str(&text);
                     callback(&text);
                 }
+                StreamEvent::MessageDelta { delta, usage } => {
+                    if let Some(ref stop) = delta.stop_reason {
+                        resp_stop_reason = Some(format!("{:?}", stop));
+                    }
+                    if let Some(u) = usage {
+                        resp_output_tokens = u.output_tokens;
+                    }
+                }
                 StreamEvent::Error { error } => {
-                    return Err(format!("API 错误: {} - {}", error.type_, error.message));
+                    resp_error = Some(format!("{} - {}", error.type_, error.message));
+                    return Err(format!("API 错误: {}", resp_error.as_ref().unwrap()));
                 }
                 _ => {}
             }
         }
 
+        let duration_ms = start.elapsed().as_millis() as u64;
+
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
             content: full_content.clone(),
         });
+
+        // 记录日志
+        if let Some(ref logger) = self.logger {
+            let request_value = serde_json::to_value(&params).unwrap_or_default();
+            let response_value = serde_json::json!({
+                "id": resp_id,
+                "type": "message",
+                "role": "assistant",
+                "model": resp_model,
+                "content": [{"type": "text", "text": full_content}],
+                "stop_reason": resp_stop_reason,
+                "stop_sequence": null,
+                "usage": {
+                    "input_tokens": resp_input_tokens,
+                    "output_tokens": resp_output_tokens,
+                },
+                "error": resp_error,
+            });
+            let ts = crate::agent::iso_timestamp_now();
+            let _ = logger.append_record(ts, duration_ms, request_value, response_value);
+        }
 
         Ok(full_content)
     }
@@ -343,6 +414,84 @@ fn extract_text_from_blocks(blocks: &[ContentBlock]) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
+}
+
+/// 记录非流式对话的 round-trip 日志
+fn log_round_trip(
+    logger: &ConversationLogger,
+    params: &CreateMessageParams,
+    response: &CreateMessageResponse,
+    duration_ms: u64,
+) {
+    let ts = iso_timestamp_now();
+    let request_value = serde_json::to_value(params).unwrap_or_default();
+    let response_value = serde_json::to_value(response).unwrap_or_default();
+    let _ = logger.append_record(ts, duration_ms, request_value, response_value);
+}
+
+/// 生成 ISO 8601 时间戳
+fn iso_timestamp_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+
+    let days = secs / 86400;
+    let time_secs = secs % 86400;
+    let hours = time_secs / 3600;
+    let minutes = (time_secs % 3600) / 60;
+    let seconds = time_secs % 60;
+
+    let mut y = 1970i64;
+    let mut remaining = days as i64;
+
+    loop {
+        let days_in_year = if is_leap(y) { 366 } else { 365 };
+        if remaining < days_in_year {
+            break;
+        }
+        remaining -= days_in_year;
+        y += 1;
+    }
+
+    let is_leap_year = is_leap(y);
+    let month_days = [
+        31,
+        if is_leap_year { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+
+    let mut m = 0usize;
+    for (i, &md) in month_days.iter().enumerate() {
+        if remaining < md {
+            m = i + 1;
+            break;
+        }
+        remaining -= md;
+    }
+    if m == 0 {
+        m = 12;
+    }
+    let d = remaining + 1;
+
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hours, minutes, seconds,
+    )
+}
+
+fn is_leap(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 #[cfg(test)]
