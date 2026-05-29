@@ -783,4 +783,57 @@ mod tests {
             assert!(output.contains("sho***"));
         });
     }
+
+    #[test]
+    fn test_config_output() {
+        let output = cmd_config().unwrap();
+        assert!(output.contains("debug"));
+        assert!(output.contains("logLevel"));
+        assert!(output.contains("createdAt"));
+    }
+
+    #[test]
+    fn test_is_leap_year() {
+        assert!(is_leap(2000)); // 能被 400 整除
+        assert!(!is_leap(1900)); // 能被 100 整除但不能被 400
+        assert!(is_leap(2024));
+        assert!(!is_leap(2023));
+        assert!(!is_leap(2025));
+    }
+
+    #[test]
+    fn test_chrono_now_format() {
+        let now = chrono_now();
+        // ISO 8601 格式: "2026-05-28T13:27:31Z"
+        assert_eq!(now.len(), 20, "应为 'YYYY-MM-DDTHH:MM:SSZ' 格式");
+        assert!(now.ends_with('Z'), "时间戳应以 Z 结尾: {}", now);
+        assert!(now.contains('T'), "时间戳应包含 T 分隔符: {}", now);
+        // 验证日期部分可解析
+        let date_part = &now[..10];
+        assert!(
+            date_part.chars().filter(|&c| c == '-').count() == 2,
+            "日期部分应为 YYYY-MM-DD: {}",
+            date_part
+        );
+    }
+
+    #[test]
+    fn test_format_model_label_unknown() {
+        let label = format_model_label("unknown-model");
+        assert!(label.contains("unknown-model"));
+    }
+
+    #[test]
+    fn test_format_model_label_with_context() {
+        let label = format_model_label("deepseek-v4-flash");
+        assert!(label.contains("deepseek-v4-flash"));
+        assert!(label.contains("1M"));
+    }
+
+    #[test]
+    fn test_format_model_label_glm() {
+        let label = format_model_label("glm-4v");
+        assert!(label.contains("glm-4v"));
+        assert!(label.contains("128K"));
+    }
 }
