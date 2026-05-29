@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/shenjingnan/zapmyco/compare/v0.22.20...v0.23.0) - 2026-05-29
+
+### Added
+
+- *(cli)* 添加 uninstall 卸载命令 ([#298](https://github.com/shenjingnan/zapmyco/pull/298))
+
+### Fixed
+
+- *(cli)* 为 Commands 枚举添加 #[non_exhaustive] ([#300](https://github.com/shenjingnan/zapmyco/pull/300))
+- *(cli)* 修复 Windows CI 因 inquire 交互提示导致测试卡住的问题 ([#301](https://github.com/shenjingnan/zapmyco/pull/301))
+
+### Other
+
+- 添加单测覆盖率 Codecov 徽标 ([#302](https://github.com/shenjingnan/zapmyco/pull/302))
+- 增强 CLI 使用指南文档，补充 uninstall 命令和详细说明 ([#299](https://github.com/shenjingnan/zapmyco/pull/299))
+- 简化 Windows 安装命令 ([#296](https://github.com/shenjingnan/zapmyco/pull/296))
+
 ## [0.22.20](https://github.com/shenjingnan/zapmyco/compare/v0.22.19...v0.22.20) - 2026-05-28
 
 ### Fixed

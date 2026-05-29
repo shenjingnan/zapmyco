@@ -1,6 +1,6 @@
 [package]
 name = "zapmyco"
-version = "0.22.20"
+version = "0.23.0"
 edition = "2024"
 rust-version = "1.95"
 description = "An AI-powered CLI tool for interactive chat with LLMs"
