@@ -9,6 +9,7 @@ repository = "https://github.com/shenjingnan/zapmyco"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 anthropic-ai-sdk = "0.2"
 inquire = "0.9"
 tokio = { version = "1", features = ["full"] }

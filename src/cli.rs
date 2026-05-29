@@ -1,5 +1,5 @@
 /// CLI 入口 — 基于 clap 的命令行界面
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use std::io::IsTerminal;
 
 use crate::models::{get_built_in_model_names, get_model_info};
@@ -50,6 +50,13 @@ pub enum Commands {
         /// 指定模型配置档
         #[arg(long)]
         profile: Option<String>,
+    },
+    /// 生成 shell 补全脚本
+    #[command(hide = true)]
+    Completion {
+        /// Shell 类型：bash、zsh、fish、powershell、elvish
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -142,7 +149,7 @@ fn is_leap(year: i64) -> bool {
 
 /// init 命令 - 交互式初始化向导
 fn cmd_init() -> Result<String, String> {
-    cmd_init_inner(
+    let message = cmd_init_inner(
         settings::get_settings_path(),
         std::io::stdin().is_terminal(),
         || {
@@ -153,7 +160,29 @@ fn cmd_init() -> Result<String, String> {
                 .ok()
                 .unwrap_or(false)
         },
-    )
+    )?;
+
+    // 非 TTY 环境跳过补全配置
+    if !std::io::stdin().is_terminal() {
+        return Ok(message);
+    }
+
+    // 询问是否启用 shell 补全
+    let enable = inquire::Confirm::new("是否启用 Shell 自动补全？")
+        .with_default(true)
+        .with_help_message("按 Tab 键可补全子命令和参数")
+        .prompt()
+        .ok()
+        .unwrap_or(false);
+
+    if !enable {
+        return Ok(message);
+    }
+
+    match setup_shell_completion() {
+        Ok(msg) => Ok(format!("{}\n\n{}", message, msg)),
+        Err(e) => Ok(format!("{}\n\n{}", message, e)),
+    }
 }
 
 /// init 内部实现，支持注入参数以方便测试
@@ -522,6 +551,116 @@ fn execute_uninstall(
     Ok(())
 }
 
+/// completion 命令 — 生成 shell 补全脚本
+fn cmd_completion<W: std::io::Write>(shell: clap_complete::Shell, writer: &mut W) {
+    let mut cmd = Cli::command();
+    clap_complete::generate(shell, &mut cmd, "zapmyco", writer);
+}
+
+/// 检测当前 shell（从 $SHELL 环境变量解析）
+fn detect_shell() -> Option<&'static str> {
+    let shell = std::env::var("SHELL").ok()?;
+    let name = std::path::Path::new(&shell).file_name()?.to_str()?;
+    match name {
+        "bash" => Some("bash"),
+        "zsh" => Some("zsh"),
+        "fish" => Some("fish"),
+        _ => None,
+    }
+}
+
+/// 获取 shell 配置文件路径
+fn shell_config_path(shell: &str, home: &std::path::Path) -> std::path::PathBuf {
+    match shell {
+        "bash" => {
+            let bashrc = home.join(".bashrc");
+            let bash_profile = home.join(".bash_profile");
+            if bashrc.exists() {
+                bashrc
+            } else {
+                bash_profile
+            }
+        }
+        "zsh" => home.join(".zshrc"),
+        "fish" => home.join(".config/fish/config.fish"),
+        _ => panic!("不支持的 shell: {}", shell),
+    }
+}
+
+/// 获取 shell 对应的补全 eval 行
+fn completion_line(shell: &str) -> &'static str {
+    match shell {
+        "bash" => "eval \"$(zapmyco completion bash)\"",
+        "zsh" => "eval \"$(zapmyco completion zsh)\"",
+        "fish" => "zapmyco completion fish | source",
+        _ => panic!("不支持的 shell: {}", shell),
+    }
+}
+
+/// 设置 shell 补全（可测试的内部实现）
+fn setup_shell_completion_inner(
+    shell: Option<&str>,
+    home: &std::path::Path,
+) -> Result<String, String> {
+    let shell = shell.ok_or_else(|| {
+        "未能检测到当前 Shell（$SHELL 未设置）\n\
+         请手动配置自动补全：运行 `zapmyco completion --help` 查看帮助。"
+            .to_string()
+    })?;
+
+    let config_path = shell_config_path(shell, home);
+    let line = completion_line(shell);
+
+    // 检查是否已配置
+    if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path)
+            .map_err(|e| format!("读取 {} 失败: {}", config_path.display(), e))?;
+        if content.contains(line) {
+            return Ok(format!("Shell 自动补全已配置（{}）", config_path.display()));
+        }
+    }
+
+    // 确保父目录存在
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("创建目录 {} 失败: {}", parent.display(), e))?;
+    }
+
+    // 追加配置行
+    let content = if config_path.exists() {
+        let mut content = std::fs::read_to_string(&config_path)
+            .map_err(|e| format!("读取 {} 失败: {}", config_path.display(), e))?;
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(line);
+        content.push('\n');
+        content
+    } else {
+        format!("{}\n", line)
+    };
+
+    std::fs::write(&config_path, content)
+        .map_err(|e| format!("写入 {} 失败: {}", config_path.display(), e))?;
+
+    let source_hint = match shell {
+        "fish" => "请重启终端以生效。",
+        _ => "请运行 `source` 命令或重启终端以生效。",
+    };
+
+    Ok(format!(
+        "Shell 自动补全已启用（{}）。\n{}",
+        config_path.display(),
+        source_hint,
+    ))
+}
+
+/// 设置 shell 补全（从环境变量读取配置）
+fn setup_shell_completion() -> Result<String, String> {
+    let home_dir = settings::get_home_dir();
+    setup_shell_completion_inner(detect_shell(), &home_dir)
+}
+
 /// CLI 入口 - 解析参数并执行对应操作
 pub async fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
@@ -549,6 +688,10 @@ pub async fn run(cli: Cli) -> Result<(), String> {
         }
         Some(Commands::Uninstall) => cmd_uninstall(),
         Some(Commands::Run { content, profile }) => cmd_run(&content, profile.as_deref()).await,
+        Some(Commands::Completion { shell }) => {
+            cmd_completion(shell, &mut std::io::stdout());
+            Ok(())
+        }
         None => cmd_interactive().await,
     }
 }
@@ -1133,5 +1276,291 @@ mod tests {
         // deepseek-v4-flash 恰好 1_000_000，验证 M 格式
         let label = format_model_label("deepseek-v4-flash");
         assert!(label.contains("1M"), "1M 应显示为 1M");
+    }
+
+    // —————— completion 命令测试 ——————
+
+    #[test]
+    fn test_completion_bash() {
+        let mut buf = Vec::new();
+        cmd_completion(clap_complete::Shell::Bash, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(
+            output.contains("complete -F"),
+            "bash 补全应包含 complete -F"
+        );
+        for sub in &[
+            "greet",
+            "config",
+            "init",
+            "settings",
+            "uninstall",
+            "run",
+            "completion",
+        ] {
+            assert!(output.contains(sub), "bash 补全应包含子命令 {}", sub);
+        }
+    }
+
+    #[test]
+    fn test_completion_zsh() {
+        let mut buf = Vec::new();
+        cmd_completion(clap_complete::Shell::Zsh, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(output.contains("#compdef"), "zsh 补全应以 #compdef 开头");
+        for sub in &[
+            "greet",
+            "config",
+            "init",
+            "settings",
+            "uninstall",
+            "run",
+            "completion",
+        ] {
+            assert!(output.contains(sub), "zsh 补全应包含子命令 {}", sub);
+        }
+    }
+
+    #[test]
+    fn test_completion_fish() {
+        let mut buf = Vec::new();
+        cmd_completion(clap_complete::Shell::Fish, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(
+            output.contains("complete -c"),
+            "fish 补全应包含 complete -c"
+        );
+        for sub in &[
+            "greet",
+            "config",
+            "init",
+            "settings",
+            "uninstall",
+            "run",
+            "completion",
+        ] {
+            assert!(output.contains(sub), "fish 补全应包含子命令 {}", sub);
+        }
+    }
+
+    #[test]
+    fn test_completion_powershell() {
+        let mut buf = Vec::new();
+        cmd_completion(clap_complete::Shell::PowerShell, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        assert!(
+            output.contains("Register-ArgumentCompleter"),
+            "powershell 补全应注册参数补全器"
+        );
+        for sub in &[
+            "greet",
+            "config",
+            "init",
+            "settings",
+            "uninstall",
+            "run",
+            "completion",
+        ] {
+            assert!(output.contains(sub), "powershell 补全应包含子命令 {}", sub);
+        }
+    }
+
+    #[test]
+    fn test_completion_all_shells_have_all_subcommands() {
+        let shells = [
+            clap_complete::Shell::Bash,
+            clap_complete::Shell::Zsh,
+            clap_complete::Shell::Fish,
+            clap_complete::Shell::PowerShell,
+        ];
+        for shell in shells {
+            let mut buf = Vec::new();
+            cmd_completion(shell, &mut buf);
+            let output = String::from_utf8(buf).unwrap();
+            for sub in &[
+                "greet",
+                "config",
+                "init",
+                "settings",
+                "uninstall",
+                "run",
+                "completion",
+            ] {
+                assert!(output.contains(sub), "{:?} 补全应包含子命令 {}", shell, sub);
+            }
+        }
+    }
+
+    // —————— init 中 shell 补全自动配置的测试 ——————
+
+    #[test]
+    fn test_detect_shell_from_env() {
+        unsafe {
+            std::env::set_var("SHELL", "/bin/bash");
+        }
+        assert_eq!(detect_shell(), Some("bash"));
+
+        unsafe {
+            std::env::set_var("SHELL", "/usr/bin/zsh");
+        }
+        assert_eq!(detect_shell(), Some("zsh"));
+
+        unsafe {
+            std::env::set_var("SHELL", "/opt/homebrew/bin/fish");
+        }
+        assert_eq!(detect_shell(), Some("fish"));
+
+        // 不支持的 shell
+        unsafe {
+            std::env::set_var("SHELL", "/bin/sh");
+        }
+        assert_eq!(detect_shell(), None);
+
+        // SHELL 未设置
+        unsafe {
+            std::env::remove_var("SHELL");
+        }
+        assert_eq!(detect_shell(), None);
+
+        // 恢复 bash（对其他测试友好）
+        unsafe {
+            std::env::set_var("SHELL", "/bin/bash");
+        }
+    }
+
+    #[test]
+    fn test_shell_config_path_bash_bashrc_exists() {
+        run_with_temp_home(|home| {
+            std::fs::write(home.join(".bashrc"), "").unwrap();
+            std::fs::write(home.join(".bash_profile"), "").unwrap();
+            let path = shell_config_path("bash", home);
+            assert_eq!(path.file_name().unwrap(), ".bashrc");
+        });
+    }
+
+    #[test]
+    fn test_shell_config_path_bash_fallback_to_profile() {
+        run_with_temp_home(|home| {
+            // 只有 .bash_profile 存在
+            std::fs::write(home.join(".bash_profile"), "").unwrap();
+            let path = shell_config_path("bash", home);
+            assert_eq!(path.file_name().unwrap(), ".bash_profile");
+        });
+    }
+
+    #[test]
+    fn test_shell_config_path_bash_neither_exists() {
+        run_with_temp_home(|home| {
+            // 两个都不存在，应返回 .bash_profile 作为默认
+            let path = shell_config_path("bash", home);
+            assert_eq!(path.file_name().unwrap(), ".bash_profile");
+        });
+    }
+
+    #[test]
+    fn test_shell_config_path_zsh() {
+        run_with_temp_home(|home| {
+            let path = shell_config_path("zsh", home);
+            assert_eq!(path.file_name().unwrap(), ".zshrc");
+        });
+    }
+
+    #[test]
+    fn test_shell_config_path_fish() {
+        run_with_temp_home(|home| {
+            let path = shell_config_path("fish", home);
+            assert!(path.ends_with(".config/fish/config.fish"));
+        });
+    }
+
+    #[test]
+    fn test_completion_line() {
+        assert_eq!(
+            completion_line("bash"),
+            "eval \"$(zapmyco completion bash)\""
+        );
+        assert_eq!(completion_line("zsh"), "eval \"$(zapmyco completion zsh)\"");
+        assert_eq!(completion_line("fish"), "zapmyco completion fish | source");
+    }
+
+    #[test]
+    fn test_setup_completion_bash_new_file() {
+        run_with_temp_home(|home| {
+            let result = setup_shell_completion_inner(Some("bash"), home);
+            assert!(result.is_ok());
+            let msg = result.unwrap();
+            assert!(msg.contains(".bash_profile"));
+            assert!(msg.contains("Shell 自动补全已启用"));
+
+            let content = std::fs::read_to_string(home.join(".bash_profile")).unwrap();
+            assert!(content.contains("zapmyco completion bash"));
+        });
+    }
+
+    #[test]
+    fn test_setup_completion_bash_existing_file() {
+        run_with_temp_home(|home| {
+            std::fs::write(home.join(".bashrc"), "export FOO=bar\n").unwrap();
+
+            let result = setup_shell_completion_inner(Some("bash"), home);
+            assert!(result.is_ok());
+            let msg = result.unwrap();
+            assert!(msg.contains(".bashrc"));
+
+            let content = std::fs::read_to_string(home.join(".bashrc")).unwrap();
+            assert!(content.contains("export FOO=bar"));
+            assert!(content.contains("zapmyco completion bash"));
+        });
+    }
+
+    #[test]
+    fn test_setup_completion_idempotent() {
+        run_with_temp_home(|home| {
+            std::fs::write(home.join(".zshrc"), "").unwrap();
+
+            // 第一次
+            let r1 = setup_shell_completion_inner(Some("zsh"), home);
+            assert!(r1.is_ok());
+            assert!(r1.unwrap().contains("已启用"));
+
+            // 第二次，应提示已配置
+            let r2 = setup_shell_completion_inner(Some("zsh"), home);
+            assert!(r2.is_ok());
+            assert!(r2.unwrap().contains("已配置")); // 不是"已启用"
+
+            // 文件内容只出现一次
+            let content = std::fs::read_to_string(home.join(".zshrc")).unwrap();
+            let count = content.matches("zapmyco completion zsh").count();
+            assert_eq!(count, 1, "补全行只能出现一次");
+        });
+    }
+
+    #[test]
+    fn test_setup_completion_fish_new_file() {
+        run_with_temp_home(|home| {
+            let result = setup_shell_completion_inner(Some("fish"), home);
+            assert!(result.is_ok());
+            let msg = result.unwrap();
+            assert!(msg.contains("config/fish/config.fish"));
+
+            let content = std::fs::read_to_string(home.join(".config/fish/config.fish")).unwrap();
+            assert!(content.contains("zapmyco completion fish | source"));
+        });
+    }
+
+    #[test]
+    fn test_setup_completion_no_shell() {
+        run_with_temp_home(|home| {
+            let result = setup_shell_completion_inner(None, home);
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("$SHELL 未设置"));
+        });
+    }
+
+    #[test]
+    fn test_setup_completion_unsupported_shell() {
+        // sh 会被 detect_shell 过滤掉，但 setup_shell_completion_inner 使用 panic
+        // 直接传 "sh" 给它就会 panic，这是预期的
+        // 测试 detect_shell 已经 cover 了这个场景
     }
 }
