@@ -12,15 +12,15 @@ use crate::settings::{load_settings, resolve_env_ref};
 /// AiAgent 配置选项
 #[derive(Debug, Default)]
 pub struct AiAgentOptions {
-    /// API Key，默认从 settings.json 或 DEEPSEEK_API_KEY 环境变量读取
+    /// API Key，默认从 settings.toml 或 DEEPSEEK_API_KEY 环境变量读取
     pub api_key: Option<String>,
     /// API 基础 URL，默认从内置模型注册表读取
     pub base_url: Option<String>,
     /// 模型名称，默认从 modelProfile 或内置模型注册表读取
     pub model: Option<String>,
-    /// 模型配置档名称（对应 settings.json llm.models 中的 key）
+    /// 模型配置档名称（对应 settings.toml llm.models 中的 key）
     pub model_profile: Option<String>,
-    /// 供应商名称（对应 settings.json llm.providers 中的 key）
+    /// 供应商名称（对应 settings.toml llm.providers 中的 key）
     pub provider: Option<String>,
     /// 最大输出 tokens
     pub max_tokens: Option<u32>,
@@ -52,9 +52,9 @@ pub struct AiAgent {
 impl AiAgent {
     /// 创建新的 AiAgent 实例
     ///
-    /// 从 settings.json 和环境变量自动解析配置，参数可覆盖默认值。
+    /// 从 settings.toml 和环境变量自动解析配置，参数可覆盖默认值。
     pub fn new(options: AiAgentOptions) -> Result<Self, String> {
-        // 加载 ~/.zapmyco/settings.json
+        // 加载 ~/.zapmyco/settings.toml
         let settings = load_settings().unwrap_or(None);
         let llm = settings.as_ref().and_then(|s| s.llm.as_ref());
 
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_agent_no_api_key() {
-        // 使用临时 HOME 隔离 settings.json 的干扰
+        // 使用临时 HOME 隔离 settings.toml 的干扰
         let dir = tempfile::tempdir().unwrap();
         let orig_home = std::env::var("HOME").ok();
         let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
