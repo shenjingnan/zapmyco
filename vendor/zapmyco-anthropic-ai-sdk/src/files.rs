@@ -108,7 +108,10 @@ pub trait FileClient {
     /// # Ok(())
     /// # }
     /// ```
-    async fn get_file_metadata<'a>(&'a self, file_id: &'a str) -> Result<crate::types::files::File, FileError>;
+    async fn get_file_metadata<'a>(
+        &'a self,
+        file_id: &'a str,
+    ) -> Result<crate::types::files::File, FileError>;
 
     /// Download file content
     ///
@@ -138,7 +141,7 @@ pub trait FileClient {
     ///
     /// // Download file content
     /// let file_content = client.download_file("file_abc123").await?;
-    /// 
+    ///
     /// // Save to disk
     /// let mut file = File::create("downloaded_file.pdf")?;
     /// file.write_all(&file_content)?;
@@ -175,14 +178,18 @@ pub trait FileClient {
     ///
     /// // Read file from disk
     /// let file_content = fs::read("document.pdf")?;
-    /// 
+    ///
     /// // Upload the file
     /// let uploaded_file = client.upload_file("document.pdf", file_content).await?;
     /// println!("Uploaded file ID: {}", uploaded_file.id);
     /// # Ok(())
     /// # }
     /// ```
-    async fn upload_file<'a>(&'a self, file_name: &'a str, file_content: Vec<u8>) -> Result<crate::types::files::File, FileError>;
+    async fn upload_file<'a>(
+        &'a self,
+        file_name: &'a str,
+        file_content: Vec<u8>,
+    ) -> Result<crate::types::files::File, FileError>;
 
     /// Delete a file
     ///
@@ -235,10 +242,13 @@ impl FileClient for AnthropicClient {
             .await
     }
 
-    async fn get_file_metadata<'a>(&'a self, file_id: &'a str) -> Result<crate::types::files::File, FileError> {
+    async fn get_file_metadata<'a>(
+        &'a self,
+        file_id: &'a str,
+    ) -> Result<crate::types::files::File, FileError> {
         // Files API requires the beta header
         const FILES_BETA_HEADER: &str = "files-api-2025-04-14";
-        
+
         self.get_with_beta(
             &format!("/files/{}", file_id),
             Option::<&()>::None,
@@ -250,31 +260,27 @@ impl FileClient for AnthropicClient {
     async fn download_file<'a>(&'a self, file_id: &'a str) -> Result<Vec<u8>, FileError> {
         // Files API requires the beta header
         const FILES_BETA_HEADER: &str = "files-api-2025-04-14";
-        
-        self.download_with_beta(
-            &format!("/files/{}/content", file_id),
-            FILES_BETA_HEADER,
-        )
-        .await
+
+        self.download_with_beta(&format!("/files/{}/content", file_id), FILES_BETA_HEADER)
+            .await
     }
 
-    async fn upload_file<'a>(&'a self, file_name: &'a str, file_content: Vec<u8>) -> Result<crate::types::files::File, FileError> {
+    async fn upload_file<'a>(
+        &'a self,
+        file_name: &'a str,
+        file_content: Vec<u8>,
+    ) -> Result<crate::types::files::File, FileError> {
         // Files API requires the beta header
         const FILES_BETA_HEADER: &str = "files-api-2025-04-14";
-        
-        self.upload_file_with_beta(
-            "/files",
-            file_name,
-            file_content,
-            FILES_BETA_HEADER,
-        )
-        .await
+
+        self.upload_file_with_beta("/files", file_name, file_content, FILES_BETA_HEADER)
+            .await
     }
 
     async fn delete_file<'a>(&'a self, file_id: &'a str) -> Result<DeletedFile, FileError> {
         // Files API requires the beta header
         const FILES_BETA_HEADER: &str = "files-api-2025-04-14";
-        
+
         self.delete_with_beta(
             &format!("/files/{}", file_id),
             Option::<&()>::None,

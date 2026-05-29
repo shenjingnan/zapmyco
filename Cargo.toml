@@ -1,3 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["vendor/zapmyco-anthropic-ai-sdk"]
+
 [package]
 name = "zapmyco"
 version = "0.25.1"

@@ -480,6 +480,7 @@ pub struct CountMessageTokensResponse {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
 pub enum StreamEvent {
     #[serde(rename = "message_start")]
     MessageStart { message: MessageStartContent },
