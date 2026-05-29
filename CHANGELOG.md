@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.25.1](https://github.com/shenjingnan/zapmyco/compare/v0.25.0...v0.25.1) - 2026-05-29
+
+### Added
+
+- *(datetime)* 引入 chrono 库重构日期时间处理 ([#323](https://github.com/shenjingnan/zapmyco/pull/323))
+- *(sdk)* 完善 Anthropic SDK response 数据结构，新增缓存字段支持 ([#322](https://github.com/shenjingnan/zapmyco/pull/322))
+- *(deps)* 将 anthropic-ai-sdk 替换为本地 vendor 的自维护 SDK ([#320](https://github.com/shenjingnan/zapmyco/pull/320))
+
+### Other
+
+- *(conversation)* 改进会话记录文件名格式，提升可读性 ([#324](https://github.com/shenjingnan/zapmyco/pull/324))
+
 ## [0.25.0](https://github.com/shenjingnan/zapmyco/compare/v0.24.3...v0.25.0) - 2026-05-29
 
 ### Added
