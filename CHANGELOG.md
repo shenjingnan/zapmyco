@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.24.3](https://github.com/shenjingnan/zapmyco/compare/v0.24.2...v0.24.3) - 2026-05-29
+
+### Fixed
+
+- *(uninstall)* 卸载时清理 shell 补全配置 ([#317](https://github.com/shenjingnan/zapmyco/pull/317))
+
 ## [0.24.2](https://github.com/shenjingnan/zapmyco/compare/v0.24.1...v0.24.2) - 2026-05-29
 
 ### Added
