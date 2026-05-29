@@ -22,4 +22,10 @@ cargo test -- --test-threads=1 2>/dev/null || {
   exit 1
 }
 
+echo "🔍 运行拼写检查..."
+typos . 2>/dev/null || {
+  echo "⚠️  存在拼写错误"
+  exit 1
+}
+
 echo "✅ 所有检查通过"
