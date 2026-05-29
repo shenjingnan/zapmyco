@@ -6,7 +6,8 @@ use crate::models::{get_built_in_model_names, get_model_info};
 use crate::settings;
 use crate::settings::{LlmSettings, ProviderConfig, Settings};
 use std::collections::HashMap;
-use std::time::SystemTime;
+
+use crate::datetime;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -78,73 +79,9 @@ fn cmd_config() -> Result<String, String> {
     let config = serde_json::json!({
         "debug": false,
         "logLevel": "info",
-        "createdAt": chrono_now()
+        "createdAt": datetime::iso_timestamp_now()
     });
     Ok(serde_json::to_string_pretty(&config).unwrap_or_default())
-}
-
-fn chrono_now() -> String {
-    chrono_now_at(SystemTime::now())
-}
-
-fn chrono_now_at(now: SystemTime) -> String {
-    use std::time::UNIX_EPOCH;
-    let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-    let secs = duration.as_secs();
-    // Simple UTC timestamp in ISO 8601 format
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-
-    // Days since epoch to date (simplified approach)
-    let mut y = 1970i64;
-    let mut remaining = days as i64;
-    loop {
-        let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if remaining < days_in_year {
-            break;
-        }
-        remaining -= days_in_year;
-        y += 1;
-    }
-    let is_leap_year = is_leap(y);
-    let month_days = [
-        31,
-        if is_leap_year { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let mut m = 0usize;
-    for (i, &md) in month_days.iter().enumerate() {
-        if remaining < md {
-            m = i + 1;
-            break;
-        }
-        remaining -= md;
-    }
-    if m == 0 {
-        m = 12;
-    }
-    let d = remaining + 1;
-
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, hours, minutes, seconds
-    )
-}
-
-fn is_leap(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 /// init 命令 - 交互式初始化向导
@@ -1197,29 +1134,36 @@ mod tests {
             serde_json::Value::String("info".to_string())
         );
         let created = val["createdAt"].as_str().unwrap();
-        assert_eq!(created.len(), 20);
-        assert!(created.ends_with('Z'));
-        assert!(created.contains('T'));
+        assert!(
+            created.len() >= 24,
+            "时间戳长度至少 24（含时区偏移）: {}",
+            created
+        );
+        assert!(created.contains('T'), "时间戳应包含 T 分隔符");
+        // 应包含时区偏移（+/- 开头的时间偏移段）
+        let offset_start = created.rfind(|c: char| c == '+' || c == '-');
+        assert!(
+            offset_start.is_some() && offset_start.unwrap() > 10,
+            "时间戳应包含时区偏移（如 +08:00）: {}",
+            created
+        );
         // 确保只有 3 个字段
         assert_eq!(val.as_object().unwrap().len(), 3, "config 应只有 3 个字段");
     }
 
     #[test]
-    fn test_is_leap_year() {
-        assert!(is_leap(2000)); // 能被 400 整除
-        assert!(!is_leap(1900)); // 能被 100 整除但不能被 400
-        assert!(is_leap(2024));
-        assert!(!is_leap(2023));
-        assert!(!is_leap(2025));
-    }
-
-    #[test]
     fn test_chrono_now_format() {
-        let now = chrono_now();
-        // ISO 8601 格式: "2026-05-28T13:27:31Z"
-        assert_eq!(now.len(), 20, "应为 'YYYY-MM-DDTHH:MM:SSZ' 格式");
-        assert!(now.ends_with('Z'), "时间戳应以 Z 结尾: {}", now);
+        let now = datetime::iso_timestamp_now();
+        // ISO 8601 格式（本地时区）: "2026-05-29T22:25:15+08:00"
+        assert!(now.len() >= 24, "时间戳长度至少 24（含时区偏移）: {}", now);
         assert!(now.contains('T'), "时间戳应包含 T 分隔符: {}", now);
+        // 应包含时区偏移（+/- 开头的时间偏移段）
+        let offset_start = now.rfind(|c: char| c == '+' || c == '-');
+        assert!(
+            offset_start.is_some() && offset_start.unwrap() > 10,
+            "时间戳应包含时区偏移（如 +08:00）: {}",
+            now
+        );
         // 验证日期部分可解析
         let date_part = &now[..10];
         assert!(
@@ -1227,71 +1171,6 @@ mod tests {
             "日期部分应为 YYYY-MM-DD: {}",
             date_part
         );
-    }
-
-    #[test]
-    fn test_chrono_now_at_epoch() {
-        use std::time::UNIX_EPOCH;
-        assert_eq!(chrono_now_at(UNIX_EPOCH), "1970-01-01T00:00:00Z");
-    }
-
-    #[test]
-    fn test_chrono_now_at_leap_year() {
-        use std::time::{Duration, UNIX_EPOCH};
-        // 2024-02-29T12:00:00Z: days from epoch to 2024-02-29
-        // 1970..2024 = 54 years
-        // Days = 54*365 + leap_days (1972,76,80,84,88,92,96,2000,04,08,12,16,20,24 = 14)
-        //   + 31 (Jan) + 29 (Feb) - 1 = 19722 days
-        // = 19722 * 86400 + 12*3600 = 1704002400 + 43200 = 1704045600
-        let jan_1_2024: u64 = 1704067200; // 2024-01-01T00:00:00Z
-        let feb_29_2024_12_00 = jan_1_2024 + 31 * 86400 + 28 * 86400 + 12 * 3600; // Jan(31) + Feb(28)days + 12h
-        let now = UNIX_EPOCH + Duration::from_secs(feb_29_2024_12_00);
-        assert_eq!(chrono_now_at(now), "2024-02-29T12:00:00Z");
-    }
-
-    #[test]
-    fn test_chrono_now_at_year_end() {
-        use std::time::{Duration, UNIX_EPOCH};
-        // 2025-12-31T23:59:59Z
-        // 2025-01-01T00:00:00Z = 1735689600
-        let jan_1_2025: u64 = 1735689600;
-        // Dec 31 is day 364 (0-indexed), so 364 days from Jan 1
-        let dec_31_2025_23_59_59 = jan_1_2025 + 364 * 86400 + 23 * 3600 + 59 * 60 + 59;
-        let now = UNIX_EPOCH + Duration::from_secs(dec_31_2025_23_59_59);
-        assert_eq!(chrono_now_at(now), "2025-12-31T23:59:59Z");
-    }
-
-    #[test]
-    fn test_chrono_now_at_year_start() {
-        use std::time::{Duration, UNIX_EPOCH};
-        // 2026-01-01T00:00:01Z
-        let jan_1_2026: u64 = 1767225600; // 2026-01-01T00:00:00Z
-        let now = UNIX_EPOCH + Duration::from_secs(jan_1_2026 + 1);
-        assert_eq!(chrono_now_at(now), "2026-01-01T00:00:01Z");
-    }
-
-    #[test]
-    fn test_chrono_now_at_non_leap_feb() {
-        use std::time::{Duration, UNIX_EPOCH};
-        // 2023-03-01T00:00:00Z — verify Feb has 28 days in non-leap year
-        // 2023-01-01T00:00:00Z = 1672531200
-        let jan_1_2023: u64 = 1672531200;
-        // Jan(31) + Feb(28) days = 59 days
-        let mar_1_2023 = jan_1_2023 + 59 * 86400;
-        let now = UNIX_EPOCH + Duration::from_secs(mar_1_2023);
-        assert_eq!(chrono_now_at(now), "2023-03-01T00:00:00Z");
-    }
-
-    #[test]
-    fn test_chrono_now_at_century_leap() {
-        use std::time::{Duration, UNIX_EPOCH};
-        // 2000-03-01T00:00:00Z — 2000 is divisible by 400, so it's a leap year
-        // 2000-01-01T00:00:00Z = 946684800
-        let jan_1_2000: u64 = 946684800;
-        // Jan(31) + Feb(29) days = 60 days
-        let mar_1_2000 = jan_1_2000 + 60 * 86400;
-        let now = UNIX_EPOCH + Duration::from_secs(mar_1_2000);
-        assert_eq!(chrono_now_at(now), "2000-03-01T00:00:00Z");
     }
 
     #[test]

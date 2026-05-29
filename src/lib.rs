@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod cli;
 pub mod conversation_logger;
+pub mod datetime;
 pub mod models;
 pub mod settings;
 
