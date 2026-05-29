@@ -62,26 +62,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anthropic-ai-sdk"
-version = "0.2.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb40cde602d77505c1f9053947e2a7f7f2c6222e92018f15f3966951aee26a07"
-dependencies = [
- "async-trait",
- "eventsource-stream",
- "futures-lite",
- "futures-util",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2423,7 +2403,6 @@ dependencies = [
 name = "zapmyco"
 version = "0.24.3"
 dependencies = [
- "anthropic-ai-sdk",
  "anyhow",
  "clap",
  "clap_complete",
@@ -2438,6 +2417,25 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wiremock",
+ "zapmyco-anthropic-ai-sdk",
+]
+
+[[package]]
+name = "zapmyco-anthropic-ai-sdk"
+version = "0.2.27"
+dependencies = [
+ "async-trait",
+ "eventsource-stream",
+ "futures-lite",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
