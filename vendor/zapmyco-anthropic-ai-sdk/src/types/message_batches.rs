@@ -356,6 +356,12 @@ pub struct TokenUsage {
     pub input_tokens: u32,
     /// Number of tokens in the output
     pub output_tokens: u32,
+    /// Input tokens used to create the cache entry (cache miss)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u32>,
+    /// Input tokens read from the cache (cache hit)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u32>,
 }
 
 /// Response type for retrieving message batch results

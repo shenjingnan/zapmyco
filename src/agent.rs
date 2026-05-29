@@ -205,6 +205,8 @@ impl AiAgent {
         let mut resp_stop_reason: Option<String> = None;
         let mut resp_input_tokens: u32 = 0;
         let mut resp_output_tokens: u32 = 0;
+        let mut resp_cache_creation_input_tokens: Option<u32> = None;
+        let mut resp_cache_read_input_tokens: Option<u32> = None;
         let mut resp_error: Option<String> = None;
 
         while let Some(event) = stream.next().await {
@@ -227,6 +229,8 @@ impl AiAgent {
                     }
                     if let Some(u) = usage {
                         resp_output_tokens = u.output_tokens;
+                        resp_cache_creation_input_tokens = u.cache_creation_input_tokens;
+                        resp_cache_read_input_tokens = u.cache_read_input_tokens;
                     }
                 }
                 StreamEvent::Error { error } => {
@@ -258,6 +262,8 @@ impl AiAgent {
                 "usage": {
                     "input_tokens": resp_input_tokens,
                     "output_tokens": resp_output_tokens,
+                    "cache_creation_input_tokens": resp_cache_creation_input_tokens,
+                    "cache_read_input_tokens": resp_cache_read_input_tokens,
                 },
                 "error": resp_error,
             });
@@ -406,7 +412,7 @@ fn extract_text_from_blocks(blocks: &[ContentBlock]) -> String {
     blocks
         .iter()
         .filter_map(|block| {
-            if let ContentBlock::Text { text } = block {
+            if let ContentBlock::Text { text, .. } = block {
                 Some(text.as_str())
             } else {
                 None
@@ -622,9 +628,11 @@ mod tests {
         let blocks = vec![
             ContentBlock::Text {
                 text: "Hello".to_string(),
+                citations: None,
             },
             ContentBlock::Text {
                 text: " World".to_string(),
+                citations: None,
             },
         ];
         assert_eq!(extract_text_from_blocks(&blocks), "Hello World");
@@ -767,6 +775,7 @@ mod tests {
         let blocks = vec![
             ContentBlock::Text {
                 text: "Hello".to_string(),
+                citations: None,
             },
             ContentBlock::ToolUse {
                 id: "id1".to_string(),
@@ -775,6 +784,7 @@ mod tests {
             },
             ContentBlock::Text {
                 text: " World".to_string(),
+                citations: None,
             },
         ];
         assert_eq!(extract_text_from_blocks(&blocks), "Hello World");
