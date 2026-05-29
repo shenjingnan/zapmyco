@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.24.2](https://github.com/shenjingnan/zapmyco/compare/v0.24.1...v0.24.2) - 2026-05-29
+
+### Added
+
+- *(cli)* 支持 zapmyco -v 显示版本号 ([#312](https://github.com/shenjingnan/zapmyco/pull/312))
+
+### Fixed
+
+- *(ci)* 为 CI 工作流添加显式权限声明 ([#314](https://github.com/shenjingnan/zapmyco/pull/314))
+
 ## [0.24.1](https://github.com/shenjingnan/zapmyco/compare/v0.24.0...v0.24.1) - 2026-05-29
 
 ### Added
