@@ -18,6 +18,7 @@ ZapMyCo 提供简洁的命令行接口，支持以下命令。
 |------|------|:----------:|
 | `zapmyco`（默认） | 进入交互式 AI 对话模式 | 是 |
 | `zapmyco init` | 初始化 LLM 配置向导 | — |
+| `zapmyco note [content]` | 快速记录笔记（灵感/待办/想法），留空则交互式编辑 | 否 |
 | `zapmyco run <content>` | 一次性执行 AI 任务 | 是 |
 | `zapmyco settings [subcommand]` | 显示或管理 LLM 配置 | 否 |
 | `zapmyco config` | 显示应用配置 | 否 |
@@ -67,6 +68,57 @@ zapmyco init
 ```
 
 向导每一步都支持 `Ctrl+C` 安全退出。
+
+---
+
+### `note` — 快速笔记
+
+快速记录灵感、待办、想法，支持命令行一键记录和交互式编辑：
+
+```bash
+# 快速记录
+zapmyco note "修复了登录页的样式问题"
+
+# 交互式编辑（打开 $EDITOR/vi 编辑）
+zapmyco note
+
+# 列出最近笔记
+zapmyco note ls
+zapmyco note ls --all           # 显示全部
+zapmyco note ls 5              # 显示最近 5 条
+
+# 查看笔记
+zapmyco note show 2026-05-30_143002_修复登录页样式
+
+# 搜索笔记
+zapmyco note grep 登录
+
+# 删除笔记
+zapmyco note rm 2026-05-30_143002_修复登录页样式
+```
+
+**存储位置**：每条笔记是一个独立的 Markdown 文件，保存在 `~/.zapmyco/notes/` 目录下，包含创建时间元信息。无需 `init`，开箱即用。
+
+**文件格式示例**（`~/.zapmyco/notes/2026-05-30_143002_修复登录页样式.md`）：
+
+```markdown
+---
+created: 2026-05-30T14:30:02+08:00
+---
+
+修复了登录页的样式问题
+```
+
+**子命令说明**
+
+| 子命令 | 说明 |
+|--------|------|
+| 无参数 | 打开 `$EDITOR`/`vi` 交互式编辑 |
+| `<content>` | 将参数内容直接保存为笔记 |
+| `ls [n]` | 列出最近 n 条笔记（默认 20），`--all` 显示全部 |
+| `show <id>` | 查看指定笔记的完整内容 |
+| `grep <keyword>` | 搜索笔记内容 |
+| `rm <id>` | 删除指定笔记 |
 
 ---
 
@@ -188,6 +240,10 @@ zapmyco --version
 
 # 初始化配置
 zapmyco init
+
+# 快速记录笔记
+zapmyco note "明天下午三点会议"
+zapmyco note ls
 
 # 一次性 AI 任务
 zapmyco run 帮我查一下今天的日期
