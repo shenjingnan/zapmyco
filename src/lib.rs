@@ -6,6 +6,7 @@ pub mod cli;
 pub mod conversation_logger;
 pub mod datetime;
 pub mod models;
+pub mod run_command;
 pub mod settings;
 pub mod web_fetch;
 

@@ -48,12 +48,14 @@ pub struct ConversationMessage {
 /// 工具处理器
 pub enum ToolHandler {
     WebFetch(crate::web_fetch::WebFetch),
+    RunCommand(crate::run_command::RunCommand),
 }
 
 impl ToolHandler {
     fn tool_definition(&self) -> Tool {
         match self {
             ToolHandler::WebFetch(_) => crate::web_fetch::WebFetch::tool_definition(),
+            ToolHandler::RunCommand(_) => crate::run_command::RunCommand::tool_definition(),
         }
     }
 
@@ -66,6 +68,18 @@ impl ToolHandler {
                     .ok_or("Missing required 'url' parameter")?;
                 fetcher.fetch(url).await.map_err(|e| e.to_string())
             }
+            ToolHandler::RunCommand(executor) => {
+                let command = input
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing required 'command' parameter")?;
+                let description = input.get("description").and_then(|v| v.as_str());
+                let working_directory = input.get("working_directory").and_then(|v| v.as_str());
+                executor
+                    .execute(command, description, working_directory)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
         }
     }
 }
@@ -76,6 +90,8 @@ pub struct AiAgent {
     model: String,
     max_tokens: u32,
     system_prompt: String,
+    /// 原始系统提示词（不含工具描述，用于重建 system_prompt）
+    base_system_prompt: String,
     messages: Vec<ConversationMessage>,
     logger: Option<ConversationLogger>,
     /// 已注册的工具
@@ -169,6 +185,7 @@ impl AiAgent {
             client,
             model: model_name.to_string(),
             max_tokens,
+            base_system_prompt: system_prompt.clone(),
             system_prompt,
             messages: Vec::new(),
             logger,
@@ -373,15 +390,33 @@ impl AiAgent {
 
     /// 注册工具处理器
     pub fn register_tool(&mut self, handler: ToolHandler) {
-        if self.tools.is_empty() {
-            self.system_prompt = format!(
-                "{}\n\n你有以下工具可以使用：\n\
-                 - web_fetch: 获取网页内容并转换为 Markdown。当你需要访问互联网信息时使用。\n\
-                 当用户请求获取网页内容或访问互联网时，请使用 web_fetch 工具。",
-                self.system_prompt
-            );
-        }
         self.tools.push(handler);
+        self.rebuild_system_prompt_with_tools();
+    }
+
+    /// 从 base_system_prompt + 所有已注册工具描述重建 system_prompt
+    fn rebuild_system_prompt_with_tools(&mut self) {
+        self.system_prompt = self.base_system_prompt.clone();
+        if self.tools.is_empty() {
+            return;
+        }
+
+        self.system_prompt.push_str("\n\n你有以下工具可以使用：\n");
+
+        for handler in &self.tools {
+            let desc = match handler {
+                ToolHandler::WebFetch(_) => {
+                    "- web_fetch: 获取网页内容并转换为 Markdown。当你需要访问互联网信息时使用。"
+                }
+                ToolHandler::RunCommand(_) => {
+                    "- run_command: 在本地系统执行 shell 命令并返回输出。当你需要运行代码、查询系统信息或文件操作时使用。"
+                }
+            };
+            self.system_prompt.push_str(desc);
+            self.system_prompt.push('\n');
+        }
+
+        self.system_prompt.push_str("使用工具时请注意安全。");
     }
 
     /// 获取当前使用的模型名称
@@ -501,8 +536,34 @@ impl AiAgent {
                     .ok_or_else(|| format!("Unknown tool: {}", name))?;
 
                 // 显示工具参数
-                if let Some(url) = input.get("url").and_then(|v| v.as_str()) {
-                    eprintln!("[工具]   └ 参数: url = {}", url);
+                match name.as_str() {
+                    "web_fetch" => {
+                        if let Some(url) = input.get("url").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 参数: url = {}", url);
+                        }
+                    }
+                    "run_command" => {
+                        if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
+                            let truncated = if cmd.len() > 80 {
+                                format!("{}...", &cmd[..80])
+                            } else {
+                                cmd.to_string()
+                            };
+                            eprintln!("[工具]   └ 命令: {}", truncated);
+                        }
+                        if let Some(desc) = input.get("description").and_then(|v| v.as_str()) {
+                            let truncated = if desc.len() > 60 {
+                                format!("{}...", &desc[..60])
+                            } else {
+                                desc.to_string()
+                            };
+                            eprintln!("[工具]   └ 描述: {}", truncated);
+                        }
+                        if let Some(dir) = input.get("working_directory").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 工作目录: {}", dir);
+                        }
+                    }
+                    _ => {}
                 }
 
                 let start = Instant::now();
@@ -1232,6 +1293,66 @@ mod tests {
         assert!(result.is_err());
     }
 
+    // ---- RunCommand ToolHandler tests ----
+
+    #[test]
+    fn test_tool_handler_run_command_tool_definition() {
+        let executor = crate::run_command::RunCommand::new(Default::default());
+        let handler = ToolHandler::RunCommand(executor);
+        let tool = handler.tool_definition();
+        assert_eq!(tool.name, "run_command");
+        assert!(tool.description.is_some());
+        assert!(tool.input_schema["properties"]["command"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_tool_handler_run_command_missing_cmd() {
+        let executor = crate::run_command::RunCommand::new(Default::default());
+        let handler = ToolHandler::RunCommand(executor);
+        let input = serde_json::json!({});
+        let result = handler.execute(&input).await;
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("'command'"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_handler_run_command_success() {
+        let executor = crate::run_command::RunCommand::new(Default::default());
+        let handler = ToolHandler::RunCommand(executor);
+        let input = serde_json::json!({"command": "echo hello"});
+        let result = handler.execute(&input).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_handler_run_command_with_description() {
+        let executor = crate::run_command::RunCommand::new(Default::default());
+        let handler = ToolHandler::RunCommand(executor);
+        let input = serde_json::json!({
+            "command": "echo hello",
+            "description": "Testing the run_command tool"
+        });
+        let result = handler.execute(&input).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_tool_handler_run_command_with_working_dir() {
+        let executor = crate::run_command::RunCommand::new(Default::default());
+        let handler = ToolHandler::RunCommand(executor);
+        let dir = std::env::temp_dir();
+        let input = serde_json::json!({
+            "command": "pwd",
+            "working_directory": dir.to_str().unwrap()
+        });
+        let result = handler.execute(&input).await;
+        assert!(result.is_ok());
+        // pwd 可能会解析符号链接，所以只检查退出码
+        let output = result.unwrap();
+        assert!(output.contains("Exit code: 0"));
+    }
+
     // ---- register_tool tests ----
 
     #[test]
@@ -1252,7 +1373,7 @@ mod tests {
     }
 
     #[test]
-    fn test_register_tool_updates_system_prompt_once() {
+    fn test_register_tool_updates_system_prompt_with_each_tool() {
         run_with_temp_home(|home| {
             create_test_settings(home, "[llm]\n");
             let mut agent = AiAgent::new(AiAgentOptions {
@@ -1262,7 +1383,6 @@ mod tests {
             })
             .unwrap();
 
-            let original_prompt = agent.system_prompt.clone();
             let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch));
 
@@ -1276,17 +1396,28 @@ mod tests {
                 agent.system_prompt.starts_with("原始提示"),
                 "original prompt should be preserved"
             );
+            assert_eq!(agent.tools.len(), 1);
+            // web_fetch 在 system prompt 中只出现一次（描述本身）
+            let web_fetch_count = agent.system_prompt.matches("web_fetch").count();
+            assert!(
+                web_fetch_count >= 1,
+                "web_fetch should appear at least once in system prompt"
+            );
 
-            // 第二次注册不应再次修改
-            let prompt_after_first = agent.system_prompt.clone();
+            // 第二次注册，system prompt 应更新包含更多工具
             let web_fetch2 = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch2));
 
-            assert_eq!(
-                agent.system_prompt, prompt_after_first,
-                "second register should not modify system prompt"
-            );
+            // 提示词被重建，工具数增加
             assert_eq!(agent.tools.len(), 2, "should have 2 tools registered");
+            // 原始提示词仍被保留
+            assert!(
+                agent.system_prompt.starts_with("原始提示"),
+                "original prompt should be preserved"
+            );
+            // 由于每次都重建，prompt 内容不同（有两个 web_fetch 条目）
+            // 但 base_system_prompt 应始终与开始时一致
+            assert_eq!(agent.base_system_prompt, "原始提示");
         });
     }
 
