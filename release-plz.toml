@@ -2,16 +2,16 @@
 # release-plz 负责创建 git tag 和发布到 crates.io
 # cargo-dist 接管 GitHub Release 创建、二进制构建和安装脚本生成
 git_release_enable = false
-git_tag_enable = true
-git_tag_name = "v{{ version }}"
-
-# 下游 cargo-dist（release.yml）由 publish.yml 中的 trigger-dist job 通过 gh workflow run 触发
+git_tag_enable = false
 
 [[package]]
 name = "zapmyco"
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
 changelog_update = true
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "zapmyco-anthropic-ai-sdk"
 changelog_update = false
+# SDK 仅发布到 crates.io，不打 git tag 也不触发 GitHub Release
