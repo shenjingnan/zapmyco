@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.26.1](https://github.com/shenjingnan/zapmyco/compare/v0.26.0...v0.26.1) - 2026-05-30
+
+### Fixed
+
+- *(release-plz)* 仅对主包启用 git tag，避免 SDK tag 触发无效 release ([#333](https://github.com/shenjingnan/zapmyco/pull/333))
+
 ## [0.26.0](https://github.com/shenjingnan/zapmyco/compare/v0.25.2...v0.26.0) - 2026-05-30
 
 ### Added
