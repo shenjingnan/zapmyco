@@ -16,7 +16,7 @@
   },
   "navbar": {
     "items": [
-      { "label": "快速开始", "href": "/quickstart" },
+      { "label": "快速开始", "href": "/" },
       { "label": "指南", "href": "/guide" },
       { "label": "进阶", "href": "/advanced" },
       { "label": "社区", "href": "/community" }
@@ -32,7 +32,7 @@
         {
           "title": "指南",
           "links": [
-            { "label": "快速开始", "href": "/quickstart" },
+            { "label": "快速开始", "href": "/" },
             { "label": "安装方式", "href": "/guide/installation" },
             { "label": "CLI 使用", "href": "/guide/cli-usage" },
             { "label": "AI 代理", "href": "/guide/ai-agent" }

@@ -1,6 +1,5 @@
 ---
 title: ZapMyCo
-description: 基于 Rust 的 AI 驱动命令行工具
 ---
 
 <p align="center">
@@ -23,14 +22,91 @@ description: 基于 Rust 的 AI 驱动命令行工具
 - **多供应商** — 内置 DeepSeek、GLM（智谱）模型，支持自定义
 - **自动化发布** — GitHub Actions 驱动的自动构建、测试和发布
 
-## 快速安装
+## 安装方法
+
+### 一键安装（推荐）
+
+<Tabs items={["macOS / Linux", "Windows (PowerShell)", "Windows (cmd.exe)"]}>
+
+<Tab>
+```bash
+curl -fsSL https://zapmyco.com/install.sh | sh
+```
+</Tab>
+
+<Tab>
+```powershell
+irm https://zapmyco.com/install.ps1 | iex
+```
+</Tab>
+
+<Tab>
+```powershell
+powershell -c "irm https://zapmyco.com/install.ps1 | iex"
+```
+</Tab>
+
+</Tabs>
+
+### 通过 cargo 安装
+
+需要安装 [Rust 工具链](https://rustup.rs)：
 
 ```bash
-# 通过 cargo 安装（需要 Rust 工具链）
 cargo install zapmyco
+```
 
-# 或直接下载二进制（无需安装 Rust）
-curl -fsSL https://raw.githubusercontent.com/shenjingnan/zapmyco/main/install.sh | sh
+### 手动下载
+
+每个版本都会发布预编译的二进制归档（`.tar.xz` / `.zip`）：
+
+| 平台    | 架构          | 下载链接 |
+| ------- | ------------- | -------- |
+| Linux   | x86_64        | [zapmyco-x86_64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-unknown-linux-gnu.tar.xz) |
+| Linux   | ARM64         | [zapmyco-aarch64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-unknown-linux-gnu.tar.xz) |
+| macOS   | Apple Silicon | [zapmyco-aarch64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-apple-darwin.tar.xz) |
+| macOS   | Intel         | [zapmyco-x86_64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-apple-darwin.tar.xz) |
+| Windows | x86_64        | [zapmyco-x86_64-pc-windows-msvc.zip](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-pc-windows-msvc.zip) |
+
+### 从源码编译
+
+```bash
+git clone https://github.com/shenjingnan/zapmyco.git
+cd zapmyco
+cargo build --release
+# 产物位于 target/release/zapmyco
+
+# 验证编译结果
+./target/release/zapmyco -V
+
+# 安装到 PATH
+cargo install --path .
+
+# 验证安装
+zapmyco -V
+```
+
+## 验证安装
+
+安装完成后，运行以下命令验证：
+
+```bash
+zapmyco --version
+# 输出示例：zapmyco 0.25.1
+
+zapmyco --help
+# 输出示例：
+# 基于 Rust 的 AI 驱动命令行工具
+#
+# Usage: zapmyco [COMMAND]
+#
+# Commands:
+#   settings  显示 LLM 配置
+#   run       一次性执行 AI 任务
+#   init      初始化 LLM 配置
+#   greet     打招呼（示例命令）
+#   completion 生成 shell 补全脚本
+#   help      显示帮助信息
 ```
 
 ## 快速使用
@@ -48,3 +124,10 @@ zapmyco greet World
 # AI 对话模式
 zapmyco
 ```
+
+## 下一步
+
+- [初始化配置](/guide/cli-usage#init) — 运行 `zapmyco init` 配置 API Key
+- [CLI 使用指南](/guide/cli-usage) — 了解所有命令的详细用法
+- [AI 代理功能](/guide/ai-agent) — 体验 AI 对话模式
+- [架构说明](/advanced/architecture) — 了解项目设计
