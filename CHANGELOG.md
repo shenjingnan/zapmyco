@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.28.0](https://github.com/shenjingnan/zapmyco/compare/v0.27.0...v0.28.0) - 2026-05-30
+
+### Added
+
+- *(cli)* 添加 note 子命令，支持快速记录笔记 ([#339](https://github.com/shenjingnan/zapmyco/pull/339))
+
+### Fixed
+
+- 为 ToolHandler 枚举添加 #[non_exhaustive] 注解 ([#337](https://github.com/shenjingnan/zapmyco/pull/337))
+
+### Other
+
+- 添加 tarpaulin 和 codecov 配置，排除 vendor 目录覆盖率统计 ([#340](https://github.com/shenjingnan/zapmyco/pull/340))
+
 ## [0.27.0](https://github.com/shenjingnan/zapmyco/compare/v0.26.1...v0.27.0) - 2026-05-30
 
 ### Added
