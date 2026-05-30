@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.26.0](https://github.com/shenjingnan/zapmyco/compare/v0.25.2...v0.26.0) - 2026-05-30
+
+### Added
+
+- 添加 Web Fetch 工具，支持 LLM 获取网页内容 (#undefined)
+
+### Other
+
+- 大幅提升单测覆盖率，新增 40 个测试用例 ([#331](https://github.com/shenjingnan/zapmyco/pull/331))
+- *(cli)* 移除 greet 示例命令 ([#329](https://github.com/shenjingnan/zapmyco/pull/329))
+
 ## [0.25.2](https://github.com/shenjingnan/zapmyco/compare/v0.25.1...v0.25.2) - 2026-05-30
 
 ### Other
