@@ -622,6 +622,22 @@ fn setup_shell_completion() -> Result<String, String> {
     setup_shell_completion_inner(detect_shell(), &home_dir)
 }
 
+/// 将命令行参数中的 "-v" 映射到 "--version"
+///
+/// clap 默认使用 -V（大写）作为 version 的短标志，
+/// 这里将小写 -v 也映射为 --version 以提升用户体验。
+pub fn map_short_v_flag(args: &[String]) -> Vec<String> {
+    args.iter()
+        .map(|a| {
+            if a == "-v" {
+                "--version".into()
+            } else {
+                a.clone()
+            }
+        })
+        .collect()
+}
+
 /// CLI 入口 - 解析参数并执行对应操作
 pub async fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
@@ -1586,5 +1602,33 @@ mod tests {
             assert_eq!(content.matches("zapmyco completion zsh").count(), 0);
             assert!(content.contains("export FOO=bar"));
         });
+    }
+
+    // —————— map_short_v_flag 测试 ——————
+
+    #[test]
+    fn test_map_short_v_flag() {
+        let args = vec!["program".to_string(), "-v".to_string()];
+        let result = map_short_v_flag(&args);
+        assert_eq!(result, vec!["program".to_string(), "--version".to_string()]);
+    }
+
+    #[test]
+    fn test_map_short_v_flag_other_flags_unchanged() {
+        let args = vec![
+            "program".to_string(),
+            "--verbose".to_string(),
+            "run".to_string(),
+            "-c".to_string(),
+        ];
+        let result = map_short_v_flag(&args);
+        assert_eq!(result, args);
+    }
+
+    #[test]
+    fn test_map_short_v_flag_empty() {
+        let args: Vec<String> = vec![];
+        let result = map_short_v_flag(&args);
+        assert!(result.is_empty());
     }
 }
