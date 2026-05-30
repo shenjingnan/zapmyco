@@ -821,4 +821,142 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_agent_new_with_env_var() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            // 设置环境变量，但不在 options 中提供 api_key
+            // 应尝试从 providers 读取 → 没有 provider → 读取 DEEPSEEK_API_KEY
+            let orig_key = std::env::var("DEEPSEEK_API_KEY").ok();
+            unsafe {
+                std::env::set_var("DEEPSEEK_API_KEY", "env-key-for-agent");
+            }
+
+            let result = AiAgent::new(AiAgentOptions {
+                api_key: None,
+                ..Default::default()
+            });
+            // 应成功创建（从环境变量读取 key）
+            assert!(result.is_ok());
+
+            if let Some(k) = orig_key {
+                unsafe {
+                    std::env::set_var("DEEPSEEK_API_KEY", k);
+                }
+            } else {
+                unsafe {
+                    std::env::remove_var("DEEPSEEK_API_KEY");
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn test_build_params_empty_system_prompt() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                system_prompt: Some("".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            // system_prompt 为空串时 build_params 不应设置 system 字段
+            let params = agent.build_params(false).unwrap();
+            assert!(params.system.is_none());
+        });
+    }
+
+    #[test]
+    fn test_build_params_stream_true() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let params = agent.build_params(true).unwrap();
+            assert_eq!(params.stream, Some(true));
+        });
+    }
+
+    #[test]
+    fn test_build_params_stream_false() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let params = agent.build_params(false).unwrap();
+            assert!(params.stream.is_none());
+        });
+    }
+
+    #[test]
+    fn test_build_params_messages_count() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            // 直接操作私有字段 messages 添加对话历史
+            agent.messages.push(ConversationMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            });
+            agent.messages.push(ConversationMessage {
+                role: "assistant".to_string(),
+                content: "Hi there".to_string(),
+            });
+            let params = agent.build_params(false).unwrap();
+            assert_eq!(params.messages.len(), 2);
+            // 验证消息角色转换正确
+            assert!(matches!(params.messages[0].role, Role::User));
+            assert!(matches!(params.messages[1].role, Role::Assistant));
+        });
+    }
+
+    #[test]
+    fn test_log_round_trip_writes_record() {
+        run_with_temp_home(|home| {
+            let logger = crate::conversation_logger::ConversationLogger::new().unwrap();
+
+            let params = CreateMessageParams::new(RequiredMessageParams {
+                model: "test-model".to_string(),
+                messages: vec![Message::new_text(Role::User, "Hello")],
+                max_tokens: 100,
+            });
+
+            let response: CreateMessageResponse = serde_json::from_str(
+                r#"{
+                    "id": "msg_001",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hi"}],
+                    "model": "test-model",
+                    "stop_reason": "end_turn",
+                    "stop_sequence": null,
+                    "usage": {"input_tokens": 5, "output_tokens": 3}
+                }"#,
+            )
+            .unwrap();
+
+            log_round_trip(&logger, &params, &response, 100);
+
+            // 验证日志文件被正确写入
+            let log_dir = home.join(".zapmyco/conversations");
+            let log_file = log_dir.join(format!("{}.jsonl", logger.session_id()));
+            let content = std::fs::read_to_string(&log_file).unwrap();
+            assert!(content.contains("test-model"), "日志应包含模型名");
+            assert!(content.contains("Hello"), "日志应包含请求内容");
+            assert!(content.contains("Hi"), "日志应包含响应内容");
+            assert!(content.contains("100"), "日志应包含耗时");
+        });
+    }
 }

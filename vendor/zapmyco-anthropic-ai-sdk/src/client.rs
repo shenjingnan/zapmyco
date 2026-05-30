@@ -616,3 +616,42 @@ impl AnthropicClient {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::message::MessageError;
+
+    #[test]
+    fn test_builder_default_url() {
+        let client = AnthropicClient::builder("test-key", "2023-06-01")
+            .build::<MessageError>()
+            .unwrap();
+        assert_eq!(
+            client.get_api_base_url(),
+            AnthropicClient::DEFAULT_API_BASE_URL
+        );
+        assert_eq!(client.get_api_key(), "test-key");
+        assert_eq!(client.get_api_version(), "2023-06-01");
+    }
+
+    #[test]
+    fn test_builder_custom_url() {
+        let client = AnthropicClient::builder("test-key", "2023-06-01")
+            .with_api_base_url("https://custom.example.com/v1")
+            .build::<MessageError>()
+            .unwrap();
+        assert_eq!(client.get_api_base_url(), "https://custom.example.com/v1");
+    }
+
+    #[test]
+    fn test_client_new() {
+        let client = AnthropicClient::new::<MessageError>("api-key", "2023-06-01").unwrap();
+        assert_eq!(client.get_api_key(), "api-key");
+        assert_eq!(client.get_api_version(), "2023-06-01");
+        assert_eq!(
+            client.get_api_base_url(),
+            AnthropicClient::DEFAULT_API_BASE_URL
+        );
+    }
+}

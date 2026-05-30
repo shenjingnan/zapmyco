@@ -555,3 +555,168 @@ pub struct StreamError {
     pub type_: String,
     pub message: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_new_text() {
+        let msg = Message::new_text(Role::User, "hello");
+        assert!(matches!(msg.role, Role::User));
+        assert!(matches!(msg.content, MessageContent::Text { .. }));
+        if let MessageContent::Text { content } = &msg.content {
+            assert_eq!(content, "hello");
+        }
+    }
+
+    #[test]
+    fn test_message_new_blocks() {
+        let blocks = vec![ContentBlock::text("hello")];
+        let msg = Message::new_blocks(Role::Assistant, blocks);
+        assert!(matches!(msg.role, Role::Assistant));
+        assert!(matches!(msg.content, MessageContent::Blocks { .. }));
+    }
+
+    #[test]
+    fn test_content_block_text_helper() {
+        let block = ContentBlock::text("Hello World");
+        assert!(matches!(block, ContentBlock::Text { text, .. } if text == "Hello World"));
+    }
+
+    #[test]
+    fn test_content_block_image_helper() {
+        let block = ContentBlock::image("base64", "image/png", "data");
+        assert!(matches!(block, ContentBlock::Image { .. }));
+    }
+
+    #[test]
+    fn test_create_message_params_from_required() {
+        let msg = Message::new_text(Role::User, "test");
+        let required = RequiredMessageParams {
+            model: "test-model".to_string(),
+            messages: vec![msg],
+            max_tokens: 100,
+        };
+        let params: CreateMessageParams = required.into();
+        assert_eq!(params.model, "test-model");
+        assert_eq!(params.messages.len(), 1);
+        assert_eq!(params.max_tokens, 100);
+        assert!(params.system.is_none());
+        assert!(params.stream.is_none());
+    }
+
+    #[test]
+    fn test_create_message_params_builder() {
+        let msg = Message::new_text(Role::User, "hello");
+        let required = RequiredMessageParams {
+            model: "test-model".to_string(),
+            messages: vec![msg],
+            max_tokens: 200,
+        };
+        let params = CreateMessageParams::new(required)
+            .with_system("You are a helpful assistant.")
+            .with_stream(true)
+            .with_temperature(0.7)
+            .with_top_k(40)
+            .with_top_p(0.9);
+
+        assert_eq!(
+            params.system.as_deref(),
+            Some("You are a helpful assistant.")
+        );
+        assert_eq!(params.stream, Some(true));
+        assert_eq!(params.temperature, Some(0.7));
+        assert_eq!(params.top_k, Some(40));
+        assert_eq!(params.top_p, Some(0.9));
+    }
+
+    #[test]
+    fn test_stream_event_deserialize_message_start() {
+        let json = r#"{"type":"message_start","message":{"id":"msg_001","type":"message","role":"assistant","content":[],"model":"deepseek","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":0}}}"#;
+        let event: StreamEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, StreamEvent::MessageStart { .. }));
+    }
+
+    #[test]
+    fn test_stream_event_deserialize_content_block_delta() {
+        let json = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
+        let event: StreamEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, StreamEvent::ContentBlockDelta { .. }));
+        if let StreamEvent::ContentBlockDelta { delta, .. } = &event {
+            assert!(matches!(delta, ContentBlockDelta::TextDelta { text } if text == "Hello"));
+        }
+    }
+
+    #[test]
+    fn test_stream_event_deserialize_error() {
+        let json =
+            r#"{"type":"error","error":{"type":"server_error","message":"Internal server error"}}"#;
+        let event: StreamEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, StreamEvent::Error { .. }));
+    }
+
+    #[test]
+    fn test_stream_event_deserialize_message_stop() {
+        let json = r#"{"type":"message_stop"}"#;
+        let event: StreamEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, StreamEvent::MessageStop));
+    }
+
+    #[test]
+    fn test_stream_event_deserialize_ping() {
+        let json = r#"{"type":"ping"}"#;
+        let event: StreamEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, StreamEvent::Ping));
+    }
+
+    #[test]
+    fn test_create_message_response_deserialization() {
+        let json = r#"{
+            "id": "msg_001",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Hello!"}],
+            "model": "deepseek-v4-flash",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {"input_tokens": 10, "output_tokens": 5}
+        }"#;
+        let response: CreateMessageResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.id, "msg_001");
+        assert_eq!(response.model, "deepseek-v4-flash");
+        assert_eq!(response.content.len(), 1);
+        assert_eq!(response.usage.input_tokens, 10);
+        assert_eq!(response.usage.output_tokens, 5);
+    }
+
+    #[test]
+    fn test_create_message_response_with_cache_fields() {
+        let json = r#"{
+            "id": "msg_002",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Hi"}],
+            "model": "deepseek-v4-flash",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {"input_tokens": 10, "output_tokens": 5, "cache_creation_input_tokens": 5, "cache_read_input_tokens": 0}
+        }"#;
+        let response: CreateMessageResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.usage.cache_creation_input_tokens, Some(5));
+        assert_eq!(response.usage.cache_read_input_tokens, Some(0));
+    }
+
+    #[test]
+    fn test_message_error_from_string() {
+        let error: MessageError = "something went wrong".to_string().into();
+        assert!(matches!(error, MessageError::ApiError(_)));
+        assert_eq!(error.to_string(), "API error: something went wrong");
+    }
+
+    #[test]
+    fn test_message_error_request_failed() {
+        let error = MessageError::RequestFailed("network error".to_string());
+        assert_eq!(error.to_string(), "API request failed: network error");
+    }
+}

@@ -722,6 +722,26 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_cmd_interactive_no_config() {
+        // 使用临时 HOME 确保无配置文件
+        let dir = tempfile::tempdir().unwrap();
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = cmd_interactive().await;
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("zapmyco init"));
+
+        if let Some(h) = orig_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
+    }
+
     #[test]
     fn test_build_run_options_no_profile() {
         let options = build_run_options(None);
