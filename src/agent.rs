@@ -4,7 +4,7 @@ use std::time::Instant;
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
 use zapmyco_anthropic_ai_sdk::types::message::{
     ContentBlock, ContentBlockDelta, CreateMessageParams, CreateMessageResponse, Message,
-    MessageClient, MessageError, RequiredMessageParams, Role, StreamEvent,
+    MessageClient, MessageError, RequiredMessageParams, Role, StopReason, StreamEvent, Tool,
 };
 
 use crate::conversation_logger::ConversationLogger;
@@ -41,6 +41,33 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 pub struct ConversationMessage {
     pub role: String,
     pub content: String,
+    /// 结构化内容块（用于 ToolUse/ToolResult）
+    pub blocks: Option<Vec<ContentBlock>>,
+}
+
+/// 工具处理器
+pub enum ToolHandler {
+    WebFetch(crate::web_fetch::WebFetch),
+}
+
+impl ToolHandler {
+    fn tool_definition(&self) -> Tool {
+        match self {
+            ToolHandler::WebFetch(_) => crate::web_fetch::WebFetch::tool_definition(),
+        }
+    }
+
+    async fn execute(&self, input: &serde_json::Value) -> Result<String, String> {
+        match self {
+            ToolHandler::WebFetch(fetcher) => {
+                let url = input
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing required 'url' parameter")?;
+                fetcher.fetch(url).await.map_err(|e| e.to_string())
+            }
+        }
+    }
 }
 
 /// AI Agent 类 - 封装 LLM 对话功能
@@ -51,6 +78,10 @@ pub struct AiAgent {
     system_prompt: String,
     messages: Vec<ConversationMessage>,
     logger: Option<ConversationLogger>,
+    /// 已注册的工具
+    tools: Vec<ToolHandler>,
+    /// 工具调用最大轮次
+    max_tool_rounds: u32,
 }
 
 impl AiAgent {
@@ -141,6 +172,8 @@ impl AiAgent {
             system_prompt,
             messages: Vec::new(),
             logger,
+            tools: Vec::new(),
+            max_tool_rounds: 10,
         })
     }
 
@@ -149,6 +182,7 @@ impl AiAgent {
         self.messages.push(ConversationMessage {
             role: "user".to_string(),
             content: input.to_string(),
+            blocks: None,
         });
 
         let params = self.build_params(false)?;
@@ -167,6 +201,7 @@ impl AiAgent {
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
             content: full_content.clone(),
+            blocks: None,
         });
 
         // 记录日志
@@ -186,6 +221,7 @@ impl AiAgent {
         self.messages.push(ConversationMessage {
             role: "user".to_string(),
             content: input.to_string(),
+            blocks: None,
         });
 
         let params = self.build_params(true)?;
@@ -247,6 +283,7 @@ impl AiAgent {
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
             content: full_content.clone(),
+            blocks: None,
         });
 
         // 记录日志
@@ -334,6 +371,19 @@ impl AiAgent {
         self.messages.clear();
     }
 
+    /// 注册工具处理器
+    pub fn register_tool(&mut self, handler: ToolHandler) {
+        if self.tools.is_empty() {
+            self.system_prompt = format!(
+                "{}\n\n你有以下工具可以使用：\n\
+                 - web_fetch: 获取网页内容并转换为 Markdown。当你需要访问互联网信息时使用。\n\
+                 当用户请求获取网页内容或访问互联网时，请使用 web_fetch 工具。",
+                self.system_prompt
+            );
+        }
+        self.tools.push(handler);
+    }
+
     /// 获取当前使用的模型名称
     pub fn model(&self) -> &str {
         &self.model
@@ -342,6 +392,161 @@ impl AiAgent {
     /// 获取当前对话历史
     pub fn get_messages(&self) -> &[ConversationMessage] {
         &self.messages
+    }
+
+    /// 带工具调用的对话 - 自动处理 ToolUse 循环
+    ///
+    /// 工具调用阶段使用非流式请求，最终回复使用流式输出（通过 `on_chunk` 回调）。
+    pub async fn chat_with_tools(
+        &mut self,
+        input: &str,
+        on_chunk: impl FnMut(&str),
+    ) -> Result<String, String> {
+        self.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: input.to_string(),
+            blocks: None,
+        });
+
+        for _round in 0..self.max_tool_rounds {
+            eprintln!("\n[LLM] 🤔 思考中...");
+            let params = self.build_params(false)?;
+            let start = Instant::now();
+
+            let response = self
+                .client
+                .create_message(Some(&params))
+                .await
+                .map_err(|e| format!("API request failed: {}", e))?;
+
+            let duration_ms = start.elapsed().as_millis() as u64;
+            eprintln!("[LLM] 💬 LLM 响应 ({:.1}s)", duration_ms as f64 / 1000.0);
+
+            // 检测是否有 ToolUse
+            let has_tool_use =
+                !self.tools.is_empty() && response.stop_reason == Some(StopReason::ToolUse);
+
+            if !has_tool_use {
+                // ---- 最终回复：用流式方式输出 ----
+                if let Some(ref logger) = self.logger {
+                    log_round_trip(logger, &params, &response, duration_ms);
+                }
+
+                eprintln!("\n[LLM] 📝 输出中...\n");
+                let stream_params = self.build_params(true)?;
+                let mut callback = on_chunk;
+                let mut stream = self
+                    .client
+                    .create_message_streaming(&stream_params)
+                    .await
+                    .map_err(|e| format!("API 流式请求失败: {}", e))?;
+
+                let mut full_content = String::new();
+                while let Some(event) = stream.next().await {
+                    if let StreamEvent::ContentBlockDelta {
+                        delta: ContentBlockDelta::TextDelta { text },
+                        ..
+                    } = event.map_err(|e| format!("流式读取失败: {}", e))?
+                    {
+                        full_content.push_str(&text);
+                        callback(&text);
+                    }
+                }
+
+                self.messages.push(ConversationMessage {
+                    role: "assistant".to_string(),
+                    content: full_content.clone(),
+                    blocks: None,
+                });
+
+                use std::io::Write;
+                std::io::stdout().flush().ok();
+
+                return Ok(full_content);
+            }
+
+            // ---- 工具调用处理 ----
+
+            let text_part = extract_text_from_blocks(&response.content);
+
+            // 保存 assistant 消息（包含 ToolUse blocks）
+            self.messages.push(ConversationMessage {
+                role: "assistant".to_string(),
+                content: text_part,
+                blocks: Some(response.content.clone()),
+            });
+
+            // 提取所有 ToolUse block
+            let tool_uses: Vec<(String, String, serde_json::Value)> = response
+                .content
+                .iter()
+                .filter_map(|block| {
+                    if let ContentBlock::ToolUse { id, name, input } = block {
+                        Some((id.clone(), name.clone(), input.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // 执行所有工具（带终端输出）
+            let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
+            for (tool_use_id, name, input) in &tool_uses {
+                eprintln!("\n[工具] 🔧 {} 准备调用...", name);
+
+                let handler = self
+                    .tools
+                    .iter()
+                    .find(|h| h.tool_definition().name == *name)
+                    .ok_or_else(|| format!("Unknown tool: {}", name))?;
+
+                // 显示工具参数
+                if let Some(url) = input.get("url").and_then(|v| v.as_str()) {
+                    eprintln!("[工具]   └ 参数: url = {}", url);
+                }
+
+                let start = Instant::now();
+                let result_text = match handler.execute(input).await {
+                    Ok(text) => {
+                        let elapsed = start.elapsed();
+                        eprintln!(
+                            "[工具] ✅ {} 完成 ({:.1}s, {} 字符)",
+                            name,
+                            elapsed.as_secs_f64(),
+                            text.len()
+                        );
+                        text
+                    }
+                    Err(e) => {
+                        eprintln!("[工具] ❌ {} 失败: {}", name, e);
+                        format!("[Tool error: {}]", e)
+                    }
+                };
+
+                tool_result_blocks.push(ContentBlock::ToolResult {
+                    tool_use_id: tool_use_id.clone(),
+                    content: result_text,
+                });
+            }
+
+            // 将工具结果作为用户消息追加
+            self.messages.push(ConversationMessage {
+                role: "user".to_string(),
+                content: String::new(),
+                blocks: Some(tool_result_blocks),
+            });
+
+            if let Some(ref logger) = self.logger {
+                log_round_trip(logger, &params, &response, duration_ms);
+            }
+
+            // 继续下一轮循环
+        }
+
+        Err(format!(
+            "Tool use exceeded max rounds ({})",
+            self.max_tool_rounds
+        ))
     }
 
     /// 构建请求参数
@@ -354,7 +559,11 @@ impl AiAgent {
                     "assistant" => Role::Assistant,
                     _ => Role::User,
                 };
-                Message::new_text(role, &msg.content)
+                if let Some(ref blocks) = msg.blocks {
+                    Message::new_blocks(role, blocks.clone())
+                } else {
+                    Message::new_text(role, &msg.content)
+                }
             })
             .collect();
 
@@ -370,6 +579,12 @@ impl AiAgent {
         }
         if stream {
             params = params.with_stream(true);
+        }
+
+        // 添加工具定义
+        if !self.tools.is_empty() {
+            let tool_defs: Vec<Tool> = self.tools.iter().map(|t| t.tool_definition()).collect();
+            params = params.with_tools(tool_defs);
         }
 
         Ok(params)
@@ -909,10 +1124,12 @@ mod tests {
             agent.messages.push(ConversationMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                blocks: None,
             });
             agent.messages.push(ConversationMessage {
                 role: "assistant".to_string(),
                 content: "Hi there".to_string(),
+                blocks: None,
             });
             let params = agent.build_params(false).unwrap();
             assert_eq!(params.messages.len(), 2);

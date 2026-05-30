@@ -313,7 +313,7 @@ fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
     }
 }
 
-/// run 命令 - 一次性执行 AI 任务（流式输出）
+/// run 命令 - 一次性执行 AI 任务（带工具支持）
 async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
@@ -331,8 +331,14 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let options = build_run_options(profile);
 
     let mut agent = crate::agent::AiAgent::new(options)?;
+
+    // 注册 Web Fetch 工具
+    let web_fetch = crate::web_fetch::WebFetch::new(Default::default())
+        .map_err(|e| format!("初始化 Web Fetch 失败: {}", e))?;
+    agent.register_tool(crate::agent::ToolHandler::WebFetch(web_fetch));
+
     let _response = agent
-        .chat_stream(content, |chunk| {
+        .chat_with_tools(content, |chunk| {
             print!("{}", chunk);
             use std::io::Write;
             std::io::stdout().flush().ok();

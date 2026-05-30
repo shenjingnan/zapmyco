@@ -7,6 +7,7 @@ pub mod conversation_logger;
 pub mod datetime;
 pub mod models;
 pub mod settings;
+pub mod web_fetch;
 
 #[cfg(test)]
 pub(crate) mod test_util {
