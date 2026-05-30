@@ -24,7 +24,6 @@
 ```bash
 # 开发
 cargo run                           # 直接运行（无参进入交互模式）
-cargo run -- greet <name>           # 打招呼
 cargo run -- config                 # 显示配置
 cargo run -- init                   # 交互式初始化向导
 cargo run -- settings               # 显示 LLM 配置
