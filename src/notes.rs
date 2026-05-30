@@ -245,6 +245,10 @@ impl NotesDir {
 mod tests {
     use super::*;
     use crate::test_util::run_with_temp_home;
+    #[cfg(not(windows))]
+    use std::os::unix::fs::PermissionsExt;
+
+    // ─── 基础功能 ───────────────────────────────────────
 
     #[test]
     fn test_new_creates_notes_dir() {
@@ -293,6 +297,50 @@ mod tests {
     }
 
     #[test]
+    fn test_slug_only_special_chars() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            let id = notes.create("@#$%^&*()").unwrap();
+            assert!(
+                id.contains("untitled"),
+                "全特殊字符应回退为 untitled: {}",
+                id
+            );
+        });
+    }
+
+    #[test]
+    fn test_slug_truncation() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            // 41 个字符，slug 应截取前 30 个
+            let long = "这是一段超过三十个字符的笔记标题用来测试截断功能是否正确_extra";
+            let id = notes.create(long).unwrap();
+            // 直接从磁盘读取文件名，验证 slug 部分长度
+            let file_path = notes.path.join(format!("{}.md", id));
+            assert!(file_path.exists(), "笔记文件应存在");
+            let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap();
+            // 文件名格式: YYYY-MM-DD_HHMMSS_{slug}.md
+            // slug 从第三个 _ 之后到 .md 之前
+            let slug = file_name
+                .strip_suffix(".md")
+                .unwrap()
+                .splitn(3, '_')
+                .nth(2)
+                .unwrap_or("");
+            assert_eq!(
+                slug.chars().count(),
+                30,
+                "slug 应被截断为 30 字符，实际为 {}: {}",
+                slug.chars().count(),
+                slug
+            );
+        });
+    }
+
+    // ─── 显示与搜索 ─────────────────────────────────────
+
+    #[test]
     fn test_show_note() {
         run_with_temp_home(|_home| {
             let notes = NotesDir::new().unwrap();
@@ -310,6 +358,18 @@ mod tests {
             let result = notes.show("不存在");
             assert!(result.is_err());
             assert!(result.err().unwrap().contains("未找到"));
+        });
+    }
+
+    #[test]
+    fn test_show_with_md_extension() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            let id = notes.create("扩展名测试").unwrap();
+            // 用户可能输入带 .md 后缀的 id
+            let content = notes.show(&format!("{}.md", id));
+            assert!(content.is_ok());
+            assert!(content.unwrap().contains("扩展名测试"));
         });
     }
 
@@ -343,6 +403,30 @@ mod tests {
     }
 
     #[test]
+    fn test_grep_case_insensitive() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            notes.create("Hello World").unwrap();
+            let results = notes.grep("hello").unwrap();
+            assert_eq!(results.len(), 1, "grep 应大小写不敏感");
+        });
+    }
+
+    #[test]
+    fn test_grep_match_in_id() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            // 创建一条内容不包含关键词但文件名（id）会包含的笔记
+            notes.create("foobar").unwrap();
+            // 文件名包含 foobar，搜索 foo 应匹配
+            let results = notes.grep("foo").unwrap();
+            assert_eq!(results.len(), 1, "应匹配文件名中的关键词");
+        });
+    }
+
+    // ─── 删除 ────────────────────────────────────────────
+
+    #[test]
     fn test_remove() {
         run_with_temp_home(|_home| {
             let notes = NotesDir::new().unwrap();
@@ -362,6 +446,19 @@ mod tests {
             assert!(result.is_err());
         });
     }
+
+    #[test]
+    fn test_remove_with_md_extension() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            let id = notes.create("带后缀删除").unwrap();
+            // 传入带 .md 后缀也应能删除
+            notes.remove(&format!("{}.md", id)).unwrap();
+            assert!(notes.list(10, false).unwrap().is_empty());
+        });
+    }
+
+    // ─── 列表与排序 ─────────────────────────────────────
 
     #[test]
     fn test_list_ordering_newest_first() {
@@ -413,6 +510,22 @@ mod tests {
     }
 
     #[test]
+    fn test_list_filters_non_md() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            notes.create("真实笔记").unwrap();
+            // 在笔记目录中放入非 .md 文件
+            std::fs::write(notes.path.join("junk.txt"), "not a note").unwrap();
+            std::fs::write(notes.path.join(".hidden_file"), "hidden").unwrap();
+
+            let entries = notes.list(10, false).unwrap();
+            assert_eq!(entries.len(), 1, "非 .md 文件应被过滤");
+        });
+    }
+
+    // ─── 文件名碰撞 ─────────────────────────────────────
+
+    #[test]
     fn test_filename_collision() {
         run_with_temp_home(|_home| {
             let notes = NotesDir::new().unwrap();
@@ -421,6 +534,24 @@ mod tests {
             assert_ne!(id1, id2, "同一秒的两条笔记文件名应不同");
         });
     }
+
+    #[test]
+    fn test_filename_collision_many() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            let mut ids = Vec::new();
+            // 同一秒内创建多条同名笔记
+            for _ in 0..5 {
+                ids.push(notes.create("并发笔记").unwrap());
+            }
+            let mut unique = ids.clone();
+            unique.sort();
+            unique.dedup();
+            assert_eq!(unique.len(), 5, "5 条笔记应有 5 个不同的 id");
+        });
+    }
+
+    // ─── 内容边界 ────────────────────────────────────────
 
     #[test]
     fn test_special_chars_in_content() {
@@ -445,6 +576,8 @@ mod tests {
         });
     }
 
+    // ─── 交互式编辑器 ──────────────────────────────────
+
     #[test]
     fn test_interactive_editor_fallback() {
         // 不实际调用编辑器，只验证 NotesDir::new 正常
@@ -453,6 +586,70 @@ mod tests {
             assert!(notes.path.exists());
         });
     }
+
+    #[test]
+    fn test_interactive_editor_empty_content() {
+        // EDITOR=true → 退出码 0 但不修改文件 → 内容为空 → 应报错
+        let orig_editor = std::env::var("EDITOR").ok();
+        unsafe { std::env::set_var("EDITOR", "true") };
+
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            let result = notes.create_interactive();
+            assert!(result.is_err());
+            let msg = result.err().unwrap();
+            assert!(
+                msg.contains("不能为空") || msg.contains("笔记"),
+                "空内容应报错: {}",
+                msg
+            );
+        });
+
+        match orig_editor {
+            Some(v) => unsafe { std::env::set_var("EDITOR", v) },
+            None => unsafe { std::env::remove_var("EDITOR") },
+        }
+    }
+
+    #[test]
+    fn test_interactive_editor_not_found() {
+        // 不存在的编辑器路径 → 应报错
+        let orig_editor = std::env::var("EDITOR").ok();
+        unsafe { std::env::set_var("EDITOR", "/nonexistent/editor/binary") };
+
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            let result = notes.create_interactive();
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("启动编辑器"));
+        });
+
+        match orig_editor {
+            Some(v) => unsafe { std::env::set_var("EDITOR", v) },
+            None => unsafe { std::env::remove_var("EDITOR") },
+        }
+    }
+
+    #[test]
+    fn test_interactive_editor_non_zero_exit() {
+        // false → 退出码非零 → 应报错
+        let orig_editor = std::env::var("EDITOR").ok();
+        unsafe { std::env::set_var("EDITOR", "false") };
+
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            let result = notes.create_interactive();
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("异常退出"));
+        });
+
+        match orig_editor {
+            Some(v) => unsafe { std::env::set_var("EDITOR", v) },
+            None => unsafe { std::env::remove_var("EDITOR") },
+        }
+    }
+
+    // ─── Frontmatter 边界 ──────────────────────────────
 
     #[test]
     fn test_show_by_full_path() {
@@ -487,6 +684,33 @@ mod tests {
             let has_offset =
                 date_line.contains('+') || date_line.rfind('-').map_or(false, |idx| idx > 20);
             assert!(has_offset, "时间戳应包含时区偏移: {}", date_line);
+        });
+    }
+
+    #[test]
+    fn test_list_ignores_unreadable_file() {
+        run_with_temp_home(|_home| {
+            let notes = NotesDir::new().unwrap();
+            notes.create("可读笔记").unwrap();
+            // 创建一个无权限的 .md 文件（Unix 下有效）
+            let bad_file = notes.path.join("broken_note.md");
+            std::fs::write(&bad_file, "内容").unwrap();
+            #[cfg(not(windows))]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&bad_file, std::fs::Permissions::from_mode(0o000)).ok();
+            }
+
+            let entries = notes.list(10, false).unwrap();
+            // 不可读文件应被静默跳过（read_entry 返回 None）
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].preview, "可读笔记");
+
+            // 恢复权限以便清理
+            #[cfg(not(windows))]
+            {
+                std::fs::set_permissions(&bad_file, std::fs::Permissions::from_mode(0o644)).ok();
+            }
         });
     }
 }
