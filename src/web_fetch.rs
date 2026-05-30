@@ -656,4 +656,194 @@ mod tests {
                 .contains(&serde_json::Value::String("url".to_string()))
         );
     }
+
+    // ---- URL validation edge cases ----
+
+    #[test]
+    fn test_validate_url_uppercase_http() {
+        // 大写协议 HTTP:// 应当被拒绝（starts_with 大小写敏感）
+        let result = validate_url("HTTP://example.com");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().to_string().contains("http/https"));
+    }
+
+    #[test]
+    fn test_validate_url_uppercase_https() {
+        let result = validate_url("HTTPS://example.com");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_url_with_fragment() {
+        let result = validate_url("http://example.com#section");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_url_with_query() {
+        let result = validate_url("http://example.com?q=rust&page=1");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_url_with_path() {
+        let result = validate_url("https://example.com/path/to/page.html");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_url_non_ascii_domain() {
+        // URL 字符串层面应当允许非 ASCII
+        let result = validate_url("http://例子.测试");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_url_long_url() {
+        let long = format!("https://example.com/{}", "a".repeat(2000));
+        let result = validate_url(&long);
+        assert!(result.is_ok());
+    }
+
+    // ---- HTTP error body truncation ----
+
+    #[tokio::test]
+    async fn test_fetch_http_error_body_truncated() {
+        let mock_server = MockServer::start().await;
+
+        // 返回超过 500 字符的错误 body
+        let long_body = "error ".repeat(200); // ~1200 chars
+        Mock::given(matchers::method("GET"))
+            .respond_with(ResponseTemplate::new(502).set_body_string(&long_body))
+            .mount(&mock_server)
+            .await;
+
+        let fetcher = test_fetcher();
+        let err = fetcher.fetch(&mock_server.uri()).await.unwrap_err();
+        match err {
+            WebFetchError::HttpError { status, body } => {
+                assert_eq!(status, 502);
+                assert!(
+                    body.contains("... (truncated)"),
+                    "long body should be truncated: {}",
+                    body
+                );
+                assert!(
+                    body.len() < long_body.len(),
+                    "truncated body should be shorter"
+                );
+            }
+            other => panic!("Expected HttpError, got: {}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_http_error_body_short() {
+        let mock_server = MockServer::start().await;
+
+        // 短的错误 body，不应截断
+        Mock::given(matchers::method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("Forbidden"))
+            .mount(&mock_server)
+            .await;
+
+        let fetcher = test_fetcher();
+        let err = fetcher.fetch(&mock_server.uri()).await.unwrap_err();
+        match err {
+            WebFetchError::HttpError { status, body } => {
+                assert_eq!(status, 403);
+                assert_eq!(body, "Forbidden");
+            }
+            other => panic!("Expected HttpError, got: {}", other),
+        }
+    }
+
+    // ---- Content-Type: None (accept all) ----
+
+    #[tokio::test]
+    async fn test_fetch_accept_all_content_types() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(matchers::method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/pdf")
+                    .set_body_string("%PDF-1.4 fake pdf content"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let fetcher = WebFetch::new(WebFetchOptions {
+            allowed_content_types: None,
+            ..test_fetcher().options
+        })
+        .unwrap();
+
+        let result = fetcher.fetch(&mock_server.uri()).await;
+        assert!(
+            result.is_ok(),
+            "should accept PDF when allowed_content_types is None"
+        );
+    }
+
+    // ---- map_reqwest_error timeout path (via wiremock) ----
+
+    #[tokio::test]
+    async fn test_fetch_timeout_error() {
+        let mock_server = MockServer::start().await;
+
+        // 使用超短超时 + 延迟响应来触发超时
+        Mock::given(matchers::method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(5)))
+            .mount(&mock_server)
+            .await;
+
+        let fetcher = WebFetch::new(WebFetchOptions {
+            request_timeout_secs: 1,
+            max_content_length: 10_000,
+            output_max_chars: 10_000,
+            ..Default::default()
+        })
+        .unwrap();
+
+        let err = fetcher.fetch(&mock_server.uri()).await.unwrap_err();
+        assert!(matches!(err, WebFetchError::Network(_)));
+        assert!(
+            err.to_string().contains("timed out"),
+            "timeout error should mention timeout: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fetch_too_many_redirects() {
+        let mock_server = MockServer::start().await;
+
+        // 设置一个指向自身的重定向，触发重定向限制
+        let redirect_url = format!("{}/loop", mock_server.uri());
+        let redirect_clone = redirect_url.clone();
+
+        Mock::given(matchers::method("GET"))
+            .respond_with(ResponseTemplate::new(302).insert_header("Location", &redirect_clone))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/loop"))
+            .respond_with(ResponseTemplate::new(302).insert_header("Location", &redirect_url))
+            .mount(&mock_server)
+            .await;
+
+        let fetcher = WebFetch::new(WebFetchOptions {
+            max_redirects: 3,
+            request_timeout_secs: 5,
+            max_content_length: 10_000,
+            output_max_chars: 10_000,
+            ..Default::default()
+        })
+        .unwrap();
+
+        let err = fetcher.fetch(&mock_server.uri()).await.unwrap_err();
+        assert!(matches!(err, WebFetchError::Network(_)));
+    }
 }

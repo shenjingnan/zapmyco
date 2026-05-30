@@ -1198,4 +1198,235 @@ mod tests {
             assert!(agent.logger.is_none());
         });
     }
+
+    // ---- ToolHandler tests ----
+
+    #[test]
+    fn test_tool_handler_web_fetch_tool_definition() {
+        let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+        let handler = ToolHandler::WebFetch(web_fetch);
+        let tool = handler.tool_definition();
+        assert_eq!(tool.name, "web_fetch");
+        assert!(tool.description.is_some());
+        assert!(tool.input_schema["properties"]["url"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_tool_handler_execute_missing_url() {
+        let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+        let handler = ToolHandler::WebFetch(web_fetch);
+
+        let input = serde_json::json!({});
+        let result = handler.execute(&input).await;
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("Missing required 'url'"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_handler_execute_url_not_string() {
+        let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+        let handler = ToolHandler::WebFetch(web_fetch);
+
+        let input = serde_json::json!({"url": 123});
+        let result = handler.execute(&input).await;
+        assert!(result.is_err());
+    }
+
+    // ---- register_tool tests ----
+
+    #[test]
+    fn test_register_tool_adds_to_tools() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(agent.tools.is_empty());
+
+            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+            assert_eq!(agent.tools.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_register_tool_updates_system_prompt_once() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                system_prompt: Some("原始提示".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let original_prompt = agent.system_prompt.clone();
+            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+
+            // 首次注册应该追加工具说明
+            assert!(
+                agent.system_prompt.contains("web_fetch"),
+                "system prompt should mention web_fetch: {}",
+                agent.system_prompt
+            );
+            assert!(
+                agent.system_prompt.starts_with("原始提示"),
+                "original prompt should be preserved"
+            );
+
+            // 第二次注册不应再次修改
+            let prompt_after_first = agent.system_prompt.clone();
+            let web_fetch2 = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch2));
+
+            assert_eq!(
+                agent.system_prompt, prompt_after_first,
+                "second register should not modify system prompt"
+            );
+            assert_eq!(agent.tools.len(), 2, "should have 2 tools registered");
+        });
+    }
+
+    // ---- build_params with tools and blocks ----
+
+    #[test]
+    fn test_build_params_with_tools() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // 注册工具后 build_params 应包含 tool 定义
+            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+
+            let params = agent.build_params(false).unwrap();
+            assert!(
+                params.tools.is_some(),
+                "tools should be present when tools are registered"
+            );
+            let tools = params.tools.unwrap();
+            assert_eq!(tools.len(), 1);
+            assert_eq!(tools[0].name, "web_fetch");
+        });
+    }
+
+    #[test]
+    fn test_build_params_with_tools_and_stream() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+
+            // stream=true 且 tools 注册
+            let params = agent.build_params(true).unwrap();
+            assert_eq!(params.stream, Some(true));
+            assert!(params.tools.is_some());
+        });
+    }
+
+    #[test]
+    fn test_build_params_no_tools_no_tool_field() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let params = agent.build_params(false).unwrap();
+            assert!(
+                params.tools.is_none(),
+                "tools should be None when no tools registered"
+            );
+        });
+    }
+
+    #[test]
+    fn test_build_params_with_blocks_message() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // 添加带 blocks 的消息（模拟工具结果消息）
+            agent.messages.push(ConversationMessage {
+                role: "user".to_string(),
+                content: String::new(),
+                blocks: Some(vec![ContentBlock::ToolResult {
+                    tool_use_id: "test-id".to_string(),
+                    content: "test result".to_string(),
+                }]),
+            });
+
+            let params = agent.build_params(false).unwrap();
+            assert_eq!(params.messages.len(), 1);
+            // 应使用 Blocks 而非 Text 格式
+            if let zapmyco_anthropic_ai_sdk::types::message::MessageContent::Blocks { content } =
+                &params.messages[0].content
+            {
+                assert_eq!(content.len(), 1);
+                assert!(matches!(content[0], ContentBlock::ToolResult { .. }));
+            } else {
+                panic!("Expected Blocks content for tool result message");
+            }
+        });
+    }
+
+    #[test]
+    fn test_build_params_mixed_text_and_blocks() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // text message + blocks message
+            agent.messages.push(ConversationMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+                blocks: None,
+            });
+            agent.messages.push(ConversationMessage {
+                role: "assistant".to_string(),
+                content: String::new(),
+                blocks: Some(vec![ContentBlock::ToolUse {
+                    id: "tu1".to_string(),
+                    name: "web_fetch".to_string(),
+                    input: serde_json::json!({"url": "https://example.com"}),
+                }]),
+            });
+
+            let params = agent.build_params(false).unwrap();
+            assert_eq!(params.messages.len(), 2);
+            // 第一条应该是 Text
+            assert!(matches!(
+                params.messages[0].content,
+                zapmyco_anthropic_ai_sdk::types::message::MessageContent::Text { .. }
+            ));
+            // 第二条应该是 Blocks
+            assert!(matches!(
+                params.messages[1].content,
+                zapmyco_anthropic_ai_sdk::types::message::MessageContent::Blocks { .. }
+            ));
+        });
+    }
 }
