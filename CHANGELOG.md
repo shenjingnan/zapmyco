@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/shenjingnan/zapmyco/compare/v0.26.1...v0.27.0) - 2026-05-30
+
+### Added
+
+- 添加 run_command 工具，支持 LLM 在本地执行 shell 命令 ([#335](https://github.com/shenjingnan/zapmyco/pull/335))
+
 ## [0.26.1](https://github.com/shenjingnan/zapmyco/compare/v0.26.0...v0.26.1) - 2026-05-30
 
 ### Fixed
