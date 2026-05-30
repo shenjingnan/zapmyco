@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.25.2](https://github.com/shenjingnan/zapmyco/compare/v0.25.1...v0.25.2) - 2026-05-30
+
+### Other
+
+- 优化安装文档结构和 Tabs 组件交互 ([#327](https://github.com/shenjingnan/zapmyco/pull/327))
+
 ## [0.25.1](https://github.com/shenjingnan/zapmyco/compare/v0.25.0...v0.25.1) - 2026-05-29
 
 ### Added
