@@ -337,6 +337,10 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
         .map_err(|e| format!("初始化 Web Fetch 失败: {}", e))?;
     agent.register_tool(crate::agent::ToolHandler::WebFetch(web_fetch));
 
+    // 注册命令执行工具
+    let run_cmd = crate::run_command::RunCommand::new(Default::default());
+    agent.register_tool(crate::agent::ToolHandler::RunCommand(run_cmd));
+
     let _response = agent
         .chat_with_tools(content, |chunk| {
             print!("{}", chunk);
