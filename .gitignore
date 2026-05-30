@@ -22,6 +22,9 @@ settings.local.json
 # Claude Code
 .claude/
 
+# Git worktrees
+.worktrees/
+
 # dotenv environment variable files
 .env
 .env.*
