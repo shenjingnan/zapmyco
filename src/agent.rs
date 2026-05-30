@@ -46,6 +46,10 @@ pub struct ConversationMessage {
 }
 
 /// 工具处理器
+///
+/// 该枚举使用 `#[non_exhaustive]`，因为工具类型会持续扩展。
+/// 外部代码应使用 `_` 通配模式进行匹配，以保证未来兼容。
+#[non_exhaustive]
 pub enum ToolHandler {
     WebFetch(crate::web_fetch::WebFetch),
     RunCommand(crate::run_command::RunCommand),
