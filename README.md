@@ -121,7 +121,6 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 | `zapmyco settings path` | 显示配置文件路径 |
 | `zapmyco uninstall` | 卸载 zapmyco（清理配置、收据、二进制文件） |
 | `zapmyco config` | 显示应用配置 |
-| `zapmyco greet <name>` | 打招呼（示例命令） |
 | `zapmyco --help` | 显示帮助信息 |
 | `zapmyco --version` | 显示版本号 |
 

@@ -20,7 +20,6 @@ ZapMyCo 提供简洁的命令行接口，支持以下命令。
 | `zapmyco init` | 初始化 LLM 配置向导 | — |
 | `zapmyco run <content>` | 一次性执行 AI 任务 | 是 |
 | `zapmyco settings [subcommand]` | 显示或管理 LLM 配置 | 否 |
-| `zapmyco greet <name>` | 向指定名称打招呼（示例命令） | 否 |
 | `zapmyco config` | 显示应用配置 | 否 |
 | `zapmyco uninstall` | 卸载 zapmyco | 否 |
 
@@ -128,33 +127,6 @@ zapmyco settings show     # 等同于无参数，显示完整配置
 
 ---
 
-### `greet` — 打招呼
-
-向指定名称打招呼。这是一个示例/演示命令，不涉及 AI 功能。
-
-```bash
-zapmyco greet World
-# 输出: Hello, World!
-
-zapmyco greet 张三
-# 输出: Hello, 张三!
-
-zapmyco greet "John Doe"
-# 输出: Hello, John Doe!
-```
-
-**参数说明**
-
-| 参数 | 必需 | 说明 |
-|------|:--:|------|
-| `<name>` | 是 | 要打招呼的名称，支持 Unicode 字符和空格 |
-
-**错误场景**
-
-- 名称为空时返回错误：`name cannot be empty`
-
----
-
 ### `config` — 应用配置
 
 显示当前应用配置信息：
@@ -226,9 +198,6 @@ zapmyco
 # 查看配置
 zapmyco settings
 zapmyco settings path
-
-# 打招呼
-zapmyco greet World
 
 # 查看应用配置
 zapmyco config

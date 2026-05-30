@@ -28,11 +28,6 @@ pub struct Cli {
 #[derive(Subcommand)]
 #[non_exhaustive]
 pub enum Commands {
-    /// 向指定名称打招呼
-    Greet {
-        /// 要打招呼的名称
-        name: String,
-    },
     /// 显示配置信息
     Config,
     /// 初始化 LLM 配置
@@ -64,14 +59,6 @@ pub enum Commands {
 /// 显示设置文件路径
 fn settings_path() -> String {
     settings::get_settings_path().to_string_lossy().to_string()
-}
-
-/// greet 命令
-fn cmd_greet(name: &str) -> Result<String, String> {
-    if name.is_empty() {
-        return Err("name cannot be empty".to_string());
-    }
-    Ok(format!("Hello, {}!", name))
 }
 
 /// config 命令
@@ -638,11 +625,6 @@ fn setup_shell_completion() -> Result<String, String> {
 /// CLI 入口 - 解析参数并执行对应操作
 pub async fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
-        Some(Commands::Greet { name }) => {
-            let output = cmd_greet(&name)?;
-            println!("{}", output);
-            Ok(())
-        }
         Some(Commands::Config) => {
             let output = cmd_config()?;
             println!("{}", output);
@@ -674,44 +656,6 @@ pub async fn run(cli: Cli) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::test_util::run_with_temp_home;
-
-    #[test]
-    fn test_greet_with_name() {
-        assert_eq!(cmd_greet("World").unwrap(), "Hello, World!");
-        assert_eq!(cmd_greet("TypeScript").unwrap(), "Hello, TypeScript!");
-    }
-
-    #[test]
-    fn test_greet_empty_name() {
-        let result = cmd_greet("");
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap(), "name cannot be empty");
-    }
-
-    #[test]
-    fn test_greet_with_spaces() {
-        assert_eq!(cmd_greet("John Doe").unwrap(), "Hello, John Doe!");
-    }
-
-    #[test]
-    fn test_greet_unicode() {
-        assert_eq!(cmd_greet("世界").unwrap(), "Hello, 世界!");
-    }
-
-    #[test]
-    fn test_greet_long_name() {
-        let long_name = "a".repeat(1000);
-        let result = cmd_greet(&long_name).unwrap();
-        assert_eq!(result.len(), long_name.len() + 8); // "Hello, " (7) + name + "!" (1) = name.len() + 8
-        assert!(result.starts_with("Hello, "));
-        assert!(result.ends_with('!'));
-    }
-
-    #[test]
-    fn test_greet_special_chars() {
-        assert_eq!(cmd_greet("user@company").unwrap(), "Hello, user@company!");
-        assert_eq!(cmd_greet("hello.world").unwrap(), "Hello, hello.world!");
-    }
 
     #[test]
     fn test_settings_path_contains_zapmyco() {
@@ -1212,7 +1156,6 @@ mod tests {
             "bash 补全应包含 complete -F"
         );
         for sub in &[
-            "greet",
             "config",
             "init",
             "settings",
@@ -1231,7 +1174,6 @@ mod tests {
         let output = String::from_utf8(buf).unwrap();
         assert!(output.contains("#compdef"), "zsh 补全应以 #compdef 开头");
         for sub in &[
-            "greet",
             "config",
             "init",
             "settings",
@@ -1253,7 +1195,6 @@ mod tests {
             "fish 补全应包含 complete -c"
         );
         for sub in &[
-            "greet",
             "config",
             "init",
             "settings",
@@ -1275,7 +1216,6 @@ mod tests {
             "powershell 补全应注册参数补全器"
         );
         for sub in &[
-            "greet",
             "config",
             "init",
             "settings",
@@ -1300,7 +1240,6 @@ mod tests {
             cmd_completion(shell, &mut buf);
             let output = String::from_utf8(buf).unwrap();
             for sub in &[
-                "greet",
                 "config",
                 "init",
                 "settings",
