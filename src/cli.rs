@@ -47,6 +47,11 @@ pub enum Commands {
         #[arg(long)]
         profile: Option<String>,
     },
+    /// 快速记录笔记 — 灵感、待办、想法（留空则使用编辑器交互输入）
+    Note {
+        /// 笔记内容或子命令: ls, show <id>, grep <关键词>, rm <id>
+        args: Vec<String>,
+    },
     /// 生成 shell 补全脚本
     #[command(hide = true)]
     Completion {
@@ -648,6 +653,81 @@ pub fn map_short_v_flag(args: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// note 命令 — 快速记录笔记
+fn cmd_note(args: &[String]) -> Result<(), String> {
+    let notes = crate::notes::NotesDir::new()?;
+
+    match args.first().map(|s| s.as_str()) {
+        // 交互式编辑器模式
+        None | Some("") => {
+            let id = notes.create_interactive()?;
+            println!("📝 已创建笔记: {}", id);
+            Ok(())
+        }
+        Some("ls") => {
+            let remaining: Vec<&String> = args[1..].iter().collect();
+            let all = remaining.iter().any(|s| *s == "--all" || *s == "-a");
+            let limit = remaining
+                .iter()
+                .find_map(|s| s.parse::<usize>().ok())
+                .unwrap_or(20);
+
+            let entries = notes.list(limit, all)?;
+            if entries.is_empty() {
+                println!("暂无笔记");
+                return Ok(());
+            }
+            for entry in &entries {
+                println!("{}  {}  {}", entry.id, entry.created, entry.preview);
+            }
+            Ok(())
+        }
+        Some("show") => {
+            let id = args.get(1).ok_or_else(|| {
+                "用法: note show <id>\n  例如: note show 2026-05-30_143002_修复登录页样式"
+                    .to_string()
+            })?;
+            let content = notes.show(id)?;
+            // 只显示正文（跳过 frontmatter）
+            if let Some(body) = content.split("\n---\n").nth(1) {
+                println!("{}", body.trim());
+            } else {
+                println!("{}", content.trim());
+            }
+            Ok(())
+        }
+        Some("grep") => {
+            let keyword = args
+                .get(1)
+                .ok_or_else(|| "用法: note grep <关键词>\n  例如: note grep 登录".to_string())?;
+            let entries = notes.grep(keyword)?;
+            if entries.is_empty() {
+                println!("未找到包含「{}」的笔记", keyword);
+                return Ok(());
+            }
+            for entry in &entries {
+                println!("{}  {}  {}", entry.id, entry.created, entry.preview);
+            }
+            Ok(())
+        }
+        Some("rm") => {
+            let id = args.get(1).ok_or_else(|| {
+                "用法: note rm <id>\n  例如: note rm 2026-05-30_143002_修复登录页样式".to_string()
+            })?;
+            notes.remove(id)?;
+            println!("已删除笔记: {}", id);
+            Ok(())
+        }
+        // 快速记录：将 args 用空格拼接作为内容
+        Some(_content) => {
+            let content = args.join(" ");
+            let id = notes.create(&content)?;
+            println!("📝 已创建笔记: {}", id);
+            Ok(())
+        }
+    }
+}
+
 /// CLI 入口 - 解析参数并执行对应操作
 pub async fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
@@ -669,6 +749,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             Ok(())
         }
         Some(Commands::Uninstall) => cmd_uninstall(),
+        Some(Commands::Note { args }) => cmd_note(&args),
         Some(Commands::Run { content, profile }) => cmd_run(&content, profile.as_deref()).await,
         Some(Commands::Completion { shell }) => {
             cmd_completion(shell, &mut std::io::stdout());
