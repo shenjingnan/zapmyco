@@ -959,4 +959,26 @@ mod tests {
             assert!(content.contains("100"), "日志应包含耗时");
         });
     }
+
+    #[test]
+    fn test_agent_new_logger_failure_graceful() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.toml"), "[llm]\n").unwrap();
+
+            // 将 conversations 创建为文件而非目录，使 create_dir_all 失败
+            std::fs::write(settings_dir.join("conversations"), "not a directory").unwrap();
+
+            let result = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            });
+            // 日志初始化失败不应阻止 agent 创建
+            assert!(result.is_ok());
+            // logger 字段应为 None（优雅降级）
+            let agent = result.unwrap();
+            assert!(agent.logger.is_none());
+        });
+    }
 }

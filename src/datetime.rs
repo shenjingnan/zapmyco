@@ -9,11 +9,6 @@ pub fn iso_timestamp_now() -> String {
     Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string()
 }
 
-/// 生成紧凑时间戳（本地时区）: YYMMDDHHMMSS
-pub fn compact_timestamp_now() -> String {
-    Local::now().format("%y%m%d%H%M%S").to_string()
-}
-
 /// 将 Unix 秒数转为紧凑时间戳: YYMMDDHHMMSS
 pub fn unix_ts_to_compact(secs: u64) -> String {
     let secs_i64 = secs as i64;
