@@ -688,18 +688,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_list_ignores_unreadable_file() {
         run_with_temp_home(|_home| {
             let notes = NotesDir::new().unwrap();
             notes.create("可读笔记").unwrap();
-            // 创建一个无权限的 .md 文件（Unix 下有效）
+            // 创建一个无权限的 .md 文件
             let bad_file = notes.path.join("broken_note.md");
             std::fs::write(&bad_file, "内容").unwrap();
-            #[cfg(not(windows))]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&bad_file, std::fs::Permissions::from_mode(0o000)).ok();
-            }
+            std::fs::set_permissions(&bad_file, std::fs::Permissions::from_mode(0o000)).ok();
 
             let entries = notes.list(10, false).unwrap();
             // 不可读文件应被静默跳过（read_entry 返回 None）
@@ -707,10 +704,7 @@ mod tests {
             assert_eq!(entries[0].preview, "可读笔记");
 
             // 恢复权限以便清理
-            #[cfg(not(windows))]
-            {
-                std::fs::set_permissions(&bad_file, std::fs::Permissions::from_mode(0o644)).ok();
-            }
+            std::fs::set_permissions(&bad_file, std::fs::Permissions::from_mode(0o644)).ok();
         });
     }
 }

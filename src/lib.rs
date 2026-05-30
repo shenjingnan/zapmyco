@@ -20,7 +20,10 @@ pub(crate) mod test_util {
 
     /// 获取 HOME 锁守卫
     pub(crate) fn acquire_home_lock() -> std::sync::MutexGuard<'static, ()> {
-        HOME_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+        HOME_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     /// 在临时 HOME 目录下执行测试函数
