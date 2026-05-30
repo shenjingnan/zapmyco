@@ -40,6 +40,8 @@ pub struct RunCommandOptions {
     pub timeout_secs: u64,
     /// 输出最大字符数（stdout + stderr 合计），默认 100_000
     pub output_max_chars: usize,
+    /// 跳过用户确认（用于测试和非交互环境）
+    pub skip_confirm: bool,
 }
 
 impl Default for RunCommandOptions {
@@ -47,6 +49,7 @@ impl Default for RunCommandOptions {
         Self {
             timeout_secs: 30,
             output_max_chars: 100_000,
+            skip_confirm: false,
         }
     }
 }
@@ -84,14 +87,14 @@ impl RunCommand {
                     },
                     "description": {
                         "type": "string",
-                        "description": "说明要执行的命令及其原因，有助于 LLM 推理"
+                        "description": "向用户解释为什么要执行此命令及预期效果，帮助用户理解并决定是否授权"
                     },
                     "working_directory": {
                         "type": "string",
                         "description": "命令执行的工作目录（绝对路径）。不指定则使用当前目录"
                     }
                 },
-                "required": ["command"]
+                "required": ["command", "description"]
             }),
         }
     }
@@ -126,7 +129,13 @@ impl RunCommand {
             cmd.current_dir(dir);
         }
 
-        // 3. 执行带超时
+        // 3. 用户确认（非跳过模式）
+        if !self.options.skip_confirm && !prompt_confirm(command, _description) {
+            eprintln!("[run_command] ❌ 已取消");
+            return Ok("Command not executed (cancelled by user)".to_string());
+        }
+
+        // 4. 执行带超时
         let timeout = std::time::Duration::from_secs(self.options.timeout_secs);
 
         let output = tokio::time::timeout(timeout, cmd.output())
@@ -187,6 +196,41 @@ impl RunCommand {
 }
 
 // ---------------------------------------------------------------------------
+// User confirmation
+// ---------------------------------------------------------------------------
+
+/// 提示用户确认是否执行命令
+///
+/// 在终端交互环境下显示命令详情并询问用户是否确认执行。
+/// 非 TTY 环境下默认拒绝执行。
+fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
+    use std::io::IsTerminal;
+
+    if !std::io::stdin().is_terminal() {
+        return false;
+    }
+
+    eprintln!();
+    eprintln!("[工具] ⚠️  准备执行命令:");
+    if let Some(desc) = description {
+        let truncated = if desc.len() > 100 {
+            format!("{}...", &desc[..100])
+        } else {
+            desc.to_string()
+        };
+        eprintln!("  └ 描述: {}", truncated);
+    }
+    eprintln!("  └ 命令: {}", command);
+
+    inquire::Select::new("是否确认执行？", vec!["1. 允许", "0. 拒绝"])
+        .with_vim_mode(true)
+        .prompt()
+        .ok()
+        .map(|s| s.starts_with('1'))
+        .unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -199,6 +243,7 @@ mod tests {
         RunCommand::new(RunCommandOptions {
             timeout_secs: 5,
             output_max_chars: 10_000,
+            skip_confirm: true,
         })
     }
 
@@ -225,20 +270,17 @@ mod tests {
             serde_json::Value::String("object".to_string())
         );
         assert!(tool.input_schema["properties"]["command"].is_object());
-        assert!(
-            tool.input_schema["required"]
-                .as_array()
-                .unwrap()
-                .contains(&serde_json::Value::String("command".to_string()))
-        );
+        let required = tool.input_schema["required"].as_array().unwrap();
+        assert!(required.contains(&serde_json::Value::String("command".to_string())));
+        assert!(required.contains(&serde_json::Value::String("description".to_string())));
     }
 
     #[test]
-    fn test_tool_definition_optional_fields() {
+    fn test_tool_definition_required_fields() {
         let tool = RunCommand::tool_definition();
-        let properties = tool.input_schema["properties"].as_object().unwrap();
-        assert!(properties.contains_key("description"));
-        assert!(properties.contains_key("working_directory"));
+        let required = tool.input_schema["required"].as_array().unwrap();
+        assert!(required.contains(&serde_json::Value::String("command".to_string())));
+        assert!(required.contains(&serde_json::Value::String("description".to_string())));
     }
 
     // ---- Execution tests ----
@@ -335,6 +377,7 @@ mod tests {
         let executor = RunCommand::new(RunCommandOptions {
             timeout_secs: 1,
             output_max_chars: 10_000,
+            skip_confirm: true,
         });
 
         let result = executor.execute("sleep 10", None, None).await;
@@ -352,6 +395,7 @@ mod tests {
         let executor = RunCommand::new(RunCommandOptions {
             timeout_secs: 5,
             output_max_chars: 100, // 很小的限制
+            skip_confirm: true,
         });
 
         // 生成超过 100 字符的输出
@@ -379,6 +423,7 @@ mod tests {
         let executor = RunCommand::new(RunCommandOptions::default());
         assert_eq!(executor.options.timeout_secs, 30);
         assert_eq!(executor.options.output_max_chars, 100_000);
+        assert!(!executor.options.skip_confirm);
     }
 
     #[test]
@@ -386,9 +431,11 @@ mod tests {
         let executor = RunCommand::new(RunCommandOptions {
             timeout_secs: 60,
             output_max_chars: 50_000,
+            skip_confirm: true,
         });
         assert_eq!(executor.options.timeout_secs, 60);
         assert_eq!(executor.options.output_max_chars, 50_000);
+        assert!(executor.options.skip_confirm);
     }
 
     // ---- Signal termination (exit without code) ----

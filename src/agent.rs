@@ -1295,9 +1295,16 @@ mod tests {
 
     // ---- RunCommand ToolHandler tests ----
 
+    fn make_test_executor() -> crate::run_command::RunCommand {
+        crate::run_command::RunCommand::new(crate::run_command::RunCommandOptions {
+            skip_confirm: true,
+            ..Default::default()
+        })
+    }
+
     #[test]
     fn test_tool_handler_run_command_tool_definition() {
-        let executor = crate::run_command::RunCommand::new(Default::default());
+        let executor = make_test_executor();
         let handler = ToolHandler::RunCommand(executor);
         let tool = handler.tool_definition();
         assert_eq!(tool.name, "run_command");
@@ -1307,7 +1314,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_handler_run_command_missing_cmd() {
-        let executor = crate::run_command::RunCommand::new(Default::default());
+        let executor = make_test_executor();
         let handler = ToolHandler::RunCommand(executor);
         let input = serde_json::json!({});
         let result = handler.execute(&input).await;
@@ -1317,7 +1324,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_handler_run_command_success() {
-        let executor = crate::run_command::RunCommand::new(Default::default());
+        let executor = make_test_executor();
         let handler = ToolHandler::RunCommand(executor);
         let input = serde_json::json!({"command": "echo hello"});
         let result = handler.execute(&input).await;
@@ -1327,7 +1334,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_handler_run_command_with_description() {
-        let executor = crate::run_command::RunCommand::new(Default::default());
+        let executor = make_test_executor();
         let handler = ToolHandler::RunCommand(executor);
         let input = serde_json::json!({
             "command": "echo hello",
@@ -1339,7 +1346,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_handler_run_command_with_working_dir() {
-        let executor = crate::run_command::RunCommand::new(Default::default());
+        let executor = make_test_executor();
         let handler = ToolHandler::RunCommand(executor);
         let dir = std::env::temp_dir();
         let input = serde_json::json!({
