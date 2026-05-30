@@ -582,4 +582,31 @@ advanced = "deepseek-reasoner"
         let masked = settings.masked();
         assert!(masked.llm.is_none());
     }
+
+    #[test]
+    fn test_is_conversation_log_enabled_default_true() {
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+        };
+        assert!(is_conversation_log_enabled(&settings));
+    }
+
+    #[test]
+    fn test_is_conversation_log_enabled_explicit_true() {
+        let settings = Settings {
+            llm: None,
+            conversation_log: Some(ConversationLogSettings { enabled: true }),
+        };
+        assert!(is_conversation_log_enabled(&settings));
+    }
+
+    #[test]
+    fn test_is_conversation_log_enabled_explicit_false() {
+        let settings = Settings {
+            llm: None,
+            conversation_log: Some(ConversationLogSettings { enabled: false }),
+        };
+        assert!(!is_conversation_log_enabled(&settings));
+    }
 }

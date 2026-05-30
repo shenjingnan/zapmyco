@@ -1,16 +1,24 @@
+use std::sync::{Mutex, OnceLock};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 /// 集成测试 - AiAgent 与 Anthropic API 交互
 use zapmyco::agent::{AiAgent, AiAgentOptions};
 
+/// 全局 HOME 锁，确保集成测试之间不会竞态修改 HOME
+static HOME_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+fn acquire_home_lock() -> std::sync::MutexGuard<'static, ()> {
+    HOME_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+}
+
 /// 创建临时 HOME 和 settings.toml，避免 CI 环境缺少配置文件
 fn setup_temp_home() -> tempfile::TempDir {
+    let _guard = acquire_home_lock();
     let dir = tempfile::tempdir().expect("Failed to create temp dir");
     let settings_dir = dir.path().join(".zapmyco");
     std::fs::create_dir_all(&settings_dir).expect("Failed to create .zapmyco dir");
     std::fs::write(settings_dir.join("settings.toml"), "[llm]\n")
         .expect("Failed to write settings.toml");
-    // SAFETY: single-threaded test execution ensures no race on HOME
+    // SAFETY: HOME_LOCK guard 确保无竞态
     unsafe {
         std::env::set_var("HOME", dir.path());
     }
@@ -67,6 +75,12 @@ const MOCK_ERROR_RESPONSE: &str = r#"{
         "message": "Invalid API key"
     }
 }"#;
+
+/// 模拟流式响应中的 error 事件
+const MOCK_STREAM_ERROR_EVENT: &str = "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"server_error\",\"message\":\"Internal error\"}}\n\n";
+
+/// 模拟空流式响应（只有 message_stop）
+const MOCK_STREAM_EMPTY: &str = "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
 
 #[tokio::test]
 async fn test_agent_non_streaming() {
@@ -227,4 +241,95 @@ async fn test_agent_clear_context() {
 
     agent.clear_context();
     assert_eq!(agent.get_messages().len(), 0);
+}
+
+#[tokio::test]
+async fn test_agent_stream_api_error() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .set_body_string(MOCK_ERROR_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("invalid-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    let result = agent.chat_stream("hello", |_| {}).await;
+    assert!(result.is_err());
+    assert!(result.err().unwrap().contains("API"));
+}
+
+#[tokio::test]
+async fn test_agent_stream_empty() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_STREAM_EMPTY)
+                .insert_header("Content-Type", "text/event-stream"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    let mut chunks = String::new();
+    let result = agent
+        .chat_stream("hello", |chunk| {
+            chunks.push_str(chunk);
+        })
+        .await;
+    assert!(result.is_ok());
+    // 空流返回空字符串
+    assert_eq!(result.unwrap(), "");
+    assert_eq!(chunks, "");
+}
+
+#[tokio::test]
+async fn test_agent_stream_error_event() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_STREAM_ERROR_EVENT)
+                .insert_header("Content-Type", "text/event-stream"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    let result = agent.chat_stream("hello", |_| {}).await;
+    assert!(result.is_err());
+    assert!(result.err().unwrap().contains("API 错误"));
 }

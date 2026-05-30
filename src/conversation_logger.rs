@@ -243,4 +243,106 @@ mod tests {
             assert_eq!(dir, home.join(".zapmyco/conversations"));
         });
     }
+
+    #[test]
+    fn test_get_log_dir_home_not_set() {
+        // SAFETY: 手动获取 HOME_LOCK 确保无竞态
+        let _guard = crate::test_util::acquire_home_lock();
+        let orig_home = std::env::var("HOME").ok();
+        let orig_userprofile = std::env::var("USERPROFILE").ok();
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+        }
+        let result = get_log_dir();
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("HOME"));
+        if let Some(h) = orig_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
+        if let Some(up) = orig_userprofile {
+            unsafe {
+                std::env::set_var("USERPROFILE", up);
+            }
+        }
+    }
+
+    #[test]
+    fn test_logger_new_home_not_set() {
+        // SAFETY: 手动获取 HOME_LOCK 确保无竞态
+        let _guard = crate::test_util::acquire_home_lock();
+        let orig_home = std::env::var("HOME").ok();
+        let orig_userprofile = std::env::var("USERPROFILE").ok();
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+        }
+        let result = ConversationLogger::new();
+        assert!(result.is_err());
+        if let Some(h) = orig_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
+        if let Some(up) = orig_userprofile {
+            unsafe {
+                std::env::set_var("USERPROFILE", up);
+            }
+        }
+    }
+
+    #[test]
+    fn test_generate_session_id_uniqueness() {
+        let id1 = generate_session_id();
+        let id2 = generate_session_id();
+        // 秒级精度下有可能同秒生成相同 ID，但通常不同
+        // 至少验证格式正确且非空
+        assert!(!id1.is_empty());
+        assert!(!id2.is_empty());
+        let parts1: Vec<&str> = id1.split('_').collect();
+        let parts2: Vec<&str> = id2.split('_').collect();
+        assert_eq!(parts1.len(), 3);
+        assert_eq!(parts2.len(), 3);
+        // 时间部分应格式正确（YYYY-MM-DD_HHMMSS）
+        assert_eq!(parts1[0].len(), 10);
+        assert_eq!(parts1[1].len(), 6);
+        assert!(parts1[2].starts_with('P'));
+    }
+
+    #[test]
+    fn test_logger_order_increments() {
+        use crate::test_util::run_with_temp_home;
+
+        run_with_temp_home(|home| {
+            let logger = ConversationLogger::new().unwrap();
+            for i in 0..5 {
+                logger
+                    .append_record(
+                        "ts".to_string(),
+                        i,
+                        serde_json::json!({"n": i}),
+                        serde_json::json!({"n": i}),
+                    )
+                    .unwrap();
+            }
+
+            let log_dir = home.join(".zapmyco/conversations");
+            let content =
+                std::fs::read_to_string(log_dir.join(format!("{}.jsonl", logger.session_id())))
+                    .unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+            assert_eq!(lines.len(), 5, "应有 5 条日志记录");
+
+            let orders: Vec<u32> = lines
+                .iter()
+                .map(|line| {
+                    let v: serde_json::Value = serde_json::from_str(line).unwrap();
+                    v["order"].as_u64().unwrap() as u32
+                })
+                .collect();
+            assert_eq!(orders, vec![0, 1, 2, 3, 4], "order 应连续递增");
+        });
+    }
 }

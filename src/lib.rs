@@ -16,7 +16,7 @@ pub(crate) mod test_util {
     static HOME_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     /// 获取 HOME 锁守卫
-    fn acquire_home_lock() -> std::sync::MutexGuard<'static, ()> {
+    pub(crate) fn acquire_home_lock() -> std::sync::MutexGuard<'static, ()> {
         HOME_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
     }
 
