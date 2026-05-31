@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.29.0](https://github.com/shenjingnan/zapmyco/compare/v0.28.0...v0.29.0) - 2026-05-31
+
+### Other
+
+- *(cli)* [**breaking**] 将 note 子命令重构为 clap 枚举子命令 ([#341](https://github.com/shenjingnan/zapmyco/pull/341))
+
 ## [0.28.0](https://github.com/shenjingnan/zapmyco/compare/v0.27.0...v0.28.0) - 2026-05-30
 
 ### Added
