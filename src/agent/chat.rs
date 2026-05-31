@@ -54,6 +54,7 @@ pub enum ToolHandler {
     WebFetch(crate::tools::web_fetch::WebFetch),
     RunCommand(crate::tools::run_command::RunCommand),
     WebSearch(crate::tools::web_search::WebSearch),
+    Grep(crate::tools::grep::Grep),
 }
 
 impl ToolHandler {
@@ -62,6 +63,7 @@ impl ToolHandler {
             ToolHandler::WebFetch(_) => crate::tools::web_fetch::WebFetch::tool_definition(),
             ToolHandler::RunCommand(_) => crate::tools::run_command::RunCommand::tool_definition(),
             ToolHandler::WebSearch(_) => crate::tools::web_search::WebSearch::tool_definition(),
+            ToolHandler::Grep(_) => crate::tools::grep::Grep::tool_definition(),
         }
     }
 
@@ -87,6 +89,7 @@ impl ToolHandler {
                     .map_err(|e| e.to_string())
             }
             ToolHandler::WebSearch(searcher) => searcher.execute(input).await,
+            ToolHandler::Grep(grep) => grep.execute(input).await.map_err(|e| e.to_string()),
         }
     }
 }
@@ -421,6 +424,9 @@ impl AiAgent {
                 ToolHandler::WebSearch(_) => {
                     "- web_search: 搜索网络获取实时信息。当你需要查询当前新闻、文档、趋势等实时信息时使用。支持 query（搜索关键词）、allowed_domains（限定域名）、blocked_domains（排除域名）参数。"
                 }
+                ToolHandler::Grep(_) => {
+                    "- grep: 在本地文件系统中使用 ripgrep (rg) 搜索文件内容，支持正则表达式。参数包括 pattern（必填，正则模式串）、path（搜索路径，默认当前目录）、glob（文件通配符过滤）、output_mode（输出模式：content/files_with_matches/count）、-A/-B/-C（上下文行数）、-i（忽略大小写）、head_limit（最大结果行数，默认250）、offset（跳过前N条）、multiline（多行模式）、type（文件类型过滤如 rust/js/py）。"
+                }
             };
             self.system_prompt.push_str(desc);
             self.system_prompt.push('\n');
@@ -584,6 +590,26 @@ impl AiAgent {
                         }
                     }
                     _ => {}
+                }
+
+                // 显示 Grep 工具参数
+                if name == "grep" {
+                    if let Some(p) = input.get("pattern").and_then(|v| v.as_str()) {
+                        let truncated = if p.len() > 80 {
+                            format!("{}...", &p[..80])
+                        } else {
+                            p.to_string()
+                        };
+                        eprintln!("[工具]   └ 模式: {}", truncated);
+                    }
+                    if let Some(p) = input.get("path").and_then(|v| v.as_str()) {
+                        eprintln!("[工具]   └ 路径: {}", p);
+                    }
+                    if let Some(m) = input.get("output_mode").and_then(|v| v.as_str())
+                        && m != "content"
+                    {
+                        eprintln!("[工具]   └ 模式: {}", m);
+                    }
                 }
 
                 let start = Instant::now();
