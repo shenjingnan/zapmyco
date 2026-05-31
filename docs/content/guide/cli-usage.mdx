@@ -146,6 +146,16 @@ zapmyco run --profile advanced 重构这个模块
 
 **行为说明**：AI 响应以**流式输出**方式逐字显示，完成后自动退出。
 
+**工具支持**：`run` 命令内置了 3 个 AI Agent 工具，AI Agent 会自动判断何时使用它们：
+
+| 工具 | 功能 |
+|------|------|
+| `web_fetch` | 获取网页内容并转为 Markdown |
+| `web_search` | 搜索网络获取实时信息 |
+| `run_command` | 在本地执行 shell 命令（需用户确认） |
+
+详细说明请参见[内置工具](/guide/built-in-tools)。
+
 ---
 
 ### `settings` — 配置管理
