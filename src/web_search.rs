@@ -168,13 +168,35 @@ pub fn tool_description() -> &'static str {
 mod tests {
     use super::*;
 
+    fn make_test_web_search() -> WebSearch {
+        WebSearch::new(
+            "test-key".to_string(),
+            "https://api.example.com".to_string(),
+            "test-model".to_string(),
+            4096,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_new_success() {
+        let ws = WebSearch::new("test-key".into(), "https://x.com".into(), "m".into(), 100);
+        assert!(ws.is_ok());
+    }
+
+    #[test]
+    fn test_new_empty_api_key() {
+        let ws = WebSearch::new("".into(), "https://x.com".into(), "m".into(), 100);
+        assert!(ws.is_ok());
+    }
+
     #[test]
     fn test_tool_definition_name() {
         let tool = WebSearch::tool_definition();
         assert_eq!(tool.name, "web_search");
         assert!(tool.description.is_some());
         assert!(tool.input_schema.is_some());
-        assert!(tool.tool_type.is_none()); // tool_type only set in sub-request
+        assert!(tool.tool_type.is_none());
     }
 
     #[test]
@@ -192,7 +214,6 @@ mod tests {
 
     #[test]
     fn test_sub_request_tool_schema() {
-        // 验证子请求中构造的 web_search_20250305 tool schema
         let tool = Tool {
             name: "web_search".to_string(),
             tool_type: Some("web_search_20250305".to_string()),
@@ -203,8 +224,28 @@ mod tests {
         };
         assert_eq!(tool.tool_type.as_ref().unwrap(), "web_search_20250305");
         assert_eq!(tool.max_uses, Some(8));
-        assert!(tool.input_schema.is_none()); // server-side tool 不需要 input_schema
+        assert!(tool.input_schema.is_none());
         assert!(tool.description.is_none());
+    }
+
+    #[test]
+    fn test_sub_request_tool_schema_with_domains() {
+        let tool = Tool {
+            name: "web_search".to_string(),
+            tool_type: Some("web_search_20250305".to_string()),
+            max_uses: Some(8),
+            allowed_domains: Some(vec!["rust-lang.org".to_string()]),
+            blocked_domains: Some(vec!["example.com".to_string()]),
+            ..Default::default()
+        };
+        assert_eq!(
+            tool.allowed_domains.as_ref().unwrap(),
+            &["rust-lang.org".to_string()]
+        );
+        assert_eq!(
+            tool.blocked_domains.as_ref().unwrap(),
+            &["example.com".to_string()]
+        );
     }
 
     #[test]
@@ -212,5 +253,40 @@ mod tests {
         let desc = tool_description();
         assert!(!desc.is_empty());
         assert!(desc.contains("web_search"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_missing_query() {
+        let ws = make_test_web_search();
+        let result = ws.execute(&serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("Missing required 'query'"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_query_not_string() {
+        let ws = make_test_web_search();
+        let result = ws.execute(&serde_json::json!({"query": 123})).await;
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("Missing required 'query'"));
+    }
+
+    #[test]
+    fn test_execute_domain_filter_extraction() {
+        let input = serde_json::json!({
+            "query": "test",
+            "allowed_domains": ["good.com"],
+            "blocked_domains": ["bad.com"]
+        });
+        let query = input.get("query").and_then(|v| v.as_str()).unwrap();
+        assert_eq!(query, "test");
+        let allowed: Option<Vec<String>> = input
+            .get("allowed_domains")
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        assert_eq!(allowed, Some(vec!["good.com".to_string()]));
+        let blocked: Option<Vec<String>> = input
+            .get("blocked_domains")
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        assert_eq!(blocked, Some(vec!["bad.com".to_string()]));
     }
 }

@@ -1609,4 +1609,131 @@ mod tests {
             ));
         });
     }
+
+    // ---- WebSearch ToolHandler tests ----
+
+    #[test]
+    fn test_tool_handler_web_search_tool_definition() {
+        let ws =
+            crate::web_search::WebSearch::new("k".into(), "https://x.com".into(), "m".into(), 100)
+                .unwrap();
+        let handler = ToolHandler::WebSearch(ws);
+        let tool = handler.tool_definition();
+        assert_eq!(tool.name, "web_search");
+        assert!(tool.description.is_some());
+        assert!(tool.input_schema.is_some());
+        assert!(tool.tool_type.is_none());
+    }
+
+    #[test]
+    fn test_register_web_search_adds_to_tools() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(agent.tools.is_empty());
+
+            let ws = crate::web_search::WebSearch::new(
+                "k".into(),
+                "https://x.com".into(),
+                "m".into(),
+                100,
+            )
+            .unwrap();
+            agent.register_tool(ToolHandler::WebSearch(ws));
+            assert_eq!(agent.tools.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_register_web_search_updates_system_prompt() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                system_prompt: Some("原始提示".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let ws = crate::web_search::WebSearch::new(
+                "k".into(),
+                "https://x.com".into(),
+                "m".into(),
+                100,
+            )
+            .unwrap();
+            agent.register_tool(ToolHandler::WebSearch(ws));
+
+            assert!(
+                agent.system_prompt.contains("web_search"),
+                "system prompt should mention web_search: {}",
+                agent.system_prompt
+            );
+            assert!(
+                agent.system_prompt.starts_with("原始提示"),
+                "original prompt should be preserved"
+            );
+        });
+    }
+
+    // ---- AiAgent getter tests ----
+
+    #[test]
+    fn test_agent_api_key_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("custom-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.api_key(), "custom-key");
+        });
+    }
+
+    #[test]
+    fn test_agent_base_url_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("k".to_string()),
+                base_url: Some("https://custom.example.com".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.api_base_url(), "https://custom.example.com");
+        });
+    }
+
+    #[test]
+    fn test_agent_model_name_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("k".to_string()),
+                model: Some("custom-model".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.model_name(), "custom-model");
+        });
+    }
+
+    #[test]
+    fn test_agent_max_tokens_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("k".to_string()),
+                max_tokens: Some(8192),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.max_tokens(), 8192);
+        });
+    }
 }
