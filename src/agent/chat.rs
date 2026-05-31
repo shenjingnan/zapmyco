@@ -7,10 +7,10 @@ use zapmyco_anthropic_ai_sdk::types::message::{
     MessageClient, MessageError, RequiredMessageParams, Role, StopReason, StreamEvent, Tool,
 };
 
-use crate::conversation_logger::ConversationLogger;
+use crate::agent::conversation_logger::ConversationLogger;
+use crate::config::models::get_model_info;
+use crate::config::settings::{is_conversation_log_enabled, load_settings, resolve_env_ref};
 use crate::datetime;
-use crate::models::get_model_info;
-use crate::settings::{is_conversation_log_enabled, load_settings, resolve_env_ref};
 
 /// AiAgent 配置选项
 #[derive(Debug, Default)]
@@ -51,17 +51,17 @@ pub struct ConversationMessage {
 /// 外部代码应使用 `_` 通配模式进行匹配，以保证未来兼容。
 #[non_exhaustive]
 pub enum ToolHandler {
-    WebFetch(crate::web_fetch::WebFetch),
-    RunCommand(crate::run_command::RunCommand),
-    WebSearch(crate::web_search::WebSearch),
+    WebFetch(crate::tools::web_fetch::WebFetch),
+    RunCommand(crate::tools::run_command::RunCommand),
+    WebSearch(crate::tools::web_search::WebSearch),
 }
 
 impl ToolHandler {
     fn tool_definition(&self) -> Tool {
         match self {
-            ToolHandler::WebFetch(_) => crate::web_fetch::WebFetch::tool_definition(),
-            ToolHandler::RunCommand(_) => crate::run_command::RunCommand::tool_definition(),
-            ToolHandler::WebSearch(_) => crate::web_search::WebSearch::tool_definition(),
+            ToolHandler::WebFetch(_) => crate::tools::web_fetch::WebFetch::tool_definition(),
+            ToolHandler::RunCommand(_) => crate::tools::run_command::RunCommand::tool_definition(),
+            ToolHandler::WebSearch(_) => crate::tools::web_search::WebSearch::tool_definition(),
         }
     }
 
@@ -118,7 +118,7 @@ impl AiAgent {
             .ok_or_else(|| {
                 format!(
                     "未找到配置文件 {}。请先运行 `zapmyco init` 初始化 LLM 配置。",
-                    crate::settings::get_settings_path().display()
+                    crate::config::settings::get_settings_path().display()
                 )
             })?;
         let llm = settings.llm.as_ref();
@@ -697,7 +697,7 @@ impl AiAgent {
 /// 解析 API Key
 pub(crate) fn resolve_api_key(
     explicit_key: Option<&str>,
-    llm: Option<&crate::settings::LlmSettings>,
+    llm: Option<&crate::config::settings::LlmSettings>,
     provider_name: &str,
 ) -> Result<String, String> {
     if let Some(key) = explicit_key.filter(|k| !k.is_empty()) {
@@ -923,7 +923,7 @@ mod tests {
 
     #[test]
     fn test_resolve_api_key_from_provider() {
-        use crate::settings::{LlmSettings, ProviderConfig};
+        use crate::config::settings::{LlmSettings, ProviderConfig};
         use std::collections::HashMap;
 
         let mut providers = HashMap::new();
@@ -962,7 +962,7 @@ mod tests {
 
     #[test]
     fn test_resolve_api_key_env_ref_in_provider() {
-        use crate::settings::{LlmSettings, ProviderConfig};
+        use crate::config::settings::{LlmSettings, ProviderConfig};
         use std::collections::HashMap;
 
         // 供应商 key 为 ${env.xxx} 格式时需解析
@@ -989,7 +989,7 @@ mod tests {
 
     #[test]
     fn test_resolve_api_key_prefer_explicit_over_provider() {
-        use crate::settings::{LlmSettings, ProviderConfig};
+        use crate::config::settings::{LlmSettings, ProviderConfig};
         use std::collections::HashMap;
 
         let mut providers = HashMap::new();
@@ -1087,7 +1087,7 @@ mod tests {
 
     #[test]
     fn test_resolve_api_key_provider_none_key() {
-        use crate::settings::{LlmSettings, ProviderConfig};
+        use crate::config::settings::{LlmSettings, ProviderConfig};
         use std::collections::HashMap;
 
         let mut providers = HashMap::new();
@@ -1112,7 +1112,7 @@ mod tests {
 
     #[test]
     fn test_resolve_api_key_provider_empty_key() {
-        use crate::settings::{LlmSettings, ProviderConfig};
+        use crate::config::settings::{LlmSettings, ProviderConfig};
         use std::collections::HashMap;
 
         let mut providers = HashMap::new();
@@ -1245,7 +1245,7 @@ mod tests {
     #[test]
     fn test_log_round_trip_writes_record() {
         run_with_temp_home(|home| {
-            let logger = crate::conversation_logger::ConversationLogger::new().unwrap();
+            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
 
             let params = CreateMessageParams::new(RequiredMessageParams {
                 model: "test-model".to_string(),
@@ -1306,7 +1306,7 @@ mod tests {
 
     #[test]
     fn test_tool_handler_web_fetch_tool_definition() {
-        let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+        let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
         let handler = ToolHandler::WebFetch(web_fetch);
         let tool = handler.tool_definition();
         assert_eq!(tool.name, "web_fetch");
@@ -1316,7 +1316,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_handler_execute_missing_url() {
-        let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+        let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
         let handler = ToolHandler::WebFetch(web_fetch);
 
         let input = serde_json::json!({});
@@ -1327,7 +1327,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_handler_execute_url_not_string() {
-        let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+        let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
         let handler = ToolHandler::WebFetch(web_fetch);
 
         let input = serde_json::json!({"url": 123});
@@ -1337,8 +1337,8 @@ mod tests {
 
     // ---- RunCommand ToolHandler tests ----
 
-    fn make_test_executor() -> crate::run_command::RunCommand {
-        crate::run_command::RunCommand::new(crate::run_command::RunCommandOptions {
+    fn make_test_executor() -> crate::tools::run_command::RunCommand {
+        crate::tools::run_command::RunCommand::new(crate::tools::run_command::RunCommandOptions {
             skip_confirm: true,
             ..Default::default()
         })
@@ -1415,7 +1415,7 @@ mod tests {
             .unwrap();
             assert!(agent.tools.is_empty());
 
-            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch));
             assert_eq!(agent.tools.len(), 1);
         });
@@ -1432,7 +1432,7 @@ mod tests {
             })
             .unwrap();
 
-            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch));
 
             // 首次注册应该追加工具说明
@@ -1454,7 +1454,7 @@ mod tests {
             );
 
             // 第二次注册，system prompt 应更新包含更多工具
-            let web_fetch2 = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            let web_fetch2 = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch2));
 
             // 提示词被重建，工具数增加
@@ -1483,7 +1483,7 @@ mod tests {
             .unwrap();
 
             // 注册工具后 build_params 应包含 tool 定义
-            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch));
 
             let params = agent.build_params(false).unwrap();
@@ -1507,7 +1507,7 @@ mod tests {
             })
             .unwrap();
 
-            let web_fetch = crate::web_fetch::WebFetch::new(Default::default()).unwrap();
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch));
 
             // stream=true 且 tools 注册
@@ -1614,9 +1614,13 @@ mod tests {
 
     #[test]
     fn test_tool_handler_web_search_tool_definition() {
-        let ws =
-            crate::web_search::WebSearch::new("k".into(), "https://x.com".into(), "m".into(), 100)
-                .unwrap();
+        let ws = crate::tools::web_search::WebSearch::new(
+            "k".into(),
+            "https://x.com".into(),
+            "m".into(),
+            100,
+        )
+        .unwrap();
         let handler = ToolHandler::WebSearch(ws);
         let tool = handler.tool_definition();
         assert_eq!(tool.name, "web_search");
@@ -1636,7 +1640,7 @@ mod tests {
             .unwrap();
             assert!(agent.tools.is_empty());
 
-            let ws = crate::web_search::WebSearch::new(
+            let ws = crate::tools::web_search::WebSearch::new(
                 "k".into(),
                 "https://x.com".into(),
                 "m".into(),
@@ -1659,7 +1663,7 @@ mod tests {
             })
             .unwrap();
 
-            let ws = crate::web_search::WebSearch::new(
+            let ws = crate::tools::web_search::WebSearch::new(
                 "k".into(),
                 "https://x.com".into(),
                 "m".into(),
