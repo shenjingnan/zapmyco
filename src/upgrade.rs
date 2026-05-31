@@ -322,6 +322,7 @@ fn upgrade_completion() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::run_with_temp_home;
 
     #[test]
     fn test_compare_versions_equal() {
@@ -351,7 +352,6 @@ mod tests {
 
     #[test]
     fn test_detect_target_triple() {
-        // Just verify it returns Ok on supported platforms or Err with a message
         let result = detect_target_triple();
         if let Ok(triple) = result {
             assert!(
@@ -360,5 +360,134 @@ mod tests {
                 triple
             );
         }
+    }
+
+    // —————— locate_binary ——————
+
+    #[test]
+    fn test_locate_binary_in_subdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let triple = "x86_64-unknown-linux-gnu";
+        let binary = "zapmyco";
+
+        // 创建预期的子目录结构: dir/zapmyco-{triple}/{binary}
+        let subdir = dir.path().join(format!("zapmyco-{}", triple));
+        std::fs::create_dir_all(&subdir).unwrap();
+        std::fs::write(subdir.join(binary), "content").unwrap();
+
+        let result = locate_binary(dir.path(), triple, binary);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().file_name().unwrap(), binary);
+    }
+
+    #[test]
+    fn test_locate_binary_fallback_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = "zapmyco";
+
+        // 只在根目录放二进制（无子目录）
+        std::fs::write(dir.path().join(binary), "content").unwrap();
+
+        let result = locate_binary(dir.path(), "any-triple", binary);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().file_name().unwrap(), binary);
+    }
+
+    #[test]
+    fn test_locate_binary_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = locate_binary(dir.path(), "some-triple", "nonexistent");
+        assert!(result.is_err());
+    }
+
+    // —————— update_receipt ——————
+
+    #[test]
+    fn test_update_receipt_no_file() {
+        run_with_temp_home(|home| {
+            let result = update_receipt("0.30.0");
+            assert!(result.is_ok());
+
+            // 没有收据文件时不应创建新文件
+            let receipt_path = home.join(".config/zapmyco/zapmyco-receipt.json");
+            assert!(!receipt_path.exists());
+        });
+    }
+
+    #[test]
+    fn test_update_receipt_updates_content() {
+        run_with_temp_home(|home| {
+            let receipt_dir = home.join(".config/zapmyco");
+            std::fs::create_dir_all(&receipt_dir).unwrap();
+            std::fs::write(
+                receipt_dir.join("zapmyco-receipt.json"),
+                r#"{"version":"0.29.2"}"#,
+            )
+            .unwrap();
+
+            update_receipt("0.30.0").unwrap();
+
+            let content =
+                std::fs::read_to_string(receipt_dir.join("zapmyco-receipt.json")).unwrap();
+            assert_eq!(content, r#"{"version":"0.30.0"}"#);
+        });
+    }
+
+    // —————— replace_binary (Unix) ——————
+
+    #[test]
+    #[cfg(unix)]
+    fn test_replace_binary_success() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let current_exe = dir.path().join("zapmyco");
+        let new_binary = dir.path().join("zapmyco-new");
+
+        // 创建当前二进制
+        std::fs::write(&current_exe, "old content").unwrap();
+        std::fs::set_permissions(&current_exe, PermissionsExt::from_mode(0o755)).unwrap();
+
+        // 创建新二进制
+        std::fs::write(&new_binary, "new content").unwrap();
+
+        let result = replace_binary(&new_binary, &current_exe);
+        assert!(result.is_ok());
+
+        // 验证 current_exe 内容已被替换
+        assert_eq!(
+            std::fs::read_to_string(&current_exe).unwrap(),
+            "new content"
+        );
+
+        // 验证 staging 文件（zapmyco.upgrade）已被清理
+        let staging = dir.path().join("zapmyco.upgrade");
+        assert!(!staging.exists());
+
+        // 验证新二进制保留执行权限
+        let perms = std::fs::metadata(&current_exe).unwrap().permissions();
+        assert_eq!(perms.mode() & 0o777, 0o755);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_replace_binary_sets_executable_permission() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let current_exe = dir.path().join("zapmyco");
+        let new_binary = dir.path().join("zapmyco-new");
+
+        // 当前二进制的权限不可执行
+        std::fs::write(&current_exe, "old").unwrap();
+        std::fs::set_permissions(&current_exe, PermissionsExt::from_mode(0o644)).unwrap();
+
+        std::fs::write(&new_binary, "new").unwrap();
+
+        replace_binary(&new_binary, &current_exe).unwrap();
+
+        // 替换后应被设置为可执行
+        let perms = std::fs::metadata(&current_exe).unwrap().permissions();
+        assert_eq!(perms.mode() & 0o777, 0o755);
     }
 }
