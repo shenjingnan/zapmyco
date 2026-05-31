@@ -392,6 +392,10 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     .map_err(|e| format!("初始化 Web Search 失败: {}", e))?;
     agent.register_tool(crate::agent::chat::ToolHandler::WebSearch(web_search));
 
+    // 注册文件搜索工具
+    let grep = crate::tools::grep::Grep::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::Grep(grep));
+
     let _response = agent
         .chat_with_tools(content, |chunk| {
             print!("{}", chunk);

@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["vendor/zapmyco-anthropic-ai-sdk"]
+members = [
+    "vendor/zapmyco-anthropic-ai-sdk",
+    "vendor/zapmyco-grep",
+]
 
 [package]
 name = "zapmyco"
@@ -15,6 +18,7 @@ repository = "https://github.com/shenjingnan/zapmyco"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 zapmyco-anthropic-ai-sdk = { version = "0.3.0", path = "vendor/zapmyco-anthropic-ai-sdk" }
+zapmyco-grep = { path = "vendor/zapmyco-grep" }
 inquire = "0.9"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }

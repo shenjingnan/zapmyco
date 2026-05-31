@@ -1,6 +1,11 @@
+pub mod grep;
 pub mod run_command;
 pub mod web_fetch;
 pub mod web_search;
+
+// 旧路径兼容: zapmyco::grep::* → zapmyco::tools::grep::*
+pub use grep::{Grep, GrepOptions};
+pub use zapmyco_grep::GrepError;
 
 // 旧路径兼容: zapmyco::web_fetch::* → zapmyco::tools::web_fetch::*
 pub use web_fetch::{WebFetch, WebFetchError, WebFetchOptions};
