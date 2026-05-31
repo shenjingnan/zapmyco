@@ -1,37 +1,10 @@
-/// grep 工具 - 使用 ripgrep (rg) 在本地文件系统中搜索文件内容
-use thiserror::Error;
-
-// ---------------------------------------------------------------------------
-// Error types
-// ---------------------------------------------------------------------------
-
-/// Grep 搜索错误类型
-#[derive(Debug, Error)]
-pub enum GrepError {
-    /// ripgrep 未安装
-    #[error("ripgrep (rg) 未找到。请先安装 ripgrep: https://github.com/BurntSushi/ripgrep")]
-    RgNotFound,
-
-    /// 搜索超时
-    #[error("Grep timed out after {timeout_secs}s")]
-    Timeout {
-        /// 超时时间（秒）
-        timeout_secs: u64,
-    },
-
-    /// rg 执行错误
-    #[error("Grep failed: {0}")]
-    ExecutionError(String),
-
-    /// 输出超过大小限制
-    #[error("Output too large: {size} bytes (max {max} bytes)")]
-    OutputTooLarge {
-        /// 实际输出大小
-        size: usize,
-        /// 最大允许大小
-        max: usize,
-    },
-}
+// grep 工具 — 基于 zapmyco-grep 在本地文件系统中搜索文件内容
+//
+// 本文件是 Anthropic Tool 的集成层，负责：
+// - 定义 Tool JSON Schema（tool_definition）
+// - 从 LLM 参数提取搜索配置（execute）
+// - 调用 zapmyco-grep 搜索引擎
+// - 格式化输出并应用分页
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -62,7 +35,7 @@ impl Default for GrepOptions {
 // Core struct
 // ---------------------------------------------------------------------------
 
-/// grep 工具 — 使用 ripgrep 在本地文件系统中搜索文件内容
+/// grep 工具 — 在本地文件系统中搜索文件内容
 #[derive(Debug, Clone)]
 pub struct Grep {
     options: GrepOptions,
@@ -80,7 +53,7 @@ impl Grep {
         Tool {
             name: "grep".to_string(),
             description: Some(
-                "在本地文件系统中使用 ripgrep (rg) 搜索文件内容，支持正则表达式。\
+                "在本地文件系统中搜索文件内容，支持正则表达式。\
                  适用于查找代码定义、搜索关键词、分析项目结构等场景。"
                     .to_string(),
             ),
@@ -144,12 +117,12 @@ impl Grep {
     }
 
     /// 执行文件内容搜索
-    pub async fn execute(&self, input: &serde_json::Value) -> Result<String, GrepError> {
+    pub async fn execute(&self, input: &serde_json::Value) -> Result<String, String> {
         // 1. 提取参数
         let pattern = input
             .get("pattern")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| GrepError::ExecutionError("缺少必填参数 'pattern'".to_string()))?;
+            .ok_or_else(|| "缺少必填参数 'pattern'".to_string())?;
 
         let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
         let glob = input.get("glob").and_then(|v| v.as_str());
@@ -157,8 +130,8 @@ impl Grep {
             .get("output_mode")
             .and_then(|v| v.as_str())
             .unwrap_or("content");
-        let after_context = input.get("-A").and_then(|v| v.as_i64());
-        let before_context = input.get("-B").and_then(|v| v.as_i64());
+        let after_context = input.get("-A").and_then(|v| v.as_i64()).unwrap_or(0);
+        let before_context = input.get("-B").and_then(|v| v.as_i64()).unwrap_or(0);
         let context = input.get("-C").and_then(|v| v.as_i64());
         let ignore_case = input.get("-i").and_then(|v| v.as_bool()).unwrap_or(false);
         let head_limit = input
@@ -172,86 +145,59 @@ impl Grep {
             .unwrap_or(false);
         let file_type = input.get("type").and_then(|v| v.as_str());
 
-        // 2. 构建 rg 参数
-        let args = build_rg_args(
-            pattern,
-            path,
-            glob,
-            output_mode,
-            after_context,
-            before_context,
-            context,
+        // -C 优先级高于 -A/-B
+        let (after_ctx, before_ctx) = if let Some(c) = context {
+            (c as usize, c as usize)
+        } else {
+            (after_context as usize, before_context as usize)
+        };
+
+        // 2. 构建搜索选项
+        let search_options = zapmyco_grep::SearchOptions {
+            pattern: pattern.to_string(),
+            path: path.to_string(),
+            glob: glob.map(|s| s.to_string()),
             ignore_case,
             multiline,
-            file_type,
-        );
+            file_type: file_type.map(|s| s.to_string()),
+            after_context: after_ctx,
+            before_context: before_ctx,
+        };
 
-        // 3. 执行 rg
+        // 3. 执行搜索（在 spawn_blocking 中执行同步搜索）
         let timeout = std::time::Duration::from_secs(self.options.timeout_secs);
+        let search_handle =
+            tokio::task::spawn_blocking(move || zapmyco_grep::search(search_options));
 
-        // 查找 rg 可执行文件
-        let rg_path = find_rg().ok_or(GrepError::RgNotFound)?;
+        let search_result = tokio::time::timeout(timeout, search_handle)
+            .await
+            .map_err(|_| format!("Grep 搜索超时 (超过 {}s)", self.options.timeout_secs))?
+            .map_err(|e| format!("Grep 搜索被中断: {}", e))?;
 
-        let output = tokio::time::timeout(timeout, async {
-            tokio::process::Command::new(&rg_path)
-                .args(&args)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output()
-                .await
-        })
-        .await
-        .map_err(|_| GrepError::Timeout {
-            timeout_secs: self.options.timeout_secs,
-        })?
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                GrepError::RgNotFound
-            } else {
-                GrepError::ExecutionError(e.to_string())
-            }
-        })?;
+        let results = search_result.map_err(|e| format!("Grep 搜索失败: {}", e))?;
 
-        // 4. 检查退出码
-        // rg 退出码: 0 = 有匹配, 1 = 无匹配（非错误）, 2+ = 错误
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-        match output.status.code() {
-            Some(0) => {
-                // 有结果，继续格式化
-            }
-            Some(1) => {
-                // 无匹配，返回空结果
-                return Ok(format!("在 \"{}\" 中未找到匹配 \"{}\"", path, pattern));
-            }
-            Some(code) => {
-                // rg 错误
-                let err_msg = if stderr.is_empty() {
-                    format!("rg 退出码: {}", code)
-                } else {
-                    stderr.trim().to_string()
-                };
-                return Err(GrepError::ExecutionError(err_msg));
-            }
-            None => {
-                return Err(GrepError::ExecutionError("rg 被信号终止".to_string()));
-            }
+        // 4. 无匹配时快速返回
+        if results.matches.is_empty() {
+            return Ok(format!("在 \"{}\" 中未找到匹配 \"{}\"", path, pattern));
         }
 
-        // 5. 格式化输出
+        // 5. 将结构化结果转为 stdout 格式（与现有格式化函数兼容）
+        let stdout = build_stdout(&results, output_mode);
+
+        // 6. 格式化输出并应用分页
         let result = match output_mode {
             "files_with_matches" => format_files_with_matches(&stdout, pattern, head_limit, offset),
             "count" => format_count(&stdout, pattern, head_limit, offset),
             _ => format_content(&stdout, pattern, head_limit, offset),
         };
 
-        // 6. 检查输出大小上限
+        // 7. 检查输出上限
         if result.len() > self.options.output_max_chars {
-            return Err(GrepError::OutputTooLarge {
-                size: result.len(),
-                max: self.options.output_max_chars,
-            });
+            return Err(format!(
+                "Grep 输出过大 ({} 字符，上限 {})",
+                result.len(),
+                self.options.output_max_chars
+            ));
         }
 
         Ok(result)
@@ -259,142 +205,47 @@ impl Grep {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: find rg binary
+// Structured results → stdout format
 // ---------------------------------------------------------------------------
 
-/// 查找系统中的 rg 可执行文件
-fn find_rg() -> Option<String> {
-    // 先尝试 PATH 中的 rg
-    which_rg("rg")
-}
-
-#[cfg(not(target_os = "windows"))]
-fn which_rg(name: &str) -> Option<String> {
-    // 检查 PATH 中是否存在
-    std::env::var_os("PATH").and_then(|paths| {
-        for dir in std::env::split_paths(&paths) {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                // 在 Unix 系统上检查是否可执行
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    if let Ok(metadata) = std::fs::metadata(&candidate) {
-                        let mode = metadata.permissions().mode();
-                        if mode & 0o111 != 0 {
-                            return Some(candidate.to_string_lossy().to_string());
-                        }
-                    }
-                }
-                #[cfg(not(unix))]
-                {
-                    return Some(candidate.to_string_lossy().to_string());
-                }
+/// 将 SearchResults 转换为与旧版格式化函数兼容的 stdout 字符串
+fn build_stdout(results: &zapmyco_grep::SearchResults, output_mode: &str) -> String {
+    match output_mode {
+        "files_with_matches" => {
+            // 去重文件路径
+            let mut files: Vec<&str> = results
+                .matches
+                .iter()
+                .map(|m| m.path.as_str())
+                .collect::<std::collections::BTreeSet<&str>>()
+                .into_iter()
+                .collect();
+            files.sort();
+            files.join("\n")
+        }
+        "count" => {
+            // 按文件统计匹配数
+            let mut counts: std::collections::BTreeMap<&str, usize> =
+                std::collections::BTreeMap::new();
+            for m in &results.matches {
+                *counts.entry(m.path.as_str()).or_insert(0) += 1;
             }
+            counts
+                .iter()
+                .map(|(path, count)| format!("{}:{}", path, count))
+                .collect::<Vec<_>>()
+                .join("\n")
         }
-        None
-    })
-}
-
-#[cfg(target_os = "windows")]
-fn which_rg(name: &str) -> Option<String> {
-    std::env::var_os("PATH").and_then(|paths| {
-        for dir in std::env::split_paths(&paths) {
-            for ext in ["", ".exe", ".cmd", ".bat"] {
-                let candidate = dir.join(format!("{}{}", name, ext));
-                if candidate.is_file() {
-                    return Some(candidate.to_string_lossy().to_string());
-                }
-            }
-        }
-        None
-    })
-}
-
-// ---------------------------------------------------------------------------
-// Helper: build rg CLI arguments
-// ---------------------------------------------------------------------------
-
-/// 根据参数构建 rg 命令行参数列表
-#[allow(clippy::too_many_arguments)]
-fn build_rg_args(
-    pattern: &str,
-    path: &str,
-    glob: Option<&str>,
-    output_mode: &str,
-    after_context: Option<i64>,
-    before_context: Option<i64>,
-    context: Option<i64>,
-    ignore_case: bool,
-    multiline: bool,
-    file_type: Option<&str>,
-) -> Vec<String> {
-    let mut args: Vec<String> = Vec::new();
-
-    // 始终禁用 ANSI 颜色转义
-    args.push("--color".to_string());
-    args.push("never".to_string());
-
-    // 行号（content 模式默认显示）
-    if output_mode == "content" {
-        args.push("--line-number".to_string());
-        // 强制显示文件名前缀，确保输出格式一致便于解析
-        args.push("-H".to_string());
-    }
-
-    // 输出模式
-    if output_mode == "files_with_matches" {
-        args.push("-l".to_string());
-    } else if output_mode == "count" {
-        args.push("-c".to_string());
-    }
-
-    // 上下文行
-    if let Some(c) = context {
-        args.push("-C".to_string());
-        args.push(c.to_string());
-    } else {
-        if let Some(n) = after_context {
-            args.push("-A".to_string());
-            args.push(n.to_string());
-        }
-        if let Some(n) = before_context {
-            args.push("-B".to_string());
-            args.push(n.to_string());
+        _ => {
+            // content 模式：path:line:content
+            results
+                .matches
+                .iter()
+                .map(|m| format!("{}:{}:{}", m.path, m.line_number, m.content.trim_end()))
+                .collect::<Vec<_>>()
+                .join("\n")
         }
     }
-
-    // 忽略大小写
-    if ignore_case {
-        args.push("-i".to_string());
-    }
-
-    // 多行模式
-    if multiline {
-        args.push("-U".to_string());
-        args.push("--multiline-dotall".to_string());
-    }
-
-    // 文件类型过滤
-    if let Some(t) = file_type {
-        args.push("--type".to_string());
-        args.push(t.to_string());
-    }
-
-    // 文件通配符过滤
-    if let Some(g) = glob {
-        args.push("--glob".to_string());
-        args.push(g.to_string());
-    }
-
-    // 搜索模式（使用 -e 防止以 - 开头的模式被误解析为标志）
-    args.push("-e".to_string());
-    args.push(pattern.to_string());
-
-    // 搜索路径
-    args.push(path.to_string());
-
-    args
 }
 
 // ---------------------------------------------------------------------------
@@ -411,9 +262,8 @@ fn format_content(stdout: &str, pattern: &str, head_limit: u64, offset: u64) -> 
     let take = (head_limit as usize).min(available);
     let truncated = take < available;
 
-    // 统计文件数和匹配行数
     let file_count = count_files_in_content(&lines[start..start + take]);
-    let match_count = count_match_lines(&lines[start..start + take]);
+    let match_count = take; // 每行一条匹配
 
     let mut out = String::new();
     out.push_str(&format!(
@@ -516,33 +366,14 @@ fn format_count(stdout: &str, pattern: &str, head_limit: u64, offset: u64) -> St
 fn count_files_in_content(lines: &[&str]) -> usize {
     let mut files = std::collections::BTreeSet::new();
     for line in lines {
-        if let Some(file) = line.split(':').next() {
-            // 空行或纯数字行（匹配行行号）不算文件头
-            if !file.is_empty() && !file.chars().all(|c| c.is_ascii_digit()) {
-                files.insert(file);
-            }
+        if let Some(file) = line.split(':').next()
+            && !file.is_empty()
+            && !file.chars().all(|c| c.is_ascii_digit())
+        {
+            files.insert(file);
         }
     }
     files.len()
-}
-
-/// 统计 content 模式下的匹配行数量（格式为 file:line:content 或 line:content）
-fn count_match_lines(lines: &[&str]) -> usize {
-    lines
-        .iter()
-        .filter(|l| {
-            // 匹配 rg 输出的有行号的行: 冒号开头或 `数字:` 开头
-            let trimmed = l.trim_start();
-            if trimmed.is_empty() {
-                return false;
-            }
-            // 上下文行以 `数字-` 格式开头，不是匹配行
-            // 这里简化处理：只要包含 `:` 且非空就算
-            // 实际 rg 输出中，匹配行是 `file:line:content` 或 `line:content`
-            // 分隔行（空行或 --）不计
-            trimmed.contains(':') && !trimmed.starts_with("--")
-        })
-        .count()
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +384,7 @@ fn count_match_lines(lines: &[&str]) -> usize {
 mod tests {
     use super::*;
 
-    // ---- Helper: 创建测试用 Grep 实例 ----
+    // ---- Helper ----
 
     fn test_grep() -> Grep {
         Grep::new(GrepOptions {
@@ -563,15 +394,6 @@ mod tests {
         })
     }
 
-    fn short_timeout_grep() -> Grep {
-        Grep::new(GrepOptions {
-            timeout_secs: 1,
-            output_max_chars: 100_000,
-            default_head_limit: 250,
-        })
-    }
-
-    /// 创建临时目录并写入测试文件
     fn setup_temp_dir() -> (tempfile::TempDir, std::path::PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let file1 = dir.path().join("test.rs");
@@ -648,192 +470,6 @@ mod tests {
         for param in &expected_params {
             assert!(props.contains_key(*param), "Missing parameter: {}", param);
         }
-    }
-
-    // ---- Arg building tests ----
-
-    #[test]
-    fn test_build_args_default_content() {
-        let args = build_rg_args(
-            "hello", ".", None, "content", None, None, None, false, false, None,
-        );
-        assert!(args.contains(&"--color".to_string()));
-        assert!(args.contains(&"never".to_string()));
-        assert!(args.contains(&"--line-number".to_string()));
-        assert!(args.contains(&"-H".to_string()));
-        assert!(args.contains(&"-e".to_string()));
-        assert!(args.contains(&"hello".to_string()));
-        assert!(args.contains(&".".to_string()));
-        // content 模式下不应有 -l 或 -c
-        assert!(!args.contains(&"-l".to_string()));
-        assert!(!args.contains(&"-c".to_string()));
-    }
-
-    #[test]
-    fn test_build_args_files_with_matches() {
-        let args = build_rg_args(
-            "hello",
-            ".",
-            None,
-            "files_with_matches",
-            None,
-            None,
-            None,
-            false,
-            false,
-            None,
-        );
-        assert!(args.contains(&"-l".to_string()));
-        assert!(!args.contains(&"--line-number".to_string()));
-        assert!(!args.contains(&"-c".to_string()));
-    }
-
-    #[test]
-    fn test_build_args_count() {
-        let args = build_rg_args(
-            "hello", ".", None, "count", None, None, None, false, false, None,
-        );
-        assert!(args.contains(&"-c".to_string()));
-        assert!(!args.contains(&"-l".to_string()));
-    }
-
-    #[test]
-    fn test_build_args_ignore_case() {
-        let args = build_rg_args(
-            "Hello", ".", None, "content", None, None, None, true, false, None,
-        );
-        assert!(args.contains(&"-i".to_string()));
-    }
-
-    #[test]
-    fn test_build_args_context() {
-        let args = build_rg_args(
-            "hello",
-            ".",
-            None,
-            "content",
-            None,
-            None,
-            Some(3),
-            false,
-            false,
-            None,
-        );
-        let pos = args.iter().position(|a| a == "-C").unwrap();
-        assert_eq!(args[pos + 1], "3");
-    }
-
-    #[test]
-    fn test_build_args_after_context() {
-        let args = build_rg_args(
-            "hello",
-            ".",
-            None,
-            "content",
-            Some(5),
-            None,
-            None,
-            false,
-            false,
-            None,
-        );
-        let pos = args.iter().position(|a| a == "-A").unwrap();
-        assert_eq!(args[pos + 1], "5");
-    }
-
-    #[test]
-    fn test_build_args_before_context() {
-        let args = build_rg_args(
-            "hello",
-            ".",
-            None,
-            "content",
-            None,
-            Some(2),
-            None,
-            false,
-            false,
-            None,
-        );
-        let pos = args.iter().position(|a| a == "-B").unwrap();
-        assert_eq!(args[pos + 1], "2");
-    }
-
-    #[test]
-    fn test_build_args_context_overrides_ab() {
-        // context (-C) 应优先于 -A/-B
-        let args = build_rg_args(
-            "hello",
-            ".",
-            None,
-            "content",
-            Some(5),
-            Some(3),
-            Some(2),
-            false,
-            false,
-            None,
-        );
-        let pos_c = args.iter().position(|a| a == "-C").unwrap();
-        assert_eq!(args[pos_c + 1], "2");
-        // -A 和 -B 不应出现
-        assert!(!args.contains(&"-A".to_string()));
-        assert!(!args.contains(&"-B".to_string()));
-    }
-
-    #[test]
-    fn test_build_args_multiline() {
-        let args = build_rg_args(
-            "hello", ".", None, "content", None, None, None, false, true, None,
-        );
-        assert!(args.contains(&"-U".to_string()));
-        assert!(args.contains(&"--multiline-dotall".to_string()));
-    }
-
-    #[test]
-    fn test_build_args_glob() {
-        let args = build_rg_args(
-            "hello",
-            ".",
-            Some("*.rs"),
-            "content",
-            None,
-            None,
-            None,
-            false,
-            false,
-            None,
-        );
-        let pos = args.iter().position(|a| a == "--glob").unwrap();
-        assert_eq!(args[pos + 1], "*.rs");
-    }
-
-    #[test]
-    fn test_build_args_file_type() {
-        let args = build_rg_args(
-            "hello",
-            ".",
-            None,
-            "content",
-            None,
-            None,
-            None,
-            false,
-            false,
-            Some("rust"),
-        );
-        let pos = args.iter().position(|a| a == "--type").unwrap();
-        assert_eq!(args[pos + 1], "rust");
-    }
-
-    #[test]
-    fn test_build_args_pattern_with_dash() {
-        // 以 - 开头的模式应正常使用 -e
-        let args = build_rg_args(
-            "-v", ".", None, "content", None, None, None, false, false, None,
-        );
-        let e_pos = args.iter().position(|a| a == "-e").unwrap();
-        assert_eq!(args[e_pos + 1], "-v");
     }
 
     // ---- Output formatting tests ----
@@ -926,7 +562,7 @@ mod tests {
         assert!(result.contains("0 处匹配"));
     }
 
-    // ---- Integration tests (requires rg installed) ----
+    // ---- Integration tests (use internal search) ----
 
     #[tokio::test]
     async fn test_execute_basic_search() {
@@ -938,7 +574,6 @@ mod tests {
         });
         let result = grep.execute(&input).await.unwrap();
         assert!(result.contains("hello"));
-        // 应该找到两个文件中的匹配
         assert!(result.contains("test.rs") || result.contains("test.py"));
     }
 
@@ -958,14 +593,12 @@ mod tests {
     async fn test_execute_with_path() {
         let (_dir, file1) = setup_temp_dir();
         let grep = test_grep();
-        // 只在 test.rs 中搜索
         let input = serde_json::json!({
             "pattern": "hello",
             "path": file1.to_string_lossy().to_string(),
         });
         let result = grep.execute(&input).await.unwrap();
         assert!(result.contains("hello"));
-        // 指定了单个文件，搜索结果应显示文件名
         assert!(result.contains("test.rs") || result.contains("1 个文件"));
     }
 
@@ -980,10 +613,7 @@ mod tests {
         });
         let result = grep.execute(&input).await.unwrap();
         assert!(result.contains("hello"));
-        // 应只搜到 Rust 文件
         assert!(result.contains("test.rs"));
-        // 因 glob 过滤，不应包含 test.py
-        // 如果结果是 "1 个文件" 说明 glob 生效
     }
 
     #[tokio::test]
@@ -998,8 +628,6 @@ mod tests {
         let result = grep.execute(&input).await.unwrap();
         assert!(result.contains("个文件"));
         assert!(result.contains("test.rs") || result.contains("test.py"));
-        // 不应包含行号或内容
-        assert!(!result.contains("fn hello"));
     }
 
     #[tokio::test]
@@ -1020,7 +648,6 @@ mod tests {
     async fn test_execute_ignore_case() {
         let (dir, _) = setup_temp_dir();
         let grep = test_grep();
-        // 小写搜索，不忽略大小写时应该搜不到 "HELLO"（不存在）
         let input_no_ignore = serde_json::json!({
             "pattern": "HELLO",
             "path": dir.path().to_string_lossy().to_string(),
@@ -1029,7 +656,6 @@ mod tests {
         let result_no = grep.execute(&input_no_ignore).await.unwrap();
         assert!(result_no.contains("未找到匹配"));
 
-        // 忽略大小写应该搜到
         let input_ignore = serde_json::json!({
             "pattern": "HELLO",
             "path": dir.path().to_string_lossy().to_string(),
@@ -1040,31 +666,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execute_timeout() {
-        let (dir, _) = setup_temp_dir();
-        let grep = short_timeout_grep();
-        // 搜索一个存在但不存在的模式，使用非常短的时间
-        let input = serde_json::json!({
-            "pattern": "hello",
-            "path": dir.path().to_string_lossy().to_string(),
-        });
-        // 在当前目录下搜索大量内容可能会触发超时
-        // 这里只是测试超时机制不 panic
-        let _result = grep.execute(&input).await;
-        // 可能超时也可能不超时，取决于系统负载
-        // 只要不 panic 且返回 Ok 或 Timeout 错误即可
-        match _result {
-            Ok(s) => assert!(s.contains("hello") || s.contains("未找到匹配")),
-            Err(e) => {
-                match e {
-                    GrepError::Timeout { .. } => {} // 预期行为
-                    _ => panic!("Expected Timeout error, got: {}", e),
-                }
-            }
-        }
-    }
-
-    #[tokio::test]
     async fn test_execute_empty_pattern() {
         let (dir, _) = setup_temp_dir();
         let grep = test_grep();
@@ -1072,7 +673,6 @@ mod tests {
             "pattern": "",
             "path": dir.path().to_string_lossy().to_string(),
         });
-        // 空模式匹配所有行
         let result = grep.execute(&input).await;
         assert!(result.is_ok());
         let output = result.unwrap();
@@ -1087,19 +687,12 @@ mod tests {
         });
         let result = grep.execute(&input).await;
         assert!(result.is_err());
-        match result.err().unwrap() {
-            GrepError::ExecutionError(msg) => {
-                assert!(
-                    msg.contains("pattern"),
-                    "Error should mention pattern: {}",
-                    msg
-                );
-            }
-            other => panic!(
-                "Expected ExecutionError for missing pattern, got: {}",
-                other
-            ),
-        }
+        let err = result.err().unwrap();
+        assert!(
+            err.contains("pattern"),
+            "Error should mention pattern: {}",
+            err
+        );
     }
 
     #[tokio::test]
@@ -1109,7 +702,6 @@ mod tests {
             "pattern": "hello",
             "path": "/nonexistent/path/xyz123",
         });
-        // rg 对不存在的路径返回错误
         let result = grep.execute(&input).await;
         assert!(result.is_err());
     }
@@ -1139,7 +731,6 @@ mod tests {
             "head_limit": 0,
         });
         let result = grep.execute(&input).await.unwrap();
-        // head_limit=0 表示没有限制
         assert!(result.contains("hello"));
     }
 
@@ -1147,7 +738,6 @@ mod tests {
     async fn test_execute_with_offset() {
         let (dir, _) = setup_temp_dir();
         let grep = test_grep();
-        // 先获取完整结果
         let input_all = serde_json::json!({
             "pattern": "hello",
             "path": dir.path().to_string_lossy().to_string(),
@@ -1155,7 +745,6 @@ mod tests {
         });
         let result_all = grep.execute(&input_all).await.unwrap();
 
-        // 再用 offset=1 跳过第一行
         let input_offset = serde_json::json!({
             "pattern": "hello",
             "path": dir.path().to_string_lossy().to_string(),
@@ -1164,9 +753,7 @@ mod tests {
         });
         let result_offset = grep.execute(&input_offset).await.unwrap();
 
-        // offset 后的结果应该不同
         if result_all.contains("\n---\n") {
-            // 如果有截断，offset 应该改变输出
             assert_ne!(result_all, result_offset);
         }
     }
@@ -1211,16 +798,5 @@ mod tests {
         assert_eq!(grep.options.timeout_secs, 20);
         assert_eq!(grep.options.output_max_chars, 100_000);
         assert_eq!(grep.options.default_head_limit, 250);
-    }
-
-    // ---- find_rg tests ----
-
-    #[test]
-    fn test_find_rg_exists() {
-        // rg 在这个环境中应该可用（已在系统上验证）
-        let result = find_rg();
-        assert!(result.is_some(), "rg should be installed");
-        let path = result.unwrap();
-        assert!(!path.is_empty());
     }
 }

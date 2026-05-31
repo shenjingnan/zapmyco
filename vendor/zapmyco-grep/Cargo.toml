@@ -1,0 +1,17 @@
+[package]
+name = "zapmyco-grep"
+version = "0.1.0"
+description = "grep search engine for zapmyco — wraps ignore + grep-regex + grep-searcher"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+
+[dependencies]
+ignore = "0.4"
+globset = "0.4"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
