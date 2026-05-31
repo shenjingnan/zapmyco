@@ -52,6 +52,8 @@ pub enum Commands {
         #[command(subcommand)]
         command: NoteCommands,
     },
+    /// 将 zapmyco 升级到最新版本
+    Upgrade,
     /// 生成 shell 补全脚本
     #[command(hide = true)]
     Completion {
@@ -677,7 +679,7 @@ fn setup_shell_completion_inner(
 }
 
 /// 设置 shell 补全（从环境变量读取配置）
-fn setup_shell_completion() -> Result<String, String> {
+pub(crate) fn setup_shell_completion() -> Result<String, String> {
     let home_dir = settings::get_home_dir();
     setup_shell_completion_inner(detect_shell(), &home_dir)
 }
@@ -779,6 +781,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
         Some(Commands::Uninstall) => cmd_uninstall(),
         Some(Commands::Note { command }) => cmd_note(command),
         Some(Commands::Run { content, profile }) => cmd_run(&content, profile.as_deref()).await,
+        Some(Commands::Upgrade) => crate::upgrade::cmd_upgrade().await,
         Some(Commands::Completion { shell }) => {
             cmd_completion(shell, &mut std::io::stdout());
             Ok(())
@@ -1316,6 +1319,8 @@ mod tests {
             "settings",
             "uninstall",
             "run",
+            "note",
+            "upgrade",
             "completion",
         ] {
             assert!(output.contains(sub), "bash 补全应包含子命令 {}", sub);
@@ -1334,6 +1339,8 @@ mod tests {
             "settings",
             "uninstall",
             "run",
+            "note",
+            "upgrade",
             "completion",
         ] {
             assert!(output.contains(sub), "zsh 补全应包含子命令 {}", sub);
@@ -1355,6 +1362,8 @@ mod tests {
             "settings",
             "uninstall",
             "run",
+            "note",
+            "upgrade",
             "completion",
         ] {
             assert!(output.contains(sub), "fish 补全应包含子命令 {}", sub);
@@ -1376,6 +1385,8 @@ mod tests {
             "settings",
             "uninstall",
             "run",
+            "note",
+            "upgrade",
             "completion",
         ] {
             assert!(output.contains(sub), "powershell 补全应包含子命令 {}", sub);
@@ -1400,6 +1411,8 @@ mod tests {
                 "settings",
                 "uninstall",
                 "run",
+                "note",
+                "upgrade",
                 "completion",
             ] {
                 assert!(output.contains(sub), "{:?} 补全应包含子命令 {}", shell, sub);

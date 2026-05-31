@@ -7,6 +7,7 @@ pub mod config;
 pub mod datetime;
 pub mod notes;
 pub mod tools;
+pub mod upgrade;
 
 #[cfg(test)]
 pub(crate) mod test_util {
