@@ -1,8 +1,12 @@
+pub mod glob;
 pub mod grep;
 pub mod read;
 pub mod run_command;
 pub mod web_fetch;
 pub mod web_search;
+
+// 旧路径兼容: zapmyco::glob::* → zapmyco::tools::glob::*
+pub use glob::{Glob, GlobOptions};
 
 // 旧路径兼容: zapmyco::grep::* → zapmyco::tools::grep::*
 pub use grep::{Grep, GrepOptions};
