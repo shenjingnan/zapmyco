@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.31.1](https://github.com/shenjingnan/zapmyco/compare/v0.31.0...v0.31.1) - 2026-05-31
+
+### Added
+
+- *(tools)* 添加 Grep 工具支持在本地文件系统中搜索文件内容 ([#353](https://github.com/shenjingnan/zapmyco/pull/353))
+
+### Other
+
+- *(built-in-tools)* 添加 Grep 内置工具文档 ([#354](https://github.com/shenjingnan/zapmyco/pull/354))
+
 ## [0.31.0](https://github.com/shenjingnan/zapmyco/compare/v0.30.0...v0.31.0) - 2026-05-31
 
 ### Added
