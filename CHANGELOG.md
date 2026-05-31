@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.29.2](https://github.com/shenjingnan/zapmyco/compare/v0.29.1...v0.29.2) - 2026-05-31
+
+### Added
+
+- *(agent)* 添加联网搜索功能，支持 web_search_20250305 服务端工具 ([#345](https://github.com/shenjingnan/zapmyco/pull/345))
+
+### Other
+
+- 添加内置工具文档，介绍 run 命令的 AI Agent 工具能力 ([#347](https://github.com/shenjingnan/zapmyco/pull/347))
+
 ## [0.29.1](https://github.com/shenjingnan/zapmyco/compare/v0.29.0...v0.29.1) - 2026-05-31
 
 ### Other
