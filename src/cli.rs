@@ -396,6 +396,10 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let grep = crate::tools::grep::Grep::new(Default::default());
     agent.register_tool(crate::agent::chat::ToolHandler::Grep(grep));
 
+    // 注册文件查找工具 (glob)
+    let globber = crate::tools::glob::Glob::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::Glob(globber));
+
     // 注册文件读取工具
     let reader = crate::tools::read::FileRead::new(Default::default());
     agent.register_tool(crate::agent::chat::ToolHandler::Read(reader));

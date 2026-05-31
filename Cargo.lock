@@ -2937,6 +2937,8 @@ dependencies = [
  "clap_complete",
  "crossterm",
  "futures-util",
+ "globset",
+ "ignore",
  "inquire",
  "mdka",
  "reqwest",

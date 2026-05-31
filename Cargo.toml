@@ -33,6 +33,8 @@ futures-util = "0.3.32"
 reqwest = "0.12"
 mdka = "2"
 crossterm = "0.29"
+ignore = "0.4"
+globset = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
