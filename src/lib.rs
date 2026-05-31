@@ -3,14 +3,10 @@
 
 pub mod agent;
 pub mod cli;
-pub mod conversation_logger;
+pub mod config;
 pub mod datetime;
-pub mod models;
 pub mod notes;
-pub mod run_command;
-pub mod settings;
-pub mod web_fetch;
-pub mod web_search;
+pub mod tools;
 
 #[cfg(test)]
 pub(crate) mod test_util {

@@ -23,7 +23,7 @@ pub struct NotesDir {
 impl NotesDir {
     /// 创建或打开笔记目录
     pub fn new() -> Result<Self, String> {
-        let path = crate::settings::get_settings_dir().join(NOTES_DIR);
+        let path = crate::config::settings::get_settings_dir().join(NOTES_DIR);
         fs::create_dir_all(&path).map_err(|e| format!("创建笔记目录失败: {}", e))?;
         Ok(Self { path })
     }

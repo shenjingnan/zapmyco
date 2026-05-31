@@ -2,9 +2,9 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use std::io::IsTerminal;
 
-use crate::models::{get_built_in_model_names, get_model_info};
-use crate::settings;
-use crate::settings::{LlmSettings, ProviderConfig, Settings};
+use crate::config::models::{get_built_in_model_names, get_model_info};
+use crate::config::settings;
+use crate::config::settings::{LlmSettings, ProviderConfig, Settings};
 use std::collections::HashMap;
 
 use crate::datetime;
@@ -369,26 +369,26 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
 
     let options = build_run_options(profile);
 
-    let mut agent = crate::agent::AiAgent::new(options)?;
+    let mut agent = crate::agent::chat::AiAgent::new(options)?;
 
     // 注册 Web Fetch 工具
-    let web_fetch = crate::web_fetch::WebFetch::new(Default::default())
+    let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default())
         .map_err(|e| format!("初始化 Web Fetch 失败: {}", e))?;
-    agent.register_tool(crate::agent::ToolHandler::WebFetch(web_fetch));
+    agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(web_fetch));
 
     // 注册命令执行工具
-    let run_cmd = crate::run_command::RunCommand::new(Default::default());
-    agent.register_tool(crate::agent::ToolHandler::RunCommand(run_cmd));
+    let run_cmd = crate::tools::run_command::RunCommand::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::RunCommand(run_cmd));
 
     // 注册 Web 搜索工具（利用 API 服务端 web_search_20250305）
-    let web_search = crate::web_search::WebSearch::new(
+    let web_search = crate::tools::web_search::WebSearch::new(
         agent.api_key().to_string(),
         agent.api_base_url().to_string(),
         agent.model_name().to_string(),
         agent.max_tokens(),
     )
     .map_err(|e| format!("初始化 Web Search 失败: {}", e))?;
-    agent.register_tool(crate::agent::ToolHandler::WebSearch(web_search));
+    agent.register_tool(crate::agent::chat::ToolHandler::WebSearch(web_search));
 
     let _response = agent
         .chat_with_tools(content, |chunk| {
@@ -402,8 +402,8 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
 }
 
 /// 构建 run 命令的 AiAgentOptions
-fn build_run_options(profile: Option<&str>) -> crate::agent::AiAgentOptions {
-    crate::agent::AiAgentOptions {
+fn build_run_options(profile: Option<&str>) -> crate::agent::chat::AiAgentOptions {
+    crate::agent::chat::AiAgentOptions {
         model_profile: profile.map(|s| s.to_string()),
         ..Default::default()
     }
@@ -419,7 +419,8 @@ async fn cmd_interactive() -> Result<(), String> {
         ));
     }
 
-    let mut agent = crate::agent::AiAgent::new(crate::agent::AiAgentOptions::default())?;
+    let mut agent =
+        crate::agent::chat::AiAgent::new(crate::agent::chat::AiAgentOptions::default())?;
     agent.start_interactive_chat().await
 }
 
