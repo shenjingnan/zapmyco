@@ -18,7 +18,7 @@ ZapMyCo 提供简洁的命令行接口，支持以下命令。
 |------|------|:----------:|
 | `zapmyco`（默认） | 进入交互式 AI 对话模式 | 是 |
 | `zapmyco init` | 初始化 LLM 配置向导 | — |
-| `zapmyco note [content]` | 快速记录笔记（灵感/待办/想法），留空则交互式编辑 | 否 |
+| `zapmyco note add [content]` | 快速记录笔记（灵感/待办/想法），留空则交互式编辑 | 否 |
 | `zapmyco run <content>` | 一次性执行 AI 任务 | 是 |
 | `zapmyco settings [subcommand]` | 显示或管理 LLM 配置 | 否 |
 | `zapmyco config` | 显示应用配置 | 否 |
@@ -77,10 +77,10 @@ zapmyco init
 
 ```bash
 # 快速记录
-zapmyco note "修复了登录页的样式问题"
+zapmyco note add "修复了登录页的样式问题"
 
 # 交互式编辑（打开 $EDITOR/vi 编辑）
-zapmyco note
+zapmyco note add
 
 # 列出最近笔记
 zapmyco note ls
@@ -113,8 +113,7 @@ created: 2026-05-30T14:30:02+08:00
 
 | 子命令 | 说明 |
 |--------|------|
-| 无参数 | 打开 `$EDITOR`/`vi` 交互式编辑 |
-| `<content>` | 将参数内容直接保存为笔记 |
+| `add [content]` | 将参数内容直接保存为笔记，留空则交互式编辑 |
 | `ls [n]` | 列出最近 n 条笔记（默认 20），`--all` 显示全部 |
 | `show <id>` | 查看指定笔记的完整内容 |
 | `grep <keyword>` | 搜索笔记内容 |
@@ -242,7 +241,7 @@ zapmyco --version
 zapmyco init
 
 # 快速记录笔记
-zapmyco note "明天下午三点会议"
+zapmyco note add "明天下午三点会议"
 zapmyco note ls
 
 # 一次性 AI 任务

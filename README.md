@@ -116,7 +116,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 |------|------|
 | `zapmyco` | 无参启动交互式对话模式 |
 | `zapmyco run <prompt>` | 一次性执行 AI 任务 |
-| `zapmyco note [content]` | 快速记录笔记（灵感/待办/想法），留空则交互式编辑 |
+| `zapmyco note add [content]` | 快速记录笔记（灵感/待办/想法），留空则交互式编辑 |
 | `zapmyco init` | 交互式初始化向导 |
 | `zapmyco settings` | 显示 LLM 配置（API Key 自动脱敏） |
 | `zapmyco settings path` | 显示配置文件路径 |
