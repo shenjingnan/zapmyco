@@ -78,7 +78,7 @@ impl RunCommand {
             description: Some(
                 "在本地系统执行 shell 命令并返回标准输出、标准错误和退出码。".to_string(),
             ),
-            input_schema: serde_json::json!({
+            input_schema: Some(serde_json::json!({
                 "type": "object",
                 "properties": {
                     "command": {
@@ -95,7 +95,8 @@ impl RunCommand {
                     }
                 },
                 "required": ["command", "description"]
-            }),
+            })),
+            ..Default::default()
         }
     }
 
@@ -387,11 +388,13 @@ mod tests {
     fn test_tool_definition_valid_schema() {
         let tool = RunCommand::tool_definition();
         assert_eq!(
-            tool.input_schema["type"],
+            tool.input_schema.as_ref().unwrap()["type"],
             serde_json::Value::String("object".to_string())
         );
-        assert!(tool.input_schema["properties"]["command"].is_object());
-        let required = tool.input_schema["required"].as_array().unwrap();
+        assert!(tool.input_schema.as_ref().unwrap()["properties"]["command"].is_object());
+        let required = tool.input_schema.as_ref().unwrap()["required"]
+            .as_array()
+            .unwrap();
         assert!(required.contains(&serde_json::Value::String("command".to_string())));
         assert!(required.contains(&serde_json::Value::String("description".to_string())));
     }
@@ -399,7 +402,9 @@ mod tests {
     #[test]
     fn test_tool_definition_required_fields() {
         let tool = RunCommand::tool_definition();
-        let required = tool.input_schema["required"].as_array().unwrap();
+        let required = tool.input_schema.as_ref().unwrap()["required"]
+            .as_array()
+            .unwrap();
         assert!(required.contains(&serde_json::Value::String("command".to_string())));
         assert!(required.contains(&serde_json::Value::String("description".to_string())));
     }

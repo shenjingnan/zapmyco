@@ -53,6 +53,7 @@ pub struct ConversationMessage {
 pub enum ToolHandler {
     WebFetch(crate::web_fetch::WebFetch),
     RunCommand(crate::run_command::RunCommand),
+    WebSearch(crate::web_search::WebSearch),
 }
 
 impl ToolHandler {
@@ -60,6 +61,7 @@ impl ToolHandler {
         match self {
             ToolHandler::WebFetch(_) => crate::web_fetch::WebFetch::tool_definition(),
             ToolHandler::RunCommand(_) => crate::run_command::RunCommand::tool_definition(),
+            ToolHandler::WebSearch(_) => crate::web_search::WebSearch::tool_definition(),
         }
     }
 
@@ -84,6 +86,7 @@ impl ToolHandler {
                     .await
                     .map_err(|e| e.to_string())
             }
+            ToolHandler::WebSearch(searcher) => searcher.execute(input).await,
         }
     }
 }
@@ -415,6 +418,9 @@ impl AiAgent {
                 ToolHandler::RunCommand(_) => {
                     "- run_command: 在本地系统执行 shell 命令并返回输出。当你需要运行代码、查询系统信息或文件操作时使用。"
                 }
+                ToolHandler::WebSearch(_) => {
+                    "- web_search: 搜索网络获取实时信息。当你需要查询当前新闻、文档、趋势等实时信息时使用。支持 query（搜索关键词）、allowed_domains（限定域名）、blocked_domains（排除域名）参数。"
+                }
             };
             self.system_prompt.push_str(desc);
             self.system_prompt.push('\n');
@@ -567,6 +573,16 @@ impl AiAgent {
                             eprintln!("[工具]   └ 工作目录: {}", dir);
                         }
                     }
+                    "web_search" => {
+                        if let Some(q) = input.get("query").and_then(|v| v.as_str()) {
+                            let truncated = if q.len() > 80 {
+                                format!("{}...", &q[..80])
+                            } else {
+                                q.to_string()
+                            };
+                            eprintln!("[工具]   └ 搜索: {}", truncated);
+                        }
+                    }
                     _ => {}
                 }
 
@@ -653,6 +669,28 @@ impl AiAgent {
         }
 
         Ok(params)
+    }
+
+    // ---- 公开 getter 方法 ----
+
+    /// 获取 API Key
+    pub fn api_key(&self) -> &str {
+        self.client.get_api_key()
+    }
+
+    /// 获取 API 基础 URL
+    pub fn api_base_url(&self) -> &str {
+        self.client.get_api_base_url()
+    }
+
+    /// 获取模型名称
+    pub fn model_name(&self) -> &str {
+        &self.model
+    }
+
+    /// 获取最大输出 token 数
+    pub fn max_tokens(&self) -> u32 {
+        self.max_tokens
     }
 }
 
@@ -1273,7 +1311,7 @@ mod tests {
         let tool = handler.tool_definition();
         assert_eq!(tool.name, "web_fetch");
         assert!(tool.description.is_some());
-        assert!(tool.input_schema["properties"]["url"].is_object());
+        assert!(tool.input_schema.as_ref().unwrap()["properties"]["url"].is_object());
     }
 
     #[tokio::test]
@@ -1313,7 +1351,7 @@ mod tests {
         let tool = handler.tool_definition();
         assert_eq!(tool.name, "run_command");
         assert!(tool.description.is_some());
-        assert!(tool.input_schema["properties"]["command"].is_object());
+        assert!(tool.input_schema.as_ref().unwrap()["properties"]["command"].is_object());
     }
 
     #[tokio::test]
@@ -1569,6 +1607,133 @@ mod tests {
                 params.messages[1].content,
                 zapmyco_anthropic_ai_sdk::types::message::MessageContent::Blocks { .. }
             ));
+        });
+    }
+
+    // ---- WebSearch ToolHandler tests ----
+
+    #[test]
+    fn test_tool_handler_web_search_tool_definition() {
+        let ws =
+            crate::web_search::WebSearch::new("k".into(), "https://x.com".into(), "m".into(), 100)
+                .unwrap();
+        let handler = ToolHandler::WebSearch(ws);
+        let tool = handler.tool_definition();
+        assert_eq!(tool.name, "web_search");
+        assert!(tool.description.is_some());
+        assert!(tool.input_schema.is_some());
+        assert!(tool.tool_type.is_none());
+    }
+
+    #[test]
+    fn test_register_web_search_adds_to_tools() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(agent.tools.is_empty());
+
+            let ws = crate::web_search::WebSearch::new(
+                "k".into(),
+                "https://x.com".into(),
+                "m".into(),
+                100,
+            )
+            .unwrap();
+            agent.register_tool(ToolHandler::WebSearch(ws));
+            assert_eq!(agent.tools.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_register_web_search_updates_system_prompt() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                system_prompt: Some("原始提示".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let ws = crate::web_search::WebSearch::new(
+                "k".into(),
+                "https://x.com".into(),
+                "m".into(),
+                100,
+            )
+            .unwrap();
+            agent.register_tool(ToolHandler::WebSearch(ws));
+
+            assert!(
+                agent.system_prompt.contains("web_search"),
+                "system prompt should mention web_search: {}",
+                agent.system_prompt
+            );
+            assert!(
+                agent.system_prompt.starts_with("原始提示"),
+                "original prompt should be preserved"
+            );
+        });
+    }
+
+    // ---- AiAgent getter tests ----
+
+    #[test]
+    fn test_agent_api_key_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("custom-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.api_key(), "custom-key");
+        });
+    }
+
+    #[test]
+    fn test_agent_base_url_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("k".to_string()),
+                base_url: Some("https://custom.example.com".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.api_base_url(), "https://custom.example.com");
+        });
+    }
+
+    #[test]
+    fn test_agent_model_name_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("k".to_string()),
+                model: Some("custom-model".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.model_name(), "custom-model");
+        });
+    }
+
+    #[test]
+    fn test_agent_max_tokens_getter() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("k".to_string()),
+                max_tokens: Some(8192),
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(agent.max_tokens(), 8192);
         });
     }
 }

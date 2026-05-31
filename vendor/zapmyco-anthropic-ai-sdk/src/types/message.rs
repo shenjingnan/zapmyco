@@ -216,6 +216,50 @@ pub enum ContentBlock {
     /// Redacted thinking
     #[serde(rename = "redacted_thinking")]
     RedactedThinking { data: String },
+    /// Server-side tool use (e.g. web_search)
+    #[serde(rename = "server_tool_use")]
+    ServerToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    /// Web search tool result
+    #[serde(rename = "web_search_tool_result")]
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: WebSearchToolResultContent,
+    },
+}
+
+/// Content of a WebSearchToolResultBlock (success results or error)
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum WebSearchToolResultContent {
+    /// Array of search results
+    Results(Vec<WebSearchResult>),
+    /// Error info
+    Error(WebSearchToolResultError),
+}
+
+/// Single web search result entry
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct WebSearchResult {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub title: String,
+    pub url: String,
+    #[serde(default)]
+    pub encrypted_content: Option<String>,
+    #[serde(default)]
+    pub page_age: Option<String>,
+}
+
+/// Web search tool result error
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct WebSearchToolResultError {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub error_code: String,
 }
 
 /// Source of an image
@@ -231,15 +275,32 @@ pub struct ImageSource {
 }
 
 /// Tool definition
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Tool {
     /// Name of the tool
     pub name: String,
     /// Description of the tool
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// JSON schema for tool input
-    pub input_schema: serde_json::Value,
+    /// JSON schema for tool input (not needed for server-side tools like web_search)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
+
+    /// Tool type discriminator: None/"custom" → regular tool, "web_search_20250305" → web search
+    #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+    pub tool_type: Option<String>,
+
+    /// Maximum number of tool uses (for server-side tools)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_uses: Option<u32>,
+
+    /// Only include results from these domains (web_search only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_domains: Option<Vec<String>>,
+
+    /// Exclude results from these domains (web_search only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_domains: Option<Vec<String>>,
 }
 
 /// Tool choice configuration
@@ -365,8 +426,10 @@ pub struct OutputTokensDetails {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ServerToolUsage {
     /// Number of web fetch requests made by the server
+    #[serde(default)]
     pub web_fetch_requests: u32,
     /// Number of web search requests made by the server
+    #[serde(default)]
     pub web_search_requests: u32,
 }
 
@@ -718,5 +781,172 @@ mod tests {
     fn test_message_error_request_failed() {
         let error = MessageError::RequestFailed("network error".to_string());
         assert_eq!(error.to_string(), "API request failed: network error");
+    }
+
+    // ---- ServerToolUsage 反序列化测试（兼容 DeepSeek 响应格式） ----
+
+    #[test]
+    fn test_server_tool_usage_deserialize_both_fields() {
+        let json = r#"{"web_search_requests": 3, "web_fetch_requests": 5}"#;
+        let usage: ServerToolUsage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.web_search_requests, 3);
+        assert_eq!(usage.web_fetch_requests, 5);
+    }
+
+    #[test]
+    fn test_server_tool_usage_deserialize_only_search() {
+        // DeepSeek 只返回 web_search_requests
+        let json = r#"{"web_search_requests": 1}"#;
+        let usage: ServerToolUsage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.web_search_requests, 1);
+        assert_eq!(usage.web_fetch_requests, 0); // 默认值
+    }
+
+    #[test]
+    fn test_server_tool_usage_deserialize_only_fetch() {
+        let json = r#"{"web_fetch_requests": 2}"#;
+        let usage: ServerToolUsage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.web_search_requests, 0);
+        assert_eq!(usage.web_fetch_requests, 2);
+    }
+
+    #[test]
+    fn test_server_tool_usage_deserialize_empty() {
+        let json = r#"{}"#;
+        let usage: ServerToolUsage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.web_search_requests, 0);
+        assert_eq!(usage.web_fetch_requests, 0);
+    }
+
+    #[test]
+    fn test_server_tool_usage_serialize_roundtrip() {
+        let usage = ServerToolUsage {
+            web_search_requests: 1,
+            web_fetch_requests: 0,
+        };
+        let json = serde_json::to_string(&usage).unwrap();
+        let deserialized: ServerToolUsage = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.web_search_requests, 1);
+        assert_eq!(deserialized.web_fetch_requests, 0);
+    }
+
+    // ---- WebSearchResult 序列化/反序列化测试 ----
+
+    #[test]
+    fn test_web_search_result_deserialize_full() {
+        let json = r#"{"type":"web_search_result","title":"Test Title","url":"https://example.com","encrypted_content":"abc123","page_age":"2026-01-01"}"#;
+        let result: WebSearchResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.type_, "web_search_result");
+        assert_eq!(result.title, "Test Title");
+        assert_eq!(result.url, "https://example.com");
+        assert_eq!(result.encrypted_content, Some("abc123".to_string()));
+        assert_eq!(result.page_age, Some("2026-01-01".to_string()));
+    }
+
+    #[test]
+    fn test_web_search_result_deserialize_minimal() {
+        // DeepSeek 返回的结果中只有 title/url/type/encrypted_content
+        let json = r#"{"type":"web_search_result","title":"Test","url":"https://example.com","encrypted_content":"enc"}"#;
+        let result: WebSearchResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.title, "Test");
+        assert_eq!(result.encrypted_content, Some("enc".to_string()));
+        assert!(result.page_age.is_none());
+    }
+
+    // ---- WebSearchToolResultContent 反序列化测试 ----
+
+    #[test]
+    fn test_web_search_tool_result_content_results() {
+        let json = r#"[{"type":"web_search_result","title":"A","url":"https://a.com","encrypted_content":"e1"}]"#;
+        let content: WebSearchToolResultContent = serde_json::from_str(json).unwrap();
+        match content {
+            WebSearchToolResultContent::Results(results) => {
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].title, "A");
+            }
+            _ => panic!("Expected Results variant"),
+        }
+    }
+
+    #[test]
+    fn test_web_search_tool_result_content_error() {
+        let json = r#"{"type":"web_search_tool_result_error","error_code":"unavailable"}"#;
+        let content: WebSearchToolResultContent = serde_json::from_str(json).unwrap();
+        match content {
+            WebSearchToolResultContent::Error(err) => {
+                assert_eq!(err.error_code, "unavailable");
+            }
+            _ => panic!("Expected Error variant"),
+        }
+    }
+
+    // ---- Tool Default 和序列化测试 ----
+
+    #[test]
+    fn test_tool_default_roundtrip() {
+        // 普通工具：input_schema 有值，其他新增字段为 None
+        let tool = Tool {
+            name: "test_tool".to_string(),
+            description: Some("A test tool".to_string()),
+            input_schema: Some(serde_json::json!({"type": "object"})),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        // 验证顶层 type 字段没有被序列化（tool_type 为 None）
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(
+            value.get("type").is_none(),
+            "top-level type field should be omitted when tool_type is None, got: {}",
+            json
+        );
+        // 验证 input_schema 存在
+        assert!(json.contains(r#""input_schema""#));
+        // 反序列化回来
+        let deserialized: Tool = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "test_tool");
+        assert_eq!(deserialized.description.as_deref(), Some("A test tool"));
+        assert!(deserialized.input_schema.is_some());
+        assert!(deserialized.tool_type.is_none());
+    }
+
+    #[test]
+    fn test_tool_web_search_schema_roundtrip() {
+        // web_search server-side tool：没有 description 和 input_schema
+        let tool = Tool {
+            name: "web_search".to_string(),
+            tool_type: Some("web_search_20250305".to_string()),
+            max_uses: Some(8),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        // 验证 type 字段存在且值为 web_search_20250305
+        assert!(json.contains(r#""type":"web_search_20250305""#));
+        assert!(json.contains(r#""max_uses":8"#));
+        // 验证没有 description 和 input_schema
+        assert!(!json.contains(r#""description""#));
+        assert!(!json.contains(r#""input_schema""#));
+        // 反序列化回来
+        let deserialized: Tool = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            deserialized.tool_type.as_deref(),
+            Some("web_search_20250305")
+        );
+        assert!(deserialized.description.is_none());
+        assert!(deserialized.input_schema.is_none());
+    }
+
+    #[test]
+    fn test_tool_with_domain_filters() {
+        let tool = Tool {
+            name: "web_search".to_string(),
+            tool_type: Some("web_search_20250305".to_string()),
+            max_uses: Some(8),
+            allowed_domains: Some(vec!["example.com".to_string()]),
+            blocked_domains: None,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(json.contains(r#""allowed_domains":["example.com"]"#));
+        assert!(!json.contains(r#""blocked_domains""#));
     }
 }

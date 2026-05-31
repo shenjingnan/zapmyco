@@ -152,7 +152,7 @@ impl WebFetch {
         Tool {
             name: "web_fetch".to_string(),
             description: Some("获取指定 URL 的网页内容并转换为干净的 Markdown 文本。".to_string()),
-            input_schema: serde_json::json!({
+            input_schema: Some(serde_json::json!({
                 "type": "object",
                 "properties": {
                     "url": {
@@ -161,7 +161,8 @@ impl WebFetch {
                     }
                 },
                 "required": ["url"]
-            }),
+            })),
+            ..Default::default()
         }
     }
 
@@ -645,12 +646,12 @@ mod tests {
     fn test_tool_definition_valid_schema() {
         let tool = WebFetch::tool_definition();
         assert_eq!(
-            tool.input_schema["type"],
+            tool.input_schema.as_ref().unwrap()["type"],
             serde_json::Value::String("object".to_string())
         );
-        assert!(tool.input_schema["properties"]["url"].is_object());
+        assert!(tool.input_schema.as_ref().unwrap()["properties"]["url"].is_object());
         assert!(
-            tool.input_schema["required"]
+            tool.input_schema.as_ref().unwrap()["required"]
                 .as_array()
                 .unwrap()
                 .contains(&serde_json::Value::String("url".to_string()))
