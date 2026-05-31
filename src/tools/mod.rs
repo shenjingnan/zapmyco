@@ -1,4 +1,5 @@
 pub mod grep;
+pub mod read;
 pub mod run_command;
 pub mod web_fetch;
 pub mod web_search;
@@ -15,3 +16,6 @@ pub use web_search::{WebSearch, tool_description};
 
 // 旧路径兼容: zapmyco::run_command::* → zapmyco::tools::run_command::*
 pub use run_command::{RunCommand, RunCommandError, RunCommandOptions};
+
+// 旧路径兼容: zapmyco::read::* → zapmyco::tools::read::*
+pub use read::{FileRead, FileReadOptions};

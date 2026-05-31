@@ -76,7 +76,10 @@ impl RunCommand {
         Tool {
             name: "run_command".to_string(),
             description: Some(
-                "在本地系统执行 shell 命令并返回标准输出、标准错误和退出码。".to_string(),
+                "在本地系统执行 shell 命令并返回标准输出、标准错误和退出码。\
+                 重要: 不要使用此工具运行 cat、head、tail 命令来读取文件内容，\
+                 应使用 read 工具来读取文件。"
+                    .to_string(),
             ),
             input_schema: Some(serde_json::json!({
                 "type": "object",
