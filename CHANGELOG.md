@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.31.0](https://github.com/shenjingnan/zapmyco/compare/v0.30.0...v0.31.0) - 2026-05-31
+
+### Added
+
+- *(cli)* 添加 upgrade 命令，支持 zapmyco 自升级 ([#352](https://github.com/shenjingnan/zapmyco/pull/352))
+
+### Fixed
+
+- 恢复模块重构后的外部 API 兼容性，添加 pub use 重新导出 ([#350](https://github.com/shenjingnan/zapmyco/pull/350))
+
 ## [0.30.0](https://github.com/shenjingnan/zapmyco/compare/v0.29.2...v0.30.0) - 2026-05-31
 
 ### Other
