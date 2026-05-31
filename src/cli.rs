@@ -380,6 +380,16 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let run_cmd = crate::run_command::RunCommand::new(Default::default());
     agent.register_tool(crate::agent::ToolHandler::RunCommand(run_cmd));
 
+    // 注册 Web 搜索工具（利用 API 服务端 web_search_20250305）
+    let web_search = crate::web_search::WebSearch::new(
+        agent.api_key().to_string(),
+        agent.api_base_url().to_string(),
+        agent.model_name().to_string(),
+        agent.max_tokens(),
+    )
+    .map_err(|e| format!("初始化 Web Search 失败: {}", e))?;
+    agent.register_tool(crate::agent::ToolHandler::WebSearch(web_search));
+
     let _response = agent
         .chat_with_tools(content, |chunk| {
             print!("{}", chunk);

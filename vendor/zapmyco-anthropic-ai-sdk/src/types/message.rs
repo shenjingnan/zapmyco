@@ -216,6 +216,50 @@ pub enum ContentBlock {
     /// Redacted thinking
     #[serde(rename = "redacted_thinking")]
     RedactedThinking { data: String },
+    /// Server-side tool use (e.g. web_search)
+    #[serde(rename = "server_tool_use")]
+    ServerToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    /// Web search tool result
+    #[serde(rename = "web_search_tool_result")]
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: WebSearchToolResultContent,
+    },
+}
+
+/// Content of a WebSearchToolResultBlock (success results or error)
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum WebSearchToolResultContent {
+    /// Array of search results
+    Results(Vec<WebSearchResult>),
+    /// Error info
+    Error(WebSearchToolResultError),
+}
+
+/// Single web search result entry
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct WebSearchResult {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub title: String,
+    pub url: String,
+    #[serde(default)]
+    pub encrypted_content: Option<String>,
+    #[serde(default)]
+    pub page_age: Option<String>,
+}
+
+/// Web search tool result error
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct WebSearchToolResultError {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub error_code: String,
 }
 
 /// Source of an image
@@ -231,15 +275,32 @@ pub struct ImageSource {
 }
 
 /// Tool definition
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Tool {
     /// Name of the tool
     pub name: String,
     /// Description of the tool
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// JSON schema for tool input
-    pub input_schema: serde_json::Value,
+    /// JSON schema for tool input (not needed for server-side tools like web_search)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
+
+    /// Tool type discriminator: None/"custom" → regular tool, "web_search_20250305" → web search
+    #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+    pub tool_type: Option<String>,
+
+    /// Maximum number of tool uses (for server-side tools)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_uses: Option<u32>,
+
+    /// Only include results from these domains (web_search only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_domains: Option<Vec<String>>,
+
+    /// Exclude results from these domains (web_search only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_domains: Option<Vec<String>>,
 }
 
 /// Tool choice configuration
@@ -365,8 +426,10 @@ pub struct OutputTokensDetails {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ServerToolUsage {
     /// Number of web fetch requests made by the server
+    #[serde(default)]
     pub web_fetch_requests: u32,
     /// Number of web search requests made by the server
+    #[serde(default)]
     pub web_search_requests: u32,
 }
 
