@@ -55,6 +55,7 @@ pub enum ToolHandler {
     RunCommand(crate::tools::run_command::RunCommand),
     WebSearch(crate::tools::web_search::WebSearch),
     Grep(crate::tools::grep::Grep),
+    Read(crate::tools::read::FileRead),
 }
 
 impl ToolHandler {
@@ -64,6 +65,7 @@ impl ToolHandler {
             ToolHandler::RunCommand(_) => crate::tools::run_command::RunCommand::tool_definition(),
             ToolHandler::WebSearch(_) => crate::tools::web_search::WebSearch::tool_definition(),
             ToolHandler::Grep(_) => crate::tools::grep::Grep::tool_definition(),
+            ToolHandler::Read(_) => crate::tools::read::FileRead::tool_definition(),
         }
     }
 
@@ -90,6 +92,7 @@ impl ToolHandler {
             }
             ToolHandler::WebSearch(searcher) => searcher.execute(input).await,
             ToolHandler::Grep(grep) => grep.execute(input).await.map_err(|e| e.to_string()),
+            ToolHandler::Read(reader) => reader.execute(input).await,
         }
     }
 }
@@ -413,19 +416,29 @@ impl AiAgent {
 
         self.system_prompt.push_str("\n\n你有以下工具可以使用：\n");
 
+        // 先加一条总体指导，强调专用工具优先于 run_command
+        self.system_prompt
+            .push_str("注意：有专用工具的任务应使用专用工具，不要使用 run_command 替代。");
+        self.system_prompt.push('\n');
+
         for handler in &self.tools {
             let desc = match handler {
                 ToolHandler::WebFetch(_) => {
                     "- web_fetch: 获取网页内容并转换为 Markdown。当你需要访问互联网信息时使用。"
                 }
                 ToolHandler::RunCommand(_) => {
-                    "- run_command: 在本地系统执行 shell 命令并返回输出。当你需要运行代码、查询系统信息或文件操作时使用。"
+                    "- run_command: 在本地系统执行 shell 命令并返回输出。\
+                      当你需要运行代码、查询系统信息或文件操作时使用。\
+                      重要：不要使用 cat/head/tail 来读取文件内容，应使用 read 工具。"
                 }
                 ToolHandler::WebSearch(_) => {
                     "- web_search: 搜索网络获取实时信息。当你需要查询当前新闻、文档、趋势等实时信息时使用。支持 query（搜索关键词）、allowed_domains（限定域名）、blocked_domains（排除域名）参数。"
                 }
                 ToolHandler::Grep(_) => {
                     "- grep: 在本地文件系统中使用 ripgrep (rg) 搜索文件内容，支持正则表达式。参数包括 pattern（必填，正则模式串）、path（搜索路径，默认当前目录）、glob（文件通配符过滤）、output_mode（输出模式：content/files_with_matches/count）、-A/-B/-C（上下文行数）、-i（忽略大小写）、head_limit（最大结果行数，默认250）、offset（跳过前N条）、multiline（多行模式）、type（文件类型过滤如 rust/js/py）。"
+                }
+                ToolHandler::Read(_) => {
+                    "- read: 读取本地文件系统中的文件内容。支持 file_path（必填，文件路径）、offset（可选，起始行号，从1开始）、limit（可选，最大行数）参数。适用于查看源代码文件、读取配置文件、分析日志等场景。"
                 }
             };
             self.system_prompt.push_str(desc);
@@ -590,6 +603,13 @@ impl AiAgent {
                         }
                     }
                     _ => {}
+                }
+
+                // 显示 Read 工具参数
+                if name == "read"
+                    && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
+                {
+                    eprintln!("[工具]   └ 文件: {}", fp);
                 }
 
                 // 显示 Grep 工具参数
