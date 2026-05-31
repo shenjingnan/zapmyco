@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.30.0](https://github.com/shenjingnan/zapmyco/compare/v0.29.2...v0.30.0) - 2026-05-31
+
+### Other
+
+- *(src)* 重构模块目录结构，按领域分组源代码 ([#348](https://github.com/shenjingnan/zapmyco/pull/348))
+
 ## [0.29.2](https://github.com/shenjingnan/zapmyco/compare/v0.29.1...v0.29.2) - 2026-05-31
 
 ### Added
