@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.31.2](https://github.com/shenjingnan/zapmyco/compare/v0.31.1...v0.31.2) - 2026-05-31
+
+### Added
+
+- *(tools)* 添加 Glob 工具支持按文件名模式查找文件 ([#359](https://github.com/shenjingnan/zapmyco/pull/359))
+- *(tools)* 添加 Read 工具支持读取本地文件内容 ([#357](https://github.com/shenjingnan/zapmyco/pull/357))
+
 ## [0.31.1](https://github.com/shenjingnan/zapmyco/compare/v0.31.0...v0.31.1) - 2026-05-31
 
 ### Added
