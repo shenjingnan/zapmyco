@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.29.1](https://github.com/shenjingnan/zapmyco/compare/v0.29.0...v0.29.1) - 2026-05-31
+
+### Other
+
+- 更新 note 命令文档，适配 clap 枚举子命令重构 ([#343](https://github.com/shenjingnan/zapmyco/pull/343))
+
 ## [0.29.0](https://github.com/shenjingnan/zapmyco/compare/v0.28.0...v0.29.0) - 2026-05-31
 
 ### Other
