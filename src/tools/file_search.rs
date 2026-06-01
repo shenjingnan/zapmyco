@@ -1,4 +1,4 @@
-// grep 工具 — 基于 zapmyco-grep 在本地文件系统中搜索文件内容
+// file_search 工具 — 基于 zapmyco-grep 在本地文件系统中搜索文件内容
 //
 // 本文件是 Anthropic Tool 的集成层，负责：
 // - 定义 Tool JSON Schema（tool_definition）
@@ -10,9 +10,9 @@
 // Configuration
 // ---------------------------------------------------------------------------
 
-/// Grep 配置选项
+/// FileSearch 配置选项
 #[derive(Debug, Clone)]
-pub struct GrepOptions {
+pub struct FileSearchOptions {
     /// 搜索超时时间（秒），默认 20
     pub timeout_secs: u64,
     /// 输出最大字符数，默认 100_000
@@ -21,7 +21,7 @@ pub struct GrepOptions {
     pub default_head_limit: u32,
 }
 
-impl Default for GrepOptions {
+impl Default for FileSearchOptions {
     fn default() -> Self {
         Self {
             timeout_secs: 20,
@@ -35,15 +35,15 @@ impl Default for GrepOptions {
 // Core struct
 // ---------------------------------------------------------------------------
 
-/// grep 工具 — 在本地文件系统中搜索文件内容
+/// file_search 工具 — 在本地文件系统中搜索文件内容
 #[derive(Debug, Clone)]
-pub struct Grep {
-    options: GrepOptions,
+pub struct FileSearch {
+    options: FileSearchOptions,
 }
 
-impl Grep {
-    /// 创建新的 Grep 实例
-    pub fn new(options: GrepOptions) -> Self {
+impl FileSearch {
+    /// 创建新的 FileSearch 实例
+    pub fn new(options: FileSearchOptions) -> Self {
         Self { options }
     }
 
@@ -51,7 +51,7 @@ impl Grep {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "grep".to_string(),
+            name: "file_search".to_string(),
             description: Some(
                 "在本地文件系统中搜索文件内容，支持正则表达式。\
                  适用于查找代码定义、搜索关键词、分析项目结构等场景。"
@@ -171,10 +171,10 @@ impl Grep {
 
         let search_result = tokio::time::timeout(timeout, search_handle)
             .await
-            .map_err(|_| format!("Grep 搜索超时 (超过 {}s)", self.options.timeout_secs))?
-            .map_err(|e| format!("Grep 搜索被中断: {}", e))?;
+            .map_err(|_| format!("FileSearch 搜索超时 (超过 {}s)", self.options.timeout_secs))?
+            .map_err(|e| format!("FileSearch 搜索被中断: {}", e))?;
 
-        let results = search_result.map_err(|e| format!("Grep 搜索失败: {}", e))?;
+        let results = search_result.map_err(|e| format!("FileSearch 搜索失败: {}", e))?;
 
         // 4. 无匹配时快速返回
         if results.matches.is_empty() {
@@ -194,7 +194,7 @@ impl Grep {
         // 7. 检查输出上限
         if result.len() > self.options.output_max_chars {
             return Err(format!(
-                "Grep 输出过大 ({} 字符，上限 {})",
+                "FileSearch 输出过大 ({} 字符，上限 {})",
                 result.len(),
                 self.options.output_max_chars
             ));
@@ -386,8 +386,8 @@ mod tests {
 
     // ---- Helper ----
 
-    fn test_grep() -> Grep {
-        Grep::new(GrepOptions {
+    fn test_grep() -> FileSearch {
+        FileSearch::new(FileSearchOptions {
             timeout_secs: 10,
             output_max_chars: 100_000,
             default_head_limit: 250,
@@ -417,20 +417,20 @@ mod tests {
 
     #[test]
     fn test_tool_definition_name() {
-        let tool = Grep::tool_definition();
-        assert_eq!(tool.name, "grep");
+        let tool = FileSearch::tool_definition();
+        assert_eq!(tool.name, "file_search");
     }
 
     #[test]
     fn test_tool_definition_has_description() {
-        let tool = Grep::tool_definition();
+        let tool = FileSearch::tool_definition();
         assert!(tool.description.is_some());
         assert!(!tool.description.unwrap().is_empty());
     }
 
     #[test]
     fn test_tool_definition_valid_schema() {
-        let tool = Grep::tool_definition();
+        let tool = FileSearch::tool_definition();
         let schema = tool.input_schema.unwrap();
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["pattern"].is_object());
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn test_tool_definition_required_fields() {
-        let tool = Grep::tool_definition();
+        let tool = FileSearch::tool_definition();
         let schema = tool.input_schema.unwrap();
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&serde_json::Value::String("pattern".to_string())));
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_tool_definition_all_parameters() {
-        let tool = Grep::tool_definition();
+        let tool = FileSearch::tool_definition();
         let schema = tool.input_schema.unwrap();
         let props = schema["properties"].as_object().unwrap();
 
@@ -762,7 +762,7 @@ mod tests {
 
     #[test]
     fn test_default_options() {
-        let options = GrepOptions::default();
+        let options = FileSearchOptions::default();
         assert_eq!(options.timeout_secs, 20);
         assert_eq!(options.output_max_chars, 100_000);
         assert_eq!(options.default_head_limit, 250);
@@ -770,7 +770,7 @@ mod tests {
 
     #[test]
     fn test_custom_options() {
-        let options = GrepOptions {
+        let options = FileSearchOptions {
             timeout_secs: 60,
             output_max_chars: 50_000,
             default_head_limit: 100,
@@ -782,7 +782,7 @@ mod tests {
 
     #[test]
     fn test_new_custom() {
-        let grep = Grep::new(GrepOptions {
+        let grep = FileSearch::new(FileSearchOptions {
             timeout_secs: 30,
             output_max_chars: 200_000,
             default_head_limit: 500,
@@ -794,7 +794,7 @@ mod tests {
 
     #[test]
     fn test_new_default() {
-        let grep = Grep::new(GrepOptions::default());
+        let grep = FileSearch::new(FileSearchOptions::default());
         assert_eq!(grep.options.timeout_secs, 20);
         assert_eq!(grep.options.output_max_chars, 100_000);
         assert_eq!(grep.options.default_head_limit, 250);

@@ -52,24 +52,24 @@ pub struct ConversationMessage {
 #[non_exhaustive]
 pub enum ToolHandler {
     WebFetch(crate::tools::web_fetch::WebFetch),
-    RunCommand(crate::tools::run_command::RunCommand),
+    ShellExec(crate::tools::shell_exec::ShellExec),
     WebSearch(crate::tools::web_search::WebSearch),
-    Grep(crate::tools::grep::Grep),
-    Glob(crate::tools::glob::Glob),
-    Read(crate::tools::read::Read),
-    Edit(crate::tools::edit::Edit),
+    FileSearch(crate::tools::file_search::FileSearch),
+    FileFind(crate::tools::file_find::FileFind),
+    FileRead(crate::tools::file_read::FileRead),
+    FileEdit(crate::tools::file_edit::FileEdit),
 }
 
 impl ToolHandler {
     fn tool_definition(&self) -> Tool {
         match self {
             ToolHandler::WebFetch(_) => crate::tools::web_fetch::WebFetch::tool_definition(),
-            ToolHandler::RunCommand(_) => crate::tools::run_command::RunCommand::tool_definition(),
+            ToolHandler::ShellExec(_) => crate::tools::shell_exec::ShellExec::tool_definition(),
             ToolHandler::WebSearch(_) => crate::tools::web_search::WebSearch::tool_definition(),
-            ToolHandler::Grep(_) => crate::tools::grep::Grep::tool_definition(),
-            ToolHandler::Glob(_) => crate::tools::glob::Glob::tool_definition(),
-            ToolHandler::Read(_) => crate::tools::read::Read::tool_definition(),
-            ToolHandler::Edit(_) => crate::tools::edit::Edit::tool_definition(),
+            ToolHandler::FileSearch(_) => crate::tools::file_search::FileSearch::tool_definition(),
+            ToolHandler::FileFind(_) => crate::tools::file_find::FileFind::tool_definition(),
+            ToolHandler::FileRead(_) => crate::tools::file_read::FileRead::tool_definition(),
+            ToolHandler::FileEdit(_) => crate::tools::file_edit::FileEdit::tool_definition(),
         }
     }
 
@@ -82,7 +82,7 @@ impl ToolHandler {
                     .ok_or("Missing required 'url' parameter")?;
                 fetcher.fetch(url).await.map_err(|e| e.to_string())
             }
-            ToolHandler::RunCommand(executor) => {
+            ToolHandler::ShellExec(executor) => {
                 let command = input
                     .get("command")
                     .and_then(|v| v.as_str())
@@ -95,10 +95,10 @@ impl ToolHandler {
                     .map_err(|e| e.to_string())
             }
             ToolHandler::WebSearch(searcher) => searcher.execute(input).await,
-            ToolHandler::Grep(grep) => grep.execute(input).await.map_err(|e| e.to_string()),
-            ToolHandler::Glob(glob) => glob.execute(input).await,
-            ToolHandler::Read(reader) => reader.execute(input).await,
-            ToolHandler::Edit(editor) => editor.execute(input).await,
+            ToolHandler::FileSearch(grep) => grep.execute(input).await.map_err(|e| e.to_string()),
+            ToolHandler::FileFind(glob) => glob.execute(input).await,
+            ToolHandler::FileRead(reader) => reader.execute(input).await,
+            ToolHandler::FileEdit(editor) => editor.execute(input).await,
         }
     }
 }
@@ -422,9 +422,9 @@ impl AiAgent {
 
         self.system_prompt.push_str("\n\n你有以下工具可以使用：\n");
 
-        // 先加一条总体指导，强调专用工具优先于 run_command
+        // 先加一条总体指导，强调专用工具优先于 shell_exec
         self.system_prompt
-            .push_str("注意：有专用工具的任务应使用专用工具，不要使用 run_command 替代。");
+            .push_str("注意：有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。");
         self.system_prompt.push('\n');
 
         for handler in &self.tools {
@@ -432,30 +432,30 @@ impl AiAgent {
                 ToolHandler::WebFetch(_) => {
                     "- web_fetch: 获取网页内容并转换为 Markdown。当你需要访问互联网信息时使用。"
                 }
-                ToolHandler::RunCommand(_) => {
-                    "- run_command: 在本地系统执行 shell 命令并返回输出。\
+                ToolHandler::ShellExec(_) => {
+                    "- shell_exec: 在本地系统执行 shell 命令并返回输出。\
                       当你需要运行代码、查询系统信息或文件操作时使用。\
-                      重要：不要使用 cat/head/tail 来读取文件内容，应使用 read 工具。"
+                      重要：不要使用 cat/head/tail 来读取文件内容，应使用 file_read 工具。"
                 }
                 ToolHandler::WebSearch(_) => {
                     "- web_search: 搜索网络获取实时信息。当你需要查询当前新闻、文档、趋势等实时信息时使用。支持 query（搜索关键词）、allowed_domains（限定域名）、blocked_domains（排除域名）参数。"
                 }
-                ToolHandler::Grep(_) => {
-                    "- grep: 在本地文件系统中使用 ripgrep (rg) 搜索文件内容，支持正则表达式。参数包括 pattern（必填，正则模式串）、path（搜索路径，默认当前目录）、glob（文件通配符过滤）、output_mode（输出模式：content/files_with_matches/count）、-A/-B/-C（上下文行数）、-i（忽略大小写）、head_limit（最大结果行数，默认250）、offset（跳过前N条）、multiline（多行模式）、type（文件类型过滤如 rust/js/py）。"
+                ToolHandler::FileSearch(_) => {
+                    "- file_search: 在本地文件系统中搜索文件内容，支持正则表达式。参数包括 pattern（必填，正则模式串）、path（搜索路径，默认当前目录）、glob（文件通配符过滤）、output_mode（输出模式：content/files_with_matches/count）、-A/-B/-C（上下文行数）、-i（忽略大小写）、head_limit（最大结果行数，默认250）、offset（跳过前N条）、multiline（多行模式）、type（文件类型过滤如 rust/js/py）。"
                 }
-                ToolHandler::Glob(_) => {
-                    "- glob: 在本地文件系统中按文件名模式匹配快速查找文件。\
+                ToolHandler::FileFind(_) => {
+                    "- file_find: 在本地文件系统中按文件名模式匹配快速查找文件。\
                       支持 glob 通配符模式（如 **/*.rs、src/**/*.ts）。\
                       参数包括 pattern（必填，glob 模式串）、path（搜索路径，默认当前目录）、\
                       head_limit（最大结果数，默认100）、offset（跳过前N条结果）。\
                       适用于按名称搜索文件、查找特定类型文件等场景。\
-                      与 grep 不同，glob 只匹配文件名而非文件内容。"
+                      与 file_search 不同，file_find 只匹配文件名而非文件内容。"
                 }
-                ToolHandler::Read(_) => {
-                    "- read: 读取本地文件系统中的文件内容。支持 file_path（必填，文件路径）、offset（可选，起始行号，从1开始）、limit（可选，最大行数）参数。适用于查看源代码文件、读取配置文件、分析日志等场景。"
+                ToolHandler::FileRead(_) => {
+                    "- file_read: 读取本地文件系统中的文件内容。支持 file_path（必填，文件路径）、offset（可选，起始行号，从1开始）、limit（可选，最大行数）参数。适用于查看源代码文件、读取配置文件、分析日志等场景。"
                 }
-                ToolHandler::Edit(_) => {
-                    "- edit: 修改本地文件系统中的文件内容。使用 old_string/new_string 模式进行精确替换，比 sed 命令更安全可靠。\
+                ToolHandler::FileEdit(_) => {
+                    "- file_edit: 修改本地文件系统中的文件内容。使用 old_string/new_string 模式进行精确替换，比 sed 命令更安全可靠。\
                       参数包括 file_path（必填，文件路径）、old_string（必填，要被替换的文本）、\
                       new_string（必填，替换后的文本）、replace_all（可选，是否替换所有匹配项）。\
                       注意：需要确保 old_string 在文件中出现且唯一。"
@@ -591,7 +591,7 @@ impl AiAgent {
                             eprintln!("[工具]   └ 参数: url = {}", url);
                         }
                     }
-                    "run_command" => {
+                    "shell_exec" => {
                         if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
                             let truncated = if cmd.len() > 80 {
                                 format!("{}...", &cmd[..80])
@@ -622,69 +622,61 @@ impl AiAgent {
                             eprintln!("[工具]   └ 搜索: {}", truncated);
                         }
                     }
+                    "file_search" => {
+                        if let Some(p) = input.get("pattern").and_then(|v| v.as_str()) {
+                            let truncated = if p.len() > 80 {
+                                format!("{}...", &p[..80])
+                            } else {
+                                p.to_string()
+                            };
+                            eprintln!("[工具]   └ 模式: {}", truncated);
+                        }
+                        if let Some(p) = input.get("path").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 路径: {}", p);
+                        }
+                        if let Some(m) = input.get("output_mode").and_then(|v| v.as_str())
+                            && m != "content"
+                        {
+                            eprintln!("[工具]   └ 模式: {}", m);
+                        }
+                    }
+                    "file_find" => {
+                        if let Some(p) = input.get("pattern").and_then(|v| v.as_str()) {
+                            let truncated = if p.len() > 80 {
+                                format!("{}...", &p[..80])
+                            } else {
+                                p.to_string()
+                            };
+                            eprintln!("[工具]   └ 模式: {}", truncated);
+                        }
+                        if let Some(p) = input.get("path").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 路径: {}", p);
+                        }
+                    }
+                    "file_read" => {
+                        if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 文件: {}", fp);
+                        }
+                    }
+                    "file_edit" => {
+                        if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
+                            let truncated = if fp.len() > 80 {
+                                format!("{}...", &fp[..80])
+                            } else {
+                                fp.to_string()
+                            };
+                            eprintln!("[工具]   └ 文件: {}", truncated);
+                        }
+                        if let Some(old) = input.get("old_string").and_then(|v| v.as_str()) {
+                            let truncated = if old.len() > 50 {
+                                format!("{}...", &old[..50])
+                            } else {
+                                old.to_string()
+                            };
+                            eprintln!("[工具]   └ 查找: {}", truncated);
+                        }
+                    }
                     _ => {}
-                }
-
-                // 显示 Read 工具参数
-                if name == "read"
-                    && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
-                {
-                    eprintln!("[工具]   └ 文件: {}", fp);
-                }
-
-                // 显示 Edit 工具参数
-                if name == "edit" {
-                    if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
-                        let truncated = if fp.len() > 80 {
-                            format!("{}...", &fp[..80])
-                        } else {
-                            fp.to_string()
-                        };
-                        eprintln!("[工具]   └ 文件: {}", truncated);
-                    }
-                    if let Some(old) = input.get("old_string").and_then(|v| v.as_str()) {
-                        let truncated = if old.len() > 50 {
-                            format!("{}...", &old[..50])
-                        } else {
-                            old.to_string()
-                        };
-                        eprintln!("[工具]   └ 查找: {}", truncated);
-                    }
-                }
-
-                // 显示 Grep 工具参数
-                if name == "grep" {
-                    if let Some(p) = input.get("pattern").and_then(|v| v.as_str()) {
-                        let truncated = if p.len() > 80 {
-                            format!("{}...", &p[..80])
-                        } else {
-                            p.to_string()
-                        };
-                        eprintln!("[工具]   └ 模式: {}", truncated);
-                    }
-                    if let Some(p) = input.get("path").and_then(|v| v.as_str()) {
-                        eprintln!("[工具]   └ 路径: {}", p);
-                    }
-                    if let Some(m) = input.get("output_mode").and_then(|v| v.as_str())
-                        && m != "content"
-                    {
-                        eprintln!("[工具]   └ 模式: {}", m);
-                    }
-                }
-
-                // 显示 Glob 工具参数
-                if name == "glob" {
-                    if let Some(p) = input.get("pattern").and_then(|v| v.as_str()) {
-                        let truncated = if p.len() > 80 {
-                            format!("{}...", &p[..80])
-                        } else {
-                            p.to_string()
-                        };
-                        eprintln!("[工具]   └ 模式: {}", truncated);
-                    }
-                    if let Some(p) = input.get("path").and_then(|v| v.as_str()) {
-                        eprintln!("[工具]   └ 路径: {}", p);
-                    }
                 }
 
                 let start = Instant::now();
@@ -1436,29 +1428,29 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // ---- RunCommand ToolHandler tests ----
+    // ---- ShellExec ToolHandler tests ----
 
-    fn make_test_executor() -> crate::tools::run_command::RunCommand {
-        crate::tools::run_command::RunCommand::new(crate::tools::run_command::RunCommandOptions {
+    fn make_test_executor() -> crate::tools::shell_exec::ShellExec {
+        crate::tools::shell_exec::ShellExec::new(crate::tools::shell_exec::ShellExecOptions {
             skip_confirm: true,
             ..Default::default()
         })
     }
 
     #[test]
-    fn test_tool_handler_run_command_tool_definition() {
+    fn test_tool_handler_shell_exec_tool_definition() {
         let executor = make_test_executor();
-        let handler = ToolHandler::RunCommand(executor);
+        let handler = ToolHandler::ShellExec(executor);
         let tool = handler.tool_definition();
-        assert_eq!(tool.name, "run_command");
+        assert_eq!(tool.name, "shell_exec");
         assert!(tool.description.is_some());
         assert!(tool.input_schema.as_ref().unwrap()["properties"]["command"].is_object());
     }
 
     #[tokio::test]
-    async fn test_tool_handler_run_command_missing_cmd() {
+    async fn test_tool_handler_shell_exec_missing_cmd() {
         let executor = make_test_executor();
-        let handler = ToolHandler::RunCommand(executor);
+        let handler = ToolHandler::ShellExec(executor);
         let input = serde_json::json!({});
         let result = handler.execute(&input).await;
         assert!(result.is_err());
@@ -1466,9 +1458,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tool_handler_run_command_success() {
+    async fn test_tool_handler_shell_exec_success() {
         let executor = make_test_executor();
-        let handler = ToolHandler::RunCommand(executor);
+        let handler = ToolHandler::ShellExec(executor);
         let input = serde_json::json!({"command": "echo hello"});
         let result = handler.execute(&input).await;
         assert!(result.is_ok());
@@ -1476,21 +1468,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tool_handler_run_command_with_description() {
+    async fn test_tool_handler_shell_exec_with_description() {
         let executor = make_test_executor();
-        let handler = ToolHandler::RunCommand(executor);
+        let handler = ToolHandler::ShellExec(executor);
         let input = serde_json::json!({
             "command": "echo hello",
-            "description": "Testing the run_command tool"
+            "description": "Testing the shell_exec tool"
         });
         let result = handler.execute(&input).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn test_tool_handler_run_command_with_working_dir() {
+    async fn test_tool_handler_shell_exec_with_working_dir() {
         let executor = make_test_executor();
-        let handler = ToolHandler::RunCommand(executor);
+        let handler = ToolHandler::ShellExec(executor);
         let dir = std::env::temp_dir();
         let input = serde_json::json!({
             "command": "pwd",

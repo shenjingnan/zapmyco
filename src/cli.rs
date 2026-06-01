@@ -379,8 +379,8 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(web_fetch));
 
     // 注册命令执行工具
-    let run_cmd = crate::tools::run_command::RunCommand::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::RunCommand(run_cmd));
+    let shell_exec = crate::tools::shell_exec::ShellExec::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
 
     // 注册 Web 搜索工具（利用 API 服务端 web_search_20250305）
     let web_search = crate::tools::web_search::WebSearch::new(
@@ -393,20 +393,20 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     agent.register_tool(crate::agent::chat::ToolHandler::WebSearch(web_search));
 
     // 注册文件搜索工具
-    let grep = crate::tools::grep::Grep::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::Grep(grep));
+    let file_search = crate::tools::file_search::FileSearch::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::FileSearch(file_search));
 
-    // 注册文件查找工具 (glob)
-    let globber = crate::tools::glob::Glob::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::Glob(globber));
+    // 注册文件查找工具
+    let file_find = crate::tools::file_find::FileFind::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::FileFind(file_find));
 
     // 注册文件读取工具
-    let reader = crate::tools::read::Read::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::Read(reader));
+    let file_read = crate::tools::file_read::FileRead::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::FileRead(file_read));
 
     // 注册文件编辑工具
-    let edit_tool = crate::tools::edit::Edit::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::Edit(edit_tool));
+    let file_edit = crate::tools::file_edit::FileEdit::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
 
     let _response = agent
         .chat_with_tools(content, |chunk| {

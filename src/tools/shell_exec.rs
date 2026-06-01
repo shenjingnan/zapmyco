@@ -1,4 +1,4 @@
-/// run_command 工具 - 在本地系统执行 shell 命令并返回输出
+/// shell_exec 工具 - 在本地系统执行 shell 命令并返回输出
 use thiserror::Error;
 
 // ---------------------------------------------------------------------------
@@ -7,7 +7,7 @@ use thiserror::Error;
 
 /// 命令执行错误类型
 #[derive(Debug, Error)]
-pub enum RunCommandError {
+pub enum ShellExecError {
     /// 命令执行超时
     #[error("Command timed out after {timeout_secs}s")]
     Timeout {
@@ -35,7 +35,7 @@ pub enum RunCommandError {
 
 /// run_command 配置选项
 #[derive(Debug, Clone)]
-pub struct RunCommandOptions {
+pub struct ShellExecOptions {
     /// 命令执行超时时间（秒），默认 30
     pub timeout_secs: u64,
     /// 输出最大字符数（stdout + stderr 合计），默认 100_000
@@ -44,7 +44,7 @@ pub struct RunCommandOptions {
     pub skip_confirm: bool,
 }
 
-impl Default for RunCommandOptions {
+impl Default for ShellExecOptions {
     fn default() -> Self {
         Self {
             timeout_secs: 30,
@@ -60,13 +60,13 @@ impl Default for RunCommandOptions {
 
 /// run_command 工具
 #[derive(Debug, Clone)]
-pub struct RunCommand {
-    options: RunCommandOptions,
+pub struct ShellExec {
+    options: ShellExecOptions,
 }
 
-impl RunCommand {
-    /// 创建新的 RunCommand 实例
-    pub fn new(options: RunCommandOptions) -> Self {
+impl ShellExec {
+    /// 创建新的 ShellExec 实例
+    pub fn new(options: ShellExecOptions) -> Self {
         Self { options }
     }
 
@@ -74,7 +74,7 @@ impl RunCommand {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "run_command".to_string(),
+            name: "shell_exec".to_string(),
             description: Some(
                 "在本地系统执行 shell 命令并返回标准输出、标准错误和退出码。\
                  重要: 不要使用此工具运行 cat、head、tail 命令来读取文件内容，\
@@ -114,7 +114,7 @@ impl RunCommand {
         command: &str,
         description: Option<&str>,
         working_directory: Option<&str>,
-    ) -> Result<String, RunCommandError> {
+    ) -> Result<String, ShellExecError> {
         // 1. 选择 shell
         let (shell, arg_flag) = if cfg!(target_os = "windows") {
             ("cmd.exe", "/C")
@@ -144,14 +144,14 @@ impl RunCommand {
 
         let output = tokio::time::timeout(timeout, cmd.output())
             .await
-            .map_err(|_| RunCommandError::Timeout {
+            .map_err(|_| ShellExecError::Timeout {
                 timeout_secs: self.options.timeout_secs,
             })?
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    RunCommandError::Io(format!("Command not found: {}", command))
+                    ShellExecError::Io(format!("Command not found: {}", command))
                 } else {
-                    RunCommandError::Io(e.to_string())
+                    ShellExecError::Io(e.to_string())
                 }
             })?;
 
@@ -162,7 +162,7 @@ impl RunCommand {
         // 5. 检查总大小
         let total_size = stdout.len() + stderr.len();
         if total_size > self.options.output_max_chars {
-            return Err(RunCommandError::OutputTooLarge {
+            return Err(ShellExecError::OutputTooLarge {
                 size: total_size,
                 max: self.options.output_max_chars,
             });
@@ -363,9 +363,9 @@ impl Drop for RawModeGuard {
 mod tests {
     use super::*;
 
-    /// 创建测试用的 RunCommand 实例
-    fn test_executor() -> RunCommand {
-        RunCommand::new(RunCommandOptions {
+    /// 创建测试用的 ShellExec 实例
+    fn test_executor() -> ShellExec {
+        ShellExec::new(ShellExecOptions {
             timeout_secs: 5,
             output_max_chars: 10_000,
             skip_confirm: true,
@@ -376,20 +376,20 @@ mod tests {
 
     #[test]
     fn test_tool_definition_name() {
-        let tool = RunCommand::tool_definition();
-        assert_eq!(tool.name, "run_command");
+        let tool = ShellExec::tool_definition();
+        assert_eq!(tool.name, "shell_exec");
     }
 
     #[test]
     fn test_tool_definition_has_description() {
-        let tool = RunCommand::tool_definition();
+        let tool = ShellExec::tool_definition();
         assert!(tool.description.is_some());
         assert!(!tool.description.unwrap().is_empty());
     }
 
     #[test]
     fn test_tool_definition_valid_schema() {
-        let tool = RunCommand::tool_definition();
+        let tool = ShellExec::tool_definition();
         assert_eq!(
             tool.input_schema.as_ref().unwrap()["type"],
             serde_json::Value::String("object".to_string())
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_tool_definition_required_fields() {
-        let tool = RunCommand::tool_definition();
+        let tool = ShellExec::tool_definition();
         let required = tool.input_schema.as_ref().unwrap()["required"]
             .as_array()
             .unwrap();
@@ -503,7 +503,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_timeout() {
-        let executor = RunCommand::new(RunCommandOptions {
+        let executor = ShellExec::new(ShellExecOptions {
             timeout_secs: 1,
             output_max_chars: 10_000,
             skip_confirm: true,
@@ -512,7 +512,7 @@ mod tests {
         let result = executor.execute("sleep 10", None, None).await;
         assert!(result.is_err());
         match result.err().unwrap() {
-            RunCommandError::Timeout { timeout_secs } => {
+            ShellExecError::Timeout { timeout_secs } => {
                 assert_eq!(timeout_secs, 1);
             }
             other => panic!("Expected Timeout error, got: {}", other),
@@ -521,7 +521,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_large_output_truncated() {
-        let executor = RunCommand::new(RunCommandOptions {
+        let executor = ShellExec::new(ShellExecOptions {
             timeout_secs: 5,
             output_max_chars: 100, // 很小的限制
             skip_confirm: true,
@@ -537,7 +537,7 @@ mod tests {
             .await;
         assert!(result.is_err());
         match result.err().unwrap() {
-            RunCommandError::OutputTooLarge { size, max } => {
+            ShellExecError::OutputTooLarge { size, max } => {
                 assert_eq!(max, 100);
                 assert!(size > 100);
             }
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_new_default() {
-        let executor = RunCommand::new(RunCommandOptions::default());
+        let executor = ShellExec::new(ShellExecOptions::default());
         assert_eq!(executor.options.timeout_secs, 30);
         assert_eq!(executor.options.output_max_chars, 100_000);
         assert!(!executor.options.skip_confirm);
@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_new_custom_options() {
-        let executor = RunCommand::new(RunCommandOptions {
+        let executor = ShellExec::new(ShellExecOptions {
             timeout_secs: 60,
             output_max_chars: 50_000,
             skip_confirm: true,
