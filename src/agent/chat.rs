@@ -51,6 +51,7 @@ pub struct ConversationMessage {
 /// 外部代码应使用 `_` 通配模式进行匹配，以保证未来兼容。
 #[non_exhaustive]
 pub enum ToolHandler {
+    AskUser(crate::tools::ask_user::AskUser),
     WebFetch(crate::tools::web_fetch::WebFetch),
     ShellExec(crate::tools::shell_exec::ShellExec),
     WebSearch(crate::tools::web_search::WebSearch),
@@ -64,6 +65,7 @@ pub enum ToolHandler {
 impl ToolHandler {
     fn tool_definition(&self) -> Tool {
         match self {
+            ToolHandler::AskUser(_) => crate::tools::ask_user::AskUser::tool_definition(),
             ToolHandler::WebFetch(_) => crate::tools::web_fetch::WebFetch::tool_definition(),
             ToolHandler::ShellExec(_) => crate::tools::shell_exec::ShellExec::tool_definition(),
             ToolHandler::WebSearch(_) => crate::tools::web_search::WebSearch::tool_definition(),
@@ -77,6 +79,7 @@ impl ToolHandler {
 
     async fn execute(&self, input: &serde_json::Value) -> Result<String, String> {
         match self {
+            ToolHandler::AskUser(asker) => asker.execute(input).await,
             ToolHandler::WebFetch(fetcher) => {
                 let url = input
                     .get("url")
@@ -435,6 +438,12 @@ impl AiAgent {
 
         for handler in &self.tools {
             let desc = match handler {
+                ToolHandler::AskUser(_) => {
+                    "- ask_user: 向用户提出一个带有选项的问题并等待回答。\
+                      当你需要用户做出选择、澄清需求、确认操作或选择偏好时使用。\
+                      需要提供清晰的问题（question）和选项列表（options，每个选项包含 label 和 description）。\
+                      支持单选和多选（multi_select 参数）。"
+                }
                 ToolHandler::WebFetch(_) => {
                     "- web_fetch: 获取网页内容并转换为 Markdown。当你需要访问互联网信息时使用。"
                 }
@@ -599,6 +608,16 @@ impl AiAgent {
 
                 // 显示工具参数
                 match name.as_str() {
+                    "ask_user" => {
+                        if let Some(q) = input.get("question").and_then(|v| v.as_str()) {
+                            let truncated = if q.len() > 60 {
+                                format!("{}...", &q[..60])
+                            } else {
+                                q.to_string()
+                            };
+                            eprintln!("[工具]   └ 问题: {}", truncated);
+                        }
+                    }
                     "web_fetch" => {
                         if let Some(url) = input.get("url").and_then(|v| v.as_str()) {
                             eprintln!("[工具]   └ 参数: url = {}", url);

@@ -1,5 +1,7 @@
 // 内部工具模块，标记为 doc(hidden) 以避免 cargo-semver-checks 将内部重构误报为 breaking change
 #[doc(hidden)]
+pub mod ask_user;
+#[doc(hidden)]
 pub mod file_edit;
 #[doc(hidden)]
 pub mod file_find;
