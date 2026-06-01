@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.32.1](https://github.com/shenjingnan/zapmyco/compare/v0.32.0...v0.32.1) - 2026-06-01
+
+### Added
+
+- *(tools)* 新增 file_write 工具及预读检查机制 ([#367](https://github.com/shenjingnan/zapmyco/pull/367))
+
 ## [0.32.0](https://github.com/shenjingnan/zapmyco/compare/v0.31.2...v0.32.0) - 2026-06-01
 
 ### Added
