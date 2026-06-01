@@ -57,6 +57,7 @@ pub enum ToolHandler {
     Grep(crate::tools::grep::Grep),
     Glob(crate::tools::glob::Glob),
     Read(crate::tools::read::FileRead),
+    Edit(crate::tools::edit::Edit),
 }
 
 impl ToolHandler {
@@ -68,6 +69,7 @@ impl ToolHandler {
             ToolHandler::Grep(_) => crate::tools::grep::Grep::tool_definition(),
             ToolHandler::Glob(_) => crate::tools::glob::Glob::tool_definition(),
             ToolHandler::Read(_) => crate::tools::read::FileRead::tool_definition(),
+            ToolHandler::Edit(_) => crate::tools::edit::Edit::tool_definition(),
         }
     }
 
@@ -96,6 +98,7 @@ impl ToolHandler {
             ToolHandler::Grep(grep) => grep.execute(input).await.map_err(|e| e.to_string()),
             ToolHandler::Glob(glob) => glob.execute(input).await,
             ToolHandler::Read(reader) => reader.execute(input).await,
+            ToolHandler::Edit(editor) => editor.execute(input).await,
         }
     }
 }
@@ -451,6 +454,12 @@ impl AiAgent {
                 ToolHandler::Read(_) => {
                     "- read: 读取本地文件系统中的文件内容。支持 file_path（必填，文件路径）、offset（可选，起始行号，从1开始）、limit（可选，最大行数）参数。适用于查看源代码文件、读取配置文件、分析日志等场景。"
                 }
+                ToolHandler::Edit(_) => {
+                    "- edit: 修改本地文件系统中的文件内容。使用 old_string/new_string 模式进行精确替换，比 sed 命令更安全可靠。\
+                      参数包括 file_path（必填，文件路径）、old_string（必填，要被替换的文本）、\
+                      new_string（必填，替换后的文本）、replace_all（可选，是否替换所有匹配项）。\
+                      注意：需要确保 old_string 在文件中出现且唯一。"
+                }
             };
             self.system_prompt.push_str(desc);
             self.system_prompt.push('\n');
@@ -621,6 +630,26 @@ impl AiAgent {
                     && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
                 {
                     eprintln!("[工具]   └ 文件: {}", fp);
+                }
+
+                // 显示 Edit 工具参数
+                if name == "edit" {
+                    if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
+                        let truncated = if fp.len() > 80 {
+                            format!("{}...", &fp[..80])
+                        } else {
+                            fp.to_string()
+                        };
+                        eprintln!("[工具]   └ 文件: {}", truncated);
+                    }
+                    if let Some(old) = input.get("old_string").and_then(|v| v.as_str()) {
+                        let truncated = if old.len() > 50 {
+                            format!("{}...", &old[..50])
+                        } else {
+                            old.to_string()
+                        };
+                        eprintln!("[工具]   └ 查找: {}", truncated);
+                    }
                 }
 
                 // 显示 Grep 工具参数

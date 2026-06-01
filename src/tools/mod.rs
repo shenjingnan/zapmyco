@@ -1,3 +1,4 @@
+pub mod edit;
 pub mod glob;
 pub mod grep;
 pub mod read;
@@ -6,6 +7,7 @@ pub mod web_fetch;
 pub mod web_search;
 
 // 旧路径兼容: zapmyco::glob::* → zapmyco::tools::glob::*
+pub use edit::{Edit, EditOptions};
 pub use glob::{Glob, GlobOptions};
 
 // 旧路径兼容: zapmyco::grep::* → zapmyco::tools::grep::*
