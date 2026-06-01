@@ -12,6 +12,8 @@ pub mod file_search;
 #[doc(hidden)]
 pub mod file_write;
 #[doc(hidden)]
+pub mod prompt;
+#[doc(hidden)]
 pub mod shell_exec;
 #[doc(hidden)]
 pub mod web_fetch;

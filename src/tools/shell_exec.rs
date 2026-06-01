@@ -205,7 +205,7 @@ impl ShellExec {
 
 /// 提示用户确认是否执行命令
 ///
-/// 在终端交互环境下显示命令详情并询问用户是否确认执行。
+/// 使用共享的 SelectPrompt 组件显示允许/拒绝选项。
 /// 非 TTY 环境下默认拒绝执行。
 fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
     use std::io::IsTerminal;
@@ -226,133 +226,22 @@ fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
     }
     eprintln!("  └ 命令: {}", command);
 
-    let _guard = match RawModeGuard::new() {
-        Some(g) => g,
-        None => return false,
-    };
+    let question = "是否确认执行？";
+    let options = [
+        crate::tools::prompt::SelectOption {
+            label: "允许",
+            description: "执行该命令",
+        },
+        crate::tools::prompt::SelectOption {
+            label: "拒绝",
+            description: "取消执行该命令",
+        },
+    ];
 
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-
-    const OPTIONS: [&str; 2] = ["1. 允许", "0. 拒绝"];
-    let mut selected: usize = 0;
-    let list_height = 1 + OPTIONS.len(); // "? " + 2 options = 3
-
-    // 初始渲染
-    render_list(&OPTIONS, selected, list_height, true);
-
-    loop {
-        match crossterm::event::read() {
-            // 单键立即操作
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('1'),
-                ..
-            })) => {
-                clear_lines(list_height);
-                println!();
-                return true;
-            }
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('0'),
-                ..
-            })) => {
-                clear_lines(list_height);
-                println!();
-                return false;
-            }
-            // Ctrl+C → 取消
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('c'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
-            })) => {
-                clear_lines(list_height);
-                println!();
-                return false;
-            }
-            // 上 / k → 上移
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Up, ..
-            }))
-            | Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('k'),
-                ..
-            })) if selected > 0 => {
-                selected -= 1;
-                render_list(&OPTIONS, selected, list_height, false);
-            }
-            // 下 / j → 下移
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                ..
-            }))
-            | Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('j'),
-                ..
-            })) if selected < OPTIONS.len() - 1 => {
-                selected += 1;
-                render_list(&OPTIONS, selected, list_height, false);
-            }
-            // Enter → 确认当前选中
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                ..
-            })) => {
-                clear_lines(list_height);
-                println!();
-                return selected == 0;
-            }
-            _ => {}
-        }
-    }
-}
-
-/// 渲染选项列表（raw 模式下每行需显式 `\r` 回到列首）
-fn render_list(options: &[&str], selected: usize, list_height: usize, initial: bool) {
-    use crossterm::style::Stylize;
-    use std::io::Write;
-    let mut stderr = std::io::stderr();
-
-    if !initial {
-        // 非首次渲染：将光标移到列表顶部
-        for _ in 0..list_height {
-            write!(stderr, "\x1b[1F").ok(); // Cursor Previous Line（回到上一行列首）
-        }
-    }
-
-    // 重绘所有行，raw 模式下 \n 仅 LF，不回车，所以需要显式 \r
-    writeln!(stderr, "\r{} 是否确认执行？", "?".green().bold()).ok();
-    for (i, opt) in options.iter().enumerate() {
-        if i == selected {
-            writeln!(stderr, "\r  ▸ {}", opt.green()).ok();
-        } else {
-            writeln!(stderr, "\r    {}", opt).ok();
-        }
-    }
-}
-
-/// 清除列表区域的 N 行（从下往上）
-fn clear_lines(count: usize) {
-    use std::io::Write;
-    let mut stderr = std::io::stderr();
-    for _ in 0..count {
-        write!(stderr, "\x1b[1F\x1b[2K").ok(); // 上移一行 + 清除整行
-    }
-}
-
-/// RAII guard：创建时进入原始模式 + 隐藏光标，drop 时恢复
-struct RawModeGuard;
-impl RawModeGuard {
-    fn new() -> Option<Self> {
-        crossterm::terminal::enable_raw_mode().ok()?;
-        _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Hide);
-        Some(Self)
-    }
-}
-impl Drop for RawModeGuard {
-    fn drop(&mut self) {
-        _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
-        _ = crossterm::terminal::disable_raw_mode();
-    }
+    matches!(
+        crate::tools::prompt::prompt_single_select(question, &options),
+        Some(0)
+    )
 }
 
 // ---------------------------------------------------------------------------

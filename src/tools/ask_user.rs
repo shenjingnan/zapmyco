@@ -1,18 +1,18 @@
 use serde_json::Value;
+/// ask_user 工具 - 向用户提出一个问题并获取回答
+///
+/// 当 LLM 需要用户做出决策、澄清需求、确认操作或选择偏好时使用。
+/// 使用共享的 SelectPrompt 组件（支持 j/k vim 快捷键）。
 use std::io::IsTerminal;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 
-/// 选项显示项，实现 Display 以在 inquire 选择列表中同时显示 label 和 description
-#[derive(Debug, Clone)]
+use crate::tools::prompt;
+
+/// 内部选项项，用于 JSON 解析中转
+#[derive(Debug)]
 struct OptionItem {
     label: String,
     description: String,
-}
-
-impl std::fmt::Display for OptionItem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}  ─ {}", self.label, self.description)
-    }
 }
 
 /// ask_user 工具
@@ -113,7 +113,8 @@ impl AskUser {
 
     /// 执行 ask_user 工具
     ///
-    /// 在交互式终端中用 inquire 显示问题选项，等待用户选择后返回结果。
+    /// 在交互式终端中用共享的 SelectPrompt 组件显示选项，等待用户选择后返回结果。
+    /// 支持 j/k、↑/↓ 导航，1-9 快捷键和 Enter 确认。
     pub async fn execute(&self, input: &Value) -> Result<String, String> {
         let (question, items, multi_select) = Self::parse_and_validate_input(input)?;
 
@@ -122,40 +123,29 @@ impl AskUser {
             return Err("ask_user 工具只能在交互式终端中使用，当前不是终端环境。".to_string());
         }
 
+        // 转换为 prompt::SelectOption
+        let prompt_opts: Vec<prompt::SelectOption> = items
+            .iter()
+            .map(|item| prompt::SelectOption {
+                label: &item.label,
+                description: &item.description,
+            })
+            .collect();
+
         if multi_select {
-            Self::prompt_multi_select(question, items)
+            match prompt::prompt_multi_select(question, &prompt_opts) {
+                Some(indices) => {
+                    let labels: Vec<&str> =
+                        indices.iter().map(|&i| items[i].label.as_str()).collect();
+                    Ok(format!("用户选择了: {}", labels.join(", ")))
+                }
+                None => Ok("[用户取消了选择]".to_string()),
+            }
         } else {
-            Self::prompt_single_select(question, items)
-        }
-    }
-
-    /// 单选模式：使用 inquire::Select 提供一个选项列表
-    fn prompt_single_select(question: &str, items: Vec<OptionItem>) -> Result<String, String> {
-        match inquire::Select::new(question, items).prompt() {
-            Ok(selected) => Ok(format!("用户选择了: {}", selected.label)),
-            Err(e) => Self::handle_inquire_error(e),
-        }
-    }
-
-    /// 多选模式：使用 inquire::MultiSelect 提供一个多选列表
-    fn prompt_multi_select(question: &str, items: Vec<OptionItem>) -> Result<String, String> {
-        match inquire::MultiSelect::new(question, items).prompt() {
-            Ok(selected) => {
-                let labels: Vec<&str> = selected.iter().map(|s| s.label.as_str()).collect();
-                Ok(format!("用户选择了: {}", labels.join(", ")))
+            match prompt::prompt_single_select(question, &prompt_opts) {
+                Some(idx) => Ok(format!("用户选择了: {}", items[idx].label)),
+                None => Ok("[用户取消了选择]".to_string()),
             }
-            Err(e) => Self::handle_inquire_error(e),
-        }
-    }
-
-    /// 统一处理 inquire 交互错误
-    fn handle_inquire_error(e: inquire::InquireError) -> Result<String, String> {
-        match e {
-            inquire::InquireError::OperationCanceled => Ok("[用户取消了选择]".to_string()),
-            inquire::InquireError::IO(_) => {
-                Err("终端输入/输出错误：非交互式环境或终端不可用。".to_string())
-            }
-            other => Err(format!("用户交互失败: {}", other)),
         }
     }
 }
@@ -227,24 +217,6 @@ mod tests {
             AskUser::parse_and_validate_input(&input);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("label"));
-    }
-
-    #[test]
-    fn test_handle_inquire_error_operation_canceled() {
-        let err = inquire::InquireError::OperationCanceled;
-        let result = AskUser::handle_inquire_error(err);
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("取消"));
-    }
-
-    #[test]
-    fn test_handle_inquire_error_io() {
-        let err = inquire::InquireError::IO(std::io::Error::new(
-            std::io::ErrorKind::NotConnected,
-            "not a terminal",
-        ));
-        let result = AskUser::handle_inquire_error(err);
-        assert!(result.is_err());
     }
 
     #[test]
