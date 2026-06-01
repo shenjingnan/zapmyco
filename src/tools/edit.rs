@@ -229,7 +229,8 @@ enum LineEnding {
 /// 检测文件的行尾风格，读取前 4KB 的内容判断
 fn detect_line_endings(content: &str) -> LineEnding {
     let check_len = content.len().min(4096);
-    let head = &content[..check_len];
+    // 使用 floor_char_boundary 确保不切到 UTF-8 多字节字符中间
+    let head = &content[..content.floor_char_boundary(check_len)];
 
     let mut crlf_count = 0usize;
     let mut lf_count = 0usize;
