@@ -50,9 +50,10 @@ pub fn prompt_single_select(
 
     let guard = RawModeGuard::new()?;
     let mut selected: usize = 0;
+    let mut input_buf = String::new();
     let list_height = 1 + options.len();
 
-    render_single_list(question, options, selected, true);
+    render_single_list(question, options, selected, true, None);
 
     loop {
         match crossterm::event::read() {
@@ -63,13 +64,16 @@ pub fn prompt_single_select(
             })) => {
                 let idx = (c as usize) - ('1' as usize);
                 if idx < options.len() {
+                    if options[idx].custom_input {
+                        // 数字键跳到自定义选项 → 进入内联输入
+                        selected = idx;
+                        input_buf.clear();
+                        render_single_list(question, options, selected, false, Some(""));
+                        continue;
+                    }
                     clear_lines(list_height);
                     drop(guard);
-                    return if options[idx].custom_input {
-                        Some(SingleSelectResult::Custom(read_custom_input(question)))
-                    } else {
-                        Some(SingleSelectResult::Index(idx))
-                    };
+                    return Some(SingleSelectResult::Index(idx));
                 }
             }
             // Ctrl+C → 取消
@@ -82,7 +86,7 @@ pub fn prompt_single_select(
                 drop(guard);
                 return None;
             }
-            // 上 / k → 上移
+            // 上 / ↑ → 上移（在自定义选项上时退出输入模式）
             Ok(Event::Key(KeyEvent {
                 code: KeyCode::Up, ..
             }))
@@ -91,14 +95,10 @@ pub fn prompt_single_select(
                 ..
             })) if selected > 0 => {
                 selected -= 1;
-                if options[selected].custom_input {
-                    clear_lines(list_height);
-                    drop(guard);
-                    return Some(SingleSelectResult::Custom(read_custom_input(question)));
-                }
-                render_single_list(question, options, selected, false);
+                input_buf.clear();
+                render_single_list(question, options, selected, false, None);
             }
-            // 下 / j → 下移
+            // 下 / ↓ → 下移（在自定义选项上时尝试下移，最后一项则不动）
             Ok(Event::Key(KeyEvent {
                 code: KeyCode::Down,
                 ..
@@ -108,25 +108,64 @@ pub fn prompt_single_select(
                 ..
             })) if selected < options.len() - 1 => {
                 selected += 1;
+                input_buf.clear();
                 if options[selected].custom_input {
-                    clear_lines(list_height);
-                    drop(guard);
-                    return Some(SingleSelectResult::Custom(read_custom_input(question)));
+                    // 移到自定义选项 → 进入内联输入模式
+                    render_single_list(question, options, selected, false, Some(""));
+                } else {
+                    render_single_list(question, options, selected, false, None);
                 }
-                render_single_list(question, options, selected, false);
             }
-            // Enter → 确认
+            // 在自定义选项上时的内联输入处理
+            _ if options[selected].custom_input => {
+                let event = crossterm::event::read();
+                match event {
+                    Ok(Event::Key(KeyEvent {
+                        code: KeyCode::Enter,
+                        ..
+                    })) => {
+                        clear_lines(list_height);
+                        drop(guard);
+                        return if input_buf.is_empty() {
+                            Some(SingleSelectResult::Index(selected))
+                        } else {
+                            Some(SingleSelectResult::Custom(input_buf.trim().to_string()))
+                        };
+                    }
+                    Ok(Event::Key(KeyEvent {
+                        code: KeyCode::Char('c'),
+                        modifiers: KeyModifiers::CONTROL,
+                        ..
+                    })) => {
+                        clear_lines(list_height);
+                        drop(guard);
+                        return None;
+                    }
+                    Ok(Event::Key(KeyEvent {
+                        code: KeyCode::Backspace,
+                        ..
+                    })) => {
+                        input_buf.pop();
+                        render_single_list(question, options, selected, false, Some(&input_buf));
+                    }
+                    Ok(Event::Key(KeyEvent {
+                        code: KeyCode::Char(c),
+                        ..
+                    })) => {
+                        input_buf.push(c);
+                        render_single_list(question, options, selected, false, Some(&input_buf));
+                    }
+                    _ => {}
+                }
+            }
+            // Enter → 确认（非自定义选项）
             Ok(Event::Key(KeyEvent {
                 code: KeyCode::Enter,
                 ..
             })) => {
                 clear_lines(list_height);
                 drop(guard);
-                return if options[selected].custom_input {
-                    Some(SingleSelectResult::Custom(read_custom_input(question)))
-                } else {
-                    Some(SingleSelectResult::Index(selected))
-                };
+                return Some(SingleSelectResult::Index(selected));
             }
             _ => {}
         }
@@ -290,7 +329,15 @@ fn read_custom_input(question: &str) -> String {
 }
 
 /// 渲染单选列表
-fn render_single_list(question: &str, options: &[SelectOption], selected: usize, initial: bool) {
+///
+/// `input_preview`: 自定义选项上的内联输入内容，`None` 表示无内联输入
+fn render_single_list(
+    question: &str,
+    options: &[SelectOption],
+    selected: usize,
+    initial: bool,
+    input_preview: Option<&str>,
+) {
     let mut stderr = std::io::stderr();
     let list_height = 1 + options.len();
 
@@ -307,22 +354,38 @@ fn render_single_list(question: &str, options: &[SelectOption], selected: usize,
         let is_sel = i == selected;
 
         if opt.custom_input {
-            let hint = " [Enter 后输入]";
             if is_sel {
-                writeln!(
-                    stderr,
-                    "\r  ▸ {}. {}  ─ {}{}",
-                    num,
-                    opt.label.green(),
-                    opt.description,
-                    hint.green()
-                )
-                .ok();
+                // 选中状态：显示内联输入
+                let preview = input_preview.unwrap_or("");
+                if preview.is_empty() {
+                    // 无输入时显示光标
+                    writeln!(
+                        stderr,
+                        "\r  ▸ {}. {}: █  ─ {}",
+                        num,
+                        opt.label.green(),
+                        opt.description
+                    )
+                    .ok();
+                } else {
+                    writeln!(
+                        stderr,
+                        "\r  ▸ {}. {}: {}█  ─ {}",
+                        num,
+                        opt.label.green(),
+                        preview,
+                        opt.description
+                    )
+                    .ok();
+                }
             } else {
+                // 未选中：灰色显示
                 writeln!(
                     stderr,
-                    "\r    {}. {}  ─ {}{}",
-                    num, opt.label, opt.description, hint
+                    "\r    {}. {}  ─ {} [Enter 后输入]",
+                    num,
+                    opt.label.dark_grey(),
+                    opt.description.dark_grey()
                 )
                 .ok();
             }
