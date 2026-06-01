@@ -363,14 +363,9 @@ fn render_single_list(
                     writeln!(stderr, "\r  ▸ {}. {}█\x1b[0K", num, preview).ok();
                 }
             } else {
-                // 未选中：灰色显示，固定描述为"自定义输入"
-                writeln!(
-                    stderr,
-                    "\r    {}. {}  ─ 自定义输入\x1b[0K",
-                    num,
-                    opt.label.dark_grey(),
-                )
-                .ok();
+                // 未选中：灰色显示，只显示"自定义输入"
+                let display = format!("{}. 自定义输入", num);
+                writeln!(stderr, "\r    {}\x1b[0K", display.dark_grey()).ok();
             }
         } else if is_sel {
             writeln!(
