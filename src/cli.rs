@@ -404,6 +404,10 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let reader = crate::tools::read::FileRead::new(Default::default());
     agent.register_tool(crate::agent::chat::ToolHandler::Read(reader));
 
+    // 注册文件编辑工具
+    let edit_tool = crate::tools::edit::Edit::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::Edit(edit_tool));
+
     let _response = agent
         .chat_with_tools(content, |chunk| {
             print!("{}", chunk);
