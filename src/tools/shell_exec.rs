@@ -231,16 +231,18 @@ fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
         crate::tools::prompt::SelectOption {
             label: "允许",
             description: "执行该命令",
+            custom_input: false,
         },
         crate::tools::prompt::SelectOption {
             label: "拒绝",
             description: "取消执行该命令",
+            custom_input: false,
         },
     ];
 
     matches!(
         crate::tools::prompt::prompt_single_select(question, &options),
-        Some(0)
+        Some(crate::tools::prompt::SingleSelectResult::Index(0))
     )
 }
 

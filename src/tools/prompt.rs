@@ -1,9 +1,10 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::style::Stylize;
 /// 交互式选择提示组件
 ///
 /// 基于 crossterm 原始模式，提供支持 vim 快捷键（j/k）的终端选择器。
 /// 被 ask_user 和 shell_exec 工具共用。
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 
 /// 选择器选项
 pub struct SelectOption<'a> {
@@ -11,11 +12,27 @@ pub struct SelectOption<'a> {
     pub label: &'a str,
     /// 选项描述（详细说明，如 "减少内存使用和执行时间"）
     pub description: &'a str,
+    /// 选中此项后进入文本输入模式，让用户自行输入
+    pub custom_input: bool,
+}
+
+/// 单选结果
+pub enum SingleSelectResult {
+    /// 选择了预定义选项（索引）
+    Index(usize),
+    /// 用户自行输入的内容
+    Custom(String),
+}
+
+/// 多选结果
+pub struct MultiSelectResult {
+    /// 选中的预定义选项索引列表
+    pub indices: Vec<usize>,
+    /// 用户自行输入的内容（如有）
+    pub custom_text: Option<String>,
 }
 
 /// 显示单选选择器
-///
-/// 返回选中项的索引（从 0 开始），用户取消（Ctrl+C）则返回 `None`。
 ///
 /// **快捷键**：
 /// - `j` / `↓`：向下移动
@@ -23,16 +40,19 @@ pub struct SelectOption<'a> {
 /// - `1`-`9`：直接选择对应编号的选项
 /// - `Enter`：确认当前选中项
 /// - `Ctrl+C`：取消
-pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) -> Option<usize> {
-    if !std::io::stdin().is_terminal() {
+pub fn prompt_single_select(
+    question: &str,
+    options: &[SelectOption],
+) -> Option<SingleSelectResult> {
+    if !std::io::stdin().is_terminal() || options.is_empty() {
         return None;
     }
 
-    let _guard = RawModeGuard::new()?;
+    let guard = RawModeGuard::new()?;
     let mut selected: usize = 0;
     let list_height = 1 + options.len();
 
-    render_list(question, options, selected, None, true);
+    render_single_list(question, options, selected, true);
 
     loop {
         match crossterm::event::read() {
@@ -44,8 +64,12 @@ pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) ->
                 let idx = (c as usize) - ('1' as usize);
                 if idx < options.len() {
                     clear_lines(list_height);
-                    println!();
-                    return Some(idx);
+                    drop(guard);
+                    return if options[idx].custom_input {
+                        Some(SingleSelectResult::Custom(read_custom_input(question)))
+                    } else {
+                        Some(SingleSelectResult::Index(idx))
+                    };
                 }
             }
             // Ctrl+C → 取消
@@ -55,7 +79,7 @@ pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) ->
                 ..
             })) => {
                 clear_lines(list_height);
-                println!();
+                drop(guard);
                 return None;
             }
             // 上 / k → 上移
@@ -67,7 +91,7 @@ pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) ->
                 ..
             })) if selected > 0 => {
                 selected -= 1;
-                render_list(question, options, selected, None, false);
+                render_single_list(question, options, selected, false);
             }
             // 下 / j → 下移
             Ok(Event::Key(KeyEvent {
@@ -79,7 +103,7 @@ pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) ->
                 ..
             })) if selected < options.len() - 1 => {
                 selected += 1;
-                render_list(question, options, selected, None, false);
+                render_single_list(question, options, selected, false);
             }
             // Enter → 确认
             Ok(Event::Key(KeyEvent {
@@ -87,8 +111,12 @@ pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) ->
                 ..
             })) => {
                 clear_lines(list_height);
-                println!();
-                return Some(selected);
+                drop(guard);
+                return if options[selected].custom_input {
+                    Some(SingleSelectResult::Custom(read_custom_input(question)))
+                } else {
+                    Some(SingleSelectResult::Index(selected))
+                };
             }
             _ => {}
         }
@@ -97,8 +125,6 @@ pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) ->
 
 /// 显示多选选择器
 ///
-/// 返回选中项的索引列表（从 0 开始），用户取消（Ctrl+C）则返回 `None`。
-///
 /// **快捷键**：
 /// - `j` / `↓`：向下移动
 /// - `k` / `↑`：向上移动
@@ -106,17 +132,17 @@ pub fn prompt_single_select<'a>(question: &str, options: &[SelectOption<'a>]) ->
 /// - `1`-`9`：直接跳转到对应编号的选项
 /// - `Enter`：确认选择（提交所有已选中的项）
 /// - `Ctrl+C`：取消
-pub fn prompt_multi_select<'a>(question: &str, options: &[SelectOption<'a>]) -> Option<Vec<usize>> {
-    if !std::io::stdin().is_terminal() {
+pub fn prompt_multi_select(question: &str, options: &[SelectOption]) -> Option<MultiSelectResult> {
+    if !std::io::stdin().is_terminal() || options.is_empty() {
         return None;
     }
 
-    let _guard = RawModeGuard::new()?;
+    let guard = RawModeGuard::new()?;
     let mut selected: usize = 0;
     let mut toggled: Vec<bool> = vec![false; options.len()];
     let list_height = 1 + options.len();
 
-    render_list(question, options, selected, Some(&toggled), true);
+    render_multi_list(question, options, selected, &toggled, true);
 
     loop {
         match crossterm::event::read() {
@@ -128,7 +154,7 @@ pub fn prompt_multi_select<'a>(question: &str, options: &[SelectOption<'a>]) -> 
                 let idx = (c as usize) - ('1' as usize);
                 if idx < options.len() {
                     selected = idx;
-                    render_list(question, options, selected, Some(&toggled), false);
+                    render_multi_list(question, options, selected, &toggled, false);
                 }
             }
             // Space → 切换选中
@@ -137,11 +163,10 @@ pub fn prompt_multi_select<'a>(question: &str, options: &[SelectOption<'a>]) -> 
                 ..
             })) => {
                 toggled[selected] = !toggled[selected];
-                // 如果下方还有选项，自动下移一格
                 if selected < options.len() - 1 {
                     selected += 1;
                 }
-                render_list(question, options, selected, Some(&toggled), false);
+                render_multi_list(question, options, selected, &toggled, false);
             }
             // Ctrl+C → 取消
             Ok(Event::Key(KeyEvent {
@@ -150,7 +175,7 @@ pub fn prompt_multi_select<'a>(question: &str, options: &[SelectOption<'a>]) -> 
                 ..
             })) => {
                 clear_lines(list_height);
-                println!();
+                drop(guard);
                 return None;
             }
             // 上 / k
@@ -162,7 +187,7 @@ pub fn prompt_multi_select<'a>(question: &str, options: &[SelectOption<'a>]) -> 
                 ..
             })) if selected > 0 => {
                 selected -= 1;
-                render_list(question, options, selected, Some(&toggled), false);
+                render_multi_list(question, options, selected, &toggled, false);
             }
             // 下 / j
             Ok(Event::Key(KeyEvent {
@@ -174,7 +199,7 @@ pub fn prompt_multi_select<'a>(question: &str, options: &[SelectOption<'a>]) -> 
                 ..
             })) if selected < options.len() - 1 => {
                 selected += 1;
-                render_list(question, options, selected, Some(&toggled), false);
+                render_multi_list(question, options, selected, &toggled, false);
             }
             // Enter → 确认提交
             Ok(Event::Key(KeyEvent {
@@ -182,73 +207,72 @@ pub fn prompt_multi_select<'a>(question: &str, options: &[SelectOption<'a>]) -> 
                 ..
             })) => {
                 clear_lines(list_height);
-                println!();
-                let result: Vec<usize> = toggled
+                drop(guard);
+
+                // 检查自定义输入选项是否被勾选
+                let custom_text = options
                     .iter()
                     .enumerate()
-                    .filter(|&(_, &v)| v)
+                    .find(|(i, opt)| opt.custom_input && toggled[*i])
+                    .map(|_| read_custom_input(question));
+
+                let indices: Vec<usize> = toggled
+                    .iter()
+                    .enumerate()
+                    .filter(|&(ref i, &v)| v && !options[*i].custom_input)
                     .map(|(i, _)| i)
                     .collect();
-                return Some(result);
+
+                return Some(MultiSelectResult {
+                    indices,
+                    custom_text,
+                });
             }
             _ => {}
         }
     }
 }
 
-/// 渲染选项列表
+/// 退出 raw 模式后读取用户文本输入
 ///
-/// - `initial=true`：首次渲染，直接输出；`false`：从底部上移覆盖重绘
-/// - `toggled`: 多选模式下已选中的项，`None` 表示单选模式
-fn render_list(
-    question: &str,
-    options: &[SelectOption],
-    selected: usize,
-    toggled: Option<&[bool]>,
-    initial: bool,
-) {
-    use crossterm::style::Stylize;
-    use std::io::Write;
+/// 终端恢复正常模式，在 stderr 显示提示，从 stdin 读取一行。
+fn read_custom_input(question: &str) -> String {
+    // stderr 提示：换行后显示问题
     let mut stderr = std::io::stderr();
+    let _ = writeln!(stderr, "{} {}", "?".green().bold(), question);
+    let _ = write!(stderr, "{} ", "请输入:".green().bold());
+    let _ = stderr.flush();
 
+    // stdout 也需要换行，否则后续输出可能错位
+    println!();
+
+    // 从 stdin 读取一行
+    let mut input = String::new();
+    match std::io::stdin().read_line(&mut input) {
+        Ok(_) => input.trim().to_string(),
+        Err(_) => String::new(),
+    }
+}
+
+/// 渲染单选列表
+fn render_single_list(question: &str, options: &[SelectOption], selected: usize, initial: bool) {
+    let mut stderr = std::io::stderr();
     let list_height = 1 + options.len();
 
     if !initial {
         for _ in 0..list_height {
-            write!(stderr, "\x1b[1F").ok();
+            let _ = write!(stderr, "\x1b[1F");
         }
     }
 
-    // 标题行
     writeln!(stderr, "\r{} {}", "?".green().bold(), question).ok();
 
-    // 选项行
     for (i, opt) in options.iter().enumerate() {
         let num = i + 1;
-        let is_selected = i == selected;
+        let is_sel = i == selected;
 
-        if let Some(toggled_states) = toggled {
-            // 多选模式：显示复选框
-            let checked = if toggled_states[i] { "✓" } else { " " };
-            if is_selected {
-                writeln!(
-                    stderr,
-                    "\r  ▸ [{checked}] {}  ─ {}",
-                    opt.label.green(),
-                    opt.description
-                )
-                .ok();
-            } else {
-                writeln!(
-                    stderr,
-                    "\r    [{checked}] {}  ─ {}",
-                    opt.label, opt.description
-                )
-                .ok();
-            }
-        } else {
-            // 单选模式：显示编号
-            if is_selected {
+        if opt.custom_input {
+            if is_sel {
                 writeln!(
                     stderr,
                     "\r  ▸ {}. {}  ─ {}",
@@ -265,16 +289,97 @@ fn render_list(
                 )
                 .ok();
             }
+            // 在描述下方显示提示
+            if is_sel {
+                writeln!(
+                    stderr,
+                    "\r     {}按 Enter 后输入自定义内容",
+                    "📝".to_string().green()
+                )
+                .ok();
+            }
+        } else if is_sel {
+            writeln!(
+                stderr,
+                "\r  ▸ {}. {}  ─ {}",
+                num,
+                opt.label.green(),
+                opt.description
+            )
+            .ok();
+        } else {
+            writeln!(
+                stderr,
+                "\r    {}. {}  ─ {}",
+                num, opt.label, opt.description
+            )
+            .ok();
+        }
+    }
+}
+
+/// 渲染多选列表
+fn render_multi_list(
+    question: &str,
+    options: &[SelectOption],
+    selected: usize,
+    toggled: &[bool],
+    initial: bool,
+) {
+    let mut stderr = std::io::stderr();
+    let list_height = 1 + options.len();
+
+    if !initial {
+        for _ in 0..list_height {
+            let _ = write!(stderr, "\x1b[1F");
+        }
+    }
+
+    writeln!(stderr, "\r{} {}", "?".green().bold(), question).ok();
+
+    for (i, opt) in options.iter().enumerate() {
+        let is_sel = i == selected;
+        let checked = if toggled[i] { "✓" } else { " " };
+        let prefix = if is_sel { "▸" } else { " " };
+
+        if opt.custom_input && toggled[i] {
+            // 自定义选项勾选后，显示输入提示
+            writeln!(
+                stderr,
+                "\r  {} [{}] {}  ─ {}  {}",
+                prefix,
+                checked,
+                opt.label.green(),
+                opt.description,
+                "(Enter 后输入)".green()
+            )
+            .ok();
+        } else if is_sel {
+            writeln!(
+                stderr,
+                "\r  {} [{}] {}  ─ {}",
+                prefix,
+                checked,
+                opt.label.green(),
+                opt.description
+            )
+            .ok();
+        } else {
+            writeln!(
+                stderr,
+                "\r  {} [{}] {}  ─ {}",
+                prefix, checked, opt.label, opt.description
+            )
+            .ok();
         }
     }
 }
 
 /// 清除列表区域的 N 行（从下往上）
 fn clear_lines(count: usize) {
-    use std::io::Write;
     let mut stderr = std::io::stderr();
     for _ in 0..count {
-        write!(stderr, "\x1b[1F\x1b[2K").ok();
+        let _ = write!(stderr, "\x1b[1F\x1b[2K");
     }
 }
 
@@ -303,8 +408,8 @@ mod tests {
         let options = [SelectOption {
             label: "A",
             description: "desc A",
+            custom_input: false,
         }];
-        // 非 TTY 环境应返回 None
         assert!(prompt_single_select("test?", &options).is_none());
     }
 
@@ -313,6 +418,7 @@ mod tests {
         let options = [SelectOption {
             label: "A",
             description: "desc A",
+            custom_input: false,
         }];
         assert!(prompt_multi_select("test?", &options).is_none());
     }
@@ -325,5 +431,40 @@ mod tests {
     #[test]
     fn test_empty_options_multi_select() {
         assert!(prompt_multi_select("test?", &[]).is_none());
+    }
+
+    #[test]
+    fn test_custom_input_option_single_select_non_tty() {
+        let options = [
+            SelectOption {
+                label: "A",
+                description: "desc A",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "其他",
+                description: "自定义",
+                custom_input: true,
+            },
+        ];
+        // 非 TTY 下返回 None
+        assert!(prompt_single_select("test?", &options).is_none());
+    }
+
+    #[test]
+    fn test_custom_input_option_multi_select_non_tty() {
+        let options = [
+            SelectOption {
+                label: "A",
+                description: "desc A",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "其他",
+                description: "自定义",
+                custom_input: true,
+            },
+        ];
+        assert!(prompt_multi_select("test?", &options).is_none());
     }
 }

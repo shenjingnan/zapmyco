@@ -123,27 +123,59 @@ impl AskUser {
             return Err("ask_user 工具只能在交互式终端中使用，当前不是终端环境。".to_string());
         }
 
-        // 转换为 prompt::SelectOption
+        // 转换为 prompt::SelectOption，最后一个选项标记为 custom_input
+        let last_idx = items.len() - 1;
         let prompt_opts: Vec<prompt::SelectOption> = items
             .iter()
-            .map(|item| prompt::SelectOption {
+            .enumerate()
+            .map(|(i, item)| prompt::SelectOption {
                 label: &item.label,
                 description: &item.description,
+                custom_input: i == last_idx,
             })
             .collect();
 
         if multi_select {
             match prompt::prompt_multi_select(question, &prompt_opts) {
-                Some(indices) => {
-                    let labels: Vec<&str> =
-                        indices.iter().map(|&i| items[i].label.as_str()).collect();
-                    Ok(format!("用户选择了: {}", labels.join(", ")))
+                Some(result) => {
+                    let mut parts: Vec<String> = Vec::new();
+                    if !result.indices.is_empty() {
+                        let labels: Vec<&str> = result
+                            .indices
+                            .iter()
+                            .map(|&i| items[i].label.as_str())
+                            .collect();
+                        parts.push(labels.join(", "));
+                    }
+                    if let Some(text) = &result.custom_text
+                        && !text.is_empty()
+                    {
+                        if !parts.is_empty() {
+                            parts.push(format!("自定义输入: {}", text));
+                        } else {
+                            parts.push(text.clone());
+                        }
+                    }
+                    if parts.is_empty() {
+                        Ok("[用户取消了选择]".to_string())
+                    } else {
+                        Ok(format!("用户选择了: {}", parts.join("，")))
+                    }
                 }
                 None => Ok("[用户取消了选择]".to_string()),
             }
         } else {
             match prompt::prompt_single_select(question, &prompt_opts) {
-                Some(idx) => Ok(format!("用户选择了: {}", items[idx].label)),
+                Some(prompt::SingleSelectResult::Index(idx)) => {
+                    Ok(format!("用户选择了: {}", items[idx].label))
+                }
+                Some(prompt::SingleSelectResult::Custom(text)) => {
+                    if text.is_empty() {
+                        Ok("[用户取消了选择]".to_string())
+                    } else {
+                        Ok(format!("用户输入: {}", text))
+                    }
+                }
                 None => Ok("[用户取消了选择]".to_string()),
             }
         }
