@@ -347,7 +347,7 @@ fn render_single_list(
         }
     }
 
-    writeln!(stderr, "\r{} {}", "?".green().bold(), question).ok();
+    writeln!(stderr, "\r{} {}\x1b[0K", "?".green().bold(), question).ok();
 
     for (i, opt) in options.iter().enumerate() {
         let num = i + 1;
@@ -358,15 +358,22 @@ fn render_single_list(
                 // 选中状态：只显示内联输入，不显示描述
                 let preview = input_preview.unwrap_or("");
                 if preview.is_empty() {
-                    writeln!(stderr, "\r  ▸ {}. {}: █", num, opt.label.green()).ok();
+                    writeln!(stderr, "\r  ▸ {}. {}: █\x1b[0K", num, opt.label.green()).ok();
                 } else {
-                    writeln!(stderr, "\r  ▸ {}. {}: {}█", num, opt.label.green(), preview).ok();
+                    writeln!(
+                        stderr,
+                        "\r  ▸ {}. {}: {}█\x1b[0K",
+                        num,
+                        opt.label.green(),
+                        preview
+                    )
+                    .ok();
                 }
             } else {
                 // 未选中：灰色显示
                 writeln!(
                     stderr,
-                    "\r    {}. {}  ─ {} [Enter 后输入]",
+                    "\r    {}. {}  ─ {} [Enter 后输入]\x1b[0K",
                     num,
                     opt.label.dark_grey(),
                     opt.description.dark_grey()
@@ -376,7 +383,7 @@ fn render_single_list(
         } else if is_sel {
             writeln!(
                 stderr,
-                "\r  ▸ {}. {}  ─ {}",
+                "\r  ▸ {}. {}  ─ {}\x1b[0K",
                 num,
                 opt.label.green(),
                 opt.description
@@ -385,7 +392,7 @@ fn render_single_list(
         } else {
             writeln!(
                 stderr,
-                "\r    {}. {}  ─ {}",
+                "\r    {}. {}  ─ {}\x1b[0K",
                 num, opt.label, opt.description
             )
             .ok();
