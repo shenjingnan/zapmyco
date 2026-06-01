@@ -358,16 +358,9 @@ fn render_single_list(
                 // 选中状态：只显示内联输入，不显示描述
                 let preview = input_preview.unwrap_or("");
                 if preview.is_empty() {
-                    writeln!(stderr, "\r  ▸ {}. {}: █\x1b[0K", num, opt.label.green()).ok();
+                    writeln!(stderr, "\r  ▸ {}. █\x1b[0K", num).ok();
                 } else {
-                    writeln!(
-                        stderr,
-                        "\r  ▸ {}. {}: {}█\x1b[0K",
-                        num,
-                        opt.label.green(),
-                        preview
-                    )
-                    .ok();
+                    writeln!(stderr, "\r  ▸ {}. {}█\x1b[0K", num, preview).ok();
                 }
             } else {
                 // 未选中：灰色显示
