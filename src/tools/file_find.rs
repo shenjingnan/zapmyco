@@ -1,9 +1,9 @@
-// Glob 工具 — 基于 ignore + globset 在本地文件系统中按文件名模式查找文件
+// FileFind 工具 — 基于 ignore + globset 在本地文件系统中按文件名模式查找文件
 //
 // 本文件是 Anthropic Tool 的集成层，负责：
 // - 定义 Tool JSON Schema（tool_definition）
 // - 从 LLM 参数提取搜索配置（execute）
-// - 使用 ignore::WalkBuilder + globset::GlobMatcher 遍历和过滤文件
+// - 使用 ignore::WalkBuilder + globset::FileFindMatcher 遍历和过滤文件
 // - 按修改时间排序输出
 //
 // 底层使用与 ripgrep 相同的 ignore 和 globset crate，行为一致。
@@ -12,9 +12,9 @@
 // Configuration
 // ---------------------------------------------------------------------------
 
-/// Glob 配置选项
+/// FileFind 配置选项
 #[derive(Debug, Clone)]
-pub struct GlobOptions {
+pub struct FileFindOptions {
     /// 搜索超时时间（秒），默认 20
     pub timeout_secs: u64,
     /// 输出最大字符数，默认 100_000
@@ -23,7 +23,7 @@ pub struct GlobOptions {
     pub default_head_limit: u32,
 }
 
-impl Default for GlobOptions {
+impl Default for FileFindOptions {
     fn default() -> Self {
         Self {
             timeout_secs: 20,
@@ -37,15 +37,15 @@ impl Default for GlobOptions {
 // Core struct
 // ---------------------------------------------------------------------------
 
-/// Glob 工具 — 在本地文件系统中按文件名模式匹配查找文件
+/// FileFind 工具 — 在本地文件系统中按文件名模式匹配查找文件
 #[derive(Debug, Clone)]
-pub struct Glob {
-    options: GlobOptions,
+pub struct FileFind {
+    options: FileFindOptions,
 }
 
-impl Glob {
-    /// 创建新的 Glob 实例
-    pub fn new(options: GlobOptions) -> Self {
+impl FileFind {
+    /// 创建新的 FileFind 实例
+    pub fn new(options: FileFindOptions) -> Self {
         Self { options }
     }
 
@@ -53,7 +53,7 @@ impl Glob {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "glob".to_string(),
+            name: "file_find".to_string(),
             description: Some(
                 "在本地文件系统中按文件名模式匹配快速查找文件。\
                  支持 glob 通配符模式（如 **/*.rs、src/**/*.ts）。\
@@ -87,7 +87,7 @@ impl Glob {
         }
     }
 
-    /// 执行 Glob 文件查找
+    /// 执行 FileFind 文件查找
     pub async fn execute(&self, input: &serde_json::Value) -> Result<String, String> {
         // 1. 提取参数
         let pattern = input
@@ -164,8 +164,8 @@ impl Glob {
 
         let results = tokio::time::timeout(timeout, handle)
             .await
-            .map_err(|_| format!("Glob 搜索超时 (超过 {}s)", self.options.timeout_secs))?
-            .map_err(|e| format!("Glob 搜索被中断: {}", e))?;
+            .map_err(|_| format!("FileFind 搜索超时 (超过 {}s)", self.options.timeout_secs))?
+            .map_err(|e| format!("FileFind 搜索被中断: {}", e))?;
 
         let results = results?;
 
@@ -205,7 +205,7 @@ impl Glob {
         // 5. 检查输出上限
         if out.len() > self.options.output_max_chars {
             return Err(format!(
-                "Glob 输出过大 ({} 字符，上限 {})",
+                "FileFind 输出过大 ({} 字符，上限 {})",
                 out.len(),
                 self.options.output_max_chars
             ));
@@ -225,8 +225,8 @@ mod tests {
 
     // ---- Helpers ----
 
-    fn test_glob() -> Glob {
-        Glob::new(GlobOptions {
+    fn test_glob() -> FileFind {
+        FileFind::new(FileFindOptions {
             timeout_secs: 10,
             output_max_chars: 100_000,
             default_head_limit: 100,
@@ -276,20 +276,20 @@ mod tests {
 
     #[test]
     fn test_tool_definition_name() {
-        let tool = Glob::tool_definition();
-        assert_eq!(tool.name, "glob");
+        let tool = FileFind::tool_definition();
+        assert_eq!(tool.name, "file_find");
     }
 
     #[test]
     fn test_tool_definition_has_description() {
-        let tool = Glob::tool_definition();
+        let tool = FileFind::tool_definition();
         assert!(tool.description.is_some());
         assert!(!tool.description.unwrap().is_empty());
     }
 
     #[test]
     fn test_tool_definition_valid_schema() {
-        let tool = Glob::tool_definition();
+        let tool = FileFind::tool_definition();
         let schema = tool.input_schema.unwrap();
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["pattern"].is_object());
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn test_tool_definition_all_parameters() {
-        let tool = Glob::tool_definition();
+        let tool = FileFind::tool_definition();
         let schema = tool.input_schema.unwrap();
         let props = schema["properties"].as_object().unwrap();
 
@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     fn test_default_options() {
-        let options = GlobOptions::default();
+        let options = FileFindOptions::default();
         assert_eq!(options.timeout_secs, 20);
         assert_eq!(options.output_max_chars, 100_000);
         assert_eq!(options.default_head_limit, 100);
@@ -544,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_custom_options() {
-        let options = GlobOptions {
+        let options = FileFindOptions {
             timeout_secs: 60,
             output_max_chars: 50_000,
             default_head_limit: 50,
@@ -556,7 +556,7 @@ mod tests {
 
     #[test]
     fn test_new_custom() {
-        let glob = Glob::new(GlobOptions {
+        let glob = FileFind::new(FileFindOptions {
             timeout_secs: 30,
             output_max_chars: 200_000,
             default_head_limit: 500,

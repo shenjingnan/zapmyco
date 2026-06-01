@@ -1,4 +1,4 @@
-// Read 工具 — 读取本地文件系统中的文件内容，支持指定行号范围
+// FileRead 工具 — 读取本地文件系统中的文件内容，支持指定行号范围
 //
 // 本文件是 Anthropic Tool 的集成层，负责：
 // - 定义 Tool JSON Schema（tool_definition）
@@ -10,9 +10,9 @@
 // Configuration
 // ---------------------------------------------------------------------------
 
-/// Read 配置选项
+/// FileRead 配置选项
 #[derive(Debug, Clone)]
-pub struct ReadOptions {
+pub struct FileReadOptions {
     /// 最大文件大小（字节），默认 262144 (256KB)
     pub max_size_bytes: u64,
     /// 输出最大字符数，默认 100_000
@@ -21,7 +21,7 @@ pub struct ReadOptions {
     pub default_max_lines: u32,
 }
 
-impl Default for ReadOptions {
+impl Default for FileReadOptions {
     fn default() -> Self {
         Self {
             max_size_bytes: 262_144,
@@ -35,15 +35,15 @@ impl Default for ReadOptions {
 // Core struct
 // ---------------------------------------------------------------------------
 
-/// Read 工具 — 读取本地文件系统中的文件内容
+/// FileRead 工具 — 读取本地文件系统中的文件内容
 #[derive(Debug, Clone)]
-pub struct Read {
-    options: ReadOptions,
+pub struct FileRead {
+    options: FileReadOptions,
 }
 
-impl Read {
-    /// 创建新的 Read 实例
-    pub fn new(options: ReadOptions) -> Self {
+impl FileRead {
+    /// 创建新的 FileRead 实例
+    pub fn new(options: FileReadOptions) -> Self {
         Self { options }
     }
 
@@ -51,7 +51,7 @@ impl Read {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "read".to_string(),
+            name: "file_read".to_string(),
             description: Some(
                 "读取本地文件系统中的文件内容，支持指定行号范围读取。\
                  适用于查看源代码、读取配置、分析日志文件等场景。\
@@ -137,7 +137,7 @@ impl Read {
         // 3. 读取文件（原始字节）
         let bytes = tokio::fs::read(path)
             .await
-            .map_err(|e| format!("Read error: {}", e))?;
+            .map_err(|e| format!("FileRead error: {}", e))?;
 
         // 4. 二进制检测：前 8KB 中是否有 null byte
         let check_len = bytes.len().min(8192);
@@ -236,8 +236,8 @@ mod tests {
 
     // ---- Helpers ----
 
-    fn test_reader() -> Read {
-        Read::new(ReadOptions {
+    fn test_reader() -> FileRead {
+        FileRead::new(FileReadOptions {
             max_size_bytes: 10_485_760, // 10 MB for tests
             output_max_chars: 100_000,
             default_max_lines: 2000,
@@ -255,20 +255,20 @@ mod tests {
 
     #[test]
     fn test_tool_definition_name() {
-        let tool = Read::tool_definition();
-        assert_eq!(tool.name, "read");
+        let tool = FileRead::tool_definition();
+        assert_eq!(tool.name, "file_read");
     }
 
     #[test]
     fn test_tool_definition_has_description() {
-        let tool = Read::tool_definition();
+        let tool = FileRead::tool_definition();
         assert!(tool.description.is_some());
         assert!(!tool.description.unwrap().is_empty());
     }
 
     #[test]
     fn test_tool_definition_valid_schema() {
-        let tool = Read::tool_definition();
+        let tool = FileRead::tool_definition();
         let schema = tool.input_schema.unwrap();
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["file_path"].is_object());
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_tool_definition_all_parameters() {
-        let tool = Read::tool_definition();
+        let tool = FileRead::tool_definition();
         let schema = tool.input_schema.unwrap();
         let props = schema["properties"].as_object().unwrap();
 
@@ -460,7 +460,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_file_too_large() {
-        let reader = Read::new(ReadOptions {
+        let reader = FileRead::new(FileReadOptions {
             max_size_bytes: 10,
             output_max_chars: 100_000,
             default_max_lines: 2000,
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_default_options() {
-        let options = ReadOptions::default();
+        let options = FileReadOptions::default();
         assert_eq!(options.max_size_bytes, 262_144);
         assert_eq!(options.output_max_chars, 100_000);
         assert_eq!(options.default_max_lines, 2000);
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_custom_options() {
-        let options = ReadOptions {
+        let options = FileReadOptions {
             max_size_bytes: 1024,
             output_max_chars: 5000,
             default_max_lines: 100,
@@ -530,7 +530,7 @@ mod tests {
 
     #[test]
     fn test_new_custom() {
-        let reader = Read::new(ReadOptions {
+        let reader = FileRead::new(FileReadOptions {
             max_size_bytes: 512,
             output_max_chars: 10_000,
             default_max_lines: 500,

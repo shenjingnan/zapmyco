@@ -1,4 +1,4 @@
-// Edit 工具 — 使用 old_string/new_string 模式修改本地文件内容
+// FileEdit 工具 — 使用 old_string/new_string 模式精确替换文件内容
 //
 // 本文件是 Anthropic Tool 的集成层，负责：
 // - 定义 Tool JSON Schema（tool_definition）
@@ -11,23 +11,23 @@
 // Configuration
 // ---------------------------------------------------------------------------
 
-/// Edit 配置选项
+/// FileEdit 配置选项
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct EditOptions {}
+pub struct FileEditOptions {}
 
 // ---------------------------------------------------------------------------
 // Core struct
 // ---------------------------------------------------------------------------
 
-/// Edit 工具 — 使用 old_string/new_string 模式精确替换文件内容
+/// FileEdit 工具 — 使用 old_string/new_string 模式精确替换文件内容
 #[derive(Debug, Clone)]
-pub struct Edit {
-    options: EditOptions,
+pub struct FileEdit {
+    options: FileEditOptions,
 }
 
-impl Edit {
-    /// 创建新的 Edit 实例
-    pub fn new(options: EditOptions) -> Self {
+impl FileEdit {
+    /// 创建新的 FileEdit 实例
+    pub fn new(options: FileEditOptions) -> Self {
         Self { options }
     }
 
@@ -35,7 +35,7 @@ impl Edit {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "edit".to_string(),
+            name: "file_edit".to_string(),
             description: Some(
                 "修改本地文件系统中的文件内容。\
                  使用 old_string/new_string 模式进行精确替换，\
@@ -377,8 +377,8 @@ mod tests {
 
     // ---- Helpers ----
 
-    fn make_editor() -> Edit {
-        Edit::new(EditOptions {})
+    fn make_editor() -> FileEdit {
+        FileEdit::new(FileEditOptions {})
     }
 
     fn setup_temp_file(content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
@@ -410,20 +410,20 @@ mod tests {
 
     #[test]
     fn test_tool_definition_name() {
-        let tool = Edit::tool_definition();
-        assert_eq!(tool.name, "edit");
+        let tool = FileEdit::tool_definition();
+        assert_eq!(tool.name, "file_edit");
     }
 
     #[test]
     fn test_tool_definition_has_description() {
-        let tool = Edit::tool_definition();
+        let tool = FileEdit::tool_definition();
         assert!(tool.description.is_some());
         assert!(!tool.description.unwrap().is_empty());
     }
 
     #[test]
     fn test_tool_definition_valid_schema() {
-        let tool = Edit::tool_definition();
+        let tool = FileEdit::tool_definition();
         let schema = tool.input_schema.unwrap();
         assert_eq!(schema["type"], "object");
         let props = schema["properties"].as_object().unwrap();
@@ -803,14 +803,14 @@ mod tests {
 
     #[test]
     fn test_default_options() {
-        let options = EditOptions::default();
-        assert_eq!(options, EditOptions {});
+        let options = FileEditOptions::default();
+        assert_eq!(options, FileEditOptions {});
     }
 
     #[test]
     fn test_new() {
-        let editor = Edit::new(EditOptions {});
-        assert_eq!(editor.options, EditOptions {});
+        let editor = FileEdit::new(FileEditOptions {});
+        assert_eq!(editor.options, FileEditOptions {});
     }
 
     // ---- Replace after adjacent edit test ----
