@@ -355,28 +355,12 @@ fn render_single_list(
 
         if opt.custom_input {
             if is_sel {
-                // 选中状态：显示内联输入
+                // 选中状态：只显示内联输入，不显示描述
                 let preview = input_preview.unwrap_or("");
                 if preview.is_empty() {
-                    // 无输入时显示光标
-                    writeln!(
-                        stderr,
-                        "\r  ▸ {}. {}: █  ─ {}",
-                        num,
-                        opt.label.green(),
-                        opt.description
-                    )
-                    .ok();
+                    writeln!(stderr, "\r  ▸ {}. {}: █", num, opt.label.green()).ok();
                 } else {
-                    writeln!(
-                        stderr,
-                        "\r  ▸ {}. {}: {}█  ─ {}",
-                        num,
-                        opt.label.green(),
-                        preview,
-                        opt.description
-                    )
-                    .ok();
+                    writeln!(stderr, "\r  ▸ {}. {}: {}█", num, opt.label.green(), preview).ok();
                 }
             } else {
                 // 未选中：灰色显示
