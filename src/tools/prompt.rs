@@ -272,29 +272,22 @@ fn render_single_list(question: &str, options: &[SelectOption], selected: usize,
         let is_sel = i == selected;
 
         if opt.custom_input {
+            let hint = " [Enter 后输入]";
             if is_sel {
                 writeln!(
                     stderr,
-                    "\r  ▸ {}. {}  ─ {}",
+                    "\r  ▸ {}. {}  ─ {}{}",
                     num,
                     opt.label.green(),
-                    opt.description
+                    opt.description,
+                    hint.green()
                 )
                 .ok();
             } else {
                 writeln!(
                     stderr,
-                    "\r    {}. {}  ─ {}",
-                    num, opt.label, opt.description
-                )
-                .ok();
-            }
-            // 在描述下方显示提示
-            if is_sel {
-                writeln!(
-                    stderr,
-                    "\r     {}按 Enter 后输入自定义内容",
-                    "📝".to_string().green()
+                    "\r    {}. {}  ─ {}{}",
+                    num, opt.label, opt.description, hint
                 )
                 .ok();
             }
