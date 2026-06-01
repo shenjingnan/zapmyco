@@ -401,7 +401,7 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     agent.register_tool(crate::agent::chat::ToolHandler::Glob(globber));
 
     // 注册文件读取工具
-    let reader = crate::tools::read::FileRead::new(Default::default());
+    let reader = crate::tools::read::Read::new(Default::default());
     agent.register_tool(crate::agent::chat::ToolHandler::Read(reader));
 
     // 注册文件编辑工具
