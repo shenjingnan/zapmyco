@@ -24,4 +24,4 @@ pub use web_search::{WebSearch, tool_description};
 pub use run_command::{RunCommand, RunCommandError, RunCommandOptions};
 
 // 旧路径兼容: zapmyco::read::* → zapmyco::tools::read::*
-pub use read::{FileRead, FileReadOptions};
+pub use read::{Read, ReadOptions};

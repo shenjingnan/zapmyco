@@ -56,7 +56,7 @@ pub enum ToolHandler {
     WebSearch(crate::tools::web_search::WebSearch),
     Grep(crate::tools::grep::Grep),
     Glob(crate::tools::glob::Glob),
-    Read(crate::tools::read::FileRead),
+    Read(crate::tools::read::Read),
     Edit(crate::tools::edit::Edit),
 }
 
@@ -68,7 +68,7 @@ impl ToolHandler {
             ToolHandler::WebSearch(_) => crate::tools::web_search::WebSearch::tool_definition(),
             ToolHandler::Grep(_) => crate::tools::grep::Grep::tool_definition(),
             ToolHandler::Glob(_) => crate::tools::glob::Glob::tool_definition(),
-            ToolHandler::Read(_) => crate::tools::read::FileRead::tool_definition(),
+            ToolHandler::Read(_) => crate::tools::read::Read::tool_definition(),
             ToolHandler::Edit(_) => crate::tools::edit::Edit::tool_definition(),
         }
     }
