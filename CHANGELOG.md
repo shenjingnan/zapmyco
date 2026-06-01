@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.32.0](https://github.com/shenjingnan/zapmyco/compare/v0.31.2...v0.32.0) - 2026-06-01
+
+### Added
+
+- *(tools)* 添加 Edit 工具支持本地文件文本替换编辑 ([#360](https://github.com/shenjingnan/zapmyco/pull/360))
+
+### Fixed
+
+- *(tools)* 标记 tools 模块为 doc(hidden) 避免 semver-checks 误报 ([#366](https://github.com/shenjingnan/zapmyco/pull/366))
+
+### Other
+
+- *(guide)* 同步内置工具命名到 domain_action 风格 ([#365](https://github.com/shenjingnan/zapmyco/pull/365))
+- *(tools)* 统一工具命名为 domain_action 风格 ([#364](https://github.com/shenjingnan/zapmyco/pull/364))
+- 重命名 FileRead 为 Read 以保持命名一致性 ([#363](https://github.com/shenjingnan/zapmyco/pull/363))
+- *(guide)* 添加 Edit 工具文档说明 ([#362](https://github.com/shenjingnan/zapmyco/pull/362))
+
 ## [0.31.2](https://github.com/shenjingnan/zapmyco/compare/v0.31.1...v0.31.2) - 2026-05-31
 
 ### Added
