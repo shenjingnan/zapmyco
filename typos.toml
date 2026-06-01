@@ -1,3 +1,5 @@
 [default.extend-words]
 # 测试中 mask 后的预期值 "sk-***alue"，并非拼写错误
 alue = "alue"
+# 文档示例中故意使用的拼写错误，演示 Edit 工具修复拼写
+helo = "helo"
