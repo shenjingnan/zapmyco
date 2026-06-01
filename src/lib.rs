@@ -6,6 +6,7 @@ pub mod cli;
 pub mod config;
 pub mod datetime;
 pub mod notes;
+#[doc(hidden)]
 pub mod tools;
 pub mod upgrade;
 
