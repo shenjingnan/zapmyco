@@ -8,6 +8,8 @@ pub mod file_read;
 #[doc(hidden)]
 pub mod file_search;
 #[doc(hidden)]
+pub mod file_write;
+#[doc(hidden)]
 pub mod shell_exec;
 #[doc(hidden)]
 pub mod web_fetch;
@@ -22,6 +24,8 @@ pub use file_find::{FileFind, FileFindOptions};
 // 旧路径兼容: zapmyco::grep::* → zapmyco::tools::file_search::*
 #[doc(hidden)]
 pub use file_search::{FileSearch, FileSearchOptions};
+#[doc(hidden)]
+pub use file_write::{FileWrite, FileWriteOptions};
 #[doc(hidden)]
 pub use zapmyco_grep::GrepError;
 

@@ -408,6 +408,10 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let file_edit = crate::tools::file_edit::FileEdit::new(Default::default());
     agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
 
+    // 注册文件写入工具
+    let file_write = crate::tools::file_write::FileWrite::new(Default::default());
+    agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
+
     let _response = agent
         .chat_with_tools(content, |chunk| {
             print!("{}", chunk);

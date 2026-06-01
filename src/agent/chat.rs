@@ -58,6 +58,7 @@ pub enum ToolHandler {
     FileFind(crate::tools::file_find::FileFind),
     FileRead(crate::tools::file_read::FileRead),
     FileEdit(crate::tools::file_edit::FileEdit),
+    FileWrite(crate::tools::file_write::FileWrite),
 }
 
 impl ToolHandler {
@@ -70,6 +71,7 @@ impl ToolHandler {
             ToolHandler::FileFind(_) => crate::tools::file_find::FileFind::tool_definition(),
             ToolHandler::FileRead(_) => crate::tools::file_read::FileRead::tool_definition(),
             ToolHandler::FileEdit(_) => crate::tools::file_edit::FileEdit::tool_definition(),
+            ToolHandler::FileWrite(_) => crate::tools::file_write::FileWrite::tool_definition(),
         }
     }
 
@@ -99,6 +101,7 @@ impl ToolHandler {
             ToolHandler::FileFind(glob) => glob.execute(input).await,
             ToolHandler::FileRead(reader) => reader.execute(input).await,
             ToolHandler::FileEdit(editor) => editor.execute(input).await,
+            ToolHandler::FileWrite(writer) => writer.execute(input).await,
         }
     }
 }
@@ -117,6 +120,8 @@ pub struct AiAgent {
     tools: Vec<ToolHandler>,
     /// 工具调用最大轮次
     max_tool_rounds: u32,
+    /// 文件读取状态追踪 (path → mtime_ms)，用于 file_write/file_edit 的预读检查
+    read_file_state: std::collections::HashMap<String, u64>,
 }
 
 impl AiAgent {
@@ -210,6 +215,7 @@ impl AiAgent {
             logger,
             tools: Vec::new(),
             max_tool_rounds: 10,
+            read_file_state: std::collections::HashMap::new(),
         })
     }
 
@@ -452,13 +458,20 @@ impl AiAgent {
                       与 file_search 不同，file_find 只匹配文件名而非文件内容。"
                 }
                 ToolHandler::FileRead(_) => {
-                    "- file_read: 读取本地文件系统中的文件内容。支持 file_path（必填，文件路径）、offset（可选，起始行号，从1开始）、limit（可选，最大行数）参数。适用于查看源代码文件、读取配置文件、分析日志等场景。"
+                    "- file_read: 读取本地文件系统中的文件内容。支持 file_path（必填，文件路径）、offset（可选，起始行号，从1开始）、limit（可选，最大行数）参数。适用于查看源代码文件、读取配置文件、分析日志等场景。\
+                      注意：如果后续需要对文件进行修改（file_edit）或覆盖写入（file_write），必须先通过本工具读取文件内容。"
                 }
                 ToolHandler::FileEdit(_) => {
                     "- file_edit: 修改本地文件系统中的文件内容。使用 old_string/new_string 模式进行精确替换，比 sed 命令更安全可靠。\
                       参数包括 file_path（必填，文件路径）、old_string（必填，要被替换的文本）、\
                       new_string（必填，替换后的文本）、replace_all（可选，是否替换所有匹配项）。\
-                      注意：需要确保 old_string 在文件中出现且唯一。"
+                      注意：需要确保 old_string 在文件中出现且唯一；编辑前必须先使用 file_read 读取文件内容。"
+                }
+                ToolHandler::FileWrite(_) => {
+                    "- file_write: 创建新文件或完整覆盖已有文件。\
+                      参数包括 file_path（必填，文件绝对路径）、content（必填，要写入的完整文件内容）。\
+                      注意：如果要覆盖已有的文件，必须先使用 file_read 读取文件内容后才可以写入。\
+                      对于已有文件的小范围修改，建议使用 file_edit 工具。"
                 }
             };
             self.system_prompt.push_str(desc);
@@ -679,21 +692,86 @@ impl AiAgent {
                     _ => {}
                 }
 
-                let start = Instant::now();
-                let result_text = match handler.execute(input).await {
-                    Ok(text) => {
-                        let elapsed = start.elapsed();
-                        eprintln!(
-                            "[工具] ✅ {} 完成 ({:.1}s, {} 字符)",
-                            name,
-                            elapsed.as_secs_f64(),
-                            text.len()
-                        );
-                        text
+                // ---- 预读检查：file_write 和 file_edit 必须先读后写 ----
+                let pre_read_error: Option<String> = match name.as_str() {
+                    "file_write" | "file_edit" => {
+                        if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
+                            let path = std::path::Path::new(fp);
+                            if path.exists() {
+                                match self.read_file_state.get(fp) {
+                                    None => Some(format!(
+                                        "错误：文件 '{}' 已存在，但未通过 file_read 读取。\
+                                             请先使用 file_read 读取文件内容后再进行写入操作。",
+                                        fp
+                                    )),
+                                    Some(&recorded_mtime) => {
+                                        if let Ok(meta) = path.metadata() {
+                                            if let Ok(mtime) = meta.modified() {
+                                                let current_ms = mtime
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .map(|d| d.as_millis() as u64)
+                                                    .unwrap_or(0);
+                                                if current_ms > recorded_mtime {
+                                                    Some(format!(
+                                                        "错误：文件 '{}' 自读取后已被外部修改，\
+                                                         请重新使用 file_read 读取后再操作。",
+                                                        fp
+                                                    ))
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                }
+                            } else {
+                                None // 新文件直接放行
+                            }
+                        } else {
+                            None
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("[工具] ❌ {} 失败: {}", name, e);
-                        format!("[Tool error: {}]", e)
+                    _ => None,
+                };
+
+                let start = Instant::now();
+                let result_text = if let Some(err_msg) = pre_read_error {
+                    eprintln!("[工具] ❌ {} 预读检查失败: {}", name, err_msg);
+                    format!("[Tool error: {}]", err_msg)
+                } else {
+                    match handler.execute(input).await {
+                        Ok(text) => {
+                            // ---- 文件读取后记录状态 ----
+                            if name.as_str() == "file_read"
+                                && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
+                                && let path = std::path::Path::new(fp)
+                                && path.exists()
+                                && let Ok(meta) = path.metadata()
+                                && let Ok(mtime) = meta.modified()
+                            {
+                                let ms = mtime
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_millis() as u64)
+                                    .unwrap_or(0);
+                                self.read_file_state.insert(fp.to_string(), ms);
+                            }
+                            let elapsed = start.elapsed();
+                            eprintln!(
+                                "[工具] ✅ {} 完成 ({:.1}s, {} 字符)",
+                                name,
+                                elapsed.as_secs_f64(),
+                                text.len()
+                            );
+                            text
+                        }
+                        Err(e) => {
+                            eprintln!("[工具] ❌ {} 失败: {}", name, e);
+                            format!("[Tool error: {}]", e)
+                        }
                     }
                 };
 
