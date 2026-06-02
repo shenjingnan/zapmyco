@@ -96,6 +96,7 @@ pub fn prompt_single_select(
                 }) => {
                     input_buf.pop();
                     render_single_list(question, options, selected, false, Some(&input_buf));
+                    position_cursor_for_input(options, selected, input_buf.len());
                 }
                 // ↑ / k → 上移退出输入模式
                 Event::Key(KeyEvent {
@@ -129,6 +130,7 @@ pub fn prompt_single_select(
                 }) => {
                     input_buf.push(c);
                     render_single_list(question, options, selected, false, Some(&input_buf));
+                    position_cursor_for_input(options, selected, input_buf.len());
                 }
                 _ => {}
             }
@@ -146,6 +148,7 @@ pub fn prompt_single_select(
                             selected = idx;
                             input_buf.clear();
                             render_single_list(question, options, selected, false, Some(""));
+                            position_cursor_for_input(options, selected, 0);
                             continue;
                         }
                         clear_lines(list_height);
@@ -188,6 +191,7 @@ pub fn prompt_single_select(
                     input_buf.clear();
                     if options[selected].custom_input {
                         render_single_list(question, options, selected, false, Some(""));
+                        position_cursor_for_input(options, selected, 0);
                     } else {
                         render_single_list(question, options, selected, false, None);
                     }
@@ -340,6 +344,18 @@ pub fn prompt_multi_select(question: &str, options: &[SelectOption]) -> Option<M
             }
         }
     }
+}
+
+/// 渲染后将光标移到自定义选项的输入位置
+///
+/// IME 拼音窗口跟随光标位置显示，在此定位后拼音出现在选项行上而非下一行。
+fn position_cursor_for_input(options: &[SelectOption], selected: usize, buf_len: usize) {
+    let num = selected + 1;
+    let lines_up = options.len() - selected;
+    let col = 5 + num.to_string().len() + 2 + buf_len; // "  ▸ X. " + text
+    let mut stderr = std::io::stderr();
+    let _ = write!(stderr, "\x1b[{}A\x1b[{}C", lines_up, col);
+    let _ = stderr.flush();
 }
 
 /// 退出 raw 模式后读取用户文本输入
