@@ -16,7 +16,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
     name = "zapmyco",
     version = VERSION,
     about = "基于 Rust 的 AI 驱动命令行工具",
-    subcommand_required = false,
+    subcommand_required = true,
     arg_required_else_help = true,
     disable_help_subcommand = true,
 )]
@@ -494,21 +494,6 @@ fn build_run_options(profile: Option<&str>) -> crate::agent::chat::AiAgentOption
     }
 }
 
-/// 无参模式 - 启动交互式聊天
-async fn cmd_interactive() -> Result<(), String> {
-    let file_path = settings::get_settings_path();
-    if !file_path.exists() {
-        return Err(format!(
-            "未找到配置文件 {}\n请先运行 `zapmyco init` 初始化 LLM 配置。",
-            file_path.display()
-        ));
-    }
-
-    let mut agent =
-        crate::agent::chat::AiAgent::new(crate::agent::chat::AiAgentOptions::default())?;
-    agent.start_interactive_chat().await
-}
-
 /// uninstall 命令 — 卸载 zapmyco
 fn cmd_uninstall() -> Result<(), String> {
     let home = settings::get_home_dir();
@@ -869,7 +854,8 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             cmd_completion(shell, &mut std::io::stdout());
             Ok(())
         }
-        None => cmd_interactive().await,
+        // subcommand_required = true 时，此处不可达
+        None => unreachable!(),
     }
 }
 
@@ -935,26 +921,6 @@ mod tests {
 
         let result = cmd_run("hello", None).await;
         assert!(result.is_err());
-
-        if let Some(h) = orig_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_cmd_interactive_no_config() {
-        // 使用临时 HOME 确保无配置文件
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
-
-        let result = cmd_interactive().await;
-        assert!(result.is_err());
-        assert!(result.err().unwrap().contains("zapmyco init"));
 
         if let Some(h) = orig_home {
             unsafe {
