@@ -373,6 +373,10 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
 
     let mut agent = crate::agent::chat::AiAgent::new(options)?;
 
+    // 注册 Ask User 工具
+    let ask_user = crate::tools::ask_user::AskUser;
+    agent.register_tool(crate::agent::chat::ToolHandler::AskUser(ask_user));
+
     // 注册 Web Fetch 工具
     let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default())
         .map_err(|e| format!("初始化 Web Fetch 失败: {}", e))?;
