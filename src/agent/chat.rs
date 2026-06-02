@@ -162,6 +162,8 @@ pub struct AiAgent {
     read_file_state: std::collections::HashMap<String, u64>,
     /// 任务管理器（可选，用于在终端展示任务列表）
     task_manager: Option<std::sync::Arc<crate::tools::task_manager::TaskManager>>,
+    /// 任务展示状态机（可选，用于事件流 + 检查点快照展示）
+    task_display: Option<crate::tools::task_display::TaskDisplayState>,
 }
 
 impl AiAgent {
@@ -257,6 +259,7 @@ impl AiAgent {
             max_tool_rounds: 10,
             read_file_state: std::collections::HashMap::new(),
             task_manager: None,
+            task_display: None,
         })
     }
 
@@ -395,65 +398,6 @@ impl AiAgent {
         Ok(full_content)
     }
 
-    /// 启动交互式对话 - 从 stdin 读取输入，流式输出到 stdout
-    pub async fn start_interactive_chat(&mut self) -> Result<(), String> {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-
-        eprintln!("进入 AI 对话模式");
-        eprintln!("模型: {}", self.model);
-        eprintln!("输入 /exit 退出，/clear 清空上下文");
-        eprintln!("---");
-
-        let stdin = tokio::io::stdin();
-        let reader = BufReader::new(stdin);
-        let mut lines = reader.lines();
-
-        while let Ok(Some(line)) = lines.next_line().await {
-            let trimmed = line.trim().to_string();
-            if trimmed.is_empty() {
-                continue;
-            }
-
-            if trimmed == "/exit" {
-                eprintln!("\n再见！");
-                break;
-            }
-
-            if trimmed == "/clear" {
-                self.messages.clear();
-                eprintln!("上下文已清空");
-                continue;
-            }
-
-            eprintln!("\n❯ {}\n", trimmed);
-
-            let content = trimmed.clone();
-            let result = self
-                .chat_stream(&content, |chunk| {
-                    print!("{}", chunk);
-                    use std::io::Write;
-                    std::io::stdout().flush().ok();
-                })
-                .await;
-
-            match result {
-                Ok(_) => {
-                    eprintln!("\n---");
-                }
-                Err(e) => {
-                    eprintln!("\n[错误] {}", e);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// 清空对话上下文
-    pub fn clear_context(&mut self) {
-        self.messages.clear();
-    }
-
     /// 注册工具处理器
     pub fn register_tool(&mut self, handler: ToolHandler) {
         self.tools.push(handler);
@@ -466,14 +410,35 @@ impl AiAgent {
         tm: std::sync::Arc<crate::tools::task_manager::TaskManager>,
     ) {
         self.task_manager = Some(tm);
+        self.task_display = Some(crate::tools::task_display::TaskDisplayState::new());
     }
 
-    /// 如果有 Task 工具和 TaskManager，展示任务列表到 stderr
-    async fn print_task_summary_if_needed(&self) {
-        if let Some(ref tm) = self.task_manager
-            && let Err(e) = tm.print_summary().await
-        {
-            eprintln!("[Task] 展示任务列表失败: {}", e);
+    /// 使用事件流 + 检查点快照模式展示任务列表到 stderr
+    async fn print_task_summary_if_needed(&mut self) {
+        let tm = match self.task_manager.as_ref() {
+            Some(tm) => tm.clone(),
+            _ => return,
+        };
+        let td = match self.task_display.as_mut() {
+            Some(td) => td,
+            _ => return,
+        };
+
+        let tasks = match tm.list().await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[Task] 获取任务列表失败: {}", e);
+                return;
+            }
+        };
+
+        let output = td.compute_output(&tasks);
+
+        for event in &output.events {
+            eprintln!("{}", event);
+        }
+        if let Some(snapshot) = &output.snapshot {
+            eprintln!("\n{}\n", snapshot);
         }
     }
 
@@ -1141,21 +1106,6 @@ mod tests {
             });
             assert!(agent.is_ok());
             let agent = agent.unwrap();
-            assert_eq!(agent.get_messages().len(), 0);
-        });
-    }
-
-    #[test]
-    fn test_agent_manage_context() {
-        run_with_temp_home(|home| {
-            create_test_settings(home, "[llm]\n");
-            let mut agent = AiAgent::new(AiAgentOptions {
-                api_key: Some("test-key".to_string()),
-                ..Default::default()
-            })
-            .unwrap();
-            assert_eq!(agent.get_messages().len(), 0);
-            agent.clear_context();
             assert_eq!(agent.get_messages().len(), 0);
         });
     }
