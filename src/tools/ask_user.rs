@@ -292,4 +292,100 @@ mod tests {
             Some(6)
         );
     }
+
+    #[test]
+    fn test_parse_valid_input() {
+        let input = json!({
+            "question": "测试?",
+            "options": [
+                {"label": "A", "description": "desc A"},
+                {"label": "B", "description": "desc B"}
+            ]
+        });
+        let result = AskUser::parse_and_validate_input(&input);
+        assert!(result.is_ok());
+        let (question, items, multi_select) = result.unwrap();
+        assert_eq!(question, "测试?");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].label, "A");
+        assert_eq!(items[1].label, "B");
+        assert!(!multi_select);
+    }
+
+    #[test]
+    fn test_parse_valid_with_multi_select() {
+        let input = json!({
+            "question": "测试?",
+            "options": [{"label": "A", "description": "desc A"}],
+            "multi_select": true
+        });
+        let result = AskUser::parse_and_validate_input(&input);
+        assert!(result.is_ok());
+        let (_, _, multi_select) = result.unwrap();
+        assert!(multi_select);
+    }
+
+    #[test]
+    fn test_parse_missing_description_defaults_empty() {
+        let input = json!({
+            "question": "测试?",
+            "options": [{"label": "A"}]
+        });
+        let result = AskUser::parse_and_validate_input(&input);
+        assert!(result.is_ok());
+        let (_, items, _) = result.unwrap();
+        assert_eq!(items[0].description, "");
+    }
+
+    #[test]
+    fn test_execute_multi_select_non_tty() {
+        let tool = AskUser;
+        let input = json!({
+            "question": "测试?",
+            "options": [
+                {"label": "A", "description": "desc A"},
+                {"label": "B", "description": "desc B"}
+            ],
+            "multi_select": true
+        });
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(tool.execute(&input));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("交互式终端") || err.contains("终端"));
+    }
+
+    #[test]
+    fn test_tool_definition_description_not_empty() {
+        let def = AskUser::tool_definition();
+        let desc = def.description.unwrap();
+        assert!(!desc.is_empty());
+        assert!(desc.contains("问题") || desc.contains("选项") || desc.contains("回答"));
+    }
+
+    #[test]
+    fn test_tool_definition_options_items_schema() {
+        let def = AskUser::tool_definition();
+        let schema = def.input_schema.unwrap();
+        let options_schema = schema.pointer("/properties/options/items").unwrap();
+        let props = options_schema.get("properties").unwrap();
+        assert!(props.get("label").is_some());
+        assert!(props.get("description").is_some());
+        let required = options_schema.get("required").unwrap().as_array().unwrap();
+        let req: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+        assert!(req.contains(&"label"));
+        assert!(req.contains(&"description"));
+    }
+
+    #[test]
+    fn test_tool_definition_options_min_items() {
+        let def = AskUser::tool_definition();
+        let schema = def.input_schema.unwrap();
+        let options_schema = schema.pointer("/properties/options").unwrap();
+        assert_eq!(
+            options_schema.get("minItems").and_then(|v| v.as_u64()),
+            Some(1)
+        );
+    }
 }

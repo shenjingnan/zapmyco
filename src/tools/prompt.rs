@@ -566,4 +566,125 @@ mod tests {
         ];
         assert!(prompt_multi_select("test?", &options).is_none());
     }
+
+    #[test]
+    fn test_single_select_result_index() {
+        let r = SingleSelectResult::Index(0);
+        match r {
+            SingleSelectResult::Index(i) => assert_eq!(i, 0),
+            _ => panic!("expected Index"),
+        }
+    }
+
+    #[test]
+    fn test_single_select_result_custom() {
+        let r = SingleSelectResult::Custom("hello".to_string());
+        match r {
+            SingleSelectResult::Custom(s) => assert_eq!(s, "hello"),
+            _ => panic!("expected Custom"),
+        }
+    }
+
+    #[test]
+    fn test_multi_select_result_both() {
+        let r = MultiSelectResult {
+            indices: vec![0, 2],
+            custom_text: Some("自定义值".to_string()),
+        };
+        assert_eq!(r.indices, vec![0, 2]);
+        assert_eq!(r.custom_text.as_deref(), Some("自定义值"));
+    }
+
+    #[test]
+    fn test_multi_select_result_indices_only() {
+        let r = MultiSelectResult {
+            indices: vec![1],
+            custom_text: None,
+        };
+        assert_eq!(r.indices, vec![1]);
+        assert!(r.custom_text.is_none());
+    }
+
+    #[test]
+    fn test_multi_select_result_empty_indices() {
+        let r = MultiSelectResult {
+            indices: vec![],
+            custom_text: Some("text".to_string()),
+        };
+        assert!(r.indices.is_empty());
+        assert_eq!(r.custom_text.as_deref(), Some("text"));
+    }
+
+    #[test]
+    fn test_select_option_construction() {
+        let opt = SelectOption {
+            label: "测试选项",
+            description: "描述",
+            custom_input: true,
+        };
+        assert_eq!(opt.label, "测试选项");
+        assert_eq!(opt.description, "描述");
+        assert!(opt.custom_input);
+    }
+
+    #[test]
+    fn test_select_option_not_custom() {
+        let opt = SelectOption {
+            label: "普通A",
+            description: "desc A",
+            custom_input: false,
+        };
+        assert!(!opt.custom_input);
+    }
+
+    #[test]
+    fn test_render_single_list_non_terminal() {
+        // render_single_list 写入 stderr 不应 panic
+        let options = [SelectOption {
+            label: "A",
+            description: "desc A",
+            custom_input: false,
+        }];
+        render_single_list("测试?", &options, 0, true, None);
+        render_single_list("测试?", &options, 0, false, None);
+    }
+
+    #[test]
+    fn test_render_single_list_with_input_preview() {
+        let options = [
+            SelectOption {
+                label: "A",
+                description: "desc A",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "其他",
+                description: "",
+                custom_input: true,
+            },
+        ];
+        // 选中自定义选项且有输入内容
+        render_single_list("测试?", &options, 1, true, Some("hello"));
+        // 选中自定义选项但无输入
+        render_single_list("测试?", &options, 1, false, Some(""));
+    }
+
+    #[test]
+    fn test_render_multi_list_non_terminal() {
+        let options = [SelectOption {
+            label: "A",
+            description: "desc A",
+            custom_input: false,
+        }];
+        let toggled = [false];
+        render_multi_list("测试?", &options, 0, &toggled, true);
+        render_multi_list("测试?", &options, 0, &toggled, false);
+    }
+
+    #[test]
+    fn test_clear_lines_non_terminal() {
+        // clear_lines 写入 stderr 不应 panic
+        clear_lines(0);
+        clear_lines(3);
+    }
 }
