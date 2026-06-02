@@ -63,18 +63,24 @@ pub fn prompt_single_select(
 
         if options[selected].custom_input {
             // ---- 自定义输入模式 ----
+            // 使用 inquire::Text 提供完整的输入体验，IME 正常工作。
             match event {
-                // Enter → 提交
+                // Enter → 弹出 inquire 输入框
                 Event::Key(KeyEvent {
                     code: KeyCode::Enter,
                     ..
                 }) => {
                     clear_lines(list_height);
                     drop(guard);
-                    return if input_buf.is_empty() {
+                    let input = inquire::Text::new(question)
+                        .with_help_message("输入完成后按 Enter 确认")
+                        .prompt()
+                        .unwrap_or_default();
+                    let trimmed = input.trim().to_string();
+                    return if trimmed.is_empty() {
                         Some(SingleSelectResult::Index(selected))
                     } else {
-                        Some(SingleSelectResult::Custom(input_buf.trim().to_string()))
+                        Some(SingleSelectResult::Custom(trimmed))
                     };
                 }
                 // Ctrl+C → 取消
@@ -87,14 +93,6 @@ pub fn prompt_single_select(
                     drop(guard);
                     return None;
                 }
-                // Backspace → 删除
-                Event::Key(KeyEvent {
-                    code: KeyCode::Backspace,
-                    ..
-                }) => {
-                    input_buf.pop();
-                    render_single_list(question, options, selected, false, Some(&input_buf));
-                }
                 // ↑ / k → 上移退出输入模式
                 Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
@@ -104,16 +102,7 @@ pub fn prompt_single_select(
                     ..
                 }) if selected > 0 => {
                     selected -= 1;
-                    input_buf.clear();
                     render_single_list(question, options, selected, false, None);
-                }
-                // 普通字符 → 追加
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    ..
-                }) => {
-                    input_buf.push(c);
-                    render_single_list(question, options, selected, false, Some(&input_buf));
                 }
                 _ => {}
             }
