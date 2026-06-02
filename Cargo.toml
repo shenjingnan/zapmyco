@@ -35,6 +35,7 @@ mdka = "2"
 crossterm = "0.29"
 ignore = "0.4"
 globset = "0.4"
+fs4 = { version = "0.13", features = ["tokio"] }
 
 [dev-dependencies]
 tempfile = "3"
