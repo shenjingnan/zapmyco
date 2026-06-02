@@ -62,10 +62,24 @@ pub fn prompt_single_select(
         };
 
         if options[selected].custom_input {
-            // ---- 自定义输入模式 ----
-            // 使用 inquire::Text 提供完整的输入体验，IME 正常工作。
+            // ---- 内联输入模式 ----
+            // 在选项行内直接输入，支持 ↑/k 切换选项。
+            // IME 拼音可能显示在光标下一行（终端 raw mode 固有限制）。
             match event {
-                // Ctrl+C → 取消（优先匹配）
+                // Enter → 提交
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
+                    clear_lines(list_height);
+                    drop(guard);
+                    return if input_buf.is_empty() {
+                        Some(SingleSelectResult::Index(selected))
+                    } else {
+                        Some(SingleSelectResult::Custom(input_buf.trim().to_string()))
+                    };
+                }
+                // Ctrl+C → 取消
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('c'),
                     modifiers: KeyModifiers::CONTROL,
@@ -74,6 +88,14 @@ pub fn prompt_single_select(
                     clear_lines(list_height);
                     drop(guard);
                     return None;
+                }
+                // Backspace → 删除
+                Event::Key(KeyEvent {
+                    code: KeyCode::Backspace,
+                    ..
+                }) => {
+                    input_buf.pop();
+                    render_single_list(question, options, selected, false, Some(&input_buf));
                 }
                 // ↑ / k → 上移退出输入模式
                 Event::Key(KeyEvent {
@@ -84,29 +106,29 @@ pub fn prompt_single_select(
                     ..
                 }) if selected > 0 => {
                     selected -= 1;
+                    input_buf.clear();
                     render_single_list(question, options, selected, false, None);
                 }
-                // Enter / 任意字符 → 弹出 inquire 输入框
+                // ↓ / j → 下移退出输入模式（仅非最后一项时）
                 Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
+                    code: KeyCode::Down,
                     ..
                 })
                 | Event::Key(KeyEvent {
-                    code: KeyCode::Char(_),
+                    code: KeyCode::Char('j'),
+                    ..
+                }) if selected < options.len() - 1 => {
+                    selected += 1;
+                    input_buf.clear();
+                    render_single_list(question, options, selected, false, None);
+                }
+                // 普通字符 → 追加
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c),
                     ..
                 }) => {
-                    clear_lines(list_height);
-                    drop(guard);
-                    let input = inquire::Text::new(question)
-                        .with_help_message("输入完成后按 Enter 确认")
-                        .prompt()
-                        .unwrap_or_default();
-                    let trimmed = input.trim().to_string();
-                    return if trimmed.is_empty() {
-                        Some(SingleSelectResult::Index(selected))
-                    } else {
-                        Some(SingleSelectResult::Custom(trimmed))
-                    };
+                    input_buf.push(c);
+                    render_single_list(question, options, selected, false, Some(&input_buf));
                 }
                 _ => {}
             }
