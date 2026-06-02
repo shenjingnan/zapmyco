@@ -419,13 +419,15 @@ impl TaskManager {
         Ok(task)
     }
 
-    /// 格式化任务列表并输出到 stderr
+    /// 格式化任务列表并输出到 stderr（带视觉分隔线）
     ///
     /// 格式：
+    ///   ─────────────────────
     ///   ⏺ 任务列表 (2/5 完成):
     ///     ✔ #1: 数据库设计
     ///     ◼ #2: 用户注册 API  (正在实现)
     ///     ◻ #3: 用户登录 API  [blocked by #2]
+    ///   ─────────────────────
     pub async fn print_summary(&self) -> Result<(), TaskError> {
         let tasks = self.list().await?;
         if tasks.is_empty() {
@@ -437,6 +439,7 @@ impl TaskManager {
             .filter(|t| t.status == TaskStatus::Completed)
             .count();
         let mut lines = Vec::new();
+        lines.push("─────────────────────".to_string());
         lines.push(format!("⏺ 任务列表 ({}/{}) 完成:", done, total));
         for task in &tasks {
             let (icon, extra) = match task.status {
@@ -461,6 +464,7 @@ impl TaskManager {
                 icon, task.id, task.subject, extra, blocked
             ));
         }
+        lines.push("─────────────────────".to_string());
         let output = lines.join("\n");
         eprintln!("\n{}", output);
         Ok(())

@@ -445,6 +445,7 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let max_exec_rounds = 5;
     for round in 0..max_exec_rounds {
         use crate::tools::task_manager::TaskStatus;
+
         let tasks = task_manager.list().await.map_err(|e| e.to_string())?;
         let pending_count = tasks
             .iter()
@@ -457,11 +458,6 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
             }
             break;
         }
-
-        task_manager
-            .print_summary()
-            .await
-            .map_err(|e| e.to_string())?;
 
         let continuation = format!(
             "请继续执行下一个可用任务。当前有 {} 个任务未完成。\

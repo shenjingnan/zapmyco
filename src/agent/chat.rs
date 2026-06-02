@@ -931,7 +931,7 @@ impl AiAgent {
                 log_round_trip(logger, &params, &response, duration_ms);
             }
 
-            // 展示任务列表（如有 Task 工具注册）
+            // 每轮工具执行完毕后展示任务列表（一轮一次，不重复）
             self.print_task_summary_if_needed().await;
 
             // 继续下一轮循环
