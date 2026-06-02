@@ -162,6 +162,8 @@ pub struct AiAgent {
     read_file_state: std::collections::HashMap<String, u64>,
     /// 任务管理器（可选，用于在终端展示任务列表）
     task_manager: Option<std::sync::Arc<crate::tools::task_manager::TaskManager>>,
+    /// 任务展示状态机（可选，用于事件流 + 检查点快照展示）
+    task_display: Option<crate::tools::task_display::TaskDisplayState>,
 }
 
 impl AiAgent {
@@ -257,6 +259,7 @@ impl AiAgent {
             max_tool_rounds: 10,
             read_file_state: std::collections::HashMap::new(),
             task_manager: None,
+            task_display: None,
         })
     }
 
@@ -466,14 +469,35 @@ impl AiAgent {
         tm: std::sync::Arc<crate::tools::task_manager::TaskManager>,
     ) {
         self.task_manager = Some(tm);
+        self.task_display = Some(crate::tools::task_display::TaskDisplayState::new());
     }
 
-    /// 如果有 Task 工具和 TaskManager，展示任务列表到 stderr
-    async fn print_task_summary_if_needed(&self) {
-        if let Some(ref tm) = self.task_manager
-            && let Err(e) = tm.print_summary().await
-        {
-            eprintln!("[Task] 展示任务列表失败: {}", e);
+    /// 使用事件流 + 检查点快照模式展示任务列表到 stderr
+    async fn print_task_summary_if_needed(&mut self) {
+        let tm = match self.task_manager.as_ref() {
+            Some(tm) => tm.clone(),
+            _ => return,
+        };
+        let td = match self.task_display.as_mut() {
+            Some(td) => td,
+            _ => return,
+        };
+
+        let tasks = match tm.list().await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[Task] 获取任务列表失败: {}", e);
+                return;
+            }
+        };
+
+        let output = td.compute_output(&tasks);
+
+        for event in &output.events {
+            eprintln!("{}", event);
+        }
+        if let Some(snapshot) = &output.snapshot {
+            eprintln!("\n{}\n", snapshot);
         }
     }
 

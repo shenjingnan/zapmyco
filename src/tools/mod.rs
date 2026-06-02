@@ -18,6 +18,8 @@ pub mod shell_exec;
 #[doc(hidden)]
 pub mod task_create;
 #[doc(hidden)]
+pub mod task_display;
+#[doc(hidden)]
 pub mod task_get;
 #[doc(hidden)]
 pub mod task_list;
