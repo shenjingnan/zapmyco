@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.32.2](https://github.com/shenjingnan/zapmyco/compare/v0.32.1...v0.32.2) - 2026-06-02
+
+### Added
+
+- *(tools)* 任务列表改用事件流+检查点快照展示 ([#374](https://github.com/shenjingnan/zapmyco/pull/374))
+- *(tools)* 实现 Task 任务管理系统 ([#373](https://github.com/shenjingnan/zapmyco/pull/373))
+- *(tools)* 新增 ask_user 工具并提取共享 SelectPrompt 组件 ([#369](https://github.com/shenjingnan/zapmyco/pull/369))
+
+### Other
+
+- *(guide)* 更新内置工具文档，补充新增工具说明 ([#375](https://github.com/shenjingnan/zapmyco/pull/375))
+
 ## [0.32.1](https://github.com/shenjingnan/zapmyco/compare/v0.32.0...v0.32.1) - 2026-06-01
 
 ### Added
