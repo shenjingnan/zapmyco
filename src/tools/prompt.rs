@@ -97,24 +97,16 @@ pub fn prompt_single_select(
                     input_buf.pop();
                     render_single_list(question, options, selected, false, Some(&input_buf));
                 }
-                // ↑ / k → 上移退出输入模式（保留输入内容）
+                // ↑ → 上移退出输入模式（保留输入内容）
                 Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
-                })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('k'),
-                    ..
                 }) if selected > 0 => {
                     selected -= 1;
                     render_single_list(question, options, selected, false, Some(&input_buf));
                 }
-                // ↓ / j → 下移退出输入模式（保留输入内容）
+                // ↓ → 下移退出输入模式（保留输入内容）
                 Event::Key(KeyEvent {
                     code: KeyCode::Down,
-                    ..
-                })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('j'),
                     ..
                 }) if selected < options.len() - 1 => {
                     selected += 1;
