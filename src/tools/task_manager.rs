@@ -419,57 +419,6 @@ impl TaskManager {
         Ok(task)
     }
 
-    /// 格式化任务列表并输出到 stderr（带视觉分隔线）
-    ///
-    /// 格式：
-    ///   ─────────────────────
-    ///   ⏺ 任务列表 (2/5 完成):
-    ///     ✔ #1: 数据库设计
-    ///     ◼ #2: 用户注册 API  (正在实现)
-    ///     ◻ #3: 用户登录 API  [blocked by #2]
-    ///   ─────────────────────
-    pub async fn print_summary(&self) -> Result<(), TaskError> {
-        let tasks = self.list().await?;
-        if tasks.is_empty() {
-            return Ok(());
-        }
-        let total = tasks.len();
-        let done = tasks
-            .iter()
-            .filter(|t| t.status == TaskStatus::Completed)
-            .count();
-        let mut lines = Vec::new();
-        lines.push("─────────────────────".to_string());
-        lines.push(format!("⏺ 任务列表 ({}/{}) 完成:", done, total));
-        for task in &tasks {
-            let (icon, extra) = match task.status {
-                TaskStatus::Completed => ("✔".to_string(), String::new()),
-                TaskStatus::InProgress => {
-                    let activity = task
-                        .active_form
-                        .as_deref()
-                        .map(|a| format!(" ({})", a))
-                        .unwrap_or_default();
-                    ("◼".to_string(), activity)
-                }
-                TaskStatus::Pending => ("◻".to_string(), String::new()),
-            };
-            let blocked = if !task.blocked_by.is_empty() {
-                format!(" [blocked by {}]", task.blocked_by.join(", "))
-            } else {
-                String::new()
-            };
-            lines.push(format!(
-                "  {} #{}: {}{}{}",
-                icon, task.id, task.subject, extra, blocked
-            ));
-        }
-        lines.push("─────────────────────".to_string());
-        let output = lines.join("\n");
-        eprintln!("\n{}", output);
-        Ok(())
-    }
-
     /// 删除任务文件
     pub async fn delete(&self, id: &str) -> Result<bool, TaskError> {
         let _lock = self.acquire_lock().await?;
