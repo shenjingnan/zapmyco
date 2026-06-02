@@ -416,6 +416,23 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let file_write = crate::tools::file_write::FileWrite::new(Default::default());
     agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
 
+    // 注册 Task 管理工具
+    let task_manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::new());
+    agent.set_task_manager(task_manager.clone());
+    agent.register_tool(crate::agent::chat::ToolHandler::TaskCreate(
+        task_manager.clone(),
+    ));
+    agent.register_tool(crate::agent::chat::ToolHandler::TaskGet(
+        task_manager.clone(),
+    ));
+    agent.register_tool(crate::agent::chat::ToolHandler::TaskList(
+        task_manager.clone(),
+    ));
+    agent.register_tool(crate::agent::chat::ToolHandler::TaskUpdate(
+        task_manager.clone(),
+    ));
+
+    // ---- 第一阶段：执行用户原始输入 ----
     let _response = agent
         .chat_with_tools(content, |chunk| {
             print!("{}", chunk);
@@ -423,6 +440,52 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
             std::io::stdout().flush().ok();
         })
         .await?;
+
+    // ---- 第二阶段：任务执行循环 ----
+    let max_exec_rounds = 5;
+    for round in 0..max_exec_rounds {
+        use crate::tools::task_manager::TaskStatus;
+        let tasks = task_manager.list().await.map_err(|e| e.to_string())?;
+        let pending_count = tasks
+            .iter()
+            .filter(|t| t.status != TaskStatus::Completed)
+            .count();
+
+        if pending_count == 0 {
+            if round > 0 {
+                println!("\n✅ 全部任务已完成！");
+            }
+            break;
+        }
+
+        task_manager
+            .print_summary()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let continuation = format!(
+            "请继续执行下一个可用任务。当前有 {} 个任务未完成。\
+             规则：检查 task_list 找出 blocked_by 为空的 pending 任务，\
+             标记为 in_progress 后开始实施，完成后标记为 completed。\
+             一次只做一个任务。",
+            pending_count,
+        );
+
+        eprintln!(
+            "\n[任务执行] 第 {} 轮 — {} 个任务待完成",
+            round + 1,
+            pending_count
+        );
+
+        let _response = agent
+            .chat_with_tools(&continuation, |chunk| {
+                print!("{}", chunk);
+                use std::io::Write;
+                std::io::stdout().flush().ok();
+            })
+            .await?;
+    }
+
     println!();
     Ok(())
 }

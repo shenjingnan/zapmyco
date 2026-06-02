@@ -60,6 +60,11 @@ pub enum ToolHandler {
     FileRead(crate::tools::file_read::FileRead),
     FileEdit(crate::tools::file_edit::FileEdit),
     FileWrite(crate::tools::file_write::FileWrite),
+    // ★ Task 管理工具
+    TaskCreate(std::sync::Arc<crate::tools::task_manager::TaskManager>),
+    TaskGet(std::sync::Arc<crate::tools::task_manager::TaskManager>),
+    TaskList(std::sync::Arc<crate::tools::task_manager::TaskManager>),
+    TaskUpdate(std::sync::Arc<crate::tools::task_manager::TaskManager>),
 }
 
 impl ToolHandler {
@@ -74,6 +79,12 @@ impl ToolHandler {
             ToolHandler::FileRead(_) => crate::tools::file_read::FileRead::tool_definition(),
             ToolHandler::FileEdit(_) => crate::tools::file_edit::FileEdit::tool_definition(),
             ToolHandler::FileWrite(_) => crate::tools::file_write::FileWrite::tool_definition(),
+            ToolHandler::TaskCreate(_) => crate::tools::task_create::TaskCreate::tool_definition(),
+            ToolHandler::TaskGet(_) => crate::tools::task_get::TaskGet::tool_definition(),
+            ToolHandler::TaskList(_) => crate::tools::task_list::TaskList::tool_definition(),
+            ToolHandler::TaskUpdate(_) => {
+                crate::tools::task_update::TaskUpdateTool::tool_definition()
+            }
         }
     }
 
@@ -105,6 +116,30 @@ impl ToolHandler {
             ToolHandler::FileRead(reader) => reader.execute(input).await,
             ToolHandler::FileEdit(editor) => editor.execute(input).await,
             ToolHandler::FileWrite(writer) => writer.execute(input).await,
+            ToolHandler::TaskCreate(mgr) => {
+                let tool = crate::tools::task_create::TaskCreate {
+                    manager: mgr.clone(),
+                };
+                tool.execute(input).await
+            }
+            ToolHandler::TaskGet(mgr) => {
+                let tool = crate::tools::task_get::TaskGet {
+                    manager: mgr.clone(),
+                };
+                tool.execute(input).await
+            }
+            ToolHandler::TaskList(mgr) => {
+                let tool = crate::tools::task_list::TaskList {
+                    manager: mgr.clone(),
+                };
+                tool.execute(input).await
+            }
+            ToolHandler::TaskUpdate(mgr) => {
+                let tool = crate::tools::task_update::TaskUpdateTool {
+                    manager: mgr.clone(),
+                };
+                tool.execute(input).await
+            }
         }
     }
 }
@@ -125,6 +160,8 @@ pub struct AiAgent {
     max_tool_rounds: u32,
     /// 文件读取状态追踪 (path → mtime_ms)，用于 file_write/file_edit 的预读检查
     read_file_state: std::collections::HashMap<String, u64>,
+    /// 任务管理器（可选，用于在终端展示任务列表）
+    task_manager: Option<std::sync::Arc<crate::tools::task_manager::TaskManager>>,
 }
 
 impl AiAgent {
@@ -219,6 +256,7 @@ impl AiAgent {
             tools: Vec::new(),
             max_tool_rounds: 10,
             read_file_state: std::collections::HashMap::new(),
+            task_manager: None,
         })
     }
 
@@ -422,6 +460,23 @@ impl AiAgent {
         self.rebuild_system_prompt_with_tools();
     }
 
+    /// 设置任务管理器（用于在终端展示任务列表）
+    pub fn set_task_manager(
+        &mut self,
+        tm: std::sync::Arc<crate::tools::task_manager::TaskManager>,
+    ) {
+        self.task_manager = Some(tm);
+    }
+
+    /// 如果有 Task 工具和 TaskManager，展示任务列表到 stderr
+    async fn print_task_summary_if_needed(&self) {
+        if let Some(ref tm) = self.task_manager
+            && let Err(e) = tm.print_summary().await
+        {
+            eprintln!("[Task] 展示任务列表失败: {}", e);
+        }
+    }
+
     /// 从 base_system_prompt + 所有已注册工具描述重建 system_prompt
     fn rebuild_system_prompt_with_tools(&mut self) {
         self.system_prompt = self.base_system_prompt.clone();
@@ -482,12 +537,58 @@ impl AiAgent {
                       注意：如果要覆盖已有的文件，必须先使用 file_read 读取文件内容后才可以写入。\
                       对于已有文件的小范围修改，建议使用 file_edit 工具。"
                 }
+                ToolHandler::TaskCreate(_) => {
+                    "- task_create: 创建新任务以跟踪复杂工作的进度。\
+                      当你需要完成 3 个以上步骤的复杂任务时，使用此工具主动创建任务列表。\
+                      接收到用户新指令后，立即将需求拆解为可跟踪的子任务。\
+                      参数: subject（必填，简洁的任务标题）、description（必填，任务描述）、\
+                      active_form（可选，进行时态，如'正在实现登录'）。\
+                      新任务创建后状态为 pending。创建后使用 task_list 查看，task_update 更新状态。"
+                }
+                ToolHandler::TaskGet(_) => {
+                    "- task_get: 按 ID 获取单个任务的完整描述、状态和依赖关系。\
+                      参数: task_id（必填，任务 ID）。适用于开始工作前了解任务详情。"
+                }
+                ToolHandler::TaskList(_) => {
+                    "- task_list: 列出所有任务及其状态。\
+                      适用于了解整体进度、查找可认领的任务、检查阻塞关系。\
+                      开始复杂工作前应先调用此工具查看现状。无需参数。"
+                }
+                ToolHandler::TaskUpdate(_) => {
+                    "- task_update: 更新任务的状态或字段。\
+                      参数: task_id（必填）、status（可选：pending/in_progress/completed/deleted）、\
+                      subject（可选）、description（可选）、active_form（可选）、\
+                      add_blocks/add_blocked_by（可选，设置依赖关系）、owner（可选，负责人）。\
+                      使用流程：开始工作前标记 in_progress → 完成后标记 completed。\
+                      只有 FULLY 完成的任务才标记为 completed。如果遇到阻塞无法完成，请更新字段说明原因。"
+                }
             };
             self.system_prompt.push_str(desc);
             self.system_prompt.push('\n');
         }
 
         self.system_prompt.push_str("使用工具时请注意安全。");
+
+        // 如果有 Task 工具注册，追加任务执行策略
+        let has_task_tools = self.tools.iter().any(|t| {
+            let name = t.tool_definition().name;
+            name == "task_create" || name == "task_update" || name == "task_list"
+        });
+        if has_task_tools {
+            self.system_prompt.push_str(
+                "\n\n## 任务执行策略\n\
+                 当使用 task_create 创建任务后，请按以下步骤执行：\n\
+                 1. 调用 task_list 查看所有任务的依赖关系\n\
+                 2. 选择 blocked_by 为空且状态为 pending 的任务\n\
+                 3. 调用 task_update 将其标记为 in_progress\n\
+                 4. 使用 shell_exec、file_edit 等工具完成该任务\n\
+                 5. 调用 task_update 将其标记为 completed\n\
+                 6. 重复步骤 1-5 直到所有任务完成\n\
+                 注意：每次工具调用轮次只处理一个任务。完成后标记 completed \
+                 然后检查 task_list 找出下一个可用任务。\
+                 被 blocked 的任务跳过，等依赖任务完成后再处理。",
+            );
+        }
     }
 
     /// 获取当前使用的模型名称
@@ -708,6 +809,25 @@ impl AiAgent {
                             eprintln!("[工具]   └ 查找: {}", truncated);
                         }
                     }
+                    "task_create" => {
+                        if let Some(s) = input.get("subject").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 任务: {}", s);
+                        }
+                    }
+                    "task_update" => {
+                        if let Some(id) = input.get("task_id").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 任务ID: {}", id);
+                        }
+                        if let Some(s) = input.get("status").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 状态: {}", s);
+                        }
+                    }
+                    "task_get" => {
+                        if let Some(id) = input.get("task_id").and_then(|v| v.as_str()) {
+                            eprintln!("[工具]   └ 任务ID: {}", id);
+                        }
+                    }
+                    "task_list" => {}
                     _ => {}
                 }
 
@@ -810,6 +930,9 @@ impl AiAgent {
             if let Some(ref logger) = self.logger {
                 log_round_trip(logger, &params, &response, duration_ms);
             }
+
+            // 展示任务列表（如有 Task 工具注册）
+            self.print_task_summary_if_needed().await;
 
             // 继续下一轮循环
         }

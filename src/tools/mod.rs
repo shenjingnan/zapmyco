@@ -16,6 +16,16 @@ pub mod prompt;
 #[doc(hidden)]
 pub mod shell_exec;
 #[doc(hidden)]
+pub mod task_create;
+#[doc(hidden)]
+pub mod task_get;
+#[doc(hidden)]
+pub mod task_list;
+#[doc(hidden)]
+pub mod task_manager;
+#[doc(hidden)]
+pub mod task_update;
+#[doc(hidden)]
 pub mod web_fetch;
 #[doc(hidden)]
 pub mod web_search;
