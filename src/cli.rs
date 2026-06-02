@@ -358,6 +358,12 @@ fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
 async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
+    tracing::info!(
+        input_len = content.len(),
+        profile = profile.unwrap_or("default"),
+        "开始执行 AI 任务"
+    );
+
     if !file_path.exists() {
         return Err(format!(
             "未找到配置文件 {}\n请先运行 `zapmyco init` 初始化 LLM 配置。",
