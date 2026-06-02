@@ -97,7 +97,7 @@ pub fn prompt_single_select(
                     input_buf.pop();
                     render_single_list(question, options, selected, false, Some(&input_buf));
                 }
-                // ↑ / k → 上移退出输入模式
+                // ↑ / k → 上移退出输入模式（保留输入内容）
                 Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
                 })
@@ -106,10 +106,9 @@ pub fn prompt_single_select(
                     ..
                 }) if selected > 0 => {
                     selected -= 1;
-                    input_buf.clear();
                     render_single_list(question, options, selected, false, None);
                 }
-                // ↓ / j → 下移退出输入模式（仅非最后一项时）
+                // ↓ / j → 下移退出输入模式（保留输入内容）
                 Event::Key(KeyEvent {
                     code: KeyCode::Down,
                     ..
@@ -119,7 +118,6 @@ pub fn prompt_single_select(
                     ..
                 }) if selected < options.len() - 1 => {
                     selected += 1;
-                    input_buf.clear();
                     render_single_list(question, options, selected, false, None);
                 }
                 // 普通字符 → 追加
@@ -144,8 +142,8 @@ pub fn prompt_single_select(
                     if idx < options.len() {
                         if options[idx].custom_input {
                             selected = idx;
-                            input_buf.clear();
-                            render_single_list(question, options, selected, false, Some(""));
+                            let preview = if input_buf.is_empty() { "" } else { &input_buf };
+                            render_single_list(question, options, selected, false, Some(preview));
 
                             continue;
                         }
@@ -173,7 +171,6 @@ pub fn prompt_single_select(
                     ..
                 }) if selected > 0 => {
                     selected -= 1;
-                    input_buf.clear();
                     render_single_list(question, options, selected, false, None);
                 }
                 // ↓ / j → 下移
@@ -186,9 +183,9 @@ pub fn prompt_single_select(
                     ..
                 }) if selected < options.len() - 1 => {
                     selected += 1;
-                    input_buf.clear();
                     if options[selected].custom_input {
-                        render_single_list(question, options, selected, false, Some(""));
+                        let preview = if input_buf.is_empty() { "" } else { &input_buf };
+                        render_single_list(question, options, selected, false, Some(preview));
                     } else {
                         render_single_list(question, options, selected, false, None);
                     }
