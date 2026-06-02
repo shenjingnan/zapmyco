@@ -56,118 +56,138 @@ pub fn prompt_single_select(
     render_single_list(question, options, selected, true, None);
 
     loop {
-        match crossterm::event::read() {
-            // 数字快捷键：1-9
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char(c @ '1'..='9'),
-                ..
-            })) => {
-                let idx = (c as usize) - ('1' as usize);
-                if idx < options.len() {
-                    if options[idx].custom_input {
-                        // 数字键跳到自定义选项 → 进入内联输入
-                        selected = idx;
-                        input_buf.clear();
-                        render_single_list(question, options, selected, false, Some(""));
-                        continue;
-                    }
+        let event = match crossterm::event::read() {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        if options[selected].custom_input {
+            // ---- 自定义输入模式 ----
+            match event {
+                // Enter → 提交
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
                     clear_lines(list_height);
                     drop(guard);
-                    return Some(SingleSelectResult::Index(idx));
+                    return if input_buf.is_empty() {
+                        Some(SingleSelectResult::Index(selected))
+                    } else {
+                        Some(SingleSelectResult::Custom(input_buf.trim().to_string()))
+                    };
                 }
-            }
-            // Ctrl+C → 取消
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('c'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
-            })) => {
-                clear_lines(list_height);
-                drop(guard);
-                return None;
-            }
-            // 上 / ↑ → 上移（在自定义选项上时退出输入模式）
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Up, ..
-            }))
-            | Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('k'),
-                ..
-            })) if selected > 0 => {
-                selected -= 1;
-                input_buf.clear();
-                render_single_list(question, options, selected, false, None);
-            }
-            // 下 / ↓ → 下移（在自定义选项上时尝试下移，最后一项则不动）
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                ..
-            }))
-            | Ok(Event::Key(KeyEvent {
-                code: KeyCode::Char('j'),
-                ..
-            })) if selected < options.len() - 1 => {
-                selected += 1;
-                input_buf.clear();
-                if options[selected].custom_input {
-                    // 移到自定义选项 → 进入内联输入模式
-                    render_single_list(question, options, selected, false, Some(""));
-                } else {
+                // Ctrl+C → 取消
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('c'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                }) => {
+                    clear_lines(list_height);
+                    drop(guard);
+                    return None;
+                }
+                // Backspace → 删除
+                Event::Key(KeyEvent {
+                    code: KeyCode::Backspace,
+                    ..
+                }) => {
+                    input_buf.pop();
+                    render_single_list(question, options, selected, false, Some(&input_buf));
+                }
+                // ↑ / k → 上移退出输入模式
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    ..
+                }) if selected > 0 => {
+                    selected -= 1;
+                    input_buf.clear();
                     render_single_list(question, options, selected, false, None);
                 }
-            }
-            // 在自定义选项上时的内联输入处理
-            _ if options[selected].custom_input => {
-                let event = crossterm::event::read();
-                match event {
-                    Ok(Event::Key(KeyEvent {
-                        code: KeyCode::Enter,
-                        ..
-                    })) => {
-                        clear_lines(list_height);
-                        drop(guard);
-                        return if input_buf.is_empty() {
-                            Some(SingleSelectResult::Index(selected))
-                        } else {
-                            Some(SingleSelectResult::Custom(input_buf.trim().to_string()))
-                        };
-                    }
-                    Ok(Event::Key(KeyEvent {
-                        code: KeyCode::Char('c'),
-                        modifiers: KeyModifiers::CONTROL,
-                        ..
-                    })) => {
-                        clear_lines(list_height);
-                        drop(guard);
-                        return None;
-                    }
-                    Ok(Event::Key(KeyEvent {
-                        code: KeyCode::Backspace,
-                        ..
-                    })) => {
-                        input_buf.pop();
-                        render_single_list(question, options, selected, false, Some(&input_buf));
-                    }
-                    Ok(Event::Key(KeyEvent {
-                        code: KeyCode::Char(c),
-                        ..
-                    })) => {
-                        input_buf.push(c);
-                        render_single_list(question, options, selected, false, Some(&input_buf));
-                    }
-                    _ => {}
+                // 普通字符 → 追加
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c),
+                    ..
+                }) => {
+                    input_buf.push(c);
+                    render_single_list(question, options, selected, false, Some(&input_buf));
                 }
+                _ => {}
             }
-            // Enter → 确认（非自定义选项）
-            Ok(Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                ..
-            })) => {
-                clear_lines(list_height);
-                drop(guard);
-                return Some(SingleSelectResult::Index(selected));
+        } else {
+            // ---- 普通导航模式 ----
+            match event {
+                // 数字快捷键 1-9
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c @ '1'..='9'),
+                    ..
+                }) => {
+                    let idx = (c as usize) - ('1' as usize);
+                    if idx < options.len() {
+                        if options[idx].custom_input {
+                            selected = idx;
+                            input_buf.clear();
+                            render_single_list(question, options, selected, false, Some(""));
+                            continue;
+                        }
+                        clear_lines(list_height);
+                        drop(guard);
+                        return Some(SingleSelectResult::Index(idx));
+                    }
+                }
+                // Ctrl+C → 取消
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('c'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                }) => {
+                    clear_lines(list_height);
+                    drop(guard);
+                    return None;
+                }
+                // ↑ / k → 上移
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    ..
+                }) if selected > 0 => {
+                    selected -= 1;
+                    input_buf.clear();
+                    render_single_list(question, options, selected, false, None);
+                }
+                // ↓ / j → 下移
+                Event::Key(KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('j'),
+                    ..
+                }) if selected < options.len() - 1 => {
+                    selected += 1;
+                    input_buf.clear();
+                    if options[selected].custom_input {
+                        render_single_list(question, options, selected, false, Some(""));
+                    } else {
+                        render_single_list(question, options, selected, false, None);
+                    }
+                }
+                // Enter → 确认
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
+                    clear_lines(list_height);
+                    drop(guard);
+                    return Some(SingleSelectResult::Index(selected));
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
 }
