@@ -65,25 +65,7 @@ pub fn prompt_single_select(
             // ---- 自定义输入模式 ----
             // 使用 inquire::Text 提供完整的输入体验，IME 正常工作。
             match event {
-                // Enter → 弹出 inquire 输入框
-                Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
-                    ..
-                }) => {
-                    clear_lines(list_height);
-                    drop(guard);
-                    let input = inquire::Text::new(question)
-                        .with_help_message("输入完成后按 Enter 确认")
-                        .prompt()
-                        .unwrap_or_default();
-                    let trimmed = input.trim().to_string();
-                    return if trimmed.is_empty() {
-                        Some(SingleSelectResult::Index(selected))
-                    } else {
-                        Some(SingleSelectResult::Custom(trimmed))
-                    };
-                }
-                // Ctrl+C → 取消
+                // Ctrl+C → 取消（优先匹配）
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('c'),
                     modifiers: KeyModifiers::CONTROL,
@@ -103,6 +85,28 @@ pub fn prompt_single_select(
                 }) if selected > 0 => {
                     selected -= 1;
                     render_single_list(question, options, selected, false, None);
+                }
+                // Enter / 任意字符 → 弹出 inquire 输入框
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char(_),
+                    ..
+                }) => {
+                    clear_lines(list_height);
+                    drop(guard);
+                    let input = inquire::Text::new(question)
+                        .with_help_message("输入完成后按 Enter 确认")
+                        .prompt()
+                        .unwrap_or_default();
+                    let trimmed = input.trim().to_string();
+                    return if trimmed.is_empty() {
+                        Some(SingleSelectResult::Index(selected))
+                    } else {
+                        Some(SingleSelectResult::Custom(trimmed))
+                    };
                 }
                 _ => {}
             }
