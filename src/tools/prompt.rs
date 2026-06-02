@@ -106,7 +106,7 @@ pub fn prompt_single_select(
                     ..
                 }) if selected > 0 => {
                     selected -= 1;
-                    render_single_list(question, options, selected, false, None);
+                    render_single_list(question, options, selected, false, Some(&input_buf));
                 }
                 // ↓ / j → 下移退出输入模式（保留输入内容）
                 Event::Key(KeyEvent {
@@ -118,7 +118,7 @@ pub fn prompt_single_select(
                     ..
                 }) if selected < options.len() - 1 => {
                     selected += 1;
-                    render_single_list(question, options, selected, false, None);
+                    render_single_list(question, options, selected, false, Some(&input_buf));
                 }
                 // 普通字符 → 追加
                 Event::Key(KeyEvent {
@@ -171,7 +171,7 @@ pub fn prompt_single_select(
                     ..
                 }) if selected > 0 => {
                     selected -= 1;
-                    render_single_list(question, options, selected, false, None);
+                    render_single_list(question, options, selected, false, Some(&input_buf));
                 }
                 // ↓ / j → 下移
                 Event::Key(KeyEvent {
@@ -187,7 +187,7 @@ pub fn prompt_single_select(
                         let preview = if input_buf.is_empty() { "" } else { &input_buf };
                         render_single_list(question, options, selected, false, Some(preview));
                     } else {
-                        render_single_list(question, options, selected, false, None);
+                        render_single_list(question, options, selected, false, Some(&input_buf));
                     }
                 }
                 // Enter → 确认
@@ -396,9 +396,14 @@ fn render_single_list(
                     writeln!(stderr, "\r  ▸ {}. {}█\x1b[0K", num, preview).ok();
                 }
             } else {
-                // 未选中：灰色显示，只显示"自定义输入"
-                let display = format!("{}. 自定义输入", num);
-                writeln!(stderr, "\r    {}\x1b[0K", display.dark_grey()).ok();
+                // 未选中：有内容显示内容，无内容显示"自定义输入"占位
+                let content = input_preview.unwrap_or("");
+                if content.is_empty() {
+                    let display = format!("{}. 自定义输入", num);
+                    writeln!(stderr, "\r    {}\x1b[0K", display.dark_grey()).ok();
+                } else {
+                    writeln!(stderr, "\r    {}. {}\x1b[0K", num, content).ok();
+                }
             }
         } else if is_sel {
             writeln!(
