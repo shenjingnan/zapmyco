@@ -30,7 +30,7 @@ chrono = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3.32"
-reqwest = "0.12"
+reqwest = "0.13"
 mdka = "2"
 crossterm = "0.29"
 ignore = "0.4"
