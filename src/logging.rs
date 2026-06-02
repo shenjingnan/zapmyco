@@ -21,18 +21,8 @@ pub fn init_logging() {
     }
 
     // 文件日志层 — 记录 info+，无 ANSI 颜色
-    let file_path = log_path.clone();
     let file_layer = fmt::layer()
-        .with_writer(move || -> Box<dyn io::Write> {
-            match OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&file_path)
-            {
-                Ok(file) => Box::new(file),
-                Err(_) => Box::new(io::sink()),
-            }
-        })
+        .with_writer(make_file_writer(log_path.clone()))
         .with_ansi(false)
         .with_target(true)
         .with_filter(EnvFilter::new("info"));
@@ -45,6 +35,20 @@ pub fn init_logging() {
         .with(file_layer)
         .with(stderr_layer)
         .try_init();
+}
+
+/// 创建文件日志 writer（可测试）
+fn make_file_writer(log_path: PathBuf) -> impl Fn() -> Box<dyn io::Write> {
+    move || -> Box<dyn io::Write> {
+        // 确保目录存在（可能被外部删除）
+        if let Some(parent) = log_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        match OpenOptions::new().create(true).append(true).open(&log_path) {
+            Ok(file) => Box::new(file),
+            Err(_) => Box::new(io::sink()),
+        }
+    }
 }
 
 /// 获取日志文件路径
@@ -121,10 +125,189 @@ mod tests {
     }
 
     #[test]
+    fn test_make_file_writer_writes_content() {
+        run_with_temp_home(|home| {
+            let log_path = home.join(".zapmyco/logs/app.log");
+            let writer = make_file_writer(log_path.clone());
+
+            // 写入内容
+            {
+                let mut w = writer();
+                writeln!(w, "hello world").unwrap();
+            }
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("hello world"), "writer 应写入文件内容");
+        });
+    }
+
+    #[test]
+    fn test_make_file_writer_sink_on_error() {
+        // 使用不可写路径，确认不会 panic
+        let writer = make_file_writer(PathBuf::from("/nonexistent/path/app.log"));
+        let mut w = writer();
+        let result = writeln!(w, "should not panic");
+        assert!(result.is_ok(), "回退到 io::sink 应始终成功");
+    }
+
+    #[test]
+    fn test_init_logging_creates_directory() {
+        run_with_temp_home(|home| {
+            let log_dir = home.join(".zapmyco/logs");
+            assert!(!log_dir.exists(), "测试前日志目录不应存在");
+            init_logging();
+            assert!(log_dir.exists(), "init_logging 应创建日志目录");
+        });
+    }
+
+    #[test]
+    fn test_make_file_writer_creates_directory() {
+        run_with_temp_home(|home| {
+            let log_path = home.join(".zapmyco/logs/app.log");
+            let log_dir = log_path.parent().unwrap().to_path_buf();
+            assert!(!log_dir.exists(), "测试前日志目录不应存在");
+
+            // writer 被调用时应自动创建目录
+            let writer = make_file_writer(log_path);
+            {
+                let _w = writer();
+            }
+            assert!(log_dir.exists(), "writer 应自动创建日志目录");
+        });
+    }
+
+    #[test]
     fn test_init_logging_does_not_panic() {
         run_with_temp_home(|_home| {
             // 只是确认不会 panic
             init_logging();
+        });
+    }
+
+    #[test]
+    fn test_tracing_events_written_to_file() {
+        run_with_temp_home(|home| {
+            let log_path = home.join(".zapmyco/logs/app.log");
+
+            // 创建临时 subscriber 写入文件
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(make_file_writer(log_path.clone()))
+                    .with_ansi(false),
+            );
+
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::info!("test info message");
+                tracing::warn!("test warn message");
+                tracing::error!("test error message");
+            });
+
+            // 验证日志文件包含所有消息
+            let content = std::fs::read_to_string(&log_path).expect("日志文件应被创建");
+            assert!(
+                content.contains("test info message"),
+                "日志文件应包含 info 消息"
+            );
+            assert!(
+                content.contains("test warn message"),
+                "日志文件应包含 warn 消息"
+            );
+            assert!(
+                content.contains("test error message"),
+                "日志文件应包含 error 消息"
+            );
+        });
+    }
+
+    #[test]
+    fn test_tracing_events_no_ansi() {
+        run_with_temp_home(|home| {
+            let log_path = home.join(".zapmyco/logs/app.log");
+
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(make_file_writer(log_path.clone()))
+                    .with_ansi(false),
+            );
+
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::info!("plain text message");
+            });
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            // 无 ANSI 模式下不应包含转义序列
+            assert!(!content.contains('\x1b'), "日志文件不应包含 ANSI 转义字符");
+        });
+    }
+
+    #[test]
+    fn test_tracing_events_filtered_by_level() {
+        run_with_temp_home(|home| {
+            let log_path = home.join(".zapmyco/logs/app.log");
+
+            // info level filter
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(make_file_writer(log_path.clone()))
+                    .with_ansi(false)
+                    .with_filter(EnvFilter::new("info")),
+            );
+
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::debug!("debug message - should not appear");
+                tracing::info!("info message - should appear");
+                tracing::warn!("warn message - should appear");
+            });
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("info message"), "info 级别应通过过滤");
+            assert!(content.contains("warn message"), "warn 级别应通过过滤");
+            assert!(!content.contains("debug message"), "debug 级别应被过滤掉");
+        });
+    }
+
+    #[test]
+    fn test_tracing_events_include_target() {
+        run_with_temp_home(|home| {
+            let log_path = home.join(".zapmyco/logs/app.log");
+
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(make_file_writer(log_path.clone()))
+                    .with_ansi(false)
+                    .with_target(true),
+            );
+
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::info!(target: "my_target", "targeted message");
+            });
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("my_target"), "日志应包含 target 信息");
+        });
+    }
+
+    #[test]
+    fn test_make_file_writer_multiple_calls_produce_unique_writers() {
+        run_with_temp_home(|home| {
+            let log_path = home.join(".zapmyco/logs/app.log");
+            let writer = make_file_writer(log_path.clone());
+
+            // 多次调用 writer() 应产生独立的写入器
+            {
+                let mut w1 = writer();
+                writeln!(w1, "from first writer").unwrap();
+            }
+            {
+                let mut w2 = writer();
+                writeln!(w2, "from second writer").unwrap();
+            }
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+            assert_eq!(lines.len(), 2, "两个写入器的内容都应存在");
+            assert_eq!(lines[0], "from first writer");
+            assert_eq!(lines[1], "from second writer");
         });
     }
 }
