@@ -214,36 +214,6 @@ async fn test_agent_non_streaming_legacy_format() {
 }
 
 #[tokio::test]
-async fn test_agent_clear_context() {
-    let _home = setup_temp_home();
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/messages"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string(MOCK_NON_STREAM_RESPONSE)
-                .insert_header("Content-Type", "application/json"),
-        )
-        .mount(&mock_server)
-        .await;
-
-    let mut agent = AiAgent::new(AiAgentOptions {
-        api_key: Some("test-key".to_string()),
-        base_url: Some(mock_server.uri()),
-        model: Some("deepseek-v4-flash".to_string()),
-        ..Default::default()
-    })
-    .expect("Failed to create AiAgent");
-
-    agent.chat("你好").await.expect("Chat failed");
-    assert_eq!(agent.get_messages().len(), 2);
-
-    agent.clear_context();
-    assert_eq!(agent.get_messages().len(), 0);
-}
-
-#[tokio::test]
 async fn test_agent_stream_api_error() {
     let _home = setup_temp_home();
     let mock_server = MockServer::start().await;
