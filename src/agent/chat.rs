@@ -256,7 +256,7 @@ impl AiAgent {
             messages: Vec::new(),
             logger,
             tools: Vec::new(),
-            max_tool_rounds: 10,
+            max_tool_rounds: u32::MAX,
             read_file_state: std::collections::HashMap::new(),
             task_manager: None,
             task_display: None,
@@ -404,6 +404,13 @@ impl AiAgent {
         self.rebuild_system_prompt_with_tools();
     }
 
+    /// 根据名称批量移除已注册的工具
+    pub fn remove_tools(&mut self, names: &[&str]) {
+        self.tools
+            .retain(|t| !names.contains(&t.tool_definition().name.as_str()));
+        self.rebuild_system_prompt_with_tools();
+    }
+
     /// 设置任务管理器（用于在终端展示任务列表）
     pub fn set_task_manager(
         &mut self,
@@ -451,10 +458,16 @@ impl AiAgent {
 
         self.system_prompt.push_str("\n\n你有以下工具可以使用：\n");
 
-        // 先加一条总体指导，强调专用工具优先于 shell_exec
-        self.system_prompt
-            .push_str("注意：有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。");
-        self.system_prompt.push('\n');
+        // 先加一条总体指导，强调专用工具优先于 shell_exec（仅当 shell_exec 已注册时）
+        let has_shell_exec = self
+            .tools
+            .iter()
+            .any(|t| t.tool_definition().name == "shell_exec");
+        if has_shell_exec {
+            self.system_prompt
+                .push_str("注意：有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。");
+            self.system_prompt.push('\n');
+        }
 
         for handler in &self.tools {
             let desc = match handler {
@@ -1748,6 +1761,104 @@ mod tests {
             // 由于每次都重建，prompt 内容不同（有两个 web_fetch 条目）
             // 但 base_system_prompt 应始终与开始时一致
             assert_eq!(agent.base_system_prompt, "原始提示");
+        });
+    }
+
+    // ---- remove_tools tests ----
+
+    #[test]
+    fn test_remove_tools_removes_by_name() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+
+            let shell_exec = crate::tools::shell_exec::ShellExec::new(Default::default());
+            agent.register_tool(ToolHandler::ShellExec(shell_exec));
+
+            assert_eq!(agent.tools.len(), 2);
+
+            // 移除 shell_exec
+            agent.remove_tools(&["shell_exec"]);
+            assert_eq!(agent.tools.len(), 1);
+            assert_eq!(agent.tools[0].tool_definition().name, "web_fetch");
+            // system prompt 应被重建，不再包含 shell_exec
+            assert!(!agent.system_prompt.contains("shell_exec"));
+            assert!(agent.system_prompt.contains("web_fetch"));
+        });
+    }
+
+    #[test]
+    fn test_remove_tools_nonexistent_name() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+            assert_eq!(agent.tools.len(), 1);
+
+            // 移除不存在的工具名 → 无影响
+            agent.remove_tools(&["nonexistent_tool"]);
+            assert_eq!(agent.tools.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_remove_tools_empty_list() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+            assert_eq!(agent.tools.len(), 1);
+
+            // 空列表 → 无影响
+            agent.remove_tools(&[]);
+            assert_eq!(agent.tools.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_remove_tools_multiple_at_once() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+
+            let shell_exec = crate::tools::shell_exec::ShellExec::new(Default::default());
+            agent.register_tool(ToolHandler::ShellExec(shell_exec));
+
+            let file_read = crate::tools::file_read::FileRead::new(Default::default());
+            agent.register_tool(ToolHandler::FileRead(file_read));
+
+            assert_eq!(agent.tools.len(), 3);
+
+            // 批量移除
+            agent.remove_tools(&["shell_exec", "web_fetch"]);
+            assert_eq!(agent.tools.len(), 1);
+            assert_eq!(agent.tools[0].tool_definition().name, "file_read");
         });
     }
 
