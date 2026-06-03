@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.33.0](https://github.com/shenjingnan/zapmyco/compare/v0.32.2...v0.33.0) - 2026-06-03
+
+### Added
+
+- *(logging)* 添加文件日志系统，默认记录到 ~/.zapmyco/logs/app.log ([#378](https://github.com/shenjingnan/zapmyco/pull/378))
+
+### Other
+
+- *(deps)* bump reqwest from 0.12.28 to 0.13.4 ([#372](https://github.com/shenjingnan/zapmyco/pull/372))
+- 移除交互式 REPL 模式，统一使用 run 子命令 ([#376](https://github.com/shenjingnan/zapmyco/pull/376))
+
 ## [0.32.2](https://github.com/shenjingnan/zapmyco/compare/v0.32.1...v0.32.2) - 2026-06-02
 
 ### Added

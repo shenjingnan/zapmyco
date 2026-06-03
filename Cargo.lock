@@ -3177,7 +3177,7 @@ dependencies = [
 
 [[package]]
 name = "zapmyco"
-version = "0.32.2"
+version = "0.33.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3206,7 +3206,7 @@ dependencies = [
 
 [[package]]
 name = "zapmyco-anthropic-ai-sdk"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-trait",
  "eventsource-stream",
