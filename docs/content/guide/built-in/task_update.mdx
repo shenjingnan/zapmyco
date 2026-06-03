@@ -1,0 +1,52 @@
+---
+title: task_update — 更新任务
+description: 更新任务的状态、字段和依赖关系
+---
+
+更新任务的状态、字段和依赖关系。
+
+任务管理系统提供 4 个工具（`task_create`、`task_get`、`task_list`、`task_update`），用于将复杂多步骤工作拆解为可跟踪的任务单元，实时掌握进度。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `task_id` | string | 是 | 要更新的任务 ID |
+| `status` | string | 否 | 新状态：`pending`（待处理）、`in_progress`（进行中）、`completed`（已完成）、`deleted`（删除） |
+| `subject` | string | 否 | 新标题 |
+| `description` | string | 否 | 新描述 |
+| `active_form` | string | 否 | 进行时态 |
+| `owner` | string | 否 | 任务负责人 |
+| `add_blocks` | string[] | 否 | 此任务阻塞的任务 ID 列表 |
+| `add_blocked_by` | string[] | 否 | 阻塞此任务的任务 ID 列表 |
+
+## 状态流转
+
+任务的状态按照以下方向流转：
+
+```text
+pending → in_progress → completed
+                            ↓
+                        deleted
+```
+
+- **pending**：任务已创建，待开始执行
+- **in_progress**：正在执行中
+- **completed**：已完成（只有完全完成才标记为此状态）
+- **deleted**：永久删除任务
+
+## 依赖关系
+
+任务之间可以设置依赖关系：
+
+- **blocked_by**：此任务被哪些任务阻塞。例如任务 B 被任务 A 阻塞，则 A 完成后 B 才能开始
+- **blocks**：此任务阻塞哪些任务。例如任务 A 阻塞任务 B，则 A 未完成时 B 不应开始
+
+阻塞关系会在 `task_list` 和 `task_get` 的输出中自动显示。
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [task_create](/guide/built-in/task_create) — 创建任务
+- [task_get](/guide/built-in/task_get) — 查看任务详情
+- [task_list](/guide/built-in/task_list) — 列出所有任务

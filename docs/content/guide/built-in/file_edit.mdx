@@ -1,0 +1,54 @@
+---
+title: file_edit — 编辑文件内容
+description: 提供五种编辑模式对本地文件进行精确、安全的内容修改（快速参考）
+---
+
+`file_edit` 提供五种编辑模式：line_range（推荐）、append、insert_after、批量编辑、以及旧有的 old_string/new_string 模式。
+
+**适用场景**：让 AI 修复代码中的 bug、重构代码、更新配置文件等。
+
+## 参数速览
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `file_path` | string | 是 | 要修改的文件的绝对路径 |
+| `mode` | string | 否 | 编辑模式：`line_range`（默认）、`append` |
+| `start_line` | integer | 否* | 要替换的起始行号（仅 line_range 模式） |
+| `end_line` | integer | 否* | 要替换的结束行号（仅 line_range 模式） |
+| `expected` | string | 否* | 预期的当前内容，至少 3 行非空代码行（仅 line_range 模式） |
+| `new_content` | string | 否* | 替换后的新内容（仅 line_range 模式） |
+| `content` | string | 否* | 要追加的内容（仅 append 模式） |
+| `old_string` | string | 否* | （旧模式）要被替换的文本 |
+| `new_string` | string | 否* | （旧模式）替换后的文本 |
+| `replace_all` | boolean | 否 | （旧模式）是否替换所有匹配项（默认 `false`） |
+
+\* 不同模式需要不同的参数组合，详见[独立设计文档](/guide/file-edit)。
+
+## 行为特性
+
+- **内容验证**（line_range 模式）：自动验证 AI 描述的 expected 内容与实际内容是否一致，防止数错行号
+- **自动合并**：AI 在一轮中发出的多个同文件 line_range 编辑会自动合并，降序执行解决行号偏移，全部验证通过后才一次性写回
+- **向后兼容**：旧的 `old_string`/`new_string` 模式完整保留
+
+## 约束与限制
+
+| 限制项 | 值 |
+|--------|:----:|
+| 支持的文件 | 仅纯文本文件（UTF-8 编码） |
+| 不支持的类型 | 二进制文件、Jupyter Notebook（`.ipynb`）|
+
+## 使用示例
+
+```bash
+zapmyco run '修复 src/main.rs 中的拼写错误，将 "helo" 改为 "hello"'
+zapmyco run '在 src/lib.rs 末尾追加一个 helper 函数'
+zapmyco run '将 Cargo.toml 中的版本号改为 0.2.0，并将 edition 改为 2024'
+```
+
+📖 **详细文档**：见 [file_edit 独立设计文档](/guide/file-edit)，包含完整的实现原理、安全模型、验证算法、边界 case 和设计考量。
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [file_edit 设计文档](/guide/file-edit) — 深入理解实现原理和安全模型
+- [file_write](/guide/built-in/file_write) — 创建新文件或覆盖已有文件

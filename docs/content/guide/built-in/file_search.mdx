@@ -1,0 +1,97 @@
+---
+title: file_search — 搜索文件内容
+description: 在本地文件系统中搜索文件内容，支持正则表达式
+---
+
+在本地文件系统中搜索文件内容，支持正则表达式。适用于查找代码定义、搜索关键词、分析项目结构等场景。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `pattern` | string | 是 | 搜索模式（正则表达式） |
+| `path` | string | 否 | 搜索路径（目录或文件），默认当前目录 |
+| `glob` | string | 否 | 文件通配符过滤，例如 `"*.rs"` 只搜索 Rust 文件 |
+| `output_mode` | string | 否 | 输出模式：`content`（显示匹配行及行号，默认）、`files_with_matches`（仅显示文件名）、`count`（显示每个文件的匹配数） |
+| `-i` | boolean | 否 | 忽略大小写 |
+| `-A` | integer | 否 | 匹配行后显示的上下文行数 |
+| `-B` | integer | 否 | 匹配行前显示的上下文行数 |
+| `-C` | integer | 否 | 匹配行前后显示的上下文行数（优先级高于 `-A`/`-B`） |
+| `head_limit` | integer | 否 | 最大结果行数，默认 250 |
+| `offset` | integer | 否 | 跳过前 N 条结果，与 `head_limit` 配合实现分页 |
+| `multiline` | boolean | 否 | 启用多行模式，让 `.` 匹配换行符，支持跨行匹配 |
+| `type` | string | 否 | 文件类型过滤，例如 `"rust"`、`"py"`、`"js"`、`"md"` |
+
+## 约束与限制
+
+| 限制项 | 值 |
+|--------|:----:|
+| 搜索超时 | 20 秒 |
+| 输出最大长度 | 100,000 字符（超出返回错误） |
+| 默认每模式结果上限 | 250 行 |
+
+## 输出模式
+
+**content**（默认）：
+```text
+匹配 "pattern" 于 N 个文件 (M 处匹配)
+
+path/to/file.rs:42:let result = pattern_match();
+path/to/file.rs:58:another_match();
+```
+
+**files_with_matches**：
+```text
+匹配 "pattern" 于 N 个文件:
+
+path/to/file1.rs
+path/to/file2.rs
+```
+
+**count**：
+```text
+匹配 "pattern" 于 N 个文件 (共 M 处匹配):
+
+  path/to/file1.rs:3
+  path/to/file2.rs:5
+```
+
+## 错误场景
+
+| 错误类型 | 说明 |
+|----------|------|
+| 缺少 pattern | 未提供必填参数 `pattern` |
+| 搜索超时 | 搜索超过 20 秒 |
+| 输出过大 | 结果超过 100K 字符上限 |
+| 路径无效 | 指定的搜索路径不存在 |
+| 搜索失败 | 内部搜索引擎异常 |
+
+## 分页说明
+
+当匹配结果超过 `head_limit`（默认 250）时，输出末尾会显示分页提示：
+
+```text
+---
+[显示 250 / 1000 行，使用 offset=250 和 head_limit 进行分页]
+```
+
+AI Agent 可组合使用 `offset` 和 `head_limit` 参数遍历全部结果：
+
+```bash
+zapmyco run '搜索项目中的所有 TODO 注释，每页 200 条，先获取第 1 页'
+zapmyco run '接着获取 TODO 搜索的第 2 页，offset=200'
+```
+
+## 使用示例
+
+```bash
+zapmyco run '在 src/ 目录中搜索所有包含 "unwrap" 的 Rust 代码'
+zapmyco run '搜索项目中所有 FIXME 注释，忽略大小写'
+zapmyco run '统计项目中 JavaScript 和 TypeScript 文件的函数定义数量'
+```
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [file_read](/guide/built-in/file_read) — 读取文件内容，与 file_search 配合使用
+- [file_find](/guide/built-in/file_find) — 按名称查找文件
