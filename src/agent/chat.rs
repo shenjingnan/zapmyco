@@ -1,10 +1,10 @@
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
 use zapmyco_anthropic_ai_sdk::types::message::{
     ContentBlock, ContentBlockDelta, CreateMessageParams, CreateMessageResponse, Message,
-    MessageClient, MessageError, RequiredMessageParams, Role, StopReason, StreamEvent, Tool,
+    MessageClient, MessageError, RequiredMessageParams, Role, StreamEvent, Tool,
 };
 
 use crate::agent::conversation_logger::ConversationLogger;
@@ -164,6 +164,42 @@ pub struct AiAgent {
     task_manager: Option<std::sync::Arc<crate::tools::task_manager::TaskManager>>,
     /// 任务展示状态机（可选，用于事件流 + 检查点快照展示）
     task_display: Option<crate::tools::task_display::TaskDisplayState>,
+}
+
+/// 流式响应解析状态机
+enum StreamParseState {
+    /// 不在任何 content block 中
+    Idle,
+    /// 正在收集文本（TextDelta）
+    TextBlock,
+    /// 正在收集工具调用的 JSON 参数（InputJsonDelta）
+    ToolUseBlock {
+        id: String,
+        name: String,
+        input_buffer: String,
+    },
+}
+
+/// 一轮流式请求的结果
+struct RoundResult {
+    /// 从 text blocks 拼接的完整文本
+    full_text: String,
+    /// 收集到的工具调用列表 (id, name, input)
+    tool_uses: Vec<(String, String, serde_json::Value)>,
+    /// 按原始顺序重建的 ContentBlock 列表（用于对话历史记录）
+    blocks: Vec<ContentBlock>,
+    /// input token 数
+    input_tokens: u32,
+    /// output token 数
+    output_tokens: u32,
+    /// cache read tokens
+    cache_read_input_tokens: Option<u32>,
+    /// cache creation tokens
+    cache_creation_input_tokens: Option<u32>,
+    /// API 耗时（毫秒）
+    duration_ms: u64,
+    /// 模型名称
+    model: String,
 }
 
 impl AiAgent {
@@ -610,11 +646,12 @@ impl AiAgent {
 
     /// 带工具调用的对话 - 自动处理 ToolUse 循环
     ///
-    /// 工具调用阶段使用非流式请求，最终回复使用流式输出（通过 `on_chunk` 回调）。
+    /// 使用统一流式请求，在工具调用阶段实时输出 LLM 推理文本，
+    /// 最终回复阶段直接使用流式文本，无需额外请求。
     pub async fn chat_with_tools(
         &mut self,
         input: &str,
-        on_chunk: impl FnMut(&str),
+        mut on_chunk: impl FnMut(&str),
     ) -> Result<String, String> {
         self.messages.push(ConversationMessage {
             role: "user".to_string(),
@@ -624,324 +661,43 @@ impl AiAgent {
 
         for round in 0..self.max_tool_rounds {
             eprintln!("\n[LLM] 🤔 思考中...");
-            let params = self.build_params(false)?;
-            let start = Instant::now();
 
-            let response = self
-                .client
-                .create_message(Some(&params))
-                .await
-                .map_err(|e| format!("API request failed: {}", e))?;
-
-            let duration_ms = start.elapsed().as_millis() as u64;
+            let result = self.stream_one_round(&mut on_chunk).await?;
 
             // 输出 token 用量
             print_usage_line(
                 Some(round),
-                response.usage.input_tokens,
-                response.usage.output_tokens,
-                response.usage.cache_read_input_tokens,
-                response.usage.cache_creation_input_tokens,
-                duration_ms,
+                result.input_tokens,
+                result.output_tokens,
+                result.cache_read_input_tokens,
+                result.cache_creation_input_tokens,
+                result.duration_ms,
             );
 
-            tracing::info!(
-                model = %response.model,
-                stop_reason = ?response.stop_reason,
-                input_tokens = response.usage.input_tokens,
-                output_tokens = response.usage.output_tokens,
-                duration_ms = duration_ms,
-                round = round,
-                "LLM 请求完成"
-            );
-
-            // 检测是否有 ToolUse
-            let has_tool_use =
-                !self.tools.is_empty() && response.stop_reason == Some(StopReason::ToolUse);
-
-            if !has_tool_use {
-                // ---- 最终回复：用流式方式输出 ----
-                if let Some(ref logger) = self.logger {
-                    log_round_trip(logger, &params, &response, duration_ms);
-                }
-
-                eprintln!("\n[LLM] 📝 输出中...\n");
-                let stream_params = self.build_params(true)?;
-                let mut callback = on_chunk;
-                let mut stream = self
-                    .client
-                    .create_message_streaming(&stream_params)
-                    .await
-                    .map_err(|e| format!("API 流式请求失败: {}", e))?;
-
-                let mut full_content = String::new();
-                let mut stream_input_tokens: u32 = 0;
-                let mut stream_output_tokens: u32 = 0;
-                let mut stream_cache_creation_input_tokens: Option<u32> = None;
-                let mut stream_cache_read_input_tokens: Option<u32> = None;
-                let stream_start = Instant::now();
-
-                while let Some(event) = stream.next().await {
-                    match event.map_err(|e| format!("流式读取失败: {}", e))? {
-                        StreamEvent::MessageStart { message } => {
-                            stream_input_tokens = message.usage.input_tokens;
-                        }
-                        StreamEvent::ContentBlockDelta {
-                            delta: ContentBlockDelta::TextDelta { text },
-                            ..
-                        } => {
-                            full_content.push_str(&text);
-                            callback(&text);
-                        }
-                        StreamEvent::MessageDelta { usage: Some(u), .. } => {
-                            stream_output_tokens = u.output_tokens;
-                            stream_cache_creation_input_tokens = u.cache_creation_input_tokens;
-                            stream_cache_read_input_tokens = u.cache_read_input_tokens;
-                        }
-                        _ => {}
-                    }
-                }
-
-                let stream_duration = stream_start.elapsed().as_millis() as u64;
-
-                // 输出流式响应的 token 用量
-                print_usage_line(
-                    Some(round),
-                    stream_input_tokens,
-                    stream_output_tokens,
-                    stream_cache_read_input_tokens,
-                    stream_cache_creation_input_tokens,
-                    stream_duration,
-                );
-
-                self.messages.push(ConversationMessage {
-                    role: "assistant".to_string(),
-                    content: full_content.clone(),
-                    blocks: None,
-                });
-
-                use std::io::Write;
-                std::io::stdout().flush().ok();
-
-                return Ok(full_content);
+            // 记录对话日志
+            if let Some(ref logger) = self.logger
+                && let Ok(params) = self.build_params(true)
+            {
+                log_round_trip_stream(logger, &params, &result, result.duration_ms);
             }
 
-            // ---- 工具调用处理 ----
-
-            let text_part = extract_text_from_blocks(&response.content);
-
-            // 保存 assistant 消息（包含 ToolUse blocks）
+            // 保存 assistant 消息（含重建的 blocks）
             self.messages.push(ConversationMessage {
                 role: "assistant".to_string(),
-                content: text_part,
-                blocks: Some(response.content.clone()),
+                content: result.full_text.clone(),
+                blocks: Some(result.blocks),
             });
 
-            // 提取所有 ToolUse block
-            let tool_uses: Vec<(String, String, serde_json::Value)> = response
-                .content
-                .iter()
-                .filter_map(|block| {
-                    if let ContentBlock::ToolUse { id, name, input } = block {
-                        Some((id.clone(), name.clone(), input.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // 合并同文件 file_edit 调用（line_range 模式），统一为批量编辑
-            let merged_tool_uses = {
-                use std::collections::HashMap;
-                let mut file_edit_groups: HashMap<String, Vec<(String, serde_json::Value)>> =
-                    HashMap::new();
-                let mut other: Vec<(String, String, serde_json::Value)> = Vec::new();
-
-                for (tid, name, input) in &tool_uses {
-                    if name == "file_edit"
-                        && input.get("start_line").and_then(|v| v.as_u64()).is_some()
-                        && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
-                    {
-                        file_edit_groups
-                            .entry(fp.to_string())
-                            .or_default()
-                            .push((tid.clone(), input.clone()));
-                        continue;
-                    }
-                    other.push((tid.clone(), name.clone(), input.clone()));
-                }
-
-                for (file_path, edits) in &file_edit_groups {
-                    if edits.len() == 1 {
-                        let (tid, input) = &edits[0];
-                        other.push((tid.clone(), "file_edit".to_string(), input.clone()));
-                    } else {
-                        let edit_items: Vec<serde_json::Value> = edits
-                            .iter()
-                            .map(|(_, inp)| {
-                                serde_json::json!({
-                                    "start_line": inp["start_line"],
-                                    "end_line": inp["end_line"],
-                                    "expected": inp["expected"],
-                                    "new_content": inp["new_content"],
-                                })
-                            })
-                            .collect();
-
-                        let merged_input = serde_json::json!({
-                            "file_path": file_path,
-                            "edits": edit_items,
-                        });
-                        other.push((edits[0].0.clone(), "file_edit".to_string(), merged_input));
-
-                        eprintln!(
-                            "[工具] 🔗 合并 {} 个 file_edit 调用 (文件: {})",
-                            edits.len(),
-                            file_path,
-                        );
-                    }
-                }
-
-                other
-            };
-
-            // 执行所有工具
-            let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
-
-            // 按工具类型统计并输出本轮概览（使用合并后的列表）
-            {
-                let mut type_counts: std::collections::BTreeMap<&str, usize> =
-                    std::collections::BTreeMap::new();
-                for (_, name, _) in &tool_uses {
-                    *type_counts.entry(name.as_str()).or_insert(0) += 1;
-                }
-                let count_summary: String = type_counts
-                    .iter()
-                    .map(|(name, count)| {
-                        if *count > 1 {
-                            format!("{} {} ×{}", tool_icon(name), name, count)
-                        } else {
-                            format!("{} {}", tool_icon(name), name)
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                eprintln!(
-                    "\n[工具] 📋 本轮 {} 个工具调用: {}",
-                    merged_tool_uses.len(),
-                    count_summary
-                );
+            if result.tool_uses.is_empty() {
+                // 无工具调用——最终回复，文本已通过 on_chunk 实时输出
+                use std::io::Write;
+                std::io::stdout().flush().ok();
+                return Ok(result.full_text);
             }
 
-            for (tool_use_id, name, input) in &merged_tool_uses {
-                let tool_start = Instant::now();
-
-                let handler = self
-                    .tools
-                    .iter()
-                    .find(|h| h.tool_definition().name == *name)
-                    .ok_or_else(|| format!("Unknown tool: {}", name))?;
-
-                // ---- 预读检查：file_write 和 file_edit 必须先读后写 ----
-                let pre_read_error: Option<String> = match name.as_str() {
-                    "file_write" | "file_edit" => {
-                        if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
-                            let path = std::path::Path::new(fp);
-                            if path.exists() {
-                                match self.read_file_state.get(fp) {
-                                    None => Some(format!(
-                                        "错误：文件 '{}' 已存在，但未通过 file_read 读取。\
-                                             请先使用 file_read 读取文件内容后再进行写入操作。",
-                                        fp
-                                    )),
-                                    Some(&recorded_mtime) => {
-                                        if let Ok(meta) = path.metadata() {
-                                            if let Ok(mtime) = meta.modified() {
-                                                let current_ms = mtime
-                                                    .duration_since(std::time::UNIX_EPOCH)
-                                                    .map(|d| d.as_millis() as u64)
-                                                    .unwrap_or(0);
-                                                if current_ms > recorded_mtime {
-                                                    Some(format!(
-                                                        "错误：文件 '{}' 自读取后已被外部修改，\
-                                                         请重新使用 file_read 读取后再操作。",
-                                                        fp
-                                                    ))
-                                                } else {
-                                                    None
-                                                }
-                                            } else {
-                                                None
-                                            }
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                }
-                            } else {
-                                None // 新文件直接放行
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                };
-
-                let icon = tool_icon(name);
-                let param = format_tool_param(name, input);
-
-                let result_text = if let Some(err_msg) = pre_read_error {
-                    tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
-                    eprintln!("[工具] ⚠️ {} {}  ❌ {}", icon, name, err_msg);
-                    format!("[Tool error: {}]", err_msg)
-                } else {
-                    match handler.execute(input).await {
-                        Ok(text) => {
-                            // ---- 文件读取后记录状态 ----
-                            if name.as_str() == "file_read"
-                                && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
-                                && let path = std::path::Path::new(fp)
-                                && path.exists()
-                                && let Ok(meta) = path.metadata()
-                                && let Ok(mtime) = meta.modified()
-                            {
-                                let ms = mtime
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .map(|d| d.as_millis() as u64)
-                                    .unwrap_or(0);
-                                self.read_file_state.insert(fp.to_string(), ms);
-                            }
-                            let elapsed = tool_start.elapsed();
-                            tracing::info!(
-                                tool = %name,
-                                duration_ms = elapsed.as_millis() as u64,
-                                result_len = text.len(),
-                                "工具执行成功"
-                            );
-                            eprintln!(
-                                "[工具] {} {}  {}  ({:.1}s, {} 字符)",
-                                icon,
-                                name,
-                                param,
-                                elapsed.as_secs_f64(),
-                                text.len()
-                            );
-                            text
-                        }
-                        Err(e) => {
-                            tracing::warn!(tool = %name, error = %e, "工具执行失败");
-                            eprintln!("[工具] {} {}  {}  ❌ 失败: {}", icon, name, param, e);
-                            format!("[Tool error: {}]", e)
-                        }
-                    }
-                };
-
-                tool_result_blocks.push(ContentBlock::ToolResult {
-                    tool_use_id: tool_use_id.clone(),
-                    content: result_text,
-                });
-            }
+            // 有工具调用——合并同文件编辑并执行
+            let merged = merge_file_edits(&result.tool_uses);
+            let tool_result_blocks = self.execute_tools(merged).await?;
 
             // 将工具结果作为用户消息追加
             self.messages.push(ConversationMessage {
@@ -950,20 +706,303 @@ impl AiAgent {
                 blocks: Some(tool_result_blocks),
             });
 
-            if let Some(ref logger) = self.logger {
-                log_round_trip(logger, &params, &response, duration_ms);
-            }
-
-            // 每轮工具执行完毕后展示任务列表（一轮一次，不重复）
             self.print_task_summary_if_needed().await;
-
-            // 继续下一轮循环
         }
 
         Err(format!(
             "Tool use exceeded max rounds ({})",
             self.max_tool_rounds
         ))
+    }
+
+    /// 执行一轮流式请求，收集文本和工具调用
+    /// 执行一轮流式请求（HTTP + 事件解析）
+    async fn stream_one_round(
+        &mut self,
+        on_chunk: &mut dyn FnMut(&str),
+    ) -> Result<RoundResult, String> {
+        let params = self.build_params(true)?;
+        let start = Instant::now();
+
+        let stream = self
+            .client
+            .create_message_streaming(&params)
+            .await
+            .map_err(|e| format!("API 流式请求失败: {}", e))?;
+
+        let event_stream = stream.map(|r| r.map_err(|e| format!("流式读取失败: {}", e)));
+        let mut result = Self::process_stream_events(event_stream, on_chunk).await?;
+        result.duration_ms = start.elapsed().as_millis() as u64;
+        Ok(result)
+    }
+
+    /// 处理流式事件序列，返回解析结果（纯逻辑，可单元测试）
+    async fn process_stream_events(
+        events: impl Stream<Item = Result<StreamEvent, String>>,
+        on_chunk: &mut dyn FnMut(&str),
+    ) -> Result<RoundResult, String> {
+        let mut state = StreamParseState::Idle;
+        let mut full_text = String::new();
+        let mut tool_uses = Vec::new();
+        let mut blocks = Vec::new();
+        let mut input_tokens = 0u32;
+        let mut output_tokens = 0u32;
+        let mut cache_read = None;
+        let mut cache_create = None;
+        let mut model = String::new();
+
+        let mut stream = std::pin::pin!(events);
+        while let Some(event) = stream.next().await {
+            let event = event?;
+            match event {
+                StreamEvent::MessageStart { message } => {
+                    input_tokens = message.usage.input_tokens;
+                    model = message.model;
+                }
+                StreamEvent::ContentBlockStart { content_block, .. } => match content_block {
+                    ContentBlock::Text { .. } => {
+                        state = StreamParseState::TextBlock;
+                    }
+                    ContentBlock::ToolUse { id, name, input } => {
+                        // 判断 ContentBlockStart 是否已包含完整参数
+                        let has_full_input =
+                            input.is_object() && input.as_object().is_some_and(|m| !m.is_empty());
+                        if has_full_input {
+                            // API 直接在 ContentBlockStart 中提供了完整参数
+                            blocks.push(ContentBlock::ToolUse {
+                                id: id.clone(),
+                                name: name.clone(),
+                                input: input.clone(),
+                            });
+                            tool_uses.push((id, name, input));
+                        // state 保持 Idle，ContentBlockStop 跳过
+                        } else {
+                            // ContentBlockStart 中 input 为空占位符，
+                            // 等待 InputJsonDelta 增量到达
+                            state = StreamParseState::ToolUseBlock {
+                                id,
+                                name,
+                                input_buffer: String::new(),
+                            };
+                        }
+                    }
+                    _ => {}
+                },
+                StreamEvent::ContentBlockDelta { delta, .. } => match delta {
+                    ContentBlockDelta::TextDelta { text } => {
+                        full_text.push_str(&text);
+                        on_chunk(&text);
+                    }
+                    ContentBlockDelta::InputJsonDelta { partial_json } => {
+                        if let StreamParseState::ToolUseBlock {
+                            ref mut input_buffer,
+                            ..
+                        } = state
+                        {
+                            input_buffer.push_str(&partial_json);
+                        }
+                    }
+                    _ => {}
+                },
+                StreamEvent::ContentBlockStop { .. } => {
+                    if let StreamParseState::ToolUseBlock {
+                        id,
+                        name,
+                        input_buffer,
+                    } = std::mem::replace(&mut state, StreamParseState::Idle)
+                    {
+                        let input: serde_json::Value = serde_json::from_str(&input_buffer)
+                            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+                        blocks.push(ContentBlock::ToolUse {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: input.clone(),
+                        });
+                        tool_uses.push((id, name, input));
+                    }
+                }
+                StreamEvent::MessageDelta { usage: Some(u), .. } => {
+                    output_tokens = u.output_tokens;
+                    cache_read = u.cache_read_input_tokens;
+                    cache_create = u.cache_creation_input_tokens;
+                }
+                StreamEvent::MessageStop => {
+                    break;
+                }
+                StreamEvent::Error { error } => {
+                    return Err(format!("API 流式错误: {} ({})", error.message, error.type_));
+                }
+                _ => {}
+            }
+        }
+
+        // 在 blocks 开头插入 Text block（如果存在文本内容）
+        if !full_text.is_empty() {
+            blocks.insert(
+                0,
+                ContentBlock::Text {
+                    text: full_text.clone(),
+                    citations: None,
+                },
+            );
+        }
+
+        Ok(RoundResult {
+            full_text,
+            tool_uses,
+            blocks,
+            input_tokens,
+            output_tokens,
+            cache_read_input_tokens: cache_read,
+            cache_creation_input_tokens: cache_create,
+            duration_ms: 0,
+            model,
+        })
+    }
+
+    /// 执行工具调用列表，返回 ToolResult ContentBlock 列表
+    async fn execute_tools(
+        &mut self,
+        tool_uses: Vec<(String, String, serde_json::Value)>,
+    ) -> Result<Vec<ContentBlock>, String> {
+        // 按工具类型统计并输出本轮概览
+        {
+            let mut type_counts: std::collections::BTreeMap<&str, usize> =
+                std::collections::BTreeMap::new();
+            for (_, name, _) in &tool_uses {
+                *type_counts.entry(name.as_str()).or_insert(0) += 1;
+            }
+            let count_summary: String = type_counts
+                .iter()
+                .map(|(name, count)| {
+                    if *count > 1 {
+                        format!("{} {} ×{}", tool_icon(name), name, count)
+                    } else {
+                        format!("{} {}", tool_icon(name), name)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            eprintln!(
+                "\n[工具] 📋 本轮 {} 个工具调用: {}",
+                tool_uses.len(),
+                count_summary
+            );
+        }
+
+        let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
+
+        for (tool_use_id, name, input) in &tool_uses {
+            let tool_start = Instant::now();
+
+            let handler = self
+                .tools
+                .iter()
+                .find(|h| h.tool_definition().name == *name)
+                .ok_or_else(|| format!("Unknown tool: {}", name))?;
+
+            // ---- 预读检查：file_write 和 file_edit 必须先读后写 ----
+            let pre_read_error: Option<String> = match name.as_str() {
+                "file_write" | "file_edit" => {
+                    if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
+                        let path = std::path::Path::new(fp);
+                        if path.exists() {
+                            match self.read_file_state.get(fp) {
+                                None => Some(format!(
+                                    "错误：文件 '{}' 已存在，但未通过 file_read 读取。\
+                                         请先使用 file_read 读取文件内容后再进行写入操作。",
+                                    fp
+                                )),
+                                Some(&recorded_mtime) => {
+                                    if let Ok(meta) = path.metadata() {
+                                        if let Ok(mtime) = meta.modified() {
+                                            let current_ms = mtime
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .map(|d| d.as_millis() as u64)
+                                                .unwrap_or(0);
+                                            if current_ms > recorded_mtime {
+                                                Some(format!(
+                                                    "错误：文件 '{}' 自读取后已被外部修改，\
+                                                     请重新使用 file_read 读取后再操作。",
+                                                    fp
+                                                ))
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                }
+                            }
+                        } else {
+                            None // 新文件直接放行
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            let icon = tool_icon(name);
+            let param = format_tool_param(name, input);
+
+            let result_text = if let Some(err_msg) = pre_read_error {
+                tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
+                eprintln!("[工具] ⚠️ {} {}  ❌ {}", icon, name, err_msg);
+                format!("[Tool error: {}]", err_msg)
+            } else {
+                match handler.execute(input).await {
+                    Ok(text) => {
+                        // ---- 文件读取后记录状态 ----
+                        if name.as_str() == "file_read"
+                            && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
+                            && let path = std::path::Path::new(fp)
+                            && path.exists()
+                            && let Ok(meta) = path.metadata()
+                            && let Ok(mtime) = meta.modified()
+                        {
+                            let ms = mtime
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis() as u64)
+                                .unwrap_or(0);
+                            self.read_file_state.insert(fp.to_string(), ms);
+                        }
+                        let elapsed = tool_start.elapsed();
+                        tracing::info!(
+                            tool = %name,
+                            duration_ms = elapsed.as_millis() as u64,
+                            result_len = text.len(),
+                            "工具执行成功"
+                        );
+                        eprintln!(
+                            "[工具] {} {}  {}  ({:.1}s, {} 字符)",
+                            icon,
+                            name,
+                            param,
+                            elapsed.as_secs_f64(),
+                            text.len()
+                        );
+                        text
+                    }
+                    Err(e) => {
+                        tracing::warn!(tool = %name, error = %e, "工具执行失败");
+                        eprintln!("[工具] {} {}  {}  ❌ 失败: {}", icon, name, param, e);
+                        format!("[Tool error: {}]", e)
+                    }
+                }
+            };
+
+            tool_result_blocks.push(ContentBlock::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                content: result_text,
+            });
+        }
+
+        Ok(tool_result_blocks)
     }
 
     /// 构建请求参数
@@ -1216,6 +1255,62 @@ fn extract_text_from_blocks(blocks: &[ContentBlock]) -> String {
         .join("")
 }
 
+/// 合并同文件的 file_edit 调用（line_range 模式）为批量编辑
+fn merge_file_edits(
+    tool_uses: &[(String, String, serde_json::Value)],
+) -> Vec<(String, String, serde_json::Value)> {
+    use std::collections::HashMap;
+    let mut file_edit_groups: HashMap<String, Vec<(String, serde_json::Value)>> = HashMap::new();
+    let mut other = Vec::new();
+
+    for (tid, name, input) in tool_uses {
+        if name == "file_edit"
+            && input.get("start_line").and_then(|v| v.as_u64()).is_some()
+            && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
+        {
+            file_edit_groups
+                .entry(fp.to_string())
+                .or_default()
+                .push((tid.clone(), input.clone()));
+            continue;
+        }
+        other.push((tid.clone(), name.clone(), input.clone()));
+    }
+
+    for (file_path, edits) in &file_edit_groups {
+        if edits.len() == 1 {
+            let (tid, input) = &edits[0];
+            other.push((tid.clone(), "file_edit".to_string(), input.clone()));
+        } else {
+            let edit_items: Vec<serde_json::Value> = edits
+                .iter()
+                .map(|(_, inp)| {
+                    serde_json::json!({
+                        "start_line": inp["start_line"],
+                        "end_line": inp["end_line"],
+                        "expected": inp["expected"],
+                        "new_content": inp["new_content"],
+                    })
+                })
+                .collect();
+
+            let merged_input = serde_json::json!({
+                "file_path": file_path,
+                "edits": edit_items,
+            });
+            other.push((edits[0].0.clone(), "file_edit".to_string(), merged_input));
+
+            eprintln!(
+                "[工具] 🔗 合并 {} 个 file_edit 调用 (文件: {})",
+                edits.len(),
+                file_path,
+            );
+        }
+    }
+
+    other
+}
+
 /// 在终端输出当前轮次的 token 用量和缓存命中率信息
 fn print_usage_line(
     round: Option<u32>,
@@ -1267,10 +1362,40 @@ fn log_round_trip(
     let _ = logger.append_record(ts, duration_ms, request_value, response_value);
 }
 
+/// 记录流式对话的 round-trip 日志（从 RoundResult 重建响应）
+fn log_round_trip_stream(
+    logger: &ConversationLogger,
+    params: &CreateMessageParams,
+    result: &RoundResult,
+    duration_ms: u64,
+) {
+    let ts = datetime::iso_timestamp_now();
+    let request_value = serde_json::to_value(params).unwrap_or_default();
+    let response_value = serde_json::json!({
+        "id": null,
+        "type": "message",
+        "role": "assistant",
+        "content": result.blocks,
+        "model": result.model,
+        "stop_reason": if result.tool_uses.is_empty() { "end_turn" } else { "tool_use" },
+        "stop_sequence": null,
+        "usage": {
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "cache_creation_input_tokens": result.cache_creation_input_tokens,
+            "cache_read_input_tokens": result.cache_read_input_tokens,
+        }
+    });
+    let _ = logger.append_record(ts, duration_ms, request_value, response_value);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_util::run_with_temp_home;
+    use zapmyco_anthropic_ai_sdk::types::message::{
+        MessageDeltaContent, MessageStartContent, StopReason, StreamError, StreamUsage, Usage,
+    };
 
     #[test]
     fn test_agent_no_api_key() {
@@ -2334,6 +2459,798 @@ mod tests {
             })
             .unwrap();
             assert_eq!(agent.max_tokens(), 8192);
+        });
+    }
+
+    // ---- process_stream_events tests ----
+
+    fn make_msg_start(input_tokens: u32, model: &str) -> StreamEvent {
+        StreamEvent::MessageStart {
+            message: MessageStartContent {
+                id: "msg_t".to_string(),
+                type_: "message".to_string(),
+                role: Role::Assistant,
+                content: vec![],
+                model: model.to_string(),
+                stop_reason: None,
+                stop_sequence: None,
+                usage: Usage {
+                    input_tokens,
+                    output_tokens: 0,
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                    cache_creation: None,
+                    output_tokens_details: None,
+                    inference_geo: None,
+                    service_tier: None,
+                    server_tool_use: None,
+                },
+                container: None,
+                stop_details: None,
+            },
+        }
+    }
+
+    fn make_msg_delta(
+        stop_reason: StopReason,
+        output_tokens: u32,
+        cache_read: Option<u32>,
+        cache_create: Option<u32>,
+    ) -> StreamEvent {
+        StreamEvent::MessageDelta {
+            delta: MessageDeltaContent {
+                stop_reason: Some(stop_reason),
+                stop_sequence: None,
+            },
+            usage: Some(StreamUsage {
+                input_tokens: 0,
+                output_tokens,
+                cache_creation_input_tokens: cache_create,
+                cache_read_input_tokens: cache_read,
+                output_tokens_details: None,
+                server_tool_use: None,
+            }),
+        }
+    }
+
+    fn make_text_block_start() -> StreamEvent {
+        StreamEvent::ContentBlockStart {
+            index: 0,
+            content_block: ContentBlock::Text {
+                text: String::new(),
+                citations: None,
+            },
+        }
+    }
+
+    fn make_text_delta(text: &str) -> StreamEvent {
+        StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentBlockDelta::TextDelta {
+                text: text.to_string(),
+            },
+        }
+    }
+
+    fn make_tool_use_start_empty(id: &str, name: &str) -> StreamEvent {
+        StreamEvent::ContentBlockStart {
+            index: 0,
+            content_block: ContentBlock::ToolUse {
+                id: id.to_string(),
+                name: name.to_string(),
+                input: serde_json::Value::Object(serde_json::Map::new()),
+            },
+        }
+    }
+
+    fn make_tool_use_start_full(id: &str, name: &str, input: serde_json::Value) -> StreamEvent {
+        StreamEvent::ContentBlockStart {
+            index: 0,
+            content_block: ContentBlock::ToolUse {
+                id: id.to_string(),
+                name: name.to_string(),
+                input,
+            },
+        }
+    }
+
+    fn make_input_json_delta(partial: &str) -> StreamEvent {
+        StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentBlockDelta::InputJsonDelta {
+                partial_json: partial.to_string(),
+            },
+        }
+    }
+
+    fn make_block_stop() -> StreamEvent {
+        StreamEvent::ContentBlockStop { index: 0 }
+    }
+
+    fn make_message_stop() -> StreamEvent {
+        StreamEvent::MessageStop
+    }
+
+    fn make_error_event(msg: &str) -> StreamEvent {
+        StreamEvent::Error {
+            error: StreamError {
+                type_: "server_error".to_string(),
+                message: msg.to_string(),
+            },
+        }
+    }
+
+    /// 构造一轮只含文本的 events
+    fn text_only_events(text: &str, input_tokens: u32, output_tokens: u32) -> Vec<StreamEvent> {
+        let mut events = vec![make_msg_start(input_tokens, "test-model")];
+        events.push(make_text_block_start());
+        events.push(make_text_delta(text));
+        events.push(make_block_stop());
+        events.push(make_msg_delta(
+            StopReason::EndTurn,
+            output_tokens,
+            None,
+            None,
+        ));
+        events.push(make_message_stop());
+        events
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_plain_text() {
+        let events = text_only_events("你好世界", 10, 5);
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
+        let mut chunks = String::new();
+        let result = AiAgent::process_stream_events(stream, &mut |chunk| {
+            chunks.push_str(chunk);
+        })
+        .await
+        .expect("process_stream_events should succeed");
+
+        assert_eq!(result.full_text, "你好世界");
+        assert!(result.tool_uses.is_empty(), "no tool calls expected");
+        assert_eq!(result.input_tokens, 10);
+        assert_eq!(result.output_tokens, 5);
+        assert_eq!(result.model, "test-model");
+        assert_eq!(result.blocks.len(), 1);
+        assert!(matches!(result.blocks[0], ContentBlock::Text { .. }));
+        assert_eq!(chunks, "你好世界");
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_tool_use_input_json_delta() {
+        let events = vec![
+            make_msg_start(10, "test-model"),
+            make_tool_use_start_empty("tu01", "file_find"),
+            // 使用 r##"..."## 避免末尾引号被吃掉
+            make_input_json_delta(r##"{"pattern":""##),
+            make_input_json_delta("**/*.rs"),
+            make_input_json_delta(r##""}"##),
+            make_block_stop(),
+            make_msg_delta(StopReason::ToolUse, 20, None, None),
+            make_message_stop(),
+        ];
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
+        let mut chunks = String::new();
+        let result = AiAgent::process_stream_events(stream, &mut |c| chunks.push_str(c))
+            .await
+            .expect("should succeed");
+
+        assert!(result.full_text.is_empty(), "no text expected");
+        assert_eq!(result.tool_uses.len(), 1);
+        assert_eq!(result.tool_uses[0].0, "tu01");
+        assert_eq!(result.tool_uses[0].1, "file_find");
+        assert_eq!(
+            result.tool_uses[0].2,
+            serde_json::json!({"pattern": "**/*.rs"})
+        );
+        assert_eq!(result.blocks.len(), 1);
+        assert!(matches!(result.blocks[0], ContentBlock::ToolUse { .. }));
+        assert!(
+            chunks.is_empty(),
+            "on_chunk should not be called for tool use"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_tool_use_full_input_in_start() {
+        let events = vec![
+            make_msg_start(10, "test-model"),
+            make_tool_use_start_full("tu01", "file_find", serde_json::json!({"pattern": "*.rs"})),
+            make_block_stop(),
+            make_msg_delta(StopReason::ToolUse, 15, None, None),
+            make_message_stop(),
+        ];
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
+        let result = AiAgent::process_stream_events(stream, &mut |_| {})
+            .await
+            .expect("should succeed");
+
+        assert_eq!(result.tool_uses.len(), 1);
+        assert_eq!(
+            result.tool_uses[0].2,
+            serde_json::json!({"pattern": "*.rs"})
+        );
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_mixed_text_and_tool() {
+        let events = vec![
+            make_msg_start(10, "test-model"),
+            make_text_block_start(),
+            make_text_delta("我来分析这个代码..."),
+            make_block_stop(),
+            make_tool_use_start_empty("tu01", "file_read"),
+            make_input_json_delta(r##"{"file_path":"src/main.rs"}"##),
+            make_block_stop(),
+            make_msg_delta(StopReason::ToolUse, 30, None, None),
+            make_message_stop(),
+        ];
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
+        let mut chunks = String::new();
+        let result = AiAgent::process_stream_events(stream, &mut |c| chunks.push_str(c))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(result.full_text, "我来分析这个代码...");
+        assert_eq!(result.tool_uses.len(), 1);
+        assert_eq!(result.tool_uses[0].1, "file_read");
+        assert_eq!(result.blocks.len(), 2);
+        assert!(matches!(result.blocks[0], ContentBlock::Text { .. }));
+        assert!(matches!(result.blocks[1], ContentBlock::ToolUse { .. }));
+        assert_eq!(chunks, "我来分析这个代码...");
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_multiple_tools() {
+        let events = vec![
+            make_msg_start(10, "test-model"),
+            make_tool_use_start_empty("tu01", "file_find"),
+            make_input_json_delta(r##"{"pattern":"*.rs"}"##),
+            make_block_stop(),
+            make_tool_use_start_empty("tu02", "file_read"),
+            make_input_json_delta(r##"{"file_path":"src/main.rs"}"##),
+            make_block_stop(),
+            make_msg_delta(StopReason::ToolUse, 25, None, None),
+            make_message_stop(),
+        ];
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
+        let result = AiAgent::process_stream_events(stream, &mut |_| {})
+            .await
+            .expect("should succeed");
+
+        assert_eq!(result.tool_uses.len(), 2);
+        assert_eq!(result.tool_uses[0].0, "tu01");
+        assert_eq!(result.tool_uses[0].1, "file_find");
+        assert_eq!(result.tool_uses[1].0, "tu02");
+        assert_eq!(result.tool_uses[1].1, "file_read");
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_empty_input_json_delta() {
+        // 边缘情况：ContentBlockStart 后没有 InputJsonDelta 就 ContentBlockStop
+        let events = vec![
+            make_msg_start(10, "test-model"),
+            make_tool_use_start_empty("tu01", "file_find"),
+            make_block_stop(),
+            make_msg_delta(StopReason::ToolUse, 5, None, None),
+            make_message_stop(),
+        ];
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
+        let result = AiAgent::process_stream_events(stream, &mut |_| {})
+            .await
+            .expect("should succeed");
+
+        assert_eq!(result.tool_uses.len(), 1);
+        // 没有 InputJsonDelta → 输入应为 {}（空对象）
+        assert_eq!(
+            result.tool_uses[0].2,
+            serde_json::Value::Object(serde_json::Map::new())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_error_event() {
+        let events = vec![
+            make_msg_start(10, "test-model"),
+            make_error_event("Internal server error"),
+        ];
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
+        let result = AiAgent::process_stream_events(stream, &mut |_| {}).await;
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.contains("Internal server error"));
+    }
+
+    #[tokio::test]
+    async fn test_process_stream_events_stream_error() {
+        // 测试流中直接返回 Err 的情况
+        let events: Vec<Result<StreamEvent, String>> = vec![
+            Ok(make_msg_start(10, "test-model")),
+            Err("connection reset".to_string()),
+        ];
+        let stream = futures_util::stream::iter(events);
+        let result = AiAgent::process_stream_events(stream, &mut |_| {}).await;
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("connection reset"));
+    }
+
+    // ---- merge_file_edits tests ----
+
+    #[test]
+    fn test_merge_file_edits_same_file() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/main.rs",
+                    "start_line": 1,
+                    "end_line": 3,
+                    "expected": "line1\nline2\nline3",
+                    "new_content": "new1\nnew2\nnew3"
+                }),
+            ),
+            (
+                "tu02".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/main.rs",
+                    "start_line": 10,
+                    "end_line": 12,
+                    "expected": "old10\nold11\nold12",
+                    "new_content": "new10\nnew11\nnew12"
+                }),
+            ),
+        ];
+        let merged = merge_file_edits(&tool_uses);
+        assert_eq!(merged.len(), 1, "should merge into 1");
+        assert_eq!(merged[0].0, "tu01");
+        assert_eq!(merged[0].1, "file_edit");
+        let edits = merged[0].2["edits"].as_array().unwrap();
+        assert_eq!(edits.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_file_edits_different_files() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/a.rs",
+                    "start_line": 1,
+                    "end_line": 1,
+                    "expected": "a",
+                    "new_content": "A"
+                }),
+            ),
+            (
+                "tu02".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/b.rs",
+                    "start_line": 1,
+                    "end_line": 1,
+                    "expected": "b",
+                    "new_content": "B"
+                }),
+            ),
+        ];
+        let merged = merge_file_edits(&tool_uses);
+        assert_eq!(merged.len(), 2, "different files should not merge");
+    }
+
+    #[test]
+    fn test_merge_file_edits_old_string_mode_not_merged() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/main.rs",
+                    "old_string": "foo",
+                    "new_string": "bar"
+                }),
+            ),
+            (
+                "tu02".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/main.rs",
+                    "start_line": 5,
+                    "end_line": 5,
+                    "expected": "baz",
+                    "new_content": "qux"
+                }),
+            ),
+        ];
+        let merged = merge_file_edits(&tool_uses);
+        assert_eq!(
+            merged.len(),
+            2,
+            "old_string mode should not merge with line_range"
+        );
+    }
+
+    #[test]
+    fn test_merge_file_edits_single_line_range_not_batched() {
+        let tool_uses = vec![(
+            "tu01".to_string(),
+            "file_edit".to_string(),
+            serde_json::json!({
+                "file_path": "src/main.rs",
+                "start_line": 1,
+                "end_line": 1,
+                "expected": "a",
+                "new_content": "A"
+            }),
+        )];
+        let merged = merge_file_edits(&tool_uses);
+        assert_eq!(merged.len(), 1);
+        // 单条不应该包装为 edits 数组
+        assert!(merged[0].2.get("edits").is_none());
+    }
+
+    #[test]
+    fn test_merge_file_edits_mixed_tool_types() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({"file_path": "src/main.rs"}),
+            ),
+            (
+                "tu02".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/main.rs",
+                    "start_line": 1,
+                    "end_line": 3,
+                    "expected": "a\nb\nc",
+                    "new_content": "A\nB\nC"
+                }),
+            ),
+            (
+                "tu03".to_string(),
+                "file_find".to_string(),
+                serde_json::json!({"pattern": "*.rs"}),
+            ),
+            (
+                "tu04".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({
+                    "file_path": "src/main.rs",
+                    "start_line": 10,
+                    "end_line": 10,
+                    "expected": "old",
+                    "new_content": "new"
+                }),
+            ),
+        ];
+        let merged = merge_file_edits(&tool_uses);
+        // file_read + file_find + 合并后的 file_edit = 3
+        // 非编辑工具保持原始顺序排在前面
+        assert_eq!(
+            merged.len(),
+            3,
+            "file_read + merged file_edit + file_find = 3"
+        );
+        assert_eq!(merged[0].1, "file_read");
+        assert_eq!(merged[1].1, "file_find");
+        assert_eq!(merged[2].1, "file_edit");
+        assert!(merged[2].2.get("edits").is_some());
+        assert_eq!(merged[2].2["edits"].as_array().unwrap().len(), 2);
+    }
+
+    // ---- log_round_trip_stream tests ----
+
+    #[test]
+    fn test_log_round_trip_stream_writes_record() {
+        run_with_temp_home(|home| {
+            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
+
+            let params = CreateMessageParams::new(RequiredMessageParams {
+                model: "test-model".to_string(),
+                messages: vec![Message::new_text(Role::User, "Hello")],
+                max_tokens: 100,
+            });
+
+            let result = RoundResult {
+                full_text: "你好".to_string(),
+                tool_uses: vec![],
+                blocks: vec![ContentBlock::Text {
+                    text: "你好".to_string(),
+                    citations: None,
+                }],
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                duration_ms: 100,
+                model: "test-model".to_string(),
+            };
+
+            log_round_trip_stream(&logger, &params, &result, 100);
+
+            // 验证日志文件被正确写入
+            let log_dir = home.join(".zapmyco/conversations");
+            let log_file = log_dir.join(format!("{}.jsonl", logger.session_id()));
+            let content = std::fs::read_to_string(&log_file).unwrap();
+            assert!(content.contains("test-model"), "日志应包含模型名");
+            assert!(content.contains("你好"), "日志应包含文本");
+            assert!(content.contains("end_turn"), "无工具调用时应为 end_turn");
+            assert!(content.contains("100"), "日志应包含耗时");
+        });
+    }
+
+    #[test]
+    fn test_log_round_trip_stream_with_tool_uses() {
+        run_with_temp_home(|home| {
+            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
+
+            let params = CreateMessageParams::new(RequiredMessageParams {
+                model: "test-model".to_string(),
+                messages: vec![Message::new_text(Role::User, "find files")],
+                max_tokens: 100,
+            });
+
+            let result = RoundResult {
+                full_text: String::new(),
+                tool_uses: vec![(
+                    "tu01".to_string(),
+                    "file_find".to_string(),
+                    serde_json::json!({"pattern": "*.rs"}),
+                )],
+                blocks: vec![ContentBlock::ToolUse {
+                    id: "tu01".to_string(),
+                    name: "file_find".to_string(),
+                    input: serde_json::json!({"pattern": "*.rs"}),
+                }],
+                input_tokens: 10,
+                output_tokens: 15,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                duration_ms: 100,
+                model: "test-model".to_string(),
+            };
+
+            log_round_trip_stream(&logger, &params, &result, 100);
+
+            let log_dir = home.join(".zapmyco/conversations");
+            let log_file = log_dir.join(format!("{}.jsonl", logger.session_id()));
+            let content = std::fs::read_to_string(&log_file).unwrap();
+            assert!(content.contains("tool_use"), "有工具调用时应为 tool_use");
+            assert!(content.contains("file_find"), "日志应包含工具名");
+            assert!(content.contains(r#""pattern":"#), "日志应包含工具参数");
+        });
+    }
+
+    // ---- execute_tools tests ----
+
+    /// 创建包含特定工具的 AiAgent（用于 execute_tools 测试）
+    fn make_agent_with_tools(home: &std::path::Path, tool_names: &[&str]) -> AiAgent {
+        create_test_settings(home, "[llm]\n");
+        let mut agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            model: Some("test-model".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        for name in tool_names {
+            match *name {
+                "file_read" => {
+                    agent.register_tool(ToolHandler::FileRead(
+                        crate::tools::file_read::FileRead::new(Default::default()),
+                    ));
+                }
+                "file_find" => {
+                    agent.register_tool(ToolHandler::FileFind(
+                        crate::tools::file_find::FileFind::new(Default::default()),
+                    ));
+                }
+                "file_edit" => {
+                    agent.register_tool(ToolHandler::FileEdit(
+                        crate::tools::file_edit::FileEdit::new(Default::default()),
+                    ));
+                }
+                "file_write" => {
+                    agent.register_tool(ToolHandler::FileWrite(
+                        crate::tools::file_write::FileWrite::new(Default::default()),
+                    ));
+                }
+                _ => {}
+            }
+        }
+        agent
+    }
+
+    #[test]
+    fn test_execute_tools_basic() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_find"]);
+
+                // 在 temp dir 中创建一个测试文件
+                let test_file = home.join("test.rs");
+                std::fs::write(&test_file, "fn main() {}").unwrap();
+
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_find".to_string(),
+                    serde_json::json!({
+                        "pattern": "*.rs",
+                        "path": home.to_string_lossy().to_string(),
+                    }),
+                )];
+
+                let results = agent
+                    .execute_tools(tool_uses)
+                    .await
+                    .expect("execute_tools should succeed");
+
+                assert_eq!(results.len(), 1);
+                assert!(matches!(results[0], ContentBlock::ToolResult { .. }));
+                if let ContentBlock::ToolResult { content, .. } = &results[0] {
+                    assert!(content.contains("test.rs"), "结果应包含文件名");
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_pre_read_check_blocks_edit() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_read", "file_edit"]);
+
+                // 创建一个已有文件
+                let test_file = home.join("test.txt");
+                std::fs::write(&test_file, "hello world").unwrap();
+
+                // 未先 file_read 直接 file_edit → 应被预读检查拦截
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_edit".to_string(),
+                    serde_json::json!({
+                        "file_path": test_file.to_string_lossy().to_string(),
+                        "mode": "line_range",
+                        "start_line": 1,
+                        "end_line": 1,
+                        "expected": "hello world",
+                        "new_content": "HELLO WORLD",
+                    }),
+                )];
+
+                let results = agent
+                    .execute_tools(tool_uses)
+                    .await
+                    .expect("execute_tools should not fail");
+
+                assert_eq!(results.len(), 1);
+                if let ContentBlock::ToolResult { content, .. } = &results[0] {
+                    assert!(
+                        content.contains("未通过 file_read 读取"),
+                        "应提示先读取文件: {}",
+                        content
+                    );
+                } else {
+                    panic!("Expected ToolResult");
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_pre_read_check_passes() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_read", "file_edit"]);
+
+                let test_file = home.join("test.txt");
+                std::fs::write(&test_file, "hello world").unwrap();
+
+                // 先 file_read 让预读检查通过
+                let read_input = serde_json::json!({
+                    "file_path": test_file.to_string_lossy().to_string(),
+                });
+                let _ = agent
+                    .execute_tools(vec![(
+                        "tu00".to_string(),
+                        "file_read".to_string(),
+                        read_input,
+                    )])
+                    .await
+                    .unwrap();
+
+                // 现在 file_edit 应通过预读检查
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_edit".to_string(),
+                    serde_json::json!({
+                        "file_path": test_file.to_string_lossy().to_string(),
+                        "mode": "line_range",
+                        "start_line": 1,
+                        "end_line": 1,
+                        "expected": "hello world",
+                        "new_content": "HELLO WORLD",
+                    }),
+                )];
+
+                let results = agent
+                    .execute_tools(tool_uses)
+                    .await
+                    .expect("execute_tools should succeed");
+
+                assert_eq!(results.len(), 1);
+                if let ContentBlock::ToolResult { content, .. } = &results[0] {
+                    // 预读检查已通过（未出现"未通过 file_read 读取"错误）
+                    // file_edit 自己的内容验证失败是正常行为，不在此测试范围内
+                    assert!(
+                        !content.contains("未通过 file_read 读取"),
+                        "预读检查应通过: {}",
+                        content
+                    );
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_new_file_write_passes() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_write"]);
+
+                // 写入一个不存在的文件 → 应直接放行
+                let new_file = home.join("new_file.txt");
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_write".to_string(),
+                    serde_json::json!({
+                        "file_path": new_file.to_string_lossy().to_string(),
+                        "content": "new content",
+                    }),
+                )];
+
+                let results = agent
+                    .execute_tools(tool_uses)
+                    .await
+                    .expect("execute_tools should succeed");
+
+                assert_eq!(results.len(), 1);
+                // 验证文件确实已创建
+                assert!(new_file.exists(), "新文件应被创建");
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_unknown_tool() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &[]);
+
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "nonexistent_tool".to_string(),
+                    serde_json::json!({}),
+                )];
+
+                let result = agent.execute_tools(tool_uses).await;
+                assert!(result.is_err(), "unknown tool should error");
+                let err = result.err().unwrap();
+                assert!(
+                    err.contains("Unknown tool"),
+                    "error should mention unknown tool"
+                );
+            });
         });
     }
 }
