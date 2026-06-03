@@ -741,141 +741,42 @@ impl AiAgent {
                 })
                 .collect();
 
-            // 执行所有工具（带终端输出）
+            // 执行所有工具
             let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
+
+            // 按工具类型统计并输出本轮概览
+            {
+                let mut type_counts: std::collections::BTreeMap<&str, usize> =
+                    std::collections::BTreeMap::new();
+                for (_, name, _) in &tool_uses {
+                    *type_counts.entry(name.as_str()).or_insert(0) += 1;
+                }
+                let count_summary: String = type_counts
+                    .iter()
+                    .map(|(name, count)| {
+                        if *count > 1 {
+                            format!("{} {} ×{}", tool_icon(name), name, count)
+                        } else {
+                            format!("{} {}", tool_icon(name), name)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                eprintln!(
+                    "\n[工具] 📋 本轮 {} 个工具调用: {}",
+                    tool_uses.len(),
+                    count_summary
+                );
+            }
+
             for (tool_use_id, name, input) in &tool_uses {
                 let tool_start = Instant::now();
-                eprintln!("\n[工具] 🔧 {} 准备调用...", name);
 
                 let handler = self
                     .tools
                     .iter()
                     .find(|h| h.tool_definition().name == *name)
                     .ok_or_else(|| format!("Unknown tool: {}", name))?;
-
-                // 显示工具参数
-                match name.as_str() {
-                    "ask_user" => {
-                        if let Some(q) = input.get("question").and_then(|v| v.as_str()) {
-                            let truncated = if q.len() > 60 {
-                                format!("{}...", &q[..60])
-                            } else {
-                                q.to_string()
-                            };
-                            eprintln!("[工具]   └ 问题: {}", truncated);
-                        }
-                    }
-                    "web_fetch" => {
-                        if let Some(url) = input.get("url").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 参数: url = {}", url);
-                        }
-                    }
-                    "shell_exec" => {
-                        if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
-                            let truncated = if cmd.len() > 80 {
-                                format!("{}...", &cmd[..80])
-                            } else {
-                                cmd.to_string()
-                            };
-                            eprintln!("[工具]   └ 命令: {}", truncated);
-                        }
-                        if let Some(desc) = input.get("description").and_then(|v| v.as_str()) {
-                            let truncated = if desc.len() > 60 {
-                                format!("{}...", &desc[..60])
-                            } else {
-                                desc.to_string()
-                            };
-                            eprintln!("[工具]   └ 描述: {}", truncated);
-                        }
-                        if let Some(dir) = input.get("working_directory").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 工作目录: {}", dir);
-                        }
-                    }
-                    "web_search" => {
-                        if let Some(q) = input.get("query").and_then(|v| v.as_str()) {
-                            let truncated = if q.len() > 80 {
-                                format!("{}...", &q[..80])
-                            } else {
-                                q.to_string()
-                            };
-                            eprintln!("[工具]   └ 搜索: {}", truncated);
-                        }
-                    }
-                    "file_search" => {
-                        if let Some(p) = input.get("pattern").and_then(|v| v.as_str()) {
-                            let truncated = if p.len() > 80 {
-                                format!("{}...", &p[..80])
-                            } else {
-                                p.to_string()
-                            };
-                            eprintln!("[工具]   └ 模式: {}", truncated);
-                        }
-                        if let Some(p) = input.get("path").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 路径: {}", p);
-                        }
-                        if let Some(m) = input.get("output_mode").and_then(|v| v.as_str())
-                            && m != "content"
-                        {
-                            eprintln!("[工具]   └ 模式: {}", m);
-                        }
-                    }
-                    "file_find" => {
-                        if let Some(p) = input.get("pattern").and_then(|v| v.as_str()) {
-                            let truncated = if p.len() > 80 {
-                                format!("{}...", &p[..80])
-                            } else {
-                                p.to_string()
-                            };
-                            eprintln!("[工具]   └ 模式: {}", truncated);
-                        }
-                        if let Some(p) = input.get("path").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 路径: {}", p);
-                        }
-                    }
-                    "file_read" => {
-                        if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 文件: {}", fp);
-                        }
-                    }
-                    "file_edit" => {
-                        if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
-                            let truncated = if fp.len() > 80 {
-                                format!("{}...", &fp[..80])
-                            } else {
-                                fp.to_string()
-                            };
-                            eprintln!("[工具]   └ 文件: {}", truncated);
-                        }
-                        if let Some(old) = input.get("old_string").and_then(|v| v.as_str()) {
-                            let truncated = if old.len() > 50 {
-                                format!("{}...", &old[..50])
-                            } else {
-                                old.to_string()
-                            };
-                            eprintln!("[工具]   └ 查找: {}", truncated);
-                        }
-                    }
-                    "task_create" => {
-                        if let Some(s) = input.get("subject").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 任务: {}", s);
-                        }
-                    }
-                    "task_update" => {
-                        if let Some(id) = input.get("task_id").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 任务ID: {}", id);
-                        }
-                        if let Some(s) = input.get("status").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 状态: {}", s);
-                        }
-                    }
-                    "task_get" => {
-                        if let Some(id) = input.get("task_id").and_then(|v| v.as_str()) {
-                            eprintln!("[工具]   └ 任务ID: {}", id);
-                        }
-                    }
-                    "task_list" => {}
-                    _ => {}
-                }
 
                 // ---- 预读检查：file_write 和 file_edit 必须先读后写 ----
                 let pre_read_error: Option<String> = match name.as_str() {
@@ -923,9 +824,12 @@ impl AiAgent {
                     _ => None,
                 };
 
+                let icon = tool_icon(name);
+                let param = format_tool_param(name, input);
+
                 let result_text = if let Some(err_msg) = pre_read_error {
                     tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
-                    eprintln!("[工具] ❌ {} 预读检查失败: {}", name, err_msg);
+                    eprintln!("[工具] ⚠️ {} {}  ❌ {}", icon, name, err_msg);
                     format!("[Tool error: {}]", err_msg)
                 } else {
                     match handler.execute(input).await {
@@ -952,8 +856,10 @@ impl AiAgent {
                                 "工具执行成功"
                             );
                             eprintln!(
-                                "[工具] ✅ {} 完成 ({:.1}s, {} 字符)",
+                                "[工具] {} {}  {}  ({:.1}s, {} 字符)",
+                                icon,
                                 name,
+                                param,
                                 elapsed.as_secs_f64(),
                                 text.len()
                             );
@@ -961,7 +867,7 @@ impl AiAgent {
                         }
                         Err(e) => {
                             tracing::warn!(tool = %name, error = %e, "工具执行失败");
-                            eprintln!("[工具] ❌ {} 失败: {}", name, e);
+                            eprintln!("[工具] {} {}  {}  ❌ 失败: {}", icon, name, param, e);
                             format!("[Tool error: {}]", e)
                         }
                     }
@@ -1057,6 +963,145 @@ impl AiAgent {
     /// 获取最大输出 token 数
     pub fn max_tokens(&self) -> u32 {
         self.max_tokens
+    }
+}
+
+/// 获取工具类型对应的终端图标
+fn tool_icon(name: &str) -> &'static str {
+    match name {
+        "file_read" => "\u{1f4d6}",                       // 📖
+        "file_find" | "file_search" => "\u{1f50d}",       // 🔍
+        "file_write" | "file_edit" => "\u{270f}\u{fe0f}", // ✏️
+        "shell_exec" => "\u{1f4bb}",                      // 💻
+        "web_search" => "\u{1f310}",                      // 🌐
+        "web_fetch" => "\u{1f4e1}",                       // 📡
+        "ask_user" => "\u{1f4ac}",                        // 💬
+        "task_create" | "task_get" | "task_list" | "task_update" => "\u{1f4cb}", // 📋
+        _ => "\u{1f527}",                                 // 🔧
+    }
+}
+
+/// 生成工具参数的紧凑单行描述
+fn format_tool_param(name: &str, input: &serde_json::Value) -> String {
+    match name {
+        "file_read" => input
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        "file_find" => {
+            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
+            let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if path.is_empty() {
+                pattern.to_string()
+            } else {
+                format!("{}  in  {}", pattern, path)
+            }
+        }
+        "file_search" => {
+            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
+            let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let output_mode = input.get("output_mode").and_then(|v| v.as_str());
+            let base = if path.is_empty() {
+                pattern.to_string()
+            } else {
+                format!("{}  in  {}", pattern, path)
+            };
+            if let Some(mode) = output_mode
+                && mode != "content"
+            {
+                format!("[{}] {}", mode, base)
+            } else {
+                base
+            }
+        }
+        "file_write" => input
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        "file_edit" => {
+            let fp = input
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let old = input.get("old_string").and_then(|v| v.as_str());
+            if let Some(old) = old {
+                let truncated = if old.len() > 40 {
+                    format!("{}...", &old[..40])
+                } else {
+                    old.to_string()
+                };
+                format!("{}  查找: \"{}\"", fp, truncated)
+            } else {
+                fp.to_string()
+            }
+        }
+        "shell_exec" => input
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                if s.len() > 60 {
+                    format!("{}...", &s[..60])
+                } else {
+                    s.to_string()
+                }
+            })
+            .unwrap_or_default(),
+        "web_search" => input
+            .get("query")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                if s.len() > 60 {
+                    format!("\"{}...\"", &s[..60])
+                } else {
+                    format!("\"{}\"", s)
+                }
+            })
+            .unwrap_or_default(),
+        "web_fetch" => input
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        "ask_user" => input
+            .get("question")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                if s.len() > 60 {
+                    format!("{}...", &s[..60])
+                } else {
+                    s.to_string()
+                }
+            })
+            .unwrap_or_default(),
+        "task_create" => input
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                if s.len() > 60 {
+                    format!("{}...", &s[..60])
+                } else {
+                    s.to_string()
+                }
+            })
+            .unwrap_or_default(),
+        "task_update" => {
+            let id = input.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+            let status = input.get("status").and_then(|v| v.as_str());
+            if let Some(status) = status {
+                format!("#{} \u{2192} {}", id, status) // →
+            } else {
+                format!("#{}", id)
+            }
+        }
+        "task_get" => input
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .map(|s| format!("#{}", s))
+            .unwrap_or_default(),
+        "task_list" => String::new(),
+        _ => String::new(),
     }
 }
 
