@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.34.0](https://github.com/shenjingnan/zapmyco/compare/v0.33.0...v0.34.0) - 2026-06-03
+
+### Added
+
+- 在终端显示每轮对话的 token 用量和缓存命中率 ([#381](https://github.com/shenjingnan/zapmyco/pull/381))
+- *(cli)* 添加权限模式和任务列表隔离功能 ([#379](https://github.com/shenjingnan/zapmyco/pull/379))
+
+### Other
+
+- 将内置工具文档拆分为独立页面 ([#384](https://github.com/shenjingnan/zapmyco/pull/384))
+- *(tools)* 简化 file_edit 模式并增强验证算法 ([#383](https://github.com/shenjingnan/zapmyco/pull/383))
+- *(display)* 压缩工具调用日志为单行并添加分组概览 ([#382](https://github.com/shenjingnan/zapmyco/pull/382))
+
 ## [0.33.0](https://github.com/shenjingnan/zapmyco/compare/v0.32.2...v0.33.0) - 2026-06-03
 
 ### Added
