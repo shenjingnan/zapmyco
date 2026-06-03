@@ -358,6 +358,12 @@ fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
 async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
+    tracing::info!(
+        input_len = content.len(),
+        profile = profile.unwrap_or("default"),
+        "开始执行 AI 任务"
+    );
+
     if !file_path.exists() {
         return Err(format!(
             "未找到配置文件 {}\n请先运行 `zapmyco init` 初始化 LLM 配置。",
@@ -1467,6 +1473,108 @@ mod tests {
                 assert!(output.contains(sub), "{:?} 补全应包含子命令 {}", shell, sub);
             }
         }
+    }
+
+    // —————— cmd_note 命令测试 ——————
+
+    #[test]
+    fn test_cmd_note_add_and_list() {
+        run_with_temp_home(|_home| {
+            cmd_note(NoteCommands::Add {
+                content: vec!["测试笔记".to_string()],
+            })
+            .expect("创建笔记应成功");
+
+            let result = cmd_note(NoteCommands::Ls {
+                limit: Some(10),
+                all: false,
+            });
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn test_cmd_note_list_empty() {
+        run_with_temp_home(|_home| {
+            // 空笔记目录
+            let result = cmd_note(NoteCommands::Ls {
+                limit: Some(10),
+                all: false,
+            });
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn test_cmd_note_show_and_grep_and_rm() {
+        run_with_temp_home(|_home| {
+            cmd_note(NoteCommands::Add {
+                content: vec!["可搜索的内容".to_string()],
+            })
+            .expect("创建笔记应成功");
+
+            // grep 搜索
+            let grep_result = cmd_note(NoteCommands::Grep {
+                keyword: "可搜索".to_string(),
+            });
+            assert!(grep_result.is_ok(), "grep 应成功");
+
+            // grep 无结果
+            let grep_empty = cmd_note(NoteCommands::Grep {
+                keyword: "不存在的内容".to_string(),
+            });
+            assert!(grep_empty.is_ok(), "grep 无结果也应成功");
+
+            // 列出笔记获取 ID
+            let entries = crate::notes::NotesDir::new()
+                .unwrap()
+                .list(10, false)
+                .unwrap();
+            assert!(!entries.is_empty(), "至少有一条笔记");
+            let note_id = entries[0].id.clone();
+
+            // show
+            let show_result = cmd_note(NoteCommands::Show {
+                id: note_id.clone(),
+            });
+            assert!(show_result.is_ok(), "查看笔记应成功");
+
+            // show 不存在的笔记
+            let show_nonexistent = cmd_note(NoteCommands::Show {
+                id: "nonexistent-id".to_string(),
+            });
+            assert!(show_nonexistent.is_err(), "查看不存在的笔记应失败");
+
+            // rm
+            let rm_result = cmd_note(NoteCommands::Rm {
+                id: note_id.clone(),
+            });
+            assert!(rm_result.is_ok(), "删除笔记应成功");
+
+            // rm 不存在的笔记
+            let rm_nonexistent = cmd_note(NoteCommands::Rm { id: note_id });
+            assert!(rm_nonexistent.is_err(), "删除不存在的笔记应失败");
+        });
+    }
+
+    #[test]
+    fn test_cmd_note_list_all() {
+        run_with_temp_home(|_home| {
+            cmd_note(NoteCommands::Add {
+                content: vec!["笔记1".to_string()],
+            })
+            .expect("创建笔记1应成功");
+            cmd_note(NoteCommands::Add {
+                content: vec!["笔记2".to_string()],
+            })
+            .expect("创建笔记2应成功");
+
+            let entries = crate::notes::NotesDir::new()
+                .unwrap()
+                .list(10, true)
+                .unwrap();
+            assert_eq!(entries.len(), 2, "应该有两篇笔记");
+        });
     }
 
     // —————— init 中 shell 补全自动配置的测试 ——————

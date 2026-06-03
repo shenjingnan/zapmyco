@@ -580,7 +580,7 @@ impl AiAgent {
             blocks: None,
         });
 
-        for _round in 0..self.max_tool_rounds {
+        for round in 0..self.max_tool_rounds {
             eprintln!("\n[LLM] 🤔 思考中...");
             let params = self.build_params(false)?;
             let start = Instant::now();
@@ -593,6 +593,16 @@ impl AiAgent {
 
             let duration_ms = start.elapsed().as_millis() as u64;
             eprintln!("[LLM] 💬 LLM 响应 ({:.1}s)", duration_ms as f64 / 1000.0);
+
+            tracing::info!(
+                model = %response.model,
+                stop_reason = ?response.stop_reason,
+                input_tokens = response.usage.input_tokens,
+                output_tokens = response.usage.output_tokens,
+                duration_ms = duration_ms,
+                round = round,
+                "LLM 请求完成"
+            );
 
             // 检测是否有 ToolUse
             let has_tool_use =
@@ -664,6 +674,7 @@ impl AiAgent {
             // 执行所有工具（带终端输出）
             let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
             for (tool_use_id, name, input) in &tool_uses {
+                let tool_start = Instant::now();
                 eprintln!("\n[工具] 🔧 {} 准备调用...", name);
 
                 let handler = self
@@ -842,8 +853,8 @@ impl AiAgent {
                     _ => None,
                 };
 
-                let start = Instant::now();
                 let result_text = if let Some(err_msg) = pre_read_error {
+                    tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
                     eprintln!("[工具] ❌ {} 预读检查失败: {}", name, err_msg);
                     format!("[Tool error: {}]", err_msg)
                 } else {
@@ -863,7 +874,13 @@ impl AiAgent {
                                     .unwrap_or(0);
                                 self.read_file_state.insert(fp.to_string(), ms);
                             }
-                            let elapsed = start.elapsed();
+                            let elapsed = tool_start.elapsed();
+                            tracing::info!(
+                                tool = %name,
+                                duration_ms = elapsed.as_millis() as u64,
+                                result_len = text.len(),
+                                "工具执行成功"
+                            );
                             eprintln!(
                                 "[工具] ✅ {} 完成 ({:.1}s, {} 字符)",
                                 name,
@@ -873,6 +890,7 @@ impl AiAgent {
                             text
                         }
                         Err(e) => {
+                            tracing::warn!(tool = %name, error = %e, "工具执行失败");
                             eprintln!("[工具] ❌ {} 失败: {}", name, e);
                             format!("[Tool error: {}]", e)
                         }

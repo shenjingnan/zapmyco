@@ -5,6 +5,7 @@ pub mod agent;
 pub mod cli;
 pub mod config;
 pub mod datetime;
+pub mod logging;
 pub mod notes;
 #[doc(hidden)]
 pub mod tools;

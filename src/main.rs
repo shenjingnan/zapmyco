@@ -3,12 +3,7 @@ use zapmyco::cli::{self, Cli};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
-        )
-        .init();
+    zapmyco::logging::init_logging();
 
     // 将 -v 映射到 --version，因为 clap 默认使用 -V（大写）作为 version 的短标志
     let args: Vec<String> = std::env::args().collect();
