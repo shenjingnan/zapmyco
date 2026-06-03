@@ -37,12 +37,15 @@ impl FileEdit {
         Tool {
             name: "file_edit".to_string(),
             description: Some(
-                "修改本地文件系统中的文件内容。\
-                 使用 old_string/new_string 模式进行精确替换，\
-                 比 sed 命令更安全可靠。\
-                 参数包括 file_path（必填，文件路径）、old_string（必填，要被替换的文本）、\
-                 new_string（必填，替换后的文本）、replace_all（可选，是否替换所有匹配项）。\
-                 注意：需要确保 old_string 在文件中出现且唯一，否则会报错。"
+                "修改本地文件系统中的文件内容。支持多种编辑模式：\n\
+                 1. line_range（推荐）: 按行号替换，需指定 start_line/end_line/expected/new_content，\
+                 系统会自动验证 expected 是否与文件实际内容一致，比 old_string 更稳定可靠。\n\
+                 2. append: 在文件末尾追加内容，需指定 content。\n\
+                 3. insert_after: 在指定行后插入内容，需指定 target_line/content。\n\
+                 4. 批量编辑: 使用 edits 数组对一个文件同时执行多个 line_range 编辑（原子操作）。\n\
+                 5. old_string/new_string（旧模式）: 精确字符串替换，保留以兼容旧版。\n\n\
+                 注意：line_range 模式的 expected 参数至少包含 3 行非空代码行（trim 后），\
+                 否则会被拒绝执行。编辑前必须先使用 file_read 读取文件内容。"
                     .to_string(),
             ),
             input_schema: Some(serde_json::json!({
@@ -52,21 +55,70 @@ impl FileEdit {
                         "type": "string",
                         "description": "要修改的文件的绝对路径"
                     },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["line_range", "append", "insert_after"],
+                        "description": "编辑模式，默认根据其他参数自动判断"
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "要替换的起始行号（从1开始，仅 line_range 模式）"
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "要替换的结束行号（包含，仅 line_range 模式）"
+                    },
+                    "expected": {
+                        "type": "string",
+                        "description": "预期的当前内容（仅 line_range 模式）。\
+                         用于验证行号是否准确，至少包含3行非空代码行（trim后）。\
+                         如果内容不匹配将被拒绝执行"
+                    },
+                    "new_content": {
+                        "type": "string",
+                        "description": "替换后的新内容（仅 line_range 模式）"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "要追加或插入的内容（仅 append/insert_after 模式）"
+                    },
+                    "target_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "在此行后插入新内容（仅 insert_after 模式）"
+                    },
                     "old_string": {
                         "type": "string",
-                        "description": "要被替换的文本，必须在文件中精确匹配"
+                        "description": "（旧模式）要被替换的文本，必须在文件中精确匹配"
                     },
                     "new_string": {
                         "type": "string",
-                        "description": "替换后的文本（必须与 old_string 不同）"
+                        "description": "（旧模式）替换后的文本（必须与 old_string 不同）"
                     },
                     "replace_all": {
                         "type": "boolean",
-                        "description": "是否替换所有匹配项（默认 false）",
+                        "description": "（旧模式）是否替换所有匹配项（默认 false）",
                         "default": false
+                    },
+                    "edits": {
+                        "type": "array",
+                        "description": "批量编辑数组。数组中的每个元素包含 start_line/end_line/expected/new_content，\
+                         对一个文件同时执行多个编辑（原子操作）",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "start_line": { "type": "integer", "minimum": 1 },
+                                "end_line": { "type": "integer", "minimum": 1 },
+                                "expected": { "type": "string" },
+                                "new_content": { "type": "string" }
+                            },
+                            "required": ["start_line", "end_line", "expected", "new_content"]
+                        }
                     }
                 },
-                "required": ["file_path", "old_string", "new_string"]
+                "required": ["file_path"]
             })),
             ..Default::default()
         }
@@ -74,43 +126,536 @@ impl FileEdit {
 
     /// 执行文件编辑
     pub async fn execute(&self, input: &serde_json::Value) -> Result<String, String> {
-        // 1. 提取参数
+        // 0. 路由到正确的编辑模式
+        //    优先级: edits(批量) > mode(显式) > start_line(行号) > old_string(旧模式)
         let file_path = input
             .get("file_path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "缺少必填参数 'file_path'".to_string())?;
 
+        // 模式1: 批量编辑 (edits 数组)
+        if input.get("edits").and_then(|v| v.as_array()).is_some() {
+            return self.execute_batch(file_path, input).await;
+        }
+
+        // 模式2: 显式 mode 参数
+        if let Some(mode) = input.get("mode").and_then(|v| v.as_str()) {
+            return match mode {
+                "append" => self.execute_append(file_path, input).await,
+                "insert_after" => self.execute_insert_after(file_path, input).await,
+                "line_range" => self.execute_line_range(file_path, input).await,
+                _ => Err(format!("不支持的编辑模式: '{}'", mode)),
+            };
+        }
+
+        // 模式3: 行号模式 (自动检测 start_line 参数)
+        if input.get("start_line").and_then(|v| v.as_u64()).is_some() {
+            return self.execute_line_range(file_path, input).await;
+        }
+
+        // 模式4: 旧模式 (old_string/new_string) — 保留以兼容
+        self.execute_legacy(file_path, input).await
+    }
+
+    // ========================================================================
+    // 行号替换模式 (line_range)
+    // ========================================================================
+
+    async fn execute_line_range(
+        &self,
+        file_path: &str,
+        input: &serde_json::Value,
+    ) -> Result<String, String> {
+        let start_line = input
+            .get("start_line")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| "缺少必填参数 'start_line'".to_string())?
+            as usize;
+
+        let end_line = input
+            .get("end_line")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| "缺少必填参数 'end_line'".to_string())? as usize;
+
+        let expected = input
+            .get("expected")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "缺少必填参数 'expected'".to_string())?;
+
+        let new_content = input
+            .get("new_content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "缺少必填参数 'new_content'".to_string())?;
+
+        // 路径校验
+        let path = std::path::Path::new(file_path);
+        if !path.exists() {
+            return Err(format!("文件不存在: {}", file_path));
+        }
+        let metadata = std::fs::metadata(path).map_err(|e| format!("读取文件元数据失败: {}", e))?;
+        if metadata.is_dir() {
+            return Err(format!("'{}' 是一个目录，不能编辑", file_path));
+        }
+
+        // 读取文件
+        let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
+        let check_len = bytes.len().min(8192);
+        if bytes[..check_len].contains(&0x00) {
+            return Err(format!("二进制文件: {}。仅支持文本文件编辑。", file_path));
+        }
+        let content_string = String::from_utf8(bytes)
+            .map_err(|_| format!("文件不是有效的 UTF-8 编码: {}", file_path))?;
+
+        let has_bom = content_string.starts_with('\u{feff}');
+        let content: &str = content_string.trim_start_matches('\u{feff}');
+        let line_endings = detect_line_endings(&content_string);
+        let content = content.replace("\r\n", "\n");
+
+        // 行号校验
+        let lines: Vec<&str> = content.lines().collect();
+        let total_lines = lines.len();
+
+        if total_lines == 0 {
+            return Err("文件为空，无法编辑".to_string());
+        }
+        if start_line < 1 || end_line > total_lines || start_line > end_line {
+            return Err(format!(
+                "行号超出范围：start_line={}, end_line={}，文件共 {} 行",
+                start_line, end_line, total_lines
+            ));
+        }
+
+        // 提取实际内容进行验证
+        let actual_lines: Vec<&str> = lines[start_line - 1..end_line].to_vec();
+        let actual_content = actual_lines.join("\n");
+
+        // 内容验证
+        if validate_content(expected, &actual_content) == Confidence::Low {
+            // 构建详细的拒绝信息，帮助 LLM 理解差异
+            let exp_set: std::collections::HashSet<&str> = expected
+                .lines()
+                .map(|l| l.trim())
+                .filter(|l| !l.is_empty())
+                .collect();
+            let act_set: std::collections::HashSet<&str> = actual_lines
+                .iter()
+                .map(|l| l.trim())
+                .filter(|l| !l.is_empty())
+                .collect();
+
+            let missing: Vec<&str> = exp_set.difference(&act_set).copied().collect();
+
+            let mut detail = format!(
+                "内容验证不通过：文件 '{}' 的第 {}-{} 行的实际内容与 expected 描述不一致。",
+                file_path, start_line, end_line
+            );
+            if !missing.is_empty() {
+                detail.push_str(&format!(
+                    "\nexpected 中有 {} 行未在文件中找到:\n",
+                    missing.len()
+                ));
+                for line in &missing {
+                    detail.push_str(&format!("  - '{}'\n", line));
+                }
+            }
+            detail.push_str(&format!(
+                "\n当前第 {}-{} 行的实际内容是:\n",
+                start_line, end_line
+            ));
+            for (i, line) in actual_lines.iter().enumerate() {
+                detail.push_str(&format!("  {} | {}\n", start_line + i, line));
+            }
+            detail.push_str("\n建议：请使用 file_read 重新读取文件确认当前内容后重试。");
+
+            return Err(detail);
+        }
+
+        // 执行替换：取 start_line-1 之前的行 + new_content + end_line 之后的行
+        let before = &lines[..start_line - 1];
+        let after = &lines[end_line..];
+
+        let mut new_lines: Vec<&str> = Vec::with_capacity(before.len() + after.len() + 1);
+        new_lines.extend_from_slice(before);
+        // new_content 可能有多行，逐行追加
+        for line in new_content.lines() {
+            new_lines.push(line);
+        }
+        new_lines.extend_from_slice(after);
+
+        let mut new_output = new_lines.join("\n");
+        new_output.push('\n'); // 保留 trailing newline
+
+        // 写回文件
+        let mut write_content = if line_endings == LineEnding::Crlf {
+            new_output.replace('\n', "\r\n")
+        } else {
+            new_output
+        };
+        if has_bom {
+            write_content.insert(0, '\u{feff}');
+        }
+        std::fs::write(path, write_content.as_bytes())
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+
+        // 构建结果
+        let old_lines_count = end_line - start_line + 1;
+        let new_lines_count = new_content.lines().count();
+        let line_shift = new_lines_count as isize - old_lines_count as isize;
+
+        let diff = build_diff(&actual_content, new_content);
+        let shift_desc = if line_shift > 0 {
+            format!("（+{} 行）", line_shift)
+        } else if line_shift < 0 {
+            format!("（{} 行）", line_shift)
+        } else {
+            String::new()
+        };
+
+        Ok(format!(
+            "文件 '{}' 编辑完成：替换 {}-{} 行（共 {} 行）→ 共 {} 行{}\n\n\
+             diff:\n{}",
+            file_path, start_line, end_line, old_lines_count, new_lines_count, shift_desc, diff,
+        ))
+    }
+
+    // ========================================================================
+    // 追加模式 (append)
+    // ========================================================================
+
+    async fn execute_append(
+        &self,
+        file_path: &str,
+        input: &serde_json::Value,
+    ) -> Result<String, String> {
+        let content = input
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "缺少必填参数 'content'".to_string())?;
+
+        let path = std::path::Path::new(file_path);
+        if !path.exists() {
+            return Err(format!("文件不存在: {}", file_path));
+        }
+
+        let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
+        let check_len = bytes.len().min(8192);
+        if bytes[..check_len].contains(&0x00) {
+            return Err(format!("二进制文件: {}。仅支持文本文件编辑。", file_path));
+        }
+        let content_string = String::from_utf8(bytes)
+            .map_err(|_| format!("文件不是有效的 UTF-8 编码: {}", file_path))?;
+
+        let has_bom = content_string.starts_with('\u{feff}');
+        let text: &str = content_string.trim_start_matches('\u{feff}');
+        let line_endings = detect_line_endings(&content_string);
+        let text = text.replace("\r\n", "\n");
+
+        let new_output = if text.is_empty() {
+            content.to_string()
+        } else if text.ends_with('\n') {
+            format!("{}{}", text, content)
+        } else {
+            format!("{}\n{}", text, content)
+        };
+
+        let mut write_content = if line_endings == LineEnding::Crlf {
+            new_output.replace('\n', "\r\n")
+        } else {
+            new_output
+        };
+        if has_bom {
+            write_content.insert(0, '\u{feff}');
+        }
+        std::fs::write(path, write_content.as_bytes())
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+
+        Ok(format!(
+            "文件 '{}' 追加完成：在文件末尾添加了 {} 行内容。",
+            file_path,
+            content.lines().count(),
+        ))
+    }
+
+    // ========================================================================
+    // 行后插入模式 (insert_after)
+    // ========================================================================
+
+    async fn execute_insert_after(
+        &self,
+        file_path: &str,
+        input: &serde_json::Value,
+    ) -> Result<String, String> {
+        let content = input
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "缺少必填参数 'content'".to_string())?;
+
+        let target_line = input
+            .get("target_line")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| "缺少必填参数 'target_line'".to_string())?
+            as usize;
+
+        let path = std::path::Path::new(file_path);
+        if !path.exists() {
+            return Err(format!("文件不存在: {}", file_path));
+        }
+
+        let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
+        let check_len = bytes.len().min(8192);
+        if bytes[..check_len].contains(&0x00) {
+            return Err(format!("二进制文件: {}。仅支持文本文件编辑。", file_path));
+        }
+        let content_string = String::from_utf8(bytes)
+            .map_err(|_| format!("文件不是有效的 UTF-8 编码: {}", file_path))?;
+
+        let has_bom = content_string.starts_with('\u{feff}');
+        let text: &str = content_string.trim_start_matches('\u{feff}');
+        let line_endings = detect_line_endings(&content_string);
+        let text = text.replace("\r\n", "\n");
+
+        let lines: Vec<&str> = text.lines().collect();
+        let total_lines = lines.len();
+
+        if target_line < 1 || target_line > total_lines {
+            return Err(format!(
+                "target_line 超出范围：target_line={}，文件共 {} 行",
+                target_line, total_lines
+            ));
+        }
+
+        let before = &lines[..target_line]; // 包含 target_line
+        let after = &lines[target_line..]; // target_line 之后
+
+        let mut new_lines: Vec<&str> = Vec::with_capacity(before.len() + after.len() + 1);
+        new_lines.extend_from_slice(before);
+        for line in content.lines() {
+            new_lines.push(line);
+        }
+        new_lines.extend_from_slice(after);
+
+        let mut new_output = new_lines.join("\n");
+        new_output.push('\n'); // 保留 trailing newline
+
+        let mut write_content = if line_endings == LineEnding::Crlf {
+            new_output.replace('\n', "\r\n")
+        } else {
+            new_output
+        };
+        if has_bom {
+            write_content.insert(0, '\u{feff}');
+        }
+        std::fs::write(path, write_content.as_bytes())
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+
+        Ok(format!(
+            "文件 '{}' 插入完成：在第 {} 行后插入了 {} 行内容。",
+            file_path,
+            target_line,
+            content.lines().count(),
+        ))
+    }
+
+    // ========================================================================
+    // 批量编辑模式 (edits)
+    // ========================================================================
+
+    async fn execute_batch(
+        &self,
+        file_path: &str,
+        input: &serde_json::Value,
+    ) -> Result<String, String> {
+        let edits = input
+            .get("edits")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| "缺少 'edits' 数组参数".to_string())?;
+
+        if edits.is_empty() {
+            return Err("edits 数组为空".to_string());
+        }
+
+        // 读取文件
+        let path = std::path::Path::new(file_path);
+        if !path.exists() {
+            return Err(format!("文件不存在: {}", file_path));
+        }
+        let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
+        let check_len = bytes.len().min(8192);
+        if bytes[..check_len].contains(&0x00) {
+            return Err(format!("二进制文件: {}。仅支持文本文件编辑。", file_path));
+        }
+        let content_string = String::from_utf8(bytes)
+            .map_err(|_| format!("文件不是有效的 UTF-8 编码: {}", file_path))?;
+
+        let has_bom = content_string.starts_with('\u{feff}');
+        let content: &str = content_string.trim_start_matches('\u{feff}');
+        let line_endings = detect_line_endings(&content_string);
+        let content = content.replace("\r\n", "\n");
+
+        let lines: Vec<&str> = content.lines().collect();
+        let total_lines = lines.len();
+
+        // 解析所有编辑
+        struct EditItem {
+            start_line: usize,
+            end_line: usize,
+            expected: String,
+            new_content: String,
+        }
+
+        let mut items: Vec<EditItem> = Vec::new();
+        for (i, edit) in edits.iter().enumerate() {
+            let sl = edit
+                .get("start_line")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| format!("edits[{}] 缺少 'start_line' 参数", i))?
+                as usize;
+            let el = edit
+                .get("end_line")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| format!("edits[{}] 缺少 'end_line' 参数", i))?
+                as usize;
+            let exp = edit
+                .get("expected")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("edits[{}] 缺少 'expected' 参数", i))?;
+            let nc = edit
+                .get("new_content")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("edits[{}] 缺少 'new_content' 参数", i))?;
+
+            if sl < 1 || el > total_lines || sl > el {
+                return Err(format!(
+                    "edits[{}] 行号超出范围：start_line={}, end_line={}，文件共 {} 行",
+                    i, sl, el, total_lines
+                ));
+            }
+
+            items.push(EditItem {
+                start_line: sl,
+                end_line: el,
+                expected: exp.to_string(),
+                new_content: nc.to_string(),
+            });
+        }
+
+        // 检测重叠：按 start_line 排序后检查是否有重叠
+        items.sort_by_key(|e| e.start_line);
+        for i in 1..items.len() {
+            if items[i - 1].end_line >= items[i].start_line {
+                return Err(format!(
+                    "批量编辑范围重叠：edits[{}] ({}-{}) 与 edits[{}] ({}-{}) 重叠，请合并后重试",
+                    i - 1,
+                    items[i - 1].start_line,
+                    items[i - 1].end_line,
+                    i,
+                    items[i].start_line,
+                    items[i].end_line,
+                ));
+            }
+        }
+
+        // 全部验证通过后，按 start_line 降序排列（从下到上执行）
+        items.sort_by_key(|b| std::cmp::Reverse(b.start_line));
+
+        // 在内存中执行所有编辑
+        let mut current_lines: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+
+        for item in &items {
+            // 验证
+            let actual_lines: Vec<&str> = current_lines[item.start_line - 1..item.end_line]
+                .iter()
+                .map(|s| s.as_str())
+                .collect();
+            let actual_content = actual_lines.join("\n");
+
+            if validate_content(&item.expected, &actual_content) == Confidence::Low {
+                return Err(format!(
+                    "批量编辑中 edits[{}] 内容验证不通过：\
+                     第 {}-{} 行的实际内容与 expected 描述不一致。\
+                     请使用 file_read 确认当前文件内容。",
+                    edits
+                        .iter()
+                        .position(|e| {
+                            e.get("start_line").and_then(|v| v.as_u64())
+                                == Some(item.start_line as u64)
+                                && e.get("end_line").and_then(|v| v.as_u64())
+                                    == Some(item.end_line as u64)
+                        })
+                        .unwrap_or(0),
+                    item.start_line,
+                    item.end_line,
+                ));
+            }
+
+            // 替换
+            let before = &current_lines[..item.start_line - 1];
+            let after = &current_lines[item.end_line..];
+            let mut new_lines: Vec<String> = Vec::new();
+            new_lines.extend(before.iter().cloned());
+            for line in item.new_content.lines() {
+                new_lines.push(line.to_string());
+            }
+            new_lines.extend(after.iter().cloned());
+            current_lines = new_lines;
+        }
+
+        // 一次写回
+        let mut new_output = current_lines.join("\n");
+        new_output.push('\n'); // 保留 trailing newline
+        let mut write_content = if line_endings == LineEnding::Crlf {
+            new_output.replace('\n', "\r\n")
+        } else {
+            new_output
+        };
+        if has_bom {
+            write_content.insert(0, '\u{feff}');
+        }
+        std::fs::write(path, write_content.as_bytes())
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+
+        Ok(format!(
+            "文件 '{}' 批量编辑完成：{} 个编辑已全部执行",
+            file_path,
+            items.len(),
+        ))
+    }
+
+    // ========================================================================
+    // 旧模式 (old_string/new_string)
+    // ========================================================================
+
+    async fn execute_legacy(
+        &self,
+        file_path: &str,
+        input: &serde_json::Value,
+    ) -> Result<String, String> {
         let old_string = input
             .get("old_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| "缺少必填参数 'old_string'".to_string())?;
+            .ok_or_else(|| "缺少 'old_string' 或 'start_line' 参数，请使用 old_string/new_string 或 line_range 模式".to_string())?;
 
         let new_string = input
             .get("new_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| "缺少必填参数 'new_string'".to_string())?;
+            .ok_or_else(|| "缺少 'new_string' 或 'new_content' 参数".to_string())?;
 
         let replace_all = input
             .get("replace_all")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        // 2. 校验参数
         if old_string == new_string {
             return Err("old_string 和 new_string 相同，没有需要修改的内容".to_string());
         }
-
         if old_string.is_empty() {
-            return Err("old_string 不能为空（暂不支持创建新文件）".to_string());
+            return Err("old_string 不能为空".to_string());
         }
 
-        // 3. 路径校验
         let path = std::path::Path::new(file_path);
-
         if !path.exists() {
             return Err(format!("文件不存在: {}", file_path));
         }
-
         let metadata = std::fs::metadata(path).map_err(|e| format!("读取文件元数据失败: {}", e))?;
 
         if metadata.is_dir() {
@@ -368,6 +913,107 @@ fn count_occurrences(content: &str, pattern: &str) -> usize {
 }
 
 // ---------------------------------------------------------------------------
+// Content validation (line-range mode)
+// ---------------------------------------------------------------------------
+
+/// 内容验证结果
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Confidence {
+    High,
+    Low,
+}
+
+/// 验证 LLM 对指定行号范围的描述是否与实际内容匹配
+///
+/// # 安全规则
+/// - expected 必须包含至少 3 行非空内容（trim 后），否则判别力不足
+/// - 每一行非空内容（trim 后）都必须在 actual 中出现（set 匹配，顺序不敏感）
+/// - 不要求 actual 中额外行也出现在 expected 中
+///
+/// # 设计原则
+/// - 保守拒绝：宁可拒绝也不要静默放行错误位置
+/// - 简单可预测：无百分比模糊，无多层计算
+/// - 语言无关：trim 消除缩进差异，set 匹配消除顺序依赖
+fn validate_content(expected: &str, actual: &str) -> Confidence {
+    let exp_lines: Vec<&str> = expected
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    // 最少 3 行非空内容，否则判别力不足
+    if exp_lines.len() < 3 {
+        return Confidence::Low;
+    }
+
+    // 最短行字符数检查：如果任何行短于 3 个字符，需要至少 4 行
+    // 避免 "}", "}" "}" 这种 3 行短行被放行
+    let has_very_short = exp_lines.iter().any(|l| l.len() < 3);
+    if has_very_short && exp_lines.len() < 4 {
+        return Confidence::Low;
+    }
+
+    // 所有 expected 行（trim 后）必须在 actual 中出现
+    let act_set: std::collections::HashSet<&str> = actual
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if exp_lines.iter().all(|l| act_set.contains(*l)) {
+        Confidence::High
+    } else {
+        Confidence::Low
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Diff builder
+// ---------------------------------------------------------------------------
+
+/// 构建简单的 unified diff 文本用于返回结果
+///
+/// 格式:
+/// ```text
+/// - old_line1
+/// - old_line2
+/// + new_line1
+/// + new_line2
+/// ```
+fn build_diff(old_content: &str, new_content: &str) -> String {
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+    let mut result = String::new();
+
+    // 简单的逐行 diff：旧行标 -，新行标 +
+    let max_len = old_lines.len().max(new_lines.len());
+    for i in 0..max_len {
+        if i < old_lines.len() && i < new_lines.len() {
+            if old_lines[i] != new_lines[i] {
+                result.push_str(&format!("- {}\n", old_lines[i]));
+                result.push_str(&format!("+ {}\n", new_lines[i]));
+            } else {
+                // 显示不变的行的缩略版本作为上下文
+                let line = old_lines[i];
+                if line.len() > 60 {
+                    result.push_str(&format!("  {}...\n", &line[..60]));
+                } else {
+                    result.push_str(&format!("  {}\n", line));
+                }
+            }
+        } else if i < old_lines.len() {
+            // 只有旧行（被删除）
+            result.push_str(&format!("- {}\n", old_lines[i]));
+        } else {
+            // 只有新行（被添加）
+            result.push_str(&format!("+ {}\n", new_lines[i]));
+        }
+    }
+
+    result
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -406,7 +1052,67 @@ mod tests {
             .block_on(editor.execute(&input))
     }
 
-    // ---- Tool definition tests ----
+    fn execute_line_range(
+        file: &std::path::Path,
+        start: u64,
+        end: u64,
+        expected: &str,
+        new_content: &str,
+    ) -> Result<String, String> {
+        let editor = make_editor();
+        let input = serde_json::json!({
+            "file_path": file.to_string_lossy().to_string(),
+            "start_line": start,
+            "end_line": end,
+            "expected": expected,
+            "new_content": new_content,
+        });
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(editor.execute(&input))
+    }
+
+    fn execute_append(file: &std::path::Path, content: &str) -> Result<String, String> {
+        let editor = make_editor();
+        let input = serde_json::json!({
+            "file_path": file.to_string_lossy().to_string(),
+            "mode": "append",
+            "content": content,
+        });
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(editor.execute(&input))
+    }
+
+    fn execute_insert_after(
+        file: &std::path::Path,
+        target: u64,
+        content: &str,
+    ) -> Result<String, String> {
+        let editor = make_editor();
+        let input = serde_json::json!({
+            "file_path": file.to_string_lossy().to_string(),
+            "mode": "insert_after",
+            "target_line": target,
+            "content": content,
+        });
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(editor.execute(&input))
+    }
+
+    fn execute_batch(file: &std::path::Path, edits: serde_json::Value) -> Result<String, String> {
+        let editor = make_editor();
+        let input = serde_json::json!({
+            "file_path": file.to_string_lossy().to_string(),
+            "edits": edits,
+        });
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(editor.execute(&input))
+    }
+
+    // ---- Line range tests ----
 
     #[test]
     fn test_tool_definition_name() {
@@ -428,14 +1134,20 @@ mod tests {
         assert_eq!(schema["type"], "object");
         let props = schema["properties"].as_object().unwrap();
         assert!(props.contains_key("file_path"));
+        assert!(props.contains_key("start_line"));
+        assert!(props.contains_key("end_line"));
+        assert!(props.contains_key("expected"));
+        assert!(props.contains_key("new_content"));
+        assert!(props.contains_key("mode"));
+        assert!(props.contains_key("content"));
+        assert!(props.contains_key("target_line"));
         assert!(props.contains_key("old_string"));
         assert!(props.contains_key("new_string"));
         assert!(props.contains_key("replace_all"));
+        assert!(props.contains_key("edits"));
         let required = schema["required"].as_array().unwrap();
+        assert_eq!(required.len(), 1);
         assert!(required.contains(&serde_json::Value::String("file_path".to_string())));
-        assert!(required.contains(&serde_json::Value::String("old_string".to_string())));
-        assert!(required.contains(&serde_json::Value::String("new_string".to_string())));
-        assert!(!required.contains(&serde_json::Value::String("replace_all".to_string())));
     }
 
     // ---- Execute success tests ----
@@ -797,6 +1509,485 @@ mod tests {
     fn test_count_occurrences_overlapping() {
         // Rust 的 matches 不会重叠匹配
         assert_eq!(count_occurrences("aaaa", "aa"), 2);
+    }
+
+    // ---- Line range tests (integration) ----
+
+    #[test]
+    fn test_line_range_basic() {
+        let (_dir, file) =
+            setup_temp_file("let a = 1;\nlet b = 2;\nlet c = 3;\nlet d = 4;\nlet e = 5;\n");
+        let result = execute_line_range(
+            &file,
+            2,
+            4,
+            "let b = 2;\nlet c = 3;\nlet d = 4;",
+            "let x = 10;\nlet y = 20;",
+        )
+        .unwrap();
+        assert!(result.contains("编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(
+            content,
+            "let a = 1;\nlet x = 10;\nlet y = 20;\nlet e = 5;\n"
+        );
+    }
+
+    #[test]
+    fn test_line_range_shrink() {
+        let (_dir, file) = setup_temp_file("line_a\nline_b\nline_c\nline_d\nline_e\n");
+        let result = execute_line_range(&file, 2, 4, "line_b\nline_c\nline_d", "line_X").unwrap();
+        assert!(result.contains("编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "line_a\nline_X\nline_e\n");
+    }
+
+    #[test]
+    fn test_line_range_expand() {
+        let (_dir, file) = setup_temp_file("line_aa\nline_bb\nline_cc\nline_dd\nline_ee\n");
+        let result = execute_line_range(
+            &file,
+            2,
+            4,
+            "line_bb\nline_cc\nline_dd",
+            "new_1\nnew_2\nnew_3\nnew_4",
+        )
+        .unwrap();
+        assert!(result.contains("编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "line_aa\nnew_1\nnew_2\nnew_3\nnew_4\nline_ee\n");
+    }
+
+    #[test]
+    fn test_line_range_first_line() {
+        let (_dir, file) = setup_temp_file("row1_cnt\nrow2_cnt\nrow3_cnt\nrow4_cnt\n");
+        let result =
+            execute_line_range(&file, 1, 3, "row1_cnt\nrow2_cnt\nrow3_cnt", "new_row1").unwrap();
+        assert!(result.contains("编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "new_row1\nrow4_cnt\n");
+    }
+
+    #[test]
+    fn test_line_range_last_line() {
+        let (_dir, file) = setup_temp_file("rowA_cnt\nrowB_cnt\nrowC_cnt\nrowD_cnt\n");
+        let result =
+            execute_line_range(&file, 2, 4, "rowB_cnt\nrowC_cnt\nrowD_cnt", "last_row").unwrap();
+        assert!(result.contains("编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "rowA_cnt\nlast_row\n");
+    }
+
+    #[test]
+    fn test_line_range_invalid_range() {
+        let (_dir, file) = setup_temp_file("aaa\nbbb\nccc\n");
+        let result = execute_line_range(&file, 3, 2, "aaa\nbbb\nccc", "x");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("超出范围"));
+    }
+
+    #[test]
+    fn test_line_range_out_of_bounds() {
+        let (_dir, file) = setup_temp_file("aaa\nbbb\n");
+        let result = execute_line_range(&file, 1, 10, "aaa\nbbb\nccc", "x");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("超出范围"));
+    }
+
+    #[test]
+    fn test_line_range_content_mismatch() {
+        let (_dir, file) = setup_temp_file("alpha_val\nbeta_val\ngamma_val\ndelta_val\n");
+        let result = execute_line_range(&file, 1, 3, "foobar\nbazqux\nxyzzzz", "new");
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.contains("验证不通过") || err.contains("不一致"));
+    }
+
+    #[test]
+    fn test_line_range_missing_expected() {
+        // expected 不足 3 行（仅 1 行）→ 拒绝
+        let (_dir, file) = setup_temp_file("aaaa\nbbbb\ncccc\ndddd\n");
+        let editor = make_editor();
+        let input = serde_json::json!({
+            "file_path": file.to_string_lossy().to_string(),
+            "start_line": 1,
+            "end_line": 3,
+            "expected": "aaaa",
+            "new_content": "xyz",
+        });
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(editor.execute(&input));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_line_range_crlf_preserved() {
+        let (_dir, file) = setup_temp_file("aaa\r\nbbb\r\nccc\r\nddd\r\n");
+        let result = execute_line_range(&file, 2, 4, "bbb\nccc\nddd", "XXX\nYYY").unwrap();
+        assert!(result.contains("编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert!(content.contains("\r\n"));
+        assert_eq!(content, "aaa\r\nXXX\r\nYYY\r\n");
+    }
+
+    #[test]
+    fn test_line_range_bom_preserved() {
+        let (_dir, file) = setup_temp_file("\u{feff}aaa\nbbb\nccc\nddd\n");
+        let result = execute_line_range(&file, 2, 4, "bbb\nccc\nddd", "BBB\nCCC").unwrap();
+        assert!(result.contains("编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert!(content.starts_with('\u{feff}'));
+        assert_eq!(content, "\u{feff}aaa\nBBB\nCCC\n");
+    }
+
+    #[test]
+    fn test_line_range_binary_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("binary.bin");
+        std::fs::write(&file, &[0x00, 0x01, 0x02]).unwrap();
+        let result = execute_line_range(&file, 1, 1, "foobar\nbazqux\nxyzzzz", "new");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("二进制"));
+    }
+
+    // ---- Append tests ----
+
+    #[test]
+    fn test_append_basic() {
+        let (_dir, file) = setup_temp_file("line1\nline2\n");
+        let result = execute_append(&file, "line3\nline4\n").unwrap();
+        assert!(result.contains("追加完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "line1\nline2\nline3\nline4\n");
+    }
+
+    #[test]
+    fn test_append_empty_file() {
+        let (_dir, file) = setup_temp_file("");
+        let result = execute_append(&file, "new content\n").unwrap();
+        assert!(result.contains("追加完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "new content\n");
+    }
+
+    #[test]
+    fn test_append_no_trailing_newline() {
+        let (_dir, file) = setup_temp_file("line1");
+        let result = execute_append(&file, "line2\n").unwrap();
+        assert!(result.contains("追加完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "line1\nline2\n");
+    }
+
+    #[test]
+    fn test_append_binary_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("binary.bin");
+        std::fs::write(&file, &[0x00, 0x01, 0x02]).unwrap();
+        let result = execute_append(&file, "new");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("二进制"));
+    }
+
+    // ---- Insert after tests ----
+
+    #[test]
+    fn test_insert_after_basic() {
+        let (_dir, file) = setup_temp_file("a\nb\nc\n");
+        let result = execute_insert_after(&file, 2, "x\ny\n").unwrap();
+        assert!(result.contains("插入完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "a\nb\nx\ny\nc\n");
+    }
+
+    #[test]
+    fn test_insert_after_last_line() {
+        let (_dir, file) = setup_temp_file("line1\n");
+        let result = execute_insert_after(&file, 1, "new_line\n").unwrap();
+        assert!(result.contains("插入完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "line1\nnew_line\n");
+    }
+
+    #[test]
+    fn test_insert_after_first_line() {
+        let (_dir, file) = setup_temp_file("a\nb\n");
+        let result = execute_insert_after(&file, 1, "inserted\n").unwrap();
+        assert!(result.contains("插入完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "a\ninserted\nb\n");
+    }
+
+    #[test]
+    fn test_insert_after_invalid_line() {
+        let (_dir, file) = setup_temp_file("a\nb\n");
+        let result = execute_insert_after(&file, 99, "x\n");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("超出范围"));
+    }
+
+    #[test]
+    fn test_insert_after_binary_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("binary.bin");
+        std::fs::write(&file, &[0x00, 0x01, 0x02]).unwrap();
+        let result = execute_insert_after(&file, 1, "new");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("二进制"));
+    }
+
+    // ---- Batch tests ----
+
+    #[test]
+    fn test_batch_two_edits_no_overlap() {
+        let (_dir, file) =
+            setup_temp_file("line_aaa\nline_bbb\nline_ccc\nline_ddd\nline_eee\nline_fff\n");
+        let edits = serde_json::json!([
+            {"start_line": 2, "end_line": 4, "expected": "line_bbb\nline_ccc\nline_ddd", "new_content": "line_BB\nline_CC"},
+            {"start_line": 5, "end_line": 6, "expected": "line_eee\nline_fff\nline_aaa", "new_content": "line_EE"},
+        ]);
+        let result = execute_batch(&file, edits);
+        assert!(
+            result.is_err(),
+            "batch should fail: line_aaa not in lines 5-6"
+        );
+    }
+
+    #[test]
+    fn test_batch_edits_descending_order() {
+        let (_dir, file) =
+            setup_temp_file("row_aaa\nrow_bbb\nrow_ccc\nrow_ddd\nrow_eee\nrow_fff\nrow_ggg\n");
+        let edits = serde_json::json!([
+            {"start_line": 5, "end_line": 7, "expected": "row_eee\nrow_fff\nrow_ggg", "new_content": "row_EE\nrow_FF"},
+            {"start_line": 2, "end_line": 4, "expected": "row_bbb\nrow_ccc\nrow_ddd", "new_content": "row_BB\nrow_CC"},
+        ]);
+        let result = execute_batch(&file, edits).unwrap();
+        assert!(result.contains("批量编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "row_aaa\nrow_BB\nrow_CC\nrow_EE\nrow_FF\n");
+    }
+
+    #[test]
+    fn test_batch_edits_overlap_rejected() {
+        let (_dir, file) = setup_temp_file("line_a\nline_b\nline_c\nline_d\n");
+        let edits = serde_json::json!([
+            {"start_line": 1, "end_line": 3, "expected": "line_a\nline_b\nline_c", "new_content": "X"},
+            {"start_line": 2, "end_line": 4, "expected": "line_b\nline_c\nline_d", "new_content": "Y"},
+        ]);
+        let result = execute_batch(&file, edits);
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("重叠"));
+    }
+
+    #[test]
+    fn test_batch_single_edit() {
+        let (_dir, file) = setup_temp_file("one\ntwo\nthree\nfour\nfive\n");
+        let edits = serde_json::json!([
+            {"start_line": 2, "end_line": 4, "expected": "two\nthree\nfour", "new_content": "TWO\nTHREE"},
+        ]);
+        let result = execute_batch(&file, edits).unwrap();
+        assert!(result.contains("批量编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "one\nTWO\nTHREE\nfive\n");
+    }
+
+    #[test]
+    fn test_batch_empty_edits_rejected() {
+        let (_dir, file) = setup_temp_file("a\nb\nc\n");
+        let result = execute_batch(&file, serde_json::json!([]));
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("为空"));
+    }
+
+    #[test]
+    fn test_batch_after_edit_expands_lines() {
+        // 下面的编辑增加行后，不影响上面编辑（降序执行解决）
+        let (_dir, file) = setup_temp_file("line_1\nline_2\nline_3\nline_4\nline_5\nline_6\n");
+        let edits = serde_json::json!([
+            {"start_line": 4, "end_line": 6, "expected": "line_4\nline_5\nline_6", "new_content": "line_FOUR\nline_FIVE\nline_SIX"},
+            {"start_line": 1, "end_line": 3, "expected": "line_1\nline_2\nline_3", "new_content": "line_ONE\nline_TWO\nline_THREE"},
+        ]);
+        let result = execute_batch(&file, edits).unwrap();
+        assert!(result.contains("批量编辑完成"));
+        let content = std::fs::read_to_string(&file).unwrap();
+        // 降序执行：先 4-6, 再 1-3
+        // 如果顺序错误（先执行 1-3），line_4/5/6 会偏移到行号之外，找不到
+        assert_eq!(
+            content,
+            "line_ONE\nline_TWO\nline_THREE\nline_FOUR\nline_FIVE\nline_SIX\n"
+        );
+    }
+
+    // ---- validate_content tests ----
+
+    #[test]
+    fn test_validate_exact_match() {
+        // 3 行完全一致
+        assert_eq!(
+            validate_content(
+                "let x = 1;\nlet y = 2;\nlet z = 3;",
+                "let x = 1;\nlet y = 2;\nlet z = 3;"
+            ),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_indent_difference() {
+        // 缩进不同，trim 后相同
+        assert_eq!(
+            validate_content(
+                "  let x = 1;\n  let y = 2;\n  let z = 3;",
+                "    let x = 1;\n    let y = 2;\n    let z = 3;"
+            ),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_one_line_different() {
+        // 3 行中 1 行不同
+        assert_eq!(
+            validate_content(
+                "let x = 1;\nlet y = 2;\nlet z = 3;",
+                "let x = 1;\nlet y = 999;\nlet z = 3;"
+            ),
+            Confidence::Low
+        );
+    }
+
+    #[test]
+    fn test_validate_completely_different() {
+        // 完全无关
+        assert_eq!(
+            validate_content(
+                "let x = 1;\nlet y = 2;\nlet z = 3;",
+                "fn foo() {\n    bar()\n}"
+            ),
+            Confidence::Low
+        );
+    }
+
+    #[test]
+    fn test_validate_less_than_3_lines() {
+        // 不足 3 行
+        assert_eq!(
+            validate_content("let x = 1;\nlet y = 2;", "let x = 1;\nlet y = 2;"),
+            Confidence::Low
+        );
+    }
+
+    #[test]
+    fn test_validate_less_than_3_with_empty_lines() {
+        // 含空行，过滤后不足 3 行
+        assert_eq!(
+            validate_content("let x = 1;\n\nlet y = 2;", "let x = 1;\n\nlet y = 2;"),
+            Confidence::Low
+        );
+    }
+
+    #[test]
+    fn test_validate_short_lines_3_only() {
+        // 3 行短行，因短行规则需要至少 4 行
+        assert_eq!(validate_content("x\n}\ny", "x\n}\ny"), Confidence::Low);
+    }
+
+    #[test]
+    fn test_validate_actual_has_extra_lines() {
+        // 实际多出内容（注释行等）
+        assert_eq!(
+            validate_content(
+                "let x = 1;\nlet y = 2;\nreturn x;",
+                "let x = 1;\nlet y = 2;\n// debug\nreturn x;"
+            ),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_order_different() {
+        // 顺序不同（set 匹配）
+        assert_eq!(
+            validate_content(
+                "let y = 2;\nlet z = 3;\nlet x = 1;",
+                "let x = 1;\nlet y = 2;\nlet z = 3;"
+            ),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_duplicate_lines() {
+        // 重复行
+        assert_eq!(
+            validate_content("}\n}\n}\n}", "}\n}\n}\n}"),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_empty_content() {
+        // 空内容
+        assert_eq!(validate_content("", "anything"), Confidence::Low);
+        assert_eq!(validate_content("anything", ""), Confidence::Low);
+    }
+
+    #[test]
+    fn test_validate_rust_struct() {
+        // Rust 结构体（不同语言验证）
+        assert_eq!(
+            validate_content(
+                "struct User {\n    name: String,\n    age: u32,\n}",
+                "struct User {\n    name: String,\n    age: u32,\n}"
+            ),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_python_code() {
+        // Python 代码
+        assert_eq!(
+            validate_content(
+                "def hello():\n    print('hi')\n    return True",
+                "def hello():\n    print('hi')\n    return True"
+            ),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_4_lines_1_different() {
+        // 4 行中 1 行不同 → 3/4 匹配，但仍有 1 行不匹配 → Low
+        assert_eq!(
+            validate_content(
+                "let a = 1;\nlet b = 2;\nlet c = 3;\nlet d = 4;",
+                "let a = 1;\nlet b = 999;\nlet c = 3;\nlet d = 4;"
+            ),
+            Confidence::Low
+        );
+    }
+
+    #[test]
+    fn test_validate_short_lines_4() {
+        // 4 行短行 → 通过（超过 3 行限制）
+        assert_eq!(
+            validate_content("x\n}\ny\nz", "x\n}\ny\nz"),
+            Confidence::High
+        );
+    }
+
+    #[test]
+    fn test_validate_trailing_spaces() {
+        // 末尾空格差异
+        assert_eq!(
+            validate_content(
+                "let x = 1;  \nlet y = 2;\nlet z = 3;",
+                "let x = 1;\nlet y = 2;  \nlet z = 3;"
+            ),
+            Confidence::High
+        );
     }
 
     // ---- Options tests ----

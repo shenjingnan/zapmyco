@@ -524,10 +524,19 @@ impl AiAgent {
                       注意：如果后续需要对文件进行修改（file_edit）或覆盖写入（file_write），必须先通过本工具读取文件内容。"
                 }
                 ToolHandler::FileEdit(_) => {
-                    "- file_edit: 修改本地文件系统中的文件内容。使用 old_string/new_string 模式进行精确替换，比 sed 命令更安全可靠。\
-                      参数包括 file_path（必填，文件路径）、old_string（必填，要被替换的文本）、\
-                      new_string（必填，替换后的文本）、replace_all（可选，是否替换所有匹配项）。\
-                      注意：需要确保 old_string 在文件中出现且唯一；编辑前必须先使用 file_read 读取文件内容。"
+                    "- file_edit: 修改本地文件系统中的文件内容。推荐使用 line_range 模式（比 old_string 更稳定）。\
+                      支持多种模式：\n\
+                      1. line_range（推荐）: 按行号替换。参数: file_path（必填）、start_line（起始行号）、\
+                      end_line（结束行号）、expected（预期内容，至少 3 行非空代码行）、\
+                      new_content（新内容）。系统会自动验证 expected 与实际内容是否一致。\n\
+                      2. append: 在文件末尾追加。参数: file_path（必填）、mode=append、content（要追加的内容）。\n\
+                      3. insert_after: 在指定行后插入。参数: file_path（必填）、mode=insert_after、\
+                      target_line（插入位置）、content（要插入的内容）。\n\
+                      4. 批量编辑: 使用 edits 数组同时编辑一个文件的多个位置。参数: file_path（必填）、\
+                      edits（数组，每个元素包含 start_line/end_line/expected/new_content）。\n\
+                      5. old_string/new_string（旧模式）: 精确字符串替换，保留以兼容旧版。\n\
+                      注意：line_range 模式 edits 数组中的每个元素的 expected 至少 3 行非空代码行（trim 后），\
+                      否则会被拒绝执行。编辑前必须先使用 file_read 读取文件内容。"
                 }
                 ToolHandler::FileWrite(_) => {
                     "- file_write: 创建新文件或完整覆盖已有文件。\
@@ -741,10 +750,65 @@ impl AiAgent {
                 })
                 .collect();
 
+            // 合并同文件 file_edit 调用（line_range 模式），统一为批量编辑
+            let merged_tool_uses = {
+                use std::collections::HashMap;
+                let mut file_edit_groups: HashMap<String, Vec<(String, serde_json::Value)>> =
+                    HashMap::new();
+                let mut other: Vec<(String, String, serde_json::Value)> = Vec::new();
+
+                for (tid, name, input) in &tool_uses {
+                    if name == "file_edit"
+                        && input.get("start_line").and_then(|v| v.as_u64()).is_some()
+                        && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
+                    {
+                        file_edit_groups
+                            .entry(fp.to_string())
+                            .or_default()
+                            .push((tid.clone(), input.clone()));
+                        continue;
+                    }
+                    other.push((tid.clone(), name.clone(), input.clone()));
+                }
+
+                for (file_path, edits) in &file_edit_groups {
+                    if edits.len() == 1 {
+                        let (tid, input) = &edits[0];
+                        other.push((tid.clone(), "file_edit".to_string(), input.clone()));
+                    } else {
+                        let edit_items: Vec<serde_json::Value> = edits
+                            .iter()
+                            .map(|(_, inp)| {
+                                serde_json::json!({
+                                    "start_line": inp["start_line"],
+                                    "end_line": inp["end_line"],
+                                    "expected": inp["expected"],
+                                    "new_content": inp["new_content"],
+                                })
+                            })
+                            .collect();
+
+                        let merged_input = serde_json::json!({
+                            "file_path": file_path,
+                            "edits": edit_items,
+                        });
+                        other.push((edits[0].0.clone(), "file_edit".to_string(), merged_input));
+
+                        eprintln!(
+                            "[工具] 🔗 合并 {} 个 file_edit 调用 (文件: {})",
+                            edits.len(),
+                            file_path,
+                        );
+                    }
+                }
+
+                other
+            };
+
             // 执行所有工具
             let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
 
-            // 按工具类型统计并输出本轮概览
+            // 按工具类型统计并输出本轮概览（使用合并后的列表）
             {
                 let mut type_counts: std::collections::BTreeMap<&str, usize> =
                     std::collections::BTreeMap::new();
@@ -764,12 +828,12 @@ impl AiAgent {
                     .join(", ");
                 eprintln!(
                     "\n[工具] 📋 本轮 {} 个工具调用: {}",
-                    tool_uses.len(),
+                    merged_tool_uses.len(),
                     count_summary
                 );
             }
 
-            for (tool_use_id, name, input) in &tool_uses {
+            for (tool_use_id, name, input) in &merged_tool_uses {
                 let tool_start = Instant::now();
 
                 let handler = self
