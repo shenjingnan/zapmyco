@@ -1,0 +1,30 @@
+---
+title: task_get — 查看任务
+description: 按 ID 获取单个任务的详情和状态
+---
+
+按 ID 获取单个任务的详情和状态。
+
+任务管理系统提供 4 个工具（`task_create`、`task_get`、`task_list`、`task_update`），用于将复杂多步骤工作拆解为可跟踪的任务单元，实时掌握进度。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `task_id` | string | 是 | 要获取的任务 ID |
+
+## 输出示例
+
+```text
+Task #1: 实现用户登录功能
+Status: pending
+Description: 实现邮箱密码登录、OAuth 第三方登录
+Active form: 正在实现登录
+```
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [task_create](/guide/built-in/task_create) — 创建任务
+- [task_list](/guide/built-in/task_list) — 列出所有任务
+- [task_update](/guide/built-in/task_update) — 更新任务状态

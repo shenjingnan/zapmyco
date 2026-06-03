@@ -1,0 +1,67 @@
+---
+title: file_find — 查找文件
+description: 按 glob 通配符模式在本地文件系统中查找文件
+---
+
+按 glob 通配符模式在本地文件系统中查找文件。与 `file_search` 不同，`file_find` 按文件名匹配而非文件内容。
+
+**适用场景**：查找特定类型的文件、按名称搜索文件、了解项目结构等。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `pattern` | string | 是 | glob 通配符模式，例如 `"**/*.rs"` 查找所有 Rust 文件 |
+| `path` | string | 否 | 搜索路径（目录），默认为当前工作目录 |
+| `head_limit` | integer | 否 | 最大结果数量，默认 100 |
+| `offset` | integer | 否 | 跳过前 N 条结果，与 `head_limit` 配合实现分页 |
+
+## 约束与限制
+
+| 限制项 | 值 |
+|--------|:----:|
+| 搜索超时 | 20 秒 |
+| 输出最大长度 | 100,000 字符（超出返回错误） |
+| 默认结果上限 | 100 条 |
+| 隐藏文件 | 包含隐藏文件（同 ripgrep `--hidden`）|
+
+## 输出格式
+
+```text
+匹配模式 "**/*.rs" 于 15 个文件
+
+/path/to/main.rs
+/path/to/lib.rs
+/path/to/subdir/mod.rs
+...
+(显示 10 / 15 个，使用 offset=10 查看后续)
+```
+
+## 与 file_search 的区别
+
+> **file_search** 在文件**内容**中搜索匹配的文本。  
+> **file_find** 按文件**名**模式查找文件。  
+> AI Agent 会自动组合两者：先用 `file_find` 定位目标文件，再用 `file_read` 查看具体内容。
+
+## 错误场景
+
+| 错误类型 | 说明 |
+|----------|------|
+| 缺少 `pattern` | 未提供必填参数 |
+| 无效的 glob 模式 | glob 语法错误（如未闭合的 `[`） |
+| 搜索超时 | 搜索超过 20 秒 |
+| 输出过大 | 结果超过 100K 字符上限 |
+
+## 使用示例
+
+```bash
+zapmyco run '查找项目中所有 Rust 源文件'
+zapmyco run '查找 src/ 目录下所有的 Markdown 文件'
+zapmyco run '查找项目中所有测试文件，限制显示前 5 个'
+```
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [file_search](/guide/built-in/file_search) — 搜索文件内容
+- [file_read](/guide/built-in/file_read) — 读取文件内容

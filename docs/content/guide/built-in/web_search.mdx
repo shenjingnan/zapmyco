@@ -1,0 +1,43 @@
+---
+title: web_search — 搜索网络
+description: 搜索网络获取实时信息，支持域名过滤
+---
+
+搜索网络获取实时信息，支持查询最新新闻、文档、趋势等。
+
+搜索由 API 服务端自动执行（通过 `web_search_20250305` 能力），客户端无需自行集成搜索引擎。
+
+**适用场景**：查询当前新闻、查找最新文档版本、获取实时数据等。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `query` | string | 是 | 搜索查询关键词 |
+| `allowed_domains` | string[] | 否 | 仅在这些域名内搜索 |
+| `blocked_domains` | string[] | 否 | 排除这些域名的结果 |
+
+## 约束与限制
+
+| 限制项 | 值 |
+|--------|:----:|
+| 搜索执行方 | API 服务端自动执行 |
+| 最大搜索次数 | 8 次（单轮对话中） |
+
+## 与 web_fetch 的区别
+
+> **web_search** 返回搜索结果列表（标题 + 摘要 + 链接），但不获取页面完整内容。  
+> **web_fetch** 获取单个页面的完整内容并转为 Markdown。  
+> AI Agent 会自动组合两者：先用 `web_search` 找到相关页面，再用 `web_fetch` 获取具体内容。
+
+## 使用示例
+
+```bash
+zapmyco run '搜索 Rust 2026 最新动态'
+zapmyco run '查找 Rust 异步编程最佳实践，限制在 rust-lang.org 域内'
+```
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [web_fetch](/guide/built-in/web_fetch) — 获取网页内容，与 web_search 配合使用

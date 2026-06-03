@@ -1,0 +1,48 @@
+---
+title: web_fetch — 获取网页内容
+description: 获取指定 URL 的网页内容并转换为干净的 Markdown 文本
+---
+
+获取指定 URL 的网页内容并转换为干净的 Markdown 文本。
+
+**适用场景**：让 AI 读取在线文档、获取 API 参考、查看文章详情、抓取网页数据等。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `url` | string | 是 | 要获取的完整 URL（包含协议，如 `https://`） |
+
+## 约束与限制
+
+| 限制项 | 值 |
+|--------|:----:|
+| 支持的协议 | 仅 `http://` 和 `https://` |
+| 最大响应体 | 1 MB |
+| 请求超时 | 30 秒 |
+| 最大重定向次数 | 5 次 |
+| 输出最大长度 | 100,000 字符（超出自动截断，尾部附说明） |
+| 允许的 Content-Type | `text/html`、`text/plain` |
+
+## 错误场景
+
+| 错误类型 | 说明 |
+|----------|------|
+| URL 无效 | 空 URL、非 http/https 协议（如 `ftp://`） |
+| 网络错误 | 超时、DNS 解析失败、连接被拒绝、重定向过多 |
+| HTTP 错误 | 服务端返回非 2xx 状态码（如 404、502） |
+| 响应体过大 | 超过 1 MB 限制 |
+| HTML 转换失败 | 内容解析异常 |
+| 不支持的 Content-Type | 服务器返回非 `text/html` / `text/plain` 的类型 |
+
+## 使用示例
+
+```bash
+zapmyco run '请访问 https://example.com 并总结页面内容'
+zapmyco run '从 https://doc.rust-lang.org/book/ 中提取目录'
+```
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [web_search](/guide/built-in/web_search) — 搜索网络，与 web_fetch 配合使用
