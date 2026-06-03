@@ -1,4 +1,5 @@
 use futures_util::{Stream, StreamExt};
+use std::pin::Pin;
 use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
@@ -140,6 +141,65 @@ impl ToolHandler {
                 };
                 tool.execute(input).await
             }
+        }
+    }
+
+    /// 判断工具在当前输入下是否可以与其他工具并行执行
+    fn is_concurrency_safe(&self, input: &serde_json::Value) -> bool {
+        match self {
+            // 只读文件操作 —— 安全
+            ToolHandler::FileRead(_) | ToolHandler::FileSearch(_) | ToolHandler::FileFind(_) => {
+                true
+            }
+            // 网络查询 —— 安全
+            ToolHandler::WebSearch(_) | ToolHandler::WebFetch(_) => true,
+            // 任务查询/列表 —— 安全（只读）
+            ToolHandler::TaskGet(_) | ToolHandler::TaskList(_) => true,
+            // shell_exec —— 仅只读命令安全
+            ToolHandler::ShellExec(_) => {
+                if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
+                    let cmd_trimmed = cmd.trim_start();
+                    let read_only_prefixes = [
+                        "echo",
+                        "ls",
+                        "cat",
+                        "head",
+                        "tail",
+                        "pwd",
+                        "which",
+                        "type",
+                        "env",
+                        "printenv",
+                        "date",
+                        "whoami",
+                        "id",
+                        "uname",
+                        "hostname",
+                        "git status",
+                        "git log",
+                        "git diff",
+                        "git branch",
+                        "git remote",
+                        "cargo check",
+                        "cargo fmt",
+                        "cargo clippy",
+                        "cargo test",
+                        "npm ls",
+                        "npm list",
+                    ];
+                    read_only_prefixes
+                        .iter()
+                        .any(|p| cmd_trimmed.starts_with(p))
+                } else {
+                    false
+                }
+            }
+            // 写操作、交互操作 —— 不安全
+            ToolHandler::FileEdit(_)
+            | ToolHandler::FileWrite(_)
+            | ToolHandler::AskUser(_)
+            | ToolHandler::TaskCreate(_)
+            | ToolHandler::TaskUpdate(_) => false,
         }
     }
 }
@@ -695,9 +755,24 @@ impl AiAgent {
                 return Ok(result.full_text);
             }
 
-            // 有工具调用——合并同文件编辑并执行
+            // 有工具调用——合并同文件编辑并按安全分区并行/串行执行
             let merged = merge_file_edits(&result.tool_uses);
-            let tool_result_blocks = self.execute_tools(merged).await?;
+            let batches = partition_tool_calls(merged, &self.tools);
+            let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
+
+            for batch in batches {
+                if batch.is_concurrency_safe {
+                    let (blocks, state_updates) =
+                        self.execute_tools_concurrent(&batch.items).await?;
+                    for (fp, mtime) in state_updates {
+                        self.read_file_state.insert(fp, mtime);
+                    }
+                    tool_result_blocks.extend(blocks);
+                } else {
+                    let blocks = self.execute_tools_serial(&batch.items).await?;
+                    tool_result_blocks.extend(blocks);
+                }
+            }
 
             // 将工具结果作为用户消息追加
             self.messages.push(ConversationMessage {
@@ -860,16 +935,16 @@ impl AiAgent {
         })
     }
 
-    /// 执行工具调用列表，返回 ToolResult ContentBlock 列表
-    async fn execute_tools(
+    /// 串行执行工具调用列表（逐个 await），返回 ToolResult ContentBlock 列表
+    async fn execute_tools_serial(
         &mut self,
-        tool_uses: Vec<(String, String, serde_json::Value)>,
+        tool_uses: &[(String, String, serde_json::Value)],
     ) -> Result<Vec<ContentBlock>, String> {
         // 按工具类型统计并输出本轮概览
         {
             let mut type_counts: std::collections::BTreeMap<&str, usize> =
                 std::collections::BTreeMap::new();
-            for (_, name, _) in &tool_uses {
+            for (_, name, _) in tool_uses {
                 *type_counts.entry(name.as_str()).or_insert(0) += 1;
             }
             let count_summary: String = type_counts
@@ -892,7 +967,7 @@ impl AiAgent {
 
         let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
 
-        for (tool_use_id, name, input) in &tool_uses {
+        for (tool_use_id, name, input) in tool_uses {
             let tool_start = Instant::now();
 
             let handler = self
@@ -1003,6 +1078,199 @@ impl AiAgent {
         }
 
         Ok(tool_result_blocks)
+    }
+
+    /// 并发执行一批安全的工具调用，返回 ToolResult ContentBlock 列表和 read_file_state 更新
+    async fn execute_tools_concurrent(
+        &self,
+        tool_uses: &[(String, String, serde_json::Value)],
+    ) -> Result<(Vec<ContentBlock>, Vec<(String, u64)>), String> {
+        // 按工具类型统计并输出本轮概览
+        {
+            let mut type_counts: std::collections::BTreeMap<&str, usize> =
+                std::collections::BTreeMap::new();
+            for (_, name, _) in tool_uses {
+                *type_counts.entry(name.as_str()).or_insert(0) += 1;
+            }
+            let count_summary: String = type_counts
+                .iter()
+                .map(|(name, count)| {
+                    if *count > 1 {
+                        format!("{} {} ×{}", tool_icon(name), name, count)
+                    } else {
+                        format!("{} {}", tool_icon(name), name)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            eprintln!(
+                "\n[工具] 📋 本轮 {} 个工具调用（并行）: {}",
+                tool_uses.len(),
+                count_summary
+            );
+        }
+
+        use futures_util::StreamExt as _;
+        use futures_util::stream::FuturesUnordered;
+
+        let total = tool_uses.len();
+        let mut futures: FuturesUnordered<Pin<Box<dyn Future<Output = _> + Send>>> =
+            FuturesUnordered::new();
+
+        // 为每个工具构造一个并发执行的 future
+        for (idx, (tool_use_id, name, input)) in tool_uses.iter().enumerate() {
+            let handler = self
+                .tools
+                .iter()
+                .find(|h| h.tool_definition().name == *name)
+                .ok_or_else(|| format!("Unknown tool: {}", name))?;
+
+            let icon = tool_icon(name);
+            let param = format_tool_param(name, input);
+            let input_clone = input.clone();
+            let tool_use_id_clone = tool_use_id.clone();
+            let name_clone = name.clone();
+
+            // 预读检查使用 read_file_state 的快照
+            let pre_read_error: Option<String> = match name.as_str() {
+                "file_write" | "file_edit" => {
+                    if let Some(fp) = input.get("file_path").and_then(|v| v.as_str()) {
+                        let path = std::path::Path::new(fp);
+                        if path.exists() {
+                            match self.read_file_state.get(fp) {
+                                None => Some(format!(
+                                    "错误：文件 '{}' 已存在，但未通过 file_read 读取。\
+                                         请先使用 file_read 读取文件内容后再进行写入操作。",
+                                    fp
+                                )),
+                                Some(&recorded_mtime) => {
+                                    if let Ok(meta) = path.metadata() {
+                                        if let Ok(mtime) = meta.modified() {
+                                            let current_ms = mtime
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .map(|d| d.as_millis() as u64)
+                                                .unwrap_or(0);
+                                            if current_ms > recorded_mtime {
+                                                Some(format!(
+                                                    "错误：文件 '{}' 自读取后已被外部修改，\
+                                                     请重新使用 file_read 读取后再操作。",
+                                                    fp
+                                                ))
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                }
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            futures.push(Box::pin(async move {
+                let tool_start = Instant::now();
+
+                let (result_text, file_state, log_line) = if let Some(err_msg) = pre_read_error {
+                    tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
+                    let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
+                    (format!("[Tool error: {}]", err_msg), None, line)
+                } else {
+                    match handler.execute(&input_clone).await {
+                        Ok(text) => {
+                            // 提取文件状态（file_read），后面统一应用
+                            let file_state = if name_clone == "file_read" {
+                                input_clone
+                                    .get("file_path")
+                                    .and_then(|v| v.as_str())
+                                    .map(|fp| {
+                                        let mtime = std::path::Path::new(fp)
+                                            .metadata()
+                                            .ok()
+                                            .and_then(|meta| meta.modified().ok())
+                                            .and_then(|mtime| {
+                                                mtime.duration_since(std::time::UNIX_EPOCH).ok()
+                                            })
+                                            .map(|d| d.as_millis() as u64)
+                                            .unwrap_or(0);
+                                        (fp.to_string(), mtime)
+                                    })
+                            } else {
+                                None
+                            };
+                            let elapsed = tool_start.elapsed();
+                            tracing::info!(
+                                tool = %name_clone,
+                                duration_ms = elapsed.as_millis() as u64,
+                                result_len = text.len(),
+                                "工具执行成功"
+                            );
+                            let line = format!(
+                                "[工具] {} {}  {}  ({:.1}s, {} 字符)",
+                                icon,
+                                name_clone,
+                                param,
+                                elapsed.as_secs_f64(),
+                                text.len()
+                            );
+                            (text, file_state, line)
+                        }
+                        Err(e) => {
+                            tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
+                            let line = format!(
+                                "[工具] {} {}  {}  ❌ 失败: {}",
+                                icon, name_clone, param, e
+                            );
+                            (format!("[Tool error: {}]", e), None, line)
+                        }
+                    }
+                };
+
+                (idx, tool_use_id_clone, result_text, file_state, log_line)
+            }));
+        }
+
+        // 收集结果
+        let mut results: Vec<Option<String>> = vec![None; total];
+        let mut result_ids: Vec<Option<String>> = vec![None; total];
+        let mut log_lines: Vec<Option<String>> = vec![None; total];
+        let mut state_updates: Vec<(String, u64)> = Vec::new();
+
+        while let Some((idx, tool_use_id, result_text, file_state, log_line)) = futures.next().await
+        {
+            results[idx] = Some(result_text);
+            result_ids[idx] = Some(tool_use_id);
+            log_lines[idx] = Some(log_line);
+            if let Some((fp, mtime)) = file_state {
+                state_updates.push((fp, mtime));
+            }
+        }
+
+        // 按原始顺序统一输出，避免并发 eprintln! 交错
+        for line in log_lines.iter().flatten() {
+            eprintln!("{}", line);
+        }
+
+        // 按原始顺序构建 ToolResult blocks
+        let blocks: Vec<ContentBlock> = results
+            .into_iter()
+            .zip(result_ids)
+            .map(|(result, id)| ContentBlock::ToolResult {
+                tool_use_id: id.unwrap_or_default(),
+                content: result.unwrap_or_else(|| "Unknown error".to_string()),
+            })
+            .collect();
+
+        Ok((blocks, state_updates))
     }
 
     /// 构建请求参数
@@ -1309,6 +1577,55 @@ fn merge_file_edits(
     }
 
     other
+}
+
+/// 工具执行批次，用于并行/串行分区
+struct ToolBatch {
+    /// 批次内所有工具是否可以并行执行
+    is_concurrency_safe: bool,
+    /// (tool_use_id, name, input)
+    items: Vec<(String, String, serde_json::Value)>,
+}
+
+/// 将工具调用列表按并发安全属性分区：
+/// 连续的 safe 工具合并在一个 batch 中（可并行），
+/// 每个 unsafe 工具单独一个 batch（串行执行）。
+fn partition_tool_calls(
+    tool_uses: Vec<(String, String, serde_json::Value)>,
+    tools: &[ToolHandler],
+) -> Vec<ToolBatch> {
+    let mut batches: Vec<ToolBatch> = Vec::new();
+
+    for (tool_use_id, name, input) in tool_uses {
+        // 查找 ToolHandler 判断并发安全
+        let is_safe = tools
+            .iter()
+            .find(|h| h.tool_definition().name == name)
+            .map(|h| h.is_concurrency_safe(&input))
+            .unwrap_or(false);
+
+        if is_safe {
+            // 尝试追加到上一个 batch（如果前一个也是 safe batch）
+            if let Some(last) = batches.last_mut()
+                && last.is_concurrency_safe
+            {
+                last.items.push((tool_use_id, name, input));
+            } else {
+                batches.push(ToolBatch {
+                    is_concurrency_safe: true,
+                    items: vec![(tool_use_id, name, input)],
+                });
+            }
+        } else {
+            // 不安全工具各自独立 batch
+            batches.push(ToolBatch {
+                is_concurrency_safe: false,
+                items: vec![(tool_use_id, name, input)],
+            });
+        }
+    }
+
+    batches
 }
 
 /// 在终端输出当前轮次的 token 用量和缓存命中率信息
@@ -3087,7 +3404,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools(tool_uses)
+                    .execute_tools_serial(&tool_uses)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -3126,7 +3443,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools(tool_uses)
+                    .execute_tools_serial(&tool_uses)
                     .await
                     .expect("execute_tools should not fail");
 
@@ -3159,7 +3476,7 @@ mod tests {
                     "file_path": test_file.to_string_lossy().to_string(),
                 });
                 let _ = agent
-                    .execute_tools(vec![(
+                    .execute_tools_serial(&vec![(
                         "tu00".to_string(),
                         "file_read".to_string(),
                         read_input,
@@ -3182,7 +3499,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools(tool_uses)
+                    .execute_tools_serial(&tool_uses)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -3219,7 +3536,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools(tool_uses)
+                    .execute_tools_serial(&tool_uses)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -3243,13 +3560,1300 @@ mod tests {
                     serde_json::json!({}),
                 )];
 
-                let result = agent.execute_tools(tool_uses).await;
+                let result = agent.execute_tools_serial(&tool_uses).await;
                 assert!(result.is_err(), "unknown tool should error");
                 let err = result.err().unwrap();
                 assert!(
                     err.contains("Unknown tool"),
                     "error should mention unknown tool"
                 );
+            });
+        });
+    }
+
+    // ---- is_concurrency_safe tests ----
+
+    #[test]
+    fn test_is_concurrency_safe_file_read() {
+        let handler =
+            ToolHandler::FileRead(crate::tools::file_read::FileRead::new(Default::default()));
+        let input = serde_json::json!({"file_path": "/tmp/test.rs"});
+        assert!(handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_file_search() {
+        let handler = ToolHandler::FileSearch(crate::tools::file_search::FileSearch::new(
+            Default::default(),
+        ));
+        let input = serde_json::json!({"pattern": "fn main"});
+        assert!(handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_file_find() {
+        let handler =
+            ToolHandler::FileFind(crate::tools::file_find::FileFind::new(Default::default()));
+        let input = serde_json::json!({"pattern": "*.rs"});
+        assert!(handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_web_search() {
+        let handler = ToolHandler::WebSearch(
+            crate::tools::web_search::WebSearch::new(
+                "k".to_string(),
+                "https://x.com".to_string(),
+                "m".to_string(),
+                100,
+            )
+            .unwrap(),
+        );
+        let input = serde_json::json!({"query": "rust programming"});
+        assert!(handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_web_fetch() {
+        let handler = ToolHandler::WebFetch(
+            crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap(),
+        );
+        let input = serde_json::json!({"url": "https://example.com"});
+        assert!(handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_task_get() {
+        let manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::new());
+        let handler = ToolHandler::TaskGet(manager);
+        let input = serde_json::json!({"task_id": "1"});
+        assert!(handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_task_list() {
+        let manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::new());
+        let handler = ToolHandler::TaskList(manager);
+        let input = serde_json::json!({});
+        assert!(handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_file_write() {
+        let handler =
+            ToolHandler::FileWrite(crate::tools::file_write::FileWrite::new(Default::default()));
+        let input = serde_json::json!({"file_path": "/tmp/test.rs"});
+        assert!(!handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_file_edit() {
+        let handler =
+            ToolHandler::FileEdit(crate::tools::file_edit::FileEdit::new(Default::default()));
+        let input = serde_json::json!({"file_path": "/tmp/test.rs"});
+        assert!(!handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_ask_user() {
+        let handler = ToolHandler::AskUser(crate::tools::ask_user::AskUser);
+        let input = serde_json::json!({"question": "Continue?"});
+        assert!(!handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_task_create() {
+        let manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::new());
+        let handler = ToolHandler::TaskCreate(manager);
+        let input = serde_json::json!({"subject": "new task"});
+        assert!(!handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_task_update() {
+        let manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::new());
+        let handler = ToolHandler::TaskUpdate(manager);
+        let input = serde_json::json!({"task_id": "1", "status": "completed"});
+        assert!(!handler.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_shell_exec_read_only() {
+        let executor = crate::tools::shell_exec::ShellExec::new(Default::default());
+        let handler = ToolHandler::ShellExec(executor);
+
+        let read_commands = [
+            "echo hello",
+            "ls -la",
+            "cat /tmp/test.rs",
+            "pwd",
+            "which cargo",
+            "git status",
+            "cargo check",
+        ];
+        for cmd in &read_commands {
+            let input = serde_json::json!({"command": cmd});
+            assert!(
+                handler.is_concurrency_safe(&input),
+                "read-only command '{}' should be safe",
+                cmd
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_shell_exec_mutating() {
+        let executor = crate::tools::shell_exec::ShellExec::new(Default::default());
+        let handler = ToolHandler::ShellExec(executor);
+
+        let write_commands = [
+            "rm -rf /tmp",
+            "git commit -m 'test'",
+            "cargo publish",
+            "npm install",
+        ];
+        for cmd in &write_commands {
+            let input = serde_json::json!({"command": cmd});
+            assert!(
+                !handler.is_concurrency_safe(&input),
+                "mutating command '{}' should NOT be safe",
+                cmd
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_shell_exec_no_command() {
+        let executor = crate::tools::shell_exec::ShellExec::new(Default::default());
+        let handler = ToolHandler::ShellExec(executor);
+        let input = serde_json::json!({});
+        assert!(
+            !handler.is_concurrency_safe(&input),
+            "shell_exec without command should not be safe"
+        );
+    }
+
+    // ---- is_concurrency_safe 边界场景 ----
+
+    #[test]
+    fn test_is_concurrency_safe_shell_exec_leading_whitespace() {
+        let executor = crate::tools::shell_exec::ShellExec::new(Default::default());
+        let handler = ToolHandler::ShellExec(executor);
+
+        // 命令前有空格/制表符 — 实现中用了 trim_start()，应正常识别
+        let inputs = [
+            ("  ls -la", true),
+            ("\techo hello", true),
+            ("  rm -rf /tmp", false),
+            ("  git commit -m 'x'", false),
+        ];
+        for (cmd, expected) in &inputs {
+            let input = serde_json::json!({"command": cmd});
+            assert_eq!(
+                handler.is_concurrency_safe(&input),
+                *expected,
+                "leading whitespace command '{}' should be {}",
+                cmd,
+                if *expected { "safe" } else { "unsafe" }
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_shell_exec_prefix_edge_cases() {
+        let executor = crate::tools::shell_exec::ShellExec::new(Default::default());
+        let handler = ToolHandler::ShellExec(executor);
+
+        // 命令以只读前缀开头但不是标准只读命令 — 可能产生假阳性
+        // 比如 "catastrophe" 以 "cat" 开头会被识别为只读
+        let inputs = [
+            ("catastrophe", true),    // 假阳性：以 "cat" 开头
+            ("ls-extra", true),       // 假阳性：以 "ls" 开头
+            ("echo_something", true), // 假阳性：以 "echo" 开头
+            ("typewriter", true),     // 假阳性：以 "type" 开头
+        ];
+        for (cmd, expected) in &inputs {
+            let input = serde_json::json!({"command": cmd});
+            assert_eq!(
+                handler.is_concurrency_safe(&input),
+                *expected,
+                "prefix edge case '{}' should be {} (safe=false would be more conservative)",
+                cmd,
+                if *expected { "safe" } else { "unsafe" }
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_shell_exec_multi_word_prefix() {
+        let executor = crate::tools::shell_exec::ShellExec::new(Default::default());
+        let handler = ToolHandler::ShellExec(executor);
+
+        // 多词前缀（如 "git status"）需要精确匹配前两个词
+        let inputs = [
+            ("git status -sb", true),              // 匹配 "git status" 前缀
+            ("git status", true),                  // 精确匹配
+            ("git status   --short", true),        // "git status" 后跟空格
+            ("git stash", false),                  // "git status" vs "git stash" — 不匹配
+            ("git st", false),                     // "git status" vs "git st" — 不匹配
+            ("cargo check --all", true),           // 匹配 "cargo check"
+            ("cargo check", true),                 // 精确匹配
+            ("cargo clippy -- -D warnings", true), // 匹配 "cargo clippy"
+            ("cargo test --test-threads=1", true), // 匹配 "cargo test"
+            ("cargo build", false),                // "cargo build" 不在只读列表
+            ("cargo b", false),                    // 不在只读列表
+        ];
+        for (cmd, expected) in &inputs {
+            let input = serde_json::json!({"command": cmd});
+            assert_eq!(
+                handler.is_concurrency_safe(&input),
+                *expected,
+                "multi-word prefix command '{}' should be {}",
+                cmd,
+                if *expected { "safe" } else { "unsafe" }
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_concurrency_safe_shell_exec_case_sensitivity() {
+        let executor = crate::tools::shell_exec::ShellExec::new(Default::default());
+        let handler = ToolHandler::ShellExec(executor);
+
+        // starts_with 是大小写敏感的，大写的只读命令不会被识别
+        let inputs = [
+            ("LS -la", false),        // 大写 "LS" 不匹配 "ls"
+            ("ECHO hello", false),    // 大写 "ECHO" 不匹配 "echo"
+            ("Cat /tmp/test", false), // 大写 "Cat" 不匹配 "cat"
+            ("Git status", false),    // 大写 "Git" 不匹配 "git"
+        ];
+        for (cmd, expected) in &inputs {
+            let input = serde_json::json!({"command": cmd});
+            assert_eq!(
+                handler.is_concurrency_safe(&input),
+                *expected,
+                "case sensitivity: '{}' should be {}",
+                cmd,
+                if *expected { "safe" } else { "unsafe" }
+            );
+        }
+    }
+
+    // ---- partition_tool_calls tests ----
+
+    fn make_safe_tool_handler(name: &str) -> ToolHandler {
+        match name {
+            "file_read" => {
+                ToolHandler::FileRead(crate::tools::file_read::FileRead::new(Default::default()))
+            }
+            _ => panic!("unknown safe tool: {}", name),
+        }
+    }
+
+    fn make_unsafe_tool_handler(name: &str) -> ToolHandler {
+        match name {
+            "file_write" => {
+                ToolHandler::FileWrite(crate::tools::file_write::FileWrite::new(Default::default()))
+            }
+            "file_edit" => {
+                ToolHandler::FileEdit(crate::tools::file_edit::FileEdit::new(Default::default()))
+            }
+            _ => panic!("unknown unsafe tool: {}", name),
+        }
+    }
+
+    #[test]
+    fn test_partition_tool_calls_all_safe() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu02".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+        ];
+        let tools = vec![
+            make_safe_tool_handler("file_read"),
+            make_safe_tool_handler("file_read"),
+        ];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        assert_eq!(batches.len(), 1, "all safe tools should be in one batch");
+        assert!(batches[0].is_concurrency_safe);
+        assert_eq!(batches[0].items.len(), 2);
+    }
+
+    #[test]
+    fn test_partition_tool_calls_all_unsafe() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_write".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu02".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({}),
+            ),
+        ];
+        let tools = vec![
+            make_unsafe_tool_handler("file_write"),
+            make_unsafe_tool_handler("file_edit"),
+        ];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        assert_eq!(batches.len(), 2, "each unsafe tool should be its own batch");
+        assert!(!batches[0].is_concurrency_safe);
+        assert!(!batches[1].is_concurrency_safe);
+        assert_eq!(batches[0].items.len(), 1);
+        assert_eq!(batches[1].items.len(), 1);
+    }
+
+    #[test]
+    fn test_partition_tool_calls_mixed() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu02".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu03".to_string(),
+                "file_write".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu04".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu05".to_string(),
+                "file_edit".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu06".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+        ];
+        let tools = vec![
+            make_safe_tool_handler("file_read"),
+            make_safe_tool_handler("file_read"),
+            make_unsafe_tool_handler("file_write"),
+            make_unsafe_tool_handler("file_edit"),
+        ];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        // 预期: [safe, safe] [unsafe(file_write)] [safe] [unsafe(file_edit)] [safe]
+        assert_eq!(batches.len(), 5);
+        assert!(batches[0].is_concurrency_safe);
+        assert_eq!(batches[0].items.len(), 2); // file_read + file_read
+        assert!(!batches[1].is_concurrency_safe);
+        assert_eq!(batches[1].items[0].1, "file_write");
+        assert!(batches[2].is_concurrency_safe);
+        assert_eq!(batches[2].items[0].1, "file_read");
+        assert!(!batches[3].is_concurrency_safe);
+        assert_eq!(batches[3].items[0].1, "file_edit");
+        assert!(batches[4].is_concurrency_safe);
+        assert_eq!(batches[4].items[0].1, "file_read");
+    }
+
+    #[test]
+    fn test_partition_tool_calls_empty() {
+        let batches = partition_tool_calls(vec![], &[]);
+        assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn test_partition_tool_calls_consecutive_unsafe() {
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_write".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu02".to_string(),
+                "file_write".to_string(),
+                serde_json::json!({}),
+            ),
+        ];
+        let tools = vec![make_unsafe_tool_handler("file_write")];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        // Each unsafe tool is its own batch, even if consecutive
+        assert_eq!(batches.len(), 2);
+        assert!(!batches[0].is_concurrency_safe);
+        assert!(!batches[1].is_concurrency_safe);
+    }
+
+    // ---- partition_tool_calls 边界场景 ----
+
+    #[test]
+    fn test_partition_tool_calls_single_safe() {
+        let tool_uses = vec![(
+            "tu01".to_string(),
+            "file_read".to_string(),
+            serde_json::json!({"file_path": "/tmp/test.rs"}),
+        )];
+        let tools = vec![make_safe_tool_handler("file_read")];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        assert_eq!(batches.len(), 1);
+        assert!(batches[0].is_concurrency_safe);
+        assert_eq!(batches[0].items.len(), 1);
+    }
+
+    #[test]
+    fn test_partition_tool_calls_single_unsafe() {
+        let tool_uses = vec![(
+            "tu01".to_string(),
+            "file_write".to_string(),
+            serde_json::json!({"file_path": "/tmp/test.rs"}),
+        )];
+        let tools = vec![make_unsafe_tool_handler("file_write")];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        assert_eq!(batches.len(), 1);
+        assert!(!batches[0].is_concurrency_safe);
+        assert_eq!(batches[0].items.len(), 1);
+    }
+
+    #[test]
+    fn test_partition_tool_calls_unknown_tool_name() {
+        // 工具名不在 tools 列表中 → 应降级为不安全（单个 batch）
+        let tool_uses = vec![(
+            "tu01".to_string(),
+            "nonexistent_tool".to_string(),
+            serde_json::json!({}),
+        )];
+        let tools: Vec<ToolHandler> = vec![];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        assert_eq!(batches.len(), 1);
+        assert!(
+            !batches[0].is_concurrency_safe,
+            "unknown tool should default to unsafe"
+        );
+        assert_eq!(batches[0].items.len(), 1);
+        assert_eq!(batches[0].items[0].1, "nonexistent_tool");
+    }
+
+    #[test]
+    fn test_partition_tool_calls_unknown_tool_among_safe() {
+        // 已知 safe 和未知工具交替
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu02".to_string(),
+                "unknown_tool".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu03".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+        ];
+        let tools = vec![make_safe_tool_handler("file_read")];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        // [safe] [unsafe(unknown)] [safe]
+        assert_eq!(batches.len(), 3);
+        assert!(batches[0].is_concurrency_safe);
+        assert!(!batches[1].is_concurrency_safe);
+        assert_eq!(batches[1].items[0].1, "unknown_tool");
+        assert!(batches[2].is_concurrency_safe);
+    }
+
+    #[test]
+    fn test_partition_tool_calls_many_safe_tools() {
+        // 大量 safe 工具应合并到同一个 batch
+        let mut tool_uses = Vec::new();
+        let mut tools = Vec::new();
+        for i in 0..10 {
+            tool_uses.push((
+                format!("tu{:02}", i),
+                "file_read".to_string(),
+                serde_json::json!({"file_path": format!("/tmp/test{}.rs", i)}),
+            ));
+            tools.push(make_safe_tool_handler("file_read"));
+        }
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        assert_eq!(batches.len(), 1, "all 10 safe tools should be in one batch");
+        assert!(batches[0].is_concurrency_safe);
+        assert_eq!(batches[0].items.len(), 10);
+    }
+
+    #[test]
+    fn test_partition_tool_calls_alternating_single_safe_unsafe() {
+        // safe/unsafe/safe/unsafe → 4 个 batch
+        let tool_uses = vec![
+            (
+                "tu01".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu02".to_string(),
+                "file_write".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu03".to_string(),
+                "file_read".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "tu04".to_string(),
+                "file_write".to_string(),
+                serde_json::json!({}),
+            ),
+        ];
+        let tools = vec![
+            make_safe_tool_handler("file_read"),
+            make_unsafe_tool_handler("file_write"),
+        ];
+
+        let batches = partition_tool_calls(tool_uses, &tools);
+        assert_eq!(batches.len(), 4);
+        assert!(batches[0].is_concurrency_safe);
+        assert!(!batches[1].is_concurrency_safe);
+        assert_eq!(batches[1].items[0].1, "file_write");
+        assert!(batches[2].is_concurrency_safe);
+        assert!(!batches[3].is_concurrency_safe);
+        assert_eq!(batches[3].items[0].1, "file_write");
+    }
+
+    // ---- execute_tools_concurrent tests ----
+
+    #[test]
+    fn test_execute_tools_concurrent_basic() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_find"]);
+
+                // 创建测试文件
+                let test_file1 = home.join("test1.rs");
+                let test_file2 = home.join("test2.rs");
+                std::fs::write(&test_file1, "fn a() {}").unwrap();
+                std::fs::write(&test_file2, "fn b() {}").unwrap();
+
+                let tool_uses = vec![
+                    (
+                        "tu01".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "*.rs",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                    (
+                        "tu02".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "*.rs",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                ];
+
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent execution should succeed");
+
+                assert_eq!(blocks.len(), 2);
+                for (i, block) in blocks.iter().enumerate() {
+                    assert!(
+                        matches!(block, ContentBlock::ToolResult { .. }),
+                        "block {} should be ToolResult",
+                        i
+                    );
+                }
+                // file_find 不会产生 read_file_state 更新
+                assert!(state_updates.is_empty());
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_empty() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_read"]);
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&[])
+                    .await
+                    .expect("empty batch should succeed");
+
+                assert!(blocks.is_empty());
+                assert!(state_updates.is_empty());
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_single_tool() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_find"]);
+
+                let test_file = home.join("test.rs");
+                std::fs::write(&test_file, "fn main() {}").unwrap();
+
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_find".to_string(),
+                    serde_json::json!({
+                        "pattern": "*.rs",
+                        "path": home.to_string_lossy().to_string(),
+                    }),
+                )];
+
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("single tool should succeed");
+
+                assert_eq!(blocks.len(), 1);
+                assert!(matches!(blocks[0], ContentBlock::ToolResult { .. }));
+                assert!(state_updates.is_empty());
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_order_preservation() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_find", "file_find"]);
+
+                // 创建多个文件使 file_find 返回不同结果
+                for i in 0..5 {
+                    let f = home.join(format!("test{}.rs", i));
+                    std::fs::write(&f, format!("fn test{}() {{}}", i)).unwrap();
+                }
+
+                // 每个 file_find 使用不同的 pattern 确保结果不同
+                let tool_uses = vec![
+                    (
+                        "tu_first".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "test0.rs",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                    (
+                        "tu_second".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "test4.rs",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                ];
+
+                let (blocks, _) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent execution should succeed");
+
+                assert_eq!(blocks.len(), 2);
+
+                // 验证结果顺序与输入顺序一致
+                if let ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                } = &blocks[0]
+                {
+                    assert_eq!(tool_use_id, "tu_first");
+                    assert!(
+                        content.contains("test0.rs"),
+                        "first result should contain test0.rs: {}",
+                        content
+                    );
+                }
+                if let ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                } = &blocks[1]
+                {
+                    assert_eq!(tool_use_id, "tu_second");
+                    assert!(
+                        content.contains("test4.rs"),
+                        "second result should contain test4.rs: {}",
+                        content
+                    );
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_read_file_state() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_read"]);
+
+                // 创建测试文件
+                let test_file = home.join("read_test.txt");
+                std::fs::write(&test_file, "hello world").unwrap();
+
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_read".to_string(),
+                    serde_json::json!({
+                        "file_path": test_file.to_string_lossy().to_string(),
+                    }),
+                )];
+
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent read should succeed");
+
+                assert_eq!(blocks.len(), 1);
+                assert!(matches!(blocks[0], ContentBlock::ToolResult { .. }));
+
+                // 验证 state_updates 包含文件路径
+                assert_eq!(state_updates.len(), 1);
+                let (fp, _mtime) = &state_updates[0];
+                assert!(
+                    fp.ends_with("read_test.txt"),
+                    "state update should reference the read file: {}",
+                    fp
+                );
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_multiple_reads_same_file() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_read"]);
+
+                let test_file = home.join("shared.txt");
+                std::fs::write(&test_file, "shared content").unwrap();
+
+                // 两个 file_read 指向同一个文件
+                let fp = test_file.to_string_lossy().to_string();
+                let tool_uses = vec![
+                    (
+                        "tu01".to_string(),
+                        "file_read".to_string(),
+                        serde_json::json!({ "file_path": fp }),
+                    ),
+                    (
+                        "tu02".to_string(),
+                        "file_read".to_string(),
+                        serde_json::json!({ "file_path": fp }),
+                    ),
+                ];
+
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent read should succeed");
+
+                assert_eq!(blocks.len(), 2);
+                // 两个读操作都会产生 state update，同一个文件可能有两条记录
+                assert!(!state_updates.is_empty());
+                // 都读成功
+                for block in &blocks {
+                    if let ContentBlock::ToolResult { content, .. } = block {
+                        assert!(
+                            content.contains("shared content"),
+                            "content should include file text"
+                        );
+                    }
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_mixed_tool_types() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_find", "file_read"]);
+
+                let test_file = home.join("target.txt");
+                std::fs::write(&test_file, "hello from concurrent test").unwrap();
+
+                // file_find + file_read 混合
+                let fp = test_file.to_string_lossy().to_string();
+                let tool_uses = vec![
+                    (
+                        "tu_find".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "target.txt",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                    (
+                        "tu_read".to_string(),
+                        "file_read".to_string(),
+                        serde_json::json!({ "file_path": fp }),
+                    ),
+                ];
+
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent mixed execution should succeed");
+
+                assert_eq!(blocks.len(), 2);
+                // file_read 会产生 state update
+                assert_eq!(state_updates.len(), 1);
+
+                // 验证结果顺序
+                if let ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                } = &blocks[0]
+                {
+                    assert_eq!(tool_use_id, "tu_find");
+                    assert!(content.contains("target.txt"), "find result: {}", content);
+                }
+                if let ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                } = &blocks[1]
+                {
+                    assert_eq!(tool_use_id, "tu_read");
+                    assert!(
+                        content.contains("hello from concurrent test"),
+                        "read result: {}",
+                        content
+                    );
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_unknown_tool() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &[]);
+
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "nonexistent_tool".to_string(),
+                    serde_json::json!({}),
+                )];
+
+                let result = agent.execute_tools_concurrent(&tool_uses).await;
+                assert!(result.is_err(), "unknown tool should error");
+                assert!(
+                    result.err().unwrap().contains("Unknown tool"),
+                    "error should mention unknown tool"
+                );
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_partial_success() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_find"]);
+
+                // 一个文件存在，一个 pattern 不匹配
+                let test_file = home.join("exists.rs");
+                std::fs::write(&test_file, "fn main() {}").unwrap();
+
+                let tool_uses = vec![
+                    (
+                        "tu_found".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "exists.rs",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                    (
+                        "tu_not_found".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "nonexistent*.xyz",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                ];
+
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent execution should not fail even if some find nothing");
+
+                assert_eq!(blocks.len(), 2);
+
+                // 第一个找到文件，第二个找不到但不会报错
+                if let ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                } = &blocks[0]
+                {
+                    assert_eq!(tool_use_id, "tu_found");
+                    assert!(
+                        content.contains("exists.rs"),
+                        "should find file: {}",
+                        content
+                    );
+                }
+                if let ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                } = &blocks[1]
+                {
+                    assert_eq!(tool_use_id, "tu_not_found");
+                    // 找不到文件也会返回成功（只是结果为空）
+                }
+                assert!(
+                    state_updates.is_empty(),
+                    "file_find doesn't update read_file_state"
+                );
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_pre_read_check_blocks_write() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_write"]);
+
+                // 创建一个文件但不先读取
+                let test_file = home.join("existing.txt");
+                std::fs::write(&test_file, "original content").unwrap();
+
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_write".to_string(),
+                    serde_json::json!({
+                        "file_path": test_file.to_string_lossy().to_string(),
+                        "content": "new content",
+                    }),
+                )];
+
+                let (blocks, state_updates) =
+                    agent.execute_tools_concurrent(&tool_uses).await.expect(
+                        "concurrent execution should not fail (pre-read check returns error msg)",
+                    );
+
+                assert_eq!(blocks.len(), 1);
+                assert!(
+                    state_updates.is_empty(),
+                    "blocked write should not produce state updates"
+                );
+
+                if let ContentBlock::ToolResult { content, .. } = &blocks[0] {
+                    assert!(
+                        content.contains("未通过 file_read 读取"),
+                        "pre-read check should block write: {}",
+                        content
+                    );
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_pre_read_check_passes_for_new_file() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_write"]);
+
+                // 新文件（不存在的路径）→ 应直接放行
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_write".to_string(),
+                    serde_json::json!({
+                        "file_path": home.join("new_file.txt").to_string_lossy().to_string(),
+                        "content": "brand new",
+                    }),
+                )];
+
+                let (blocks, _) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent execution should succeed");
+
+                assert_eq!(blocks.len(), 1);
+                if let ContentBlock::ToolResult { content, .. } = &blocks[0] {
+                    assert!(
+                        !content.contains("未通过 file_read"),
+                        "new file should pass pre-read check: {}",
+                        content
+                    );
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_all_fail_gracefully() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_read", "file_find"]);
+
+                // 两个工具都传入无效参数
+                let tool_uses = vec![
+                    (
+                        "tu_read".to_string(),
+                        "file_read".to_string(),
+                        serde_json::json!({ "file_path": "/nonexistent/path/file.txt" }),
+                    ),
+                    (
+                        "tu_find".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({ "pattern": "*.rs", "path": "/nonexistent/dir" }),
+                    ),
+                ];
+
+                let (blocks, _) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent execution should not panic on failure");
+
+                assert_eq!(blocks.len(), 2);
+
+                // 两个都应该返回 ToolResult（包含错误信息而非 panic）
+                for block in &blocks {
+                    assert!(matches!(block, ContentBlock::ToolResult { .. }));
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_concurrent_new_file_write_passes() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = make_agent_with_tools(home, &["file_write"]);
+
+                // 新文件写入（不应被预读检查拦截）
+                let tool_uses = vec![(
+                    "tu01".to_string(),
+                    "file_write".to_string(),
+                    serde_json::json!({
+                        "file_path": home.join("brand_new.rs").to_string_lossy().to_string(),
+                        "content": "fn new() {}",
+                    }),
+                )];
+
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent(&tool_uses)
+                    .await
+                    .expect("concurrent execution should succeed");
+
+                assert_eq!(blocks.len(), 1);
+                assert!(
+                    state_updates.is_empty(),
+                    "file_write doesn't produce state updates"
+                );
+                if let ContentBlock::ToolResult { content, .. } = &blocks[0] {
+                    assert!(
+                        !content.contains("error") && !content.contains("Error"),
+                        "new file write should not error: {}",
+                        content
+                    );
+                }
+            });
+        });
+    }
+
+    /// 验证 chat_with_tools 中的分区逻辑集成：safe + unsafe 工具混合时，
+    /// safe 的 file_find 和 unsafe 的 file_write 能被正确分区。
+    #[test]
+    fn test_chat_with_tools_partition_integration() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_find", "file_write"]);
+
+                // 创建测试文件
+                let test_file = home.join("existing_for_write.txt");
+                std::fs::write(&test_file, "will be overwritten").unwrap();
+
+                // 混合 batch：file_find(safe) + file_write(unsafe) + file_find(safe)
+                let merged = vec![
+                    (
+                        "tu01".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "*.txt",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                    (
+                        "tu02".to_string(),
+                        "file_write".to_string(),
+                        serde_json::json!({
+                            "file_path": test_file.to_string_lossy().to_string(),
+                            "content": "new content",
+                        }),
+                    ),
+                    (
+                        "tu03".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({
+                            "pattern": "*.txt",
+                            "path": home.to_string_lossy().to_string(),
+                        }),
+                    ),
+                ];
+
+                // 模拟 chat_with_tools 中的分区逻辑
+                let batches = partition_tool_calls(merged, &agent.tools);
+                assert_eq!(batches.len(), 3, "should be 3 batches: safe, unsafe, safe");
+
+                // Batch 1: safe — 并发执行
+                assert!(batches[0].is_concurrency_safe);
+                let (b1_blocks, _) = agent
+                    .execute_tools_concurrent(&batches[0].items)
+                    .await
+                    .expect("batch 1 concurrent should succeed");
+                assert_eq!(b1_blocks.len(), 1);
+                assert_eq!(batches[0].items[0].0, "tu01");
+                if let ContentBlock::ToolResult { content, .. } = &b1_blocks[0] {
+                    assert!(
+                        content.contains("existing_for_write.txt"),
+                        "should find file: {}",
+                        content
+                    );
+                }
+
+                // Batch 2: unsafe — 串行执行
+                assert!(!batches[1].is_concurrency_safe);
+                let b2_blocks = agent
+                    .execute_tools_serial(&batches[1].items)
+                    .await
+                    .expect("batch 2 serial should succeed");
+                assert_eq!(b2_blocks.len(), 1);
+                assert_eq!(batches[1].items[0].0, "tu02");
+                if let ContentBlock::ToolResult { content, .. } = &b2_blocks[0] {
+                    assert!(
+                        content.contains("未通过 file_read 读取"),
+                        "should be blocked by pre-read check: {}",
+                        content
+                    );
+                }
+
+                // Batch 3: safe — 并发执行
+                assert!(batches[2].is_concurrency_safe);
+                let (b3_blocks, _) = agent
+                    .execute_tools_concurrent(&batches[2].items)
+                    .await
+                    .expect("batch 3 concurrent should succeed");
+                assert_eq!(b3_blocks.len(), 1);
+                assert_eq!(batches[2].items[0].0, "tu03");
+            });
+        });
+    }
+
+    /// 验证 same-file-results-then-edit 场景：
+    /// 先并发读文件，再串行编辑，确保 read_file_state 正确传递
+    #[test]
+    fn test_concurrent_read_then_serial_edit() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                // 使用 read_file_state 的可变 agent
+                let mut agent = make_agent_with_tools(home, &["file_read", "file_edit"]);
+
+                let test_file = home.join("edit_me.txt");
+                std::fs::write(&test_file, "original content").unwrap();
+
+                let fp = test_file.to_string_lossy().to_string();
+
+                // 第一步：并发读取文件（模拟 chat_with_tools 中的并行 batch）
+                let read_tools = vec![(
+                    "tu_read".to_string(),
+                    "file_read".to_string(),
+                    serde_json::json!({ "file_path": fp }),
+                )];
+
+                let (read_blocks, state_updates) = agent
+                    .execute_tools_concurrent(&read_tools)
+                    .await
+                    .expect("concurrent read should succeed");
+
+                assert_eq!(read_blocks.len(), 1);
+
+                // 模拟 chat_with_tools 中 state_updates 的写入
+                for (fp_update, mtime) in &state_updates {
+                    agent.read_file_state.insert(fp_update.clone(), *mtime);
+                }
+
+                // 验证 state 已记录
+                assert!(
+                    agent.read_file_state.contains_key(&fp),
+                    "read_file_state should contain the file"
+                );
+
+                // 第二步：在 state 已记录的情况下，串行编辑应通过预读检查
+                let edit_tools = vec![(
+                    "tu_edit".to_string(),
+                    "file_edit".to_string(),
+                    serde_json::json!({
+                        "file_path": fp,
+                        "mode": "line_range",
+                        "start_line": 1,
+                        "end_line": 1,
+                        "expected": "original content",
+                        "new_content": "modified content",
+                    }),
+                )];
+
+                let edit_blocks = agent
+                    .execute_tools_serial(&edit_tools)
+                    .await
+                    .expect("serial edit should succeed after read");
+
+                assert_eq!(edit_blocks.len(), 1);
+                if let ContentBlock::ToolResult { content, .. } = &edit_blocks[0] {
+                    assert!(
+                        !content.contains("未通过 file_read"),
+                        "edit should pass pre-read check after concurrent read: {}",
+                        content
+                    );
+                }
             });
         });
     }
