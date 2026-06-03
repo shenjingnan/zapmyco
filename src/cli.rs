@@ -25,6 +25,19 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
+/// 权限模式 — 限制 agent 的操作权限
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum PermissionMode {
+    /// 完全权限：可读、可写、可执行（默认）
+    Full,
+    /// 读写模式：可读、可写，禁止执行 shell 命令
+    #[clap(alias = "readwrite")]
+    ReadWrite,
+    /// 只读模式：只能读取和分析内容，禁止写入和执行
+    #[clap(alias = "readonly")]
+    ReadOnly,
+}
+
 #[derive(Subcommand)]
 #[non_exhaustive]
 pub enum Commands {
@@ -46,6 +59,12 @@ pub enum Commands {
         /// 指定模型配置档
         #[arg(long)]
         profile: Option<String>,
+        /// 限制 agent 的操作权限 (full/read-write/read-only)
+        #[arg(long = "permission-mode", default_value = "full", value_enum)]
+        permission_mode: PermissionMode,
+        /// 复用指定会话的任务列表（不传则创建新会话）
+        #[arg(long = "task-id")]
+        task_id: Option<String>,
     },
     /// 快速记录笔记 — 灵感、待办、想法
     Note {
@@ -355,7 +374,12 @@ fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
 }
 
 /// run 命令 - 一次性执行 AI 任务（带工具支持）
-async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
+async fn cmd_run(
+    content: &str,
+    profile: Option<&str>,
+    permission_mode: PermissionMode,
+    task_id: Option<&str>,
+) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
     tracing::info!(
@@ -423,7 +447,16 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
 
     // 注册 Task 管理工具
-    let task_manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::new());
+    let list_id = task_id
+        .map(|s| s.to_string())
+        .unwrap_or_else(generate_session_id);
+    let task_manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::with_list_id(
+        &list_id,
+    ));
+    eprintln!("[会话] 任务列表 ID: {}", list_id);
+    if task_id.is_none() {
+        eprintln!("[提示] 使用 --task-id {} 可恢复此会话的任务列表", list_id);
+    }
     agent.set_task_manager(task_manager.clone());
     agent.register_tool(crate::agent::chat::ToolHandler::TaskCreate(
         task_manager.clone(),
@@ -437,6 +470,20 @@ async fn cmd_run(content: &str, profile: Option<&str>) -> Result<(), String> {
     agent.register_tool(crate::agent::chat::ToolHandler::TaskUpdate(
         task_manager.clone(),
     ));
+
+    // ---- 根据权限模式过滤工具 ----
+    if permission_mode != PermissionMode::Full {
+        let deny_tools: &[&str] = match permission_mode {
+            PermissionMode::ReadOnly => &["file_write", "file_edit", "shell_exec"],
+            PermissionMode::ReadWrite => &["shell_exec"],
+            PermissionMode::Full => &[], // unreachable
+        };
+        eprintln!(
+            "[权限模式] {:?} — 已禁止工具: {:?}",
+            permission_mode, deny_tools
+        );
+        agent.remove_tools(deny_tools);
+    }
 
     // ---- 第一阶段：执行用户原始输入 ----
     let _response = agent
@@ -498,6 +545,11 @@ fn build_run_options(profile: Option<&str>) -> crate::agent::chat::AiAgentOption
         model_profile: profile.map(|s| s.to_string()),
         ..Default::default()
     }
+}
+
+/// 生成唯一的会话 ID（用于任务列表隔离）
+fn generate_session_id() -> String {
+    format!("run_{}", chrono::Local::now().format("%Y%m%d_%H%M%S%9f"))
 }
 
 /// uninstall 命令 — 卸载 zapmyco
@@ -854,7 +906,20 @@ pub async fn run(cli: Cli) -> Result<(), String> {
         }
         Some(Commands::Uninstall) => cmd_uninstall(),
         Some(Commands::Note { command }) => cmd_note(command),
-        Some(Commands::Run { content, profile }) => cmd_run(&content, profile.as_deref()).await,
+        Some(Commands::Run {
+            content,
+            profile,
+            permission_mode,
+            task_id,
+        }) => {
+            cmd_run(
+                &content,
+                profile.as_deref(),
+                permission_mode,
+                task_id.as_deref(),
+            )
+            .await
+        }
         Some(Commands::Upgrade) => crate::upgrade::cmd_upgrade().await,
         Some(Commands::Completion { shell }) => {
             cmd_completion(shell, &mut std::io::stdout());
@@ -912,7 +977,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_empty_content() {
-        let result = cmd_run("", None).await;
+        let result = cmd_run("", None, PermissionMode::Full, None).await;
         assert!(result.is_err());
     }
 
@@ -925,7 +990,7 @@ mod tests {
             std::env::set_var("HOME", dir.path());
         }
 
-        let result = cmd_run("hello", None).await;
+        let result = cmd_run("hello", None, PermissionMode::Full, None).await;
         assert!(result.is_err());
 
         if let Some(h) = orig_home {
@@ -1891,6 +1956,150 @@ mod tests {
             assert_eq!(content.matches("zapmyco completion zsh").count(), 0);
             assert!(content.contains("export FOO=bar"));
         });
+    }
+
+    // —————— PermissionMode 测试 ——————
+
+    #[test]
+    fn test_permission_mode_default() {
+        // PermissionMode 默认值由 clap 处理，验证枚举值存在
+        assert_ne!(PermissionMode::Full as u8, PermissionMode::ReadWrite as u8);
+        assert_ne!(PermissionMode::Full as u8, PermissionMode::ReadOnly as u8);
+        assert_ne!(
+            PermissionMode::ReadWrite as u8,
+            PermissionMode::ReadOnly as u8
+        );
+    }
+
+    #[test]
+    fn test_permission_mode_equality() {
+        assert_eq!(PermissionMode::Full, PermissionMode::Full);
+        assert_eq!(PermissionMode::ReadOnly, PermissionMode::ReadOnly);
+        assert_eq!(PermissionMode::ReadWrite, PermissionMode::ReadWrite);
+        assert_ne!(PermissionMode::Full, PermissionMode::ReadOnly);
+        assert_ne!(PermissionMode::ReadWrite, PermissionMode::Full);
+    }
+
+    #[test]
+    fn test_permission_mode_clap_parse_full() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "hello"]).unwrap();
+        if let Commands::Run {
+            permission_mode, ..
+        } = cli.command.unwrap()
+        {
+            assert_eq!(permission_mode, PermissionMode::Full);
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_permission_mode_clap_parse_readonly() {
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--permission-mode",
+            "readonly",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run {
+            permission_mode, ..
+        } = cli.command.unwrap()
+        {
+            assert_eq!(permission_mode, PermissionMode::ReadOnly);
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_permission_mode_clap_parse_read_only() {
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--permission-mode",
+            "read-only",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run {
+            permission_mode, ..
+        } = cli.command.unwrap()
+        {
+            assert_eq!(permission_mode, PermissionMode::ReadOnly);
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_permission_mode_clap_parse_readwrite() {
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--permission-mode",
+            "readwrite",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run {
+            permission_mode, ..
+        } = cli.command.unwrap()
+        {
+            assert_eq!(permission_mode, PermissionMode::ReadWrite);
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    // —————— task-id 测试 ——————
+
+    #[test]
+    fn test_generate_session_id_format() {
+        let id = generate_session_id();
+        assert!(id.starts_with("run_"), "会话 ID 应以 run_ 开头: {}", id);
+        // 应包含日期时间毫秒部分，如 run_20260603_143021123
+        assert!(
+            id.len() >= 28,
+            "会话 ID 长度应至少 28 字符（含纳秒）: {}",
+            id
+        );
+        // 时间部分应只包含数字
+        let time_part = &id[4..];
+        let parts: Vec<&str> = time_part.split('_').collect();
+        assert_eq!(parts.len(), 2, "会话 ID 应包含 date_time 两部分: {}", id);
+        assert!(!parts[0].is_empty(), "日期部分不应为空");
+        assert!(!parts[1].is_empty(), "时间部分不应为空");
+    }
+
+    #[test]
+    fn test_generate_session_id_unique() {
+        let id1 = generate_session_id();
+        let id2 = generate_session_id();
+        // 两次生成应不同（即使在同一秒，时间戳也会不同）
+        assert_ne!(id1, id2, "连续两次生成的会话 ID 应不同");
+    }
+
+    #[test]
+    fn test_task_id_default_none() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "hello"]).unwrap();
+        if let Commands::Run { task_id, .. } = cli.command.unwrap() {
+            assert!(task_id.is_none(), "默认 task_id 应为 None");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_task_id_with_value() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "--task-id", "my-session", "hello"])
+            .unwrap();
+        if let Commands::Run { task_id, .. } = cli.command.unwrap() {
+            assert_eq!(task_id.unwrap(), "my-session");
+        } else {
+            panic!("Expected Run command");
+        }
     }
 
     // —————— map_short_v_flag 测试 ——————
