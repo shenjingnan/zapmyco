@@ -290,6 +290,16 @@ impl AiAgent {
             blocks: None,
         });
 
+        // 输出 token 用量
+        print_usage_line(
+            None,
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            response.usage.cache_read_input_tokens,
+            response.usage.cache_creation_input_tokens,
+            duration_ms,
+        );
+
         // 记录日志
         if let Some(ref logger) = self.logger {
             log_round_trip(logger, &params, &response, duration_ms);
@@ -365,6 +375,16 @@ impl AiAgent {
         }
 
         let duration_ms = start.elapsed().as_millis() as u64;
+
+        // 输出 token 用量
+        print_usage_line(
+            None,
+            resp_input_tokens,
+            resp_output_tokens,
+            resp_cache_read_input_tokens,
+            resp_cache_creation_input_tokens,
+            duration_ms,
+        );
 
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
@@ -605,7 +625,16 @@ impl AiAgent {
                 .map_err(|e| format!("API request failed: {}", e))?;
 
             let duration_ms = start.elapsed().as_millis() as u64;
-            eprintln!("[LLM] 💬 LLM 响应 ({:.1}s)", duration_ms as f64 / 1000.0);
+
+            // 输出 token 用量
+            print_usage_line(
+                Some(round),
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+                response.usage.cache_read_input_tokens,
+                response.usage.cache_creation_input_tokens,
+                duration_ms,
+            );
 
             tracing::info!(
                 model = %response.model,
@@ -637,16 +666,44 @@ impl AiAgent {
                     .map_err(|e| format!("API 流式请求失败: {}", e))?;
 
                 let mut full_content = String::new();
+                let mut stream_input_tokens: u32 = 0;
+                let mut stream_output_tokens: u32 = 0;
+                let mut stream_cache_creation_input_tokens: Option<u32> = None;
+                let mut stream_cache_read_input_tokens: Option<u32> = None;
+                let stream_start = Instant::now();
+
                 while let Some(event) = stream.next().await {
-                    if let StreamEvent::ContentBlockDelta {
-                        delta: ContentBlockDelta::TextDelta { text },
-                        ..
-                    } = event.map_err(|e| format!("流式读取失败: {}", e))?
-                    {
-                        full_content.push_str(&text);
-                        callback(&text);
+                    match event.map_err(|e| format!("流式读取失败: {}", e))? {
+                        StreamEvent::MessageStart { message } => {
+                            stream_input_tokens = message.usage.input_tokens;
+                        }
+                        StreamEvent::ContentBlockDelta {
+                            delta: ContentBlockDelta::TextDelta { text },
+                            ..
+                        } => {
+                            full_content.push_str(&text);
+                            callback(&text);
+                        }
+                        StreamEvent::MessageDelta { usage: Some(u), .. } => {
+                            stream_output_tokens = u.output_tokens;
+                            stream_cache_creation_input_tokens = u.cache_creation_input_tokens;
+                            stream_cache_read_input_tokens = u.cache_read_input_tokens;
+                        }
+                        _ => {}
                     }
                 }
+
+                let stream_duration = stream_start.elapsed().as_millis() as u64;
+
+                // 输出流式响应的 token 用量
+                print_usage_line(
+                    Some(round),
+                    stream_input_tokens,
+                    stream_output_tokens,
+                    stream_cache_read_input_tokens,
+                    stream_cache_creation_input_tokens,
+                    stream_duration,
+                );
 
                 self.messages.push(ConversationMessage {
                     role: "assistant".to_string(),
@@ -1048,6 +1105,44 @@ fn extract_text_from_blocks(blocks: &[ContentBlock]) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
+}
+
+/// 在终端输出当前轮次的 token 用量和缓存命中率信息
+fn print_usage_line(
+    round: Option<u32>,
+    input_tokens: u32,
+    output_tokens: u32,
+    cache_read: Option<u32>,
+    cache_create: Option<u32>,
+    duration_ms: u64,
+) {
+    let round_str = match round {
+        Some(r) => format!(" 轮次 {r} |"),
+        None => String::new(),
+    };
+
+    let cache_read_val = cache_read.unwrap_or(0);
+    let cache_create_val = cache_create.unwrap_or(0);
+    let total = input_tokens + cache_read_val + cache_create_val;
+
+    let cache_part = if cache_read_val > 0 || cache_create_val > 0 {
+        let savings = if total > 0 {
+            (cache_read_val as f64 / total as f64 * 100.0) as u32
+        } else {
+            0
+        };
+        format!(
+            " | cache read: {}, create: {} | 节省 {}%",
+            cache_read_val, cache_create_val, savings
+        )
+    } else {
+        String::new()
+    };
+
+    eprintln!(
+        "[LLM]{round_str} in: {input_tokens}, out: {output_tokens}{cache_part} ({dur:.1}s)",
+        dur = duration_ms as f64 / 1000.0,
+    );
 }
 
 /// 记录非流式对话的 round-trip 日志
