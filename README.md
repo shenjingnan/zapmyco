@@ -73,7 +73,7 @@ zapmyco init
 ```
 
 交互式向导会引导你完成：
-- 选择 AI 供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao / 自定义）
+- 选择 AI 供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao / MIMO / 自定义）
 - 配置 API Key（直接输入或使用环境变量）
 - 选择默认模型
 
@@ -104,7 +104,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 ## 特性
 
 - **Rust 实现**: 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动
-- **多供应商**: 内置 7 个供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao）59 个模型，可自定义供应商
+- **多供应商**: 内置 8 个供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao / MIMO）64 个模型，可自定义供应商
 - **流式输出**: AI 回复实时逐字显示
 - **交互式对话**: 支持 `/exit`、`/clear` 命令的终端聊天模式
 - **配置管理**: 自动兼容旧版配置格式，支持 `${env.VAR}` 语法
@@ -208,6 +208,11 @@ zapmyco completion powershell | Out-String | Invoke-Expression
 | qwen3.5-122b-a10b | Qwen（通义千问） | 256K tokens |
 | qwen3.5-27b | Qwen（通义千问） | 256K tokens |
 | qwen3.5-35b-a3b | Qwen（通义千问） | 256K tokens |
+| mimo-v2.5-pro | MIMO（小米） | 1M tokens |
+| mimo-v2-pro | MIMO（小米） | 1M tokens |
+| mimo-v2.5 | MIMO（小米） | 1M tokens（支持视觉） |
+| mimo-v2-omni | MIMO（小米） | 256K tokens（支持视觉） |
+| mimo-v2-flash | MIMO（小米） | 256K tokens |
 
 ## 贡献指南
 

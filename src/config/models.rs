@@ -625,6 +625,57 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(64_000),
         },
     ),
+    // --- MIMO 小米 ---
+    (
+        "mimo-v2.5-pro",
+        BuiltInModel {
+            provider: "mimo",
+            base_url: "https://api.xiaomimimo.com/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "mimo-v2-pro",
+        BuiltInModel {
+            provider: "mimo",
+            base_url: "https://api.xiaomimimo.com/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "mimo-v2.5",
+        BuiltInModel {
+            provider: "mimo",
+            base_url: "https://api.xiaomimimo.com/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "mimo-v2-omni",
+        BuiltInModel {
+            provider: "mimo",
+            base_url: "https://api.xiaomimimo.com/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(256_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "mimo-v2-flash",
+        BuiltInModel {
+            provider: "mimo",
+            base_url: "https://api.xiaomimimo.com/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(256_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
 ];
 /// 根据模型名称获取内置模型信息
 pub fn get_model_info(name: &str) -> Option<&'static BuiltInModel> {
@@ -676,7 +727,7 @@ mod tests {
         assert!(names.contains(&"MiniMax-M3"));
         assert!(names.contains(&"kimi-for-coding"));
         assert!(names.contains(&"doubao-seed-code"));
-        assert_eq!(names.len(), 59);
+        assert_eq!(names.len(), 64);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 title: 内置模型
 ---
 
-ZapMyCo 内置了 7 个供应商共 59 个模型，全部支持通过 Anthropic Messages API 格式调用。
+ZapMyCo 内置了 8 个供应商共 64 个模型，全部支持通过 Anthropic Messages API 格式调用。
 
 在 `settings.toml` 的 `[llm.models]` 中直接引用模型名称即可使用。你可以组合不同供应商的模型，以达到最佳效果。**注意：每个模型所属的供应商都需要配置对应的 API Key。**
 
@@ -156,6 +156,20 @@ advanced = "claude-sonnet-4-6"
 
 > 需要切换至海外端点？在 `settings.toml` 中为 `qwen` 供应商配置 `baseUrl = "https://dashscope-us.aliyuncs.com/apps/anthropic"` 即可。
 
+## MIMO（小米）
+
+更多信息请参考 [MIMO 官方模型列表](https://platform.xiaomimimo.com/docs/zh-CN/quick-start/model)。
+
+**Base URL:** `https://api.xiaomimimo.com/anthropic`
+
+| 模型名称 | 上下文窗口 | 最大输出 | 能力 |
+|----------|:----------:|:--------:|:----:|
+| `mimo-v2.5-pro` | 1,000,000 | 128,000 | 文本 |
+| `mimo-v2-pro` | 1,000,000 | 128,000 | 文本 |
+| `mimo-v2.5` | 1,000,000 | 128,000 | 文本、视觉 |
+| `mimo-v2-omni` | 256,000 | 128,000 | 文本、视觉 |
+| `mimo-v2-flash` | 256,000 | 64,000 | 文本 |
+
 ## 本地模型（自部署推理框架）
 
 以下推理框架原生支持 Anthropic Messages API 格式，可通过自定义 `baseUrl` 配置接入：
@@ -246,3 +260,4 @@ zapmyco init
 | GLM（智谱） | `GLM_API_KEY` |
 | Kimi（月之暗面） | `KIMI_API_KEY` |
 | Doubao（火山引擎） | `DOUBAO_API_KEY` |
+| MIMO（小米） | `MIMO_API_KEY` |

@@ -231,6 +231,7 @@ fn prompt_provider() -> Option<&'static str> {
             "GLM（智谱）",
             "Kimi（月之暗面）",
             "Doubao（火山引擎/字节）",
+            "MIMO（小米）",
             "自定义",
         ],
     )
@@ -245,6 +246,7 @@ fn prompt_provider() -> Option<&'static str> {
         "GLM（智谱）" => "glm",
         "Kimi（月之暗面）" => "kimi",
         "Doubao（火山引擎/字节）" => "doubao",
+        "MIMO（小米）" => "mimo",
         _ => "custom",
     })
 }
@@ -1086,7 +1088,7 @@ mod tests {
     #[test]
     fn test_filter_models_by_provider_custom() {
         let models = filter_models_by_provider("custom");
-        assert_eq!(models.len(), 59);
+        assert_eq!(models.len(), 64);
     }
 
     #[test]
