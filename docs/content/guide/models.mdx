@@ -162,6 +162,11 @@ advanced = "claude-sonnet-4-6"
 
 **Base URL:** `https://api.xiaomimimo.com/anthropic`
 
+> 如使用 Token Plan，请根据集群调整 `baseUrl`：
+> - **中国集群:** `https://token-plan-cn.xiaomimimo.com/anthropic`
+> - **新加坡集群:** `https://token-plan-sgp.xiaomimimo.com/anthropic`
+> - **欧洲集群:** `https://token-plan-ams.xiaomimimo.com/anthropic`
+
 | 模型名称 | 上下文窗口 | 最大输出 | 能力 |
 |----------|:----------:|:--------:|:----:|
 | `mimo-v2.5-pro` | 1,000,000 | 128,000 | 文本 |
@@ -170,18 +175,52 @@ advanced = "claude-sonnet-4-6"
 | `mimo-v2-omni` | 256,000 | 128,000 | 文本、视觉 |
 | `mimo-v2-flash` | 256,000 | 64,000 | 文本 |
 
-## 本地模型（自部署推理框架）
+## OpenRouter
+
+OpenRouter 提供 Anthropic API 兼容的 `/v1/messages` 端点，可在一个平台调用 400+ 模型。通过自定义 `baseUrl` 配置：
+
+```toml
+[llm.providers.openrouter]
+apiKey = "sk-or-v1-xxxxx"
+baseUrl = "https://openrouter.ai/api"
+
+[llm.models]
+default = "anthropic/claude-sonnet-4-6"
+fast = "deepseek/deepseek-v4-flash"
+```
+
+> 模型名称使用 OpenRouter 的命名空间格式，如 `anthropic/claude-sonnet-4-6`、`deepseek/deepseek-v4-flash`。详情请参考 [OpenRouter 模型列表](https://openrouter.ai/models)。
+
+## SiliconFlow（硅基流动）
+
+SiliconFlow 提供 200+ 模型，支持 Anthropic Messages API 格式：
+
+- **Base URL（国内，默认）:** `https://api.siliconflow.cn/v1`
+- **Base URL（海外）:** `https://api.siliconflow.com/v1`
+
+```toml
+[llm.providers.siliconflow]
+apiKey = "sk-xxxxx"
+baseUrl = "https://api.siliconflow.cn/v1"
+
+[llm.models]
+default = "deepseek-ai/DeepSeek-V3"
+```
+
+> 模型名称使用 SiliconFlow 的模型标识格式，如 `deepseek-ai/DeepSeek-V3`、`Qwen/Qwen3-14B`。详情请参考 [SiliconFlow 模型列表](https://siliconflow.cn/models)。
+
+## 本地模型
 
 以下推理框架原生支持 Anthropic Messages API 格式，可通过自定义 `baseUrl` 配置接入：
 
 | 框架 | 最低版本 | 默认端口 | 备注 |
 |------|:--------:|:--------:|------|
 | **Ollama** | v0.14.0 | `:11434` | 最简便的本地运行方案 |
-| **llama.cpp** | 已合入 | `:8080` | 原生支持 tool use、streaming、vision |
+| **llama.cpp** | 主线已支持 | `:8080` | 原生支持 tool use、streaming、vision |
 | **LM Studio** | v0.4.1 | `:1234` | 图形化，开箱即用 |
 | **LMDeploy** | 已支持 | `:23333` | 官方提供 Anthropic 兼容文档 |
 | **vLLM** | v0.11.1rc2+ | `:8000` | ⚠️ 暂不支持 thinking tokens |
-| **SGLang** | 已合入 | `:30000` | 完整兼容 |
+| **SGLang** | 主线已支持 | `:30000` | 完整兼容 |
 | **LocalAI** | v3.10.0+ | `:8080` | 内置 Anthropic 兼容层 |
 | **Xinference** | v1.10.0+ | `:9997` | 端点前缀 `/anthropic/v1/messages` |
 
