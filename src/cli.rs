@@ -224,11 +224,10 @@ fn prompt_provider() -> Option<&'static str> {
     inquire::Select::new(
         "选择 AI 供应商",
         vec![
-            "Anthropic（官方）",
+            "Anthropic",
             "DeepSeek",
             "MiniMax",
             "GLM（智谱）",
-            "Z.AI（智谱海外）",
             "Kimi（月之暗面）",
             "Doubao（火山引擎/字节）",
             "自定义",
@@ -238,11 +237,10 @@ fn prompt_provider() -> Option<&'static str> {
     .prompt()
     .ok()
     .map(|s| match s {
-        "Anthropic（官方）" => "anthropic",
+        "Anthropic" => "anthropic",
         "DeepSeek" => "deepseek",
         "MiniMax" => "minimax",
         "GLM（智谱）" => "glm",
-        "Z.AI（智谱海外）" => "zai",
         "Kimi（月之暗面）" => "kimi",
         "Doubao（火山引擎/字节）" => "doubao",
         _ => "custom",
@@ -339,6 +337,7 @@ fn build_settings(provider: &str, api_key: &str, default_model: &str) -> Setting
                     provider.to_string(),
                     ProviderConfig {
                         api_key: Some(api_key.to_string()),
+                        base_url: None,
                     },
                 );
                 map
@@ -1064,8 +1063,7 @@ mod tests {
         let models = filter_models_by_provider("deepseek");
         assert!(models.contains(&"deepseek-v4-flash"));
         assert!(models.contains(&"deepseek-v4-pro"));
-        assert!(models.contains(&"deepseek-reasoner"));
-        assert_eq!(models.len(), 3);
+        assert_eq!(models.len(), 2);
     }
 
     #[test]
@@ -1075,13 +1073,18 @@ mod tests {
         assert!(models.contains(&"glm-4v"));
         assert!(models.contains(&"glm-5v-turbo"));
         assert!(models.contains(&"glm-5.1"));
-        assert_eq!(models.len(), 4);
+        assert!(models.contains(&"glm-4.7"));
+        assert!(models.contains(&"glm-4.6"));
+        assert!(models.contains(&"glm-4.6v"));
+        assert!(models.contains(&"glm-4.5-air"));
+        assert!(models.contains(&"glm-4.5v"));
+        assert_eq!(models.len(), 14);
     }
 
     #[test]
     fn test_filter_models_by_provider_custom() {
         let models = filter_models_by_provider("custom");
-        assert_eq!(models.len(), 24);
+        assert_eq!(models.len(), 36);
     }
 
     #[test]

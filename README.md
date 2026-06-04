@@ -73,7 +73,7 @@ zapmyco init
 ```
 
 交互式向导会引导你完成：
-- 选择 AI 供应商（Anthropic / DeepSeek / MiniMax / GLM / Z.AI / Kimi / Doubao / 自定义）
+- 选择 AI 供应商（Anthropic / DeepSeek / MiniMax / GLM / Kimi / Doubao / 自定义）
 - 配置 API Key（直接输入或使用环境变量）
 - 选择默认模型
 
@@ -104,7 +104,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 ## 特性
 
 - **Rust 实现**: 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动
-- **多供应商**: 内置 7 个供应商（Anthropic / DeepSeek / MiniMax / GLM / Z.AI / Kimi / Doubao）24 个模型，可自定义供应商
+- **多供应商**: 内置 6 个供应商（Anthropic / DeepSeek / MiniMax / GLM / Kimi / Doubao）32 个模型，可自定义供应商
 - **流式输出**: AI 回复实时逐字显示
 - **交互式对话**: 支持 `/exit`、`/clear` 命令的终端聊天模式
 - **配置管理**: 自动兼容旧版配置格式，支持 `${env.VAR}` 语法
@@ -151,28 +151,40 @@ zapmyco completion powershell | Out-String | Invoke-Expression
 |------|--------|-----------|
 | deepseek-v4-flash（推荐） | DeepSeek | 1M tokens |
 | deepseek-v4-pro | DeepSeek | 1M tokens |
-| deepseek-reasoner | DeepSeek | 128K tokens |
 | glm-4-flash | GLM（智谱） | 128K tokens |
 | glm-4v | GLM（智谱） | 128K tokens（支持视觉） |
 | glm-5v-turbo | GLM（智谱） | 200K tokens（支持视觉） |
 | glm-5.1 | GLM（智谱） | 200K tokens |
-| claude-opus-4-7 | Anthropic（官方） | 1M tokens |
-| claude-sonnet-4-6 | Anthropic（官方） | 1M tokens |
-| claude-haiku-4-5 | Anthropic（官方） | 200K tokens |
-| claude-opus-4-5 | Anthropic（官方） | 200K tokens |
-| claude-sonnet-4-5 | Anthropic（官方） | 200K tokens |
-| MiniMax-M3 | MiniMax | 512K tokens（支持视觉） |
+| glm-5 | GLM（智谱） | 200K tokens |
+| glm-5-turbo | GLM（智谱） | 200K tokens |
+| glm-4.7 | GLM（智谱） | 200K tokens |
+| glm-4.7-flash | GLM（智谱） | 200K tokens |
+| glm-4.6 | GLM（智谱） | 200K tokens |
+| glm-4.5-airx | GLM（智谱） | 128K tokens |
+| glm-4-long | GLM（智谱） | 1M tokens |
+| glm-4.6v | GLM（智谱） | 128K tokens（支持视觉） |
+| glm-4.5-air | GLM（智谱） | 200K tokens |
+| glm-4.5v | GLM（智谱） | 128K tokens（支持视觉） |
+| claude-opus-4-8 | Anthropic | 1M tokens |
+| claude-opus-4-7 | Anthropic | 1M tokens |
+| claude-opus-4-6 | Anthropic | 1M tokens |
+| claude-sonnet-4-6 | Anthropic | 1M tokens |
+| claude-haiku-4-5 | Anthropic | 200K tokens |
+| claude-opus-4-1 | Anthropic | 200K tokens |
+| MiniMax-M3 | MiniMax | 1M tokens（支持视觉） |
 | MiniMax-M2.7 | MiniMax | 204.8K tokens |
+| MiniMax-M2.7-highspeed | MiniMax | 204.8K tokens |
 | MiniMax-M2.5 | MiniMax | 204.8K tokens |
 | MiniMax-M2.1 | MiniMax | 204.8K tokens |
 | MiniMax-M2 | MiniMax | 204.8K tokens |
 | kimi-for-coding | Kimi（月之暗面） | 256K tokens（支持视觉） |
-| kimi-k2-thinking | Kimi（月之暗面） | 256K tokens |
+| kimi-k2.6 | Kimi（月之暗面） | 256K tokens（支持视觉） |
+| kimi-k2.5 | Kimi（月之暗面） | 256K tokens（支持视觉） |
 | doubao-seed-code | Doubao（火山引擎） | 256K tokens（支持视觉） |
-| zai-glm-4.7 | Z.AI（智谱海外） | 200K tokens |
-| zai-glm-4.6 | Z.AI（智谱海外） | 200K tokens |
-| zai-glm-4.5-air | Z.AI（智谱海外） | 128K tokens |
-| zai-glm-4.5v | Z.AI（智谱海外） | 128K tokens（支持视觉） |
+| doubao-seed-2-0-pro | Doubao（火山引擎） | 256K tokens（支持视觉） |
+| doubao-seed-2-0-lite | Doubao（火山引擎） | 256K tokens（支持视觉） |
+| doubao-seed-2-0-mini | Doubao（火山引擎） | 256K tokens（支持视觉） |
+| doubao-seed-2-0-code-preview | Doubao（火山引擎） | 256K tokens（支持视觉） |
 
 ## 贡献指南
 

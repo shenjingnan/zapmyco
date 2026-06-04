@@ -1,0 +1,212 @@
+---
+title: 内置模型
+---
+
+ZapMyCo 内置了 6 个供应商共 36 个模型，全部支持通过 Anthropic Messages API 格式调用。
+
+在 `settings.toml` 的 `[llm.models]` 中直接引用模型名称即可使用。你可以组合不同供应商的模型，以达到最佳效果。**注意：每个模型所属的供应商都需要配置对应的 API Key。**
+
+```toml
+[llm]
+
+[llm.providers.deepseek]
+apiKey = "sk-your-deepseek-key"
+
+[llm.providers.anthropic]
+apiKey = "sk-your-anthropic-key"
+
+[llm.models]
+default = "deepseek-v4-flash"
+advanced = "claude-sonnet-4-6"
+```
+
+各模型按照供应商分组列出。
+
+## DeepSeek
+
+更多信息请参考 [DeepSeek 官方模型与定价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)。
+
+**Base URL:** `https://api.deepseek.com/anthropic`
+
+| 模型名称 | 上下文窗口 | 最大输出 | 能力 |
+|----------|:----------:|:--------:|:----:|
+| `deepseek-v4-flash`（推荐） | 1,000,000 | 384,000 | 文本 |
+| `deepseek-v4-pro` | 1,000,000 | 384,000 | 文本 |
+
+## Anthropic
+
+更多信息请参考 [Anthropic 官方模型概览](https://platform.claude.com/docs/en/about-claude/models/overview)。
+
+**Base URL:** `https://api.anthropic.com`
+
+| 模型名称 | 上下文窗口 | 最大输出 | 能力 |
+|----------|:----------:|:--------:|:----:|
+| `claude-opus-4-8` | 1,000,000 | 128,000 | 文本 |
+| `claude-opus-4-7` | 1,000,000 | 128,000 | 文本 |
+| `claude-opus-4-6` | 1,000,000 | 128,000 | 文本 |
+| `claude-sonnet-4-6` | 1,000,000 | 64,000 | 文本 |
+| `claude-haiku-4-5` | 200,000 | 64,000 | 文本 |
+| `claude-opus-4-1` | 200,000 | 32,768 | 文本 |
+
+## MiniMax
+
+更多信息请参考 [MiniMax 官方模型介绍](https://platform.minimaxi.com/docs/guides/models-intro)。
+
+- **Base URL（国内，默认）:** `https://api.minimaxi.com/anthropic`
+- **Base URL（海外）:** `https://api.minimax.io/anthropic`
+
+| 模型名称 | 上下文窗口 | 最大输出 | 能力 |
+|----------|:----------:|:--------:|:----:|
+| `MiniMax-M3` | 1,000,000 | 128,000 | 文本、视觉 |
+| `MiniMax-M2.7` | 204,800 | 131,072 | 文本 |
+| `MiniMax-M2.7-highspeed` | 204,800 | 131,072 | 文本 |
+| `MiniMax-M2.5` | 204,800 | 131,072 | 文本 |
+| `MiniMax-M2.1` | 204,800 | 131,072 | 文本 |
+| `MiniMax-M2` | 204,800 | 131,072 | 文本 |
+
+> 需要切换至海外端点？在 `settings.toml` 中为 `minimax` 供应商配置 `baseUrl = "https://api.minimax.io/anthropic"` 即可。更多信息请参考 [MiniMax 海外官方文档](https://platform.minimax.io/docs/guides/models-intro)。
+
+## GLM（智谱）
+
+更多信息请参考 [智谱官方模型概览](https://docs.bigmodel.cn/cn/guide/start/model-overview)。
+
+- **Base URL（国内，默认）:** `https://open.bigmodel.cn/api/anthropic`
+- **Base URL（海外）:** `https://api.z.ai/api/anthropic`
+
+| 模型名称 | 上下文窗口 | 最大输出 | 能力 |
+|----------|:----------:|:--------:|:----:|
+| `glm-4-flash` | 128,000 | 16,384 | 文本 |
+| `glm-4v` | 128,000 | 16,384 | 文本、视觉 |
+| `glm-5v-turbo` | 200,000 | 128,000 | 文本、视觉 |
+| `glm-5.1` | 200,000 | 128,000 | 文本 |
+| `glm-5` | 200,000 | 128,000 | 文本 |
+| `glm-5-turbo` | 200,000 | 128,000 | 文本 |
+| `glm-4.7` | 200,000 | 128,000 | 文本 |
+| `glm-4.7-flash` | 200,000 | 128,000 | 文本 |
+| `glm-4.6` | 200,000 | 128,000 | 文本 |
+| `glm-4.5-airx` | 128,000 | 96,000 | 文本 |
+| `glm-4-long` | 1,000,000 | 4,096 | 文本 |
+| `glm-4.6v` | 128,000 | 32,768 | 文本、视觉 |
+| `glm-4.5-air` | 200,000 | 96,000 | 文本 |
+| `glm-4.5v` | 128,000 | 16,384 | 文本、视觉 |
+
+> 需要切换至海外端点？在 `settings.toml` 中为 `glm` 供应商配置 `baseUrl = "https://api.z.ai/api/anthropic"` 即可。更多信息请参考 [智谱海外官方文档](https://docs.z.ai/guides/overview/overview)。
+
+## Kimi（月之暗面）
+
+更多信息请参考 [Kimi 官方模型列表](https://platform.kimi.ai/docs/models)。
+
+- **Base URL（国内，默认）:** `https://api.moonshot.cn/anthropic`
+- **Base URL（海外）:** `https://api.moonshot.ai/anthropic`
+
+| 模型名称 | 上下文窗口 | 最大输出 | 能力 |
+|----------|:----------:|:--------:|:----:|
+| `kimi-for-coding` | 256,000 | 32,768 | 文本、视觉 |
+| `kimi-k2.6` | 256,000 | 32,768 | 文本、视觉 |
+| `kimi-k2.5` | 256,000 | 32,768 | 文本、视觉 |
+
+> 需要切换至海外端点？在 `settings.toml` 中为 `kimi` 供应商配置 `baseUrl = "https://api.moonshot.ai/anthropic"` 即可。
+
+## Doubao（火山引擎/字节）
+
+更多信息请参考 [火山引擎方舟模型列表](https://www.volcengine.com/docs/82379/1330310)。
+
+**Base URL:** `https://ark.cn-beijing.volces.com/api/compatible`
+
+| 模型名称 | 上下文窗口 | 最大输出 | 能力 |
+|----------|:----------:|:--------:|:----:|
+| `doubao-seed-code` | 256,000 | 32,768 | 文本、视觉 |
+| `doubao-seed-2-0-pro` | 256,000 | 128,000 | 文本、视觉 |
+| `doubao-seed-2-0-lite` | 256,000 | 128,000 | 文本、视觉 |
+| `doubao-seed-2-0-mini` | 256,000 | 128,000 | 文本、视觉 |
+| `doubao-seed-2-0-code-preview` | 256,000 | 128,000 | 文本、视觉 |
+
+## 本地模型（自部署推理框架）
+
+以下推理框架原生支持 Anthropic Messages API 格式，可通过自定义 `baseUrl` 配置接入：
+
+| 框架 | 最低版本 | 默认端口 | 备注 |
+|------|:--------:|:--------:|------|
+| **Ollama** | v0.14.0 | `:11434` | 最简便的本地运行方案 |
+| **llama.cpp** | 已合入 | `:8080` | 原生支持 tool use、streaming、vision |
+| **LM Studio** | v0.4.1 | `:1234` | 图形化，开箱即用 |
+| **LMDeploy** | 已支持 | `:23333` | 官方提供 Anthropic 兼容文档 |
+| **vLLM** | v0.11.1rc2+ | `:8000` | ⚠️ 暂不支持 thinking tokens |
+| **SGLang** | 已合入 | `:30000` | 完整兼容 |
+| **LocalAI** | v3.10.0+ | `:8080` | 内置 Anthropic 兼容层 |
+| **Xinference** | v1.10.0+ | `:9997` | 端点前缀 `/anthropic/v1/messages` |
+
+配置方式统一，只需换 `baseUrl` 和模型名：
+
+```toml
+[llm]
+
+[llm.providers.ollama]
+apiKey = "ollama"
+baseUrl = "http://localhost:11434/v1"
+
+[llm.providers.llamacpp]
+apiKey = "not-needed"
+baseUrl = "http://localhost:8080/v1"
+
+[llm.providers.lmstudio]
+apiKey = "lmstudio"
+baseUrl = "http://localhost:1234/v1"
+
+[llm.models]
+default = "qwen3"
+fast = "llama3.2"
+```
+
+> 这些框架的模型不在内置列表中，直接填写你本地部署的模型名称即可。
+
+## 供应商 API Key 环境变量
+
+将 API Key 直接写在 `settings.toml` 中虽然简单，但存在安全隐患（配置文件可能被误提交到版本控制系统）。推荐使用环境变量引用方式：
+
+```toml
+[llm.providers.deepseek]
+apiKey = "${env.DEEPSEEK_API_KEY}"
+```
+
+运行时 ZapMyCo 会自动将 `${env.DEEPSEEK_API_KEY}` 替换为环境变量 `DEEPSEEK_API_KEY` 的值。
+
+### 好处
+
+- **安全** — API Key 不会以明文存储在配置文件中，避免误提交到 Git
+- **灵活** — 同一份配置文件可在不同环境（开发/CI/生产）使用不同的密钥
+- **规范** — 符合业界最佳实践，与 Docker、CI/CD 等工具链天然兼容
+
+### 何时使用
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 个人本地开发 | 直接填写或环境变量均可 |
+| 多台机器共用配置 | 环境变量（配置文件可共享，每台机器独立设置密钥） |
+| CI/CD 环境 | 环境变量（通过 GitHub Secrets / CI 变量注入） |
+| 团队共享配置文件 | 环境变量（避免密钥泄露） |
+| 快速尝鲜测试 | 直接填写 |
+
+### 设置方式
+
+```bash
+# 临时设置（当前终端会话有效）
+export DEEPSEEK_API_KEY="sk-your-key"
+
+# 永久设置（添加到 shell 配置文件）
+echo 'export DEEPSEEK_API_KEY="sk-your-key"' >> ~/.zshrc
+
+# 或使用 zapmyco init 向导自动配置
+zapmyco init
+```
+
+### 各供应商推荐的环境变量名
+
+| 供应商 | 推荐环境变量名 |
+|--------|---------------|
+| Anthropic | `ANTHROPIC_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| MiniMax | `MINIMAX_API_KEY` |
+| GLM（智谱） | `GLM_API_KEY` |
+| Kimi（月之暗面） | `KIMI_API_KEY` |
+| Doubao（火山引擎） | `DOUBAO_API_KEY` |

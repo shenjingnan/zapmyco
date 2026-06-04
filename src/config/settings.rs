@@ -19,6 +19,9 @@ pub struct ProviderConfig {
     /// API 密钥，支持 ${env.VAR} 语法
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// API 基础地址（可选），覆盖内置模型注册表中的 base_url
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
 }
 
 /// LLM 配置（新格式）
@@ -146,6 +149,7 @@ impl Settings {
                             name.clone(),
                             ProviderConfig {
                                 api_key: cfg.api_key.as_ref().map(|key| mask_api_key(key)),
+                                base_url: cfg.base_url.clone(),
                             },
                         )
                     })
@@ -273,7 +277,7 @@ apiKey = "${env.GLM_KEY}"
 
 [llm.models]
 default = "deepseek-v4-flash"
-advanced = "deepseek-reasoner"
+advanced = "deepseek-v4-flash"
 "#,
             );
 
@@ -298,7 +302,7 @@ advanced = "deepseek-reasoner"
             );
             assert_eq!(
                 llm.models.as_ref().unwrap().get("advanced").unwrap(),
-                "deepseek-reasoner"
+                "deepseek-v4-flash"
             );
         });
     }
@@ -551,6 +555,7 @@ advanced = "deepseek-reasoner"
                     "deepseek".to_string(),
                     ProviderConfig {
                         api_key: Some("sk-secret-key-value".to_string()),
+                        base_url: None,
                     },
                 )])),
                 models: None,
