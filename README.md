@@ -16,6 +16,7 @@
 </p>
 
 基于 Rust 的多供应商 AI 命令行工具，内置 60+ 模型，支持 Anthropic API 兼容的云端与本地推理框架。
+<br>A Rust-based multi-vendor AI CLI tool with 60+ built-in models, supporting Anthropic API-compatible cloud and local inference frameworks.
 
 ## 安装方式
 
