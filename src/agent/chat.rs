@@ -517,14 +517,14 @@ impl AiAgent {
     /// 注册工具处理器
     pub fn register_tool(&mut self, handler: ToolHandler) {
         self.tools.push(handler);
-        self.rebuild_system_prompt_with_tools();
+        self.rebuild_tool_usage_guidance();
     }
 
     /// 根据名称批量移除已注册的工具
     pub fn remove_tools(&mut self, names: &[&str]) {
         self.tools
             .retain(|t| !names.contains(&t.tool_definition().name.as_str()));
-        self.rebuild_system_prompt_with_tools();
+        self.rebuild_tool_usage_guidance();
     }
 
     /// 设置任务管理器（用于在终端展示任务列表）
@@ -565,109 +565,34 @@ impl AiAgent {
         }
     }
 
-    /// 从 base_system_prompt + 所有已注册工具描述重建 system_prompt
-    fn rebuild_system_prompt_with_tools(&mut self) {
+    /// 从 base_system_prompt 重建 system_prompt，仅追加工具使用指引（不含工具描述）
+    fn rebuild_tool_usage_guidance(&mut self) {
         self.system_prompt = self.base_system_prompt.clone();
         if self.tools.is_empty() {
             return;
         }
 
-        self.system_prompt.push_str("\n\n你有以下工具可以使用：\n");
+        self.system_prompt
+            .push_str("\n\n使用工具时请注意以下规则：\n");
 
-        // 先加一条总体指导，强调专用工具优先于 shell_exec（仅当 shell_exec 已注册时）
+        // 强调专用工具优先于 shell_exec（仅当 shell_exec 已注册时）
         let has_shell_exec = self
             .tools
             .iter()
             .any(|t| t.tool_definition().name == "shell_exec");
         if has_shell_exec {
             self.system_prompt
-                .push_str("注意：有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。");
-            self.system_prompt.push('\n');
+                .push_str("注意：有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。\n");
         }
 
-        for handler in &self.tools {
-            let desc = match handler {
-                ToolHandler::AskUser(_) => {
-                    "- ask_user: 向用户提出一个带有选项的问题并等待回答。\
-                      当你需要用户做出选择、澄清需求、确认操作或选择偏好时使用。\
-                      需要提供清晰的问题（question）和选项列表（options，每个选项包含 label 和 description）。\
-                      支持单选和多选（multi_select 参数）。"
-                }
-                ToolHandler::WebFetch(_) => {
-                    "- web_fetch: 获取网页内容并转换为 Markdown。当你需要访问互联网信息时使用。"
-                }
-                ToolHandler::ShellExec(_) => {
-                    "- shell_exec: 在本地系统执行 shell 命令并返回输出。\
-                      当你需要运行代码、查询系统信息或文件操作时使用。\
-                      重要：不要使用 cat/head/tail 来读取文件内容，应使用 file_read 工具。"
-                }
-                ToolHandler::WebSearch(_) => {
-                    "- web_search: 搜索网络获取实时信息。当你需要查询当前新闻、文档、趋势等实时信息时使用。支持 query（搜索关键词）、allowed_domains（限定域名）、blocked_domains（排除域名）参数。"
-                }
-                ToolHandler::FileSearch(_) => {
-                    "- file_search: 在本地文件系统中搜索文件内容，支持正则表达式。参数包括 pattern（必填，正则模式串）、path（搜索路径，默认当前目录）、glob（文件通配符过滤）、output_mode（输出模式：content/files_with_matches/count）、-A/-B/-C（上下文行数）、-i（忽略大小写）、head_limit（最大结果行数，默认250）、offset（跳过前N条）、multiline（多行模式）、type（文件类型过滤如 rust/js/py）。"
-                }
-                ToolHandler::FileFind(_) => {
-                    "- file_find: 在本地文件系统中按文件名模式匹配快速查找文件。\
-                      支持 glob 通配符模式（如 **/*.rs、src/**/*.ts）。\
-                      参数包括 pattern（必填，glob 模式串）、path（搜索路径，默认当前目录）、\
-                      head_limit（最大结果数，默认100）、offset（跳过前N条结果）。\
-                      适用于按名称搜索文件、查找特定类型文件等场景。\
-                      与 file_search 不同，file_find 只匹配文件名而非文件内容。"
-                }
-                ToolHandler::FileRead(_) => {
-                    "- file_read: 读取本地文件系统中的文件内容。支持 file_path（必填，文件路径）、offset（可选，起始行号，从1开始）、limit（可选，最大行数）参数。适用于查看源代码文件、读取配置文件、分析日志等场景。\
-                      注意：如果后续需要对文件进行修改（file_edit）或覆盖写入（file_write），必须先通过本工具读取文件内容。"
-                }
-                ToolHandler::FileEdit(_) => {
-                    "- file_edit: 修改本地文件系统中的文件内容。推荐使用 line_range 模式（比 old_string 更稳定）。\
-                      支持多种模式：\n\
-                      1. line_range（推荐）: 按行号替换。参数: file_path（必填）、start_line（起始行号）、\
-                      end_line（结束行号）、expected（预期内容，至少 3 行非空代码行）、\
-                      new_content（新内容）。系统会自动验证 expected 与实际内容是否一致。\n\
-                      2. append: 在文件末尾追加。参数: file_path（必填）、mode=append、content（要追加的内容）。\n\
-                      3. insert_after: 在指定行后插入。参数: file_path（必填）、mode=insert_after、\
-                      target_line（插入位置）、content（要插入的内容）。\n\
-                      4. 批量编辑: 使用 edits 数组同时编辑一个文件的多个位置。参数: file_path（必填）、\
-                      edits（数组，每个元素包含 start_line/end_line/expected/new_content）。\n\
-                      5. old_string/new_string（旧模式）: 精确字符串替换，保留以兼容旧版。\n\
-                      注意：line_range 模式 edits 数组中的每个元素的 expected 至少 3 行非空代码行（trim 后），\
-                      否则会被拒绝执行。编辑前必须先使用 file_read 读取文件内容。"
-                }
-                ToolHandler::FileWrite(_) => {
-                    "- file_write: 创建新文件或完整覆盖已有文件。\
-                      参数包括 file_path（必填，文件绝对路径）、content（必填，要写入的完整文件内容）。\
-                      注意：如果要覆盖已有的文件，必须先使用 file_read 读取文件内容后才可以写入。\
-                      对于已有文件的小范围修改，建议使用 file_edit 工具。"
-                }
-                ToolHandler::TaskCreate(_) => {
-                    "- task_create: 创建新任务以跟踪复杂工作的进度。\
-                      当你需要完成 3 个以上步骤的复杂任务时，使用此工具主动创建任务列表。\
-                      接收到用户新指令后，立即将需求拆解为可跟踪的子任务。\
-                      参数: subject（必填，简洁的任务标题）、description（必填，任务描述）、\
-                      active_form（可选，进行时态，如'正在实现登录'）。\
-                      新任务创建后状态为 pending。创建后使用 task_list 查看，task_update 更新状态。"
-                }
-                ToolHandler::TaskGet(_) => {
-                    "- task_get: 按 ID 获取单个任务的完整描述、状态和依赖关系。\
-                      参数: task_id（必填，任务 ID）。适用于开始工作前了解任务详情。"
-                }
-                ToolHandler::TaskList(_) => {
-                    "- task_list: 列出所有任务及其状态。\
-                      适用于了解整体进度、查找可认领的任务、检查阻塞关系。\
-                      开始复杂工作前应先调用此工具查看现状。无需参数。"
-                }
-                ToolHandler::TaskUpdate(_) => {
-                    "- task_update: 更新任务的状态或字段。\
-                      参数: task_id（必填）、status（可选：pending/in_progress/completed/deleted）、\
-                      subject（可选）、description（可选）、active_form（可选）、\
-                      add_blocks/add_blocked_by（可选，设置依赖关系）、owner（可选，负责人）。\
-                      使用流程：开始工作前标记 in_progress → 完成后标记 completed。\
-                      只有 FULLY 完成的任务才标记为 completed。如果遇到阻塞无法完成，请更新字段说明原因。"
-                }
-            };
-            self.system_prompt.push_str(desc);
-            self.system_prompt.push('\n');
+        // 文件操作安全规则（仅当文件操作工具已注册时）
+        let has_file_tools = self.tools.iter().any(|t| {
+            let name = t.tool_definition().name;
+            name == "file_read" || name == "file_edit" || name == "file_write"
+        });
+        if has_file_tools {
+            self.system_prompt
+                .push_str("文件操作前必须先通过 file_read 读取文件内容。\n");
         }
 
         self.system_prompt.push_str("使用工具时请注意安全。");
@@ -2375,10 +2300,10 @@ mod tests {
             let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch));
 
-            // 首次注册应该追加工具说明
+            // 首次注册应该追加工具使用指引
             assert!(
-                agent.system_prompt.contains("web_fetch"),
-                "system prompt should mention web_fetch: {}",
+                agent.system_prompt.contains("使用工具时请注意以下规则"),
+                "system prompt should contain usage guidance: {}",
                 agent.system_prompt
             );
             assert!(
@@ -2386,12 +2311,8 @@ mod tests {
                 "original prompt should be preserved"
             );
             assert_eq!(agent.tools.len(), 1);
-            // web_fetch 在 system prompt 中只出现一次（描述本身）
-            let web_fetch_count = agent.system_prompt.matches("web_fetch").count();
-            assert!(
-                web_fetch_count >= 1,
-                "web_fetch should appear at least once in system prompt"
-            );
+            // system prompt 不应包含原始 base 内容（已被重建追加了指引）
+            assert_ne!(agent.system_prompt, "原始提示");
 
             // 第二次注册，system prompt 应更新包含更多工具
             let web_fetch2 = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
@@ -2436,7 +2357,10 @@ mod tests {
             assert_eq!(agent.tools[0].tool_definition().name, "web_fetch");
             // system prompt 应被重建，不再包含 shell_exec
             assert!(!agent.system_prompt.contains("shell_exec"));
-            assert!(agent.system_prompt.contains("web_fetch"));
+            assert!(
+                agent.system_prompt.contains("使用工具时请注意以下规则"),
+                "system prompt should still contain usage guidance"
+            );
         });
     }
 
@@ -2711,8 +2635,8 @@ mod tests {
             agent.register_tool(ToolHandler::WebSearch(ws));
 
             assert!(
-                agent.system_prompt.contains("web_search"),
-                "system prompt should mention web_search: {}",
+                agent.system_prompt.contains("使用工具时请注意以下规则"),
+                "system prompt should contain usage guidance: {}",
                 agent.system_prompt
             );
             assert!(
