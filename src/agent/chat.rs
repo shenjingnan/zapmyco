@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use std::io::IsTerminal;
 use std::pin::Pin;
 use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
@@ -1258,6 +1259,13 @@ fn prompt_model_replacement(
              请通过 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。",
             old_model
         ));
+    }
+
+    // 非交互环境（CI、管道等）跳过 inquire，直接 Warning 降级
+    if !std::io::stdin().is_terminal() {
+        eprintln!("[警告] 模型 '{}' 已不在支持列表中。", old_model);
+        eprintln!("       请运行 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。");
+        return Ok(None);
     }
 
     // 构建显示标签
