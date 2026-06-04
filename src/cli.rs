@@ -221,15 +221,32 @@ fn cmd_init_inner(
 
 /// 选择 AI 供应商
 fn prompt_provider() -> Option<&'static str> {
-    inquire::Select::new("选择 AI 供应商", vec!["DeepSeek", "GLM（智谱）", "自定义"])
-        .with_vim_mode(true)
-        .prompt()
-        .ok()
-        .map(|s| match s {
-            "DeepSeek" => "deepseek",
-            "GLM（智谱）" => "glm",
-            _ => "custom",
-        })
+    inquire::Select::new(
+        "选择 AI 供应商",
+        vec![
+            "Anthropic（官方）",
+            "DeepSeek",
+            "MiniMax",
+            "GLM（智谱）",
+            "Z.AI（智谱海外）",
+            "Kimi（月之暗面）",
+            "Doubao（火山引擎/字节）",
+            "自定义",
+        ],
+    )
+    .with_vim_mode(true)
+    .prompt()
+    .ok()
+    .map(|s| match s {
+        "Anthropic（官方）" => "anthropic",
+        "DeepSeek" => "deepseek",
+        "MiniMax" => "minimax",
+        "GLM（智谱）" => "glm",
+        "Z.AI（智谱海外）" => "zai",
+        "Kimi（月之暗面）" => "kimi",
+        "Doubao（火山引擎/字节）" => "doubao",
+        _ => "custom",
+    })
 }
 
 /// 输入 API Key
@@ -1064,7 +1081,7 @@ mod tests {
     #[test]
     fn test_filter_models_by_provider_custom() {
         let models = filter_models_by_provider("custom");
-        assert_eq!(models.len(), 7);
+        assert_eq!(models.len(), 24);
     }
 
     #[test]

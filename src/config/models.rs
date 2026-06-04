@@ -99,6 +99,181 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(128_000),
         },
     ),
+    // --- Anthropic 官方 ---
+    (
+        "claude-opus-4-7",
+        BuiltInModel {
+            provider: "anthropic",
+            base_url: "https://api.anthropic.com",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "claude-sonnet-4-6",
+        BuiltInModel {
+            provider: "anthropic",
+            base_url: "https://api.anthropic.com",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "claude-haiku-4-5",
+        BuiltInModel {
+            provider: "anthropic",
+            base_url: "https://api.anthropic.com",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(200_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "claude-opus-4-5",
+        BuiltInModel {
+            provider: "anthropic",
+            base_url: "https://api.anthropic.com",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(200_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "claude-sonnet-4-5",
+        BuiltInModel {
+            provider: "anthropic",
+            base_url: "https://api.anthropic.com",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(200_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    // --- MiniMax ---
+    (
+        "MiniMax-M3",
+        BuiltInModel {
+            provider: "minimax",
+            base_url: "https://api.minimax.io/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(512_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "MiniMax-M2.7",
+        BuiltInModel {
+            provider: "minimax",
+            base_url: "https://api.minimax.io/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(204_800),
+            max_output_tokens: Some(131_072),
+        },
+    ),
+    (
+        "MiniMax-M2.5",
+        BuiltInModel {
+            provider: "minimax",
+            base_url: "https://api.minimax.io/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(204_800),
+            max_output_tokens: Some(131_072),
+        },
+    ),
+    (
+        "MiniMax-M2.1",
+        BuiltInModel {
+            provider: "minimax",
+            base_url: "https://api.minimax.io/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(204_800),
+            max_output_tokens: Some(131_072),
+        },
+    ),
+    (
+        "MiniMax-M2",
+        BuiltInModel {
+            provider: "minimax",
+            base_url: "https://api.minimax.io/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(204_800),
+            max_output_tokens: Some(131_072),
+        },
+    ),
+    // --- Kimi 月之暗面 ---
+    (
+        "kimi-for-coding",
+        BuiltInModel {
+            provider: "kimi",
+            base_url: "https://api.kimi.com/coding",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(256_000),
+            max_output_tokens: Some(32_768),
+        },
+    ),
+    (
+        "kimi-k2-thinking",
+        BuiltInModel {
+            provider: "kimi",
+            base_url: "https://api.kimi.com/coding",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(256_000),
+            max_output_tokens: Some(32_768),
+        },
+    ),
+    // --- Doubao 火山引擎 ---
+    (
+        "doubao-seed-code",
+        BuiltInModel {
+            provider: "doubao",
+            base_url: "https://ark.cn-beijing.volces.com/api/compatible",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(256_000),
+            max_output_tokens: Some(16_384),
+        },
+    ),
+    // --- Z.AI 智谱海外 ---
+    (
+        "zai-glm-4.7",
+        BuiltInModel {
+            provider: "zai",
+            base_url: "https://api.z.ai/api/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(200_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "zai-glm-4.6",
+        BuiltInModel {
+            provider: "zai",
+            base_url: "https://api.z.ai/api/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(200_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "zai-glm-4.5-air",
+        BuiltInModel {
+            provider: "zai",
+            base_url: "https://api.z.ai/api/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(128_000),
+            max_output_tokens: Some(16_384),
+        },
+    ),
+    (
+        "zai-glm-4.5v",
+        BuiltInModel {
+            provider: "zai",
+            base_url: "https://api.z.ai/api/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(128_000),
+            max_output_tokens: Some(16_384),
+        },
+    ),
 ];
 
 /// 根据模型名称获取内置模型信息
@@ -146,7 +321,71 @@ mod tests {
         let names = get_built_in_model_names();
         assert!(names.contains(&"deepseek-v4-flash"));
         assert!(names.contains(&"glm-4v"));
-        assert_eq!(names.len(), 7);
+        // 新 provider 模型
+        assert!(names.contains(&"claude-opus-4-7"));
+        assert!(names.contains(&"MiniMax-M3"));
+        assert!(names.contains(&"kimi-for-coding"));
+        assert!(names.contains(&"doubao-seed-code"));
+        assert!(names.contains(&"zai-glm-4.7"));
+        assert_eq!(names.len(), 24);
+    }
+
+    #[test]
+    fn test_get_model_info_anthropic() {
+        let info = get_model_info("claude-opus-4-7").unwrap();
+        assert_eq!(info.provider, "anthropic");
+        assert_eq!(info.base_url, "https://api.anthropic.com");
+        assert_eq!(info.capabilities, &[ModelCapability::Text]);
+        assert_eq!(info.context_window, Some(1_000_000));
+        assert_eq!(info.max_output_tokens, Some(128_000));
+    }
+
+    #[test]
+    fn test_get_model_info_minimax() {
+        let info = get_model_info("MiniMax-M3").unwrap();
+        assert_eq!(info.provider, "minimax");
+        assert_eq!(info.base_url, "https://api.minimax.io/anthropic");
+        assert_eq!(
+            info.capabilities,
+            &[ModelCapability::Text, ModelCapability::Vision]
+        );
+        assert_eq!(info.context_window, Some(512_000));
+    }
+
+    #[test]
+    fn test_get_model_info_kimi() {
+        let info = get_model_info("kimi-for-coding").unwrap();
+        assert_eq!(info.provider, "kimi");
+        assert_eq!(info.base_url, "https://api.kimi.com/coding");
+        assert_eq!(
+            info.capabilities,
+            &[ModelCapability::Text, ModelCapability::Vision]
+        );
+        assert_eq!(info.context_window, Some(256_000));
+    }
+
+    #[test]
+    fn test_get_model_info_doubao() {
+        let info = get_model_info("doubao-seed-code").unwrap();
+        assert_eq!(info.provider, "doubao");
+        assert_eq!(
+            info.base_url,
+            "https://ark.cn-beijing.volces.com/api/compatible"
+        );
+        assert_eq!(
+            info.capabilities,
+            &[ModelCapability::Text, ModelCapability::Vision]
+        );
+        assert_eq!(info.context_window, Some(256_000));
+    }
+
+    #[test]
+    fn test_get_model_info_zai() {
+        let info = get_model_info("zai-glm-4.7").unwrap();
+        assert_eq!(info.provider, "zai");
+        assert_eq!(info.base_url, "https://api.z.ai/api/anthropic");
+        assert_eq!(info.capabilities, &[ModelCapability::Text]);
+        assert_eq!(info.context_window, Some(200_000));
     }
 
     #[test]
