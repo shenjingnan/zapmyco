@@ -45,6 +45,35 @@ pub struct RequiredMessageParams {
     pub max_tokens: u32,
 }
 
+/// 缓存控制配置，对应 TS SDK 的 CacheControlEphemeral
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct CacheControl {
+    #[serde(rename = "type")]
+    pub cache_type: String,
+    /// TTL: "5m"（默认）或 "1h"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
+}
+
+impl CacheControl {
+    pub fn ephemeral() -> Self {
+        Self {
+            cache_type: "ephemeral".to_string(),
+            ttl: None,
+        }
+    }
+}
+
+/// System prompt 文本块，对应 TS SDK 的 TextBlockParam（用于 system 时）
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SystemBlock {
+    #[serde(rename = "type")]
+    pub block_type: String,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
+}
+
 /// Parameters for creating a message
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct CreateMessageParams {
@@ -54,9 +83,9 @@ pub struct CreateMessageParams {
     pub messages: Vec<Message>,
     /// Model to use
     pub model: String,
-    /// System prompt
+    /// System prompt (string or array of TextBlockParam with cache_control)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub system: Option<String>,
+    pub system: Option<Vec<SystemBlock>>,
     /// Temperature for response generation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
@@ -105,7 +134,16 @@ impl CreateMessageParams {
 
     // Builder methods for optional parameters
     pub fn with_system(mut self, system: impl Into<String>) -> Self {
-        self.system = Some(system.into());
+        self.system = Some(vec![SystemBlock {
+            block_type: "text".to_string(),
+            text: system.into(),
+            cache_control: None,
+        }]);
+        self
+    }
+
+    pub fn with_system_blocks(mut self, blocks: Vec<SystemBlock>) -> Self {
+        self.system = Some(blocks);
         self
     }
 
