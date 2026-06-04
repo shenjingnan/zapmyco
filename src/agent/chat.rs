@@ -4,8 +4,8 @@ use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
 use zapmyco_anthropic_ai_sdk::types::message::{
-    CacheControl, ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient,
-    MessageError, RequiredMessageParams, Role, StreamEvent, SystemBlock, Tool,
+    ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient, MessageError,
+    RequiredMessageParams, Role, StreamEvent, Tool,
 };
 
 use crate::agent::conversation_logger::ConversationLogger;
@@ -38,7 +38,7 @@ const DEFAULT_MODEL: &str = "deepseek-v4-flash";
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 /// 对话消息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConversationMessage {
     pub role: String,
     pub content: String,
@@ -226,8 +226,6 @@ pub struct AiAgent {
     task_display: Option<crate::tools::task_display::TaskDisplayState>,
     /// 是否已注入上下文信息（仅首条消息注入一次）
     context_injected: bool,
-    /// 静态提示词长度边界（静态部分可缓存，动态部分不缓存）
-    static_prompt_len: usize,
     /// AGENTS.md 内容（启动时加载，缓存复用）
     agents_md_content: Option<String>,
 }
@@ -298,7 +296,6 @@ impl AiAgent {
 
         let prompt_builder = SystemPromptBuilder::new(options.system_prompt);
         let system_prompt = prompt_builder.base_prompt().to_string();
-        let static_prompt_len = prompt_builder.static_prompt_len();
 
         // 初始化对话日志记录器
         let logger = if is_conversation_log_enabled(&settings) {
@@ -331,7 +328,6 @@ impl AiAgent {
             task_manager: None,
             task_display: None,
             context_injected: false,
-            static_prompt_len,
             agents_md_content,
         })
     }
@@ -520,28 +516,12 @@ impl AiAgent {
     /// 注册工具处理器
     pub fn register_tool(&mut self, handler: ToolHandler) {
         self.tools.push(handler);
-        self.rebuild_system_prompt_with_tools();
     }
 
     /// 根据名称批量移除已注册的工具
     pub fn remove_tools(&mut self, names: &[&str]) {
         self.tools
             .retain(|t| !names.contains(&t.tool_definition().name.as_str()));
-        self.rebuild_system_prompt_with_tools();
-    }
-
-    /// 根据当前注册的工具重建 system_prompt（含工具使用指引）
-    fn rebuild_system_prompt_with_tools(&mut self) {
-        let tool_names: Vec<String> = self
-            .tools
-            .iter()
-            .map(|t| t.tool_definition().name.clone())
-            .collect();
-        let tool_name_refs: Vec<&str> = tool_names.iter().map(|s| s.as_str()).collect();
-        self.system_prompt = crate::agent::system_prompt::build_with_tool_guidance(
-            self.prompt_builder.base_prompt(),
-            &tool_name_refs,
-        );
     }
 
     /// 设置任务管理器（用于在终端展示任务列表）
@@ -761,8 +741,21 @@ impl AiAgent {
             let handler = self
                 .tools
                 .iter()
-                .find(|h| h.tool_definition().name == *name)
-                .ok_or_else(|| format!("Unknown tool: {}", name))?;
+                .find(|h| h.tool_definition().name == *name);
+
+            let Some(handler) = handler else {
+                let elapsed = tool_start.elapsed();
+                eprintln!(
+                    "[工具] ❌ {}  Unknown tool ({:.1}s, 0 字符)",
+                    name,
+                    elapsed.as_secs_f64()
+                );
+                tool_result_blocks.push(ContentBlock::ToolResult {
+                    tool_use_id: tool_use_id.clone(),
+                    content: format!("[Tool error: Unknown tool: {}]", name),
+                });
+                continue;
+            };
 
             // ---- 预读检查：file_write 和 file_edit 必须先读后写 ----
             let pre_read_error: Option<String> = match name.as_str() {
@@ -910,13 +903,28 @@ impl AiAgent {
         let mut futures: FuturesUnordered<Pin<Box<dyn Future<Output = _> + Send>>> =
             FuturesUnordered::new();
 
+        // 预初始化结果数组，未知工具直接填充，已知工具由 future 填充
+        let mut results: Vec<Option<String>> = vec![None; total];
+        let mut result_ids: Vec<Option<String>> = vec![None; total];
+        let mut log_lines: Vec<Option<String>> = vec![None; total];
+        let mut state_updates: Vec<(String, u64)> = Vec::new();
+
         // 为每个工具构造一个并发执行的 future
         for (idx, (tool_use_id, name, input)) in tool_uses.iter().enumerate() {
             let handler = self
                 .tools
                 .iter()
-                .find(|h| h.tool_definition().name == *name)
-                .ok_or_else(|| format!("Unknown tool: {}", name))?;
+                .find(|h| h.tool_definition().name == *name);
+
+            let Some(handler) = handler else {
+                // 未知工具直接生成错误结果，不创建 future
+                let line = format!("[工具] ❌ {}  Unknown tool (0s, 0 字符)", name);
+                eprintln!("{}", line);
+                results[idx] = Some(format!("[Tool error: Unknown tool: {}]", name));
+                result_ids[idx] = Some(tool_use_id.clone());
+                log_lines[idx] = Some(line);
+                continue;
+            };
 
             let icon = crate::agent::executor::tool_icon(name);
             let param = crate::agent::executor::format_tool_param(name, input);
@@ -980,7 +988,6 @@ impl AiAgent {
                 } else {
                     match handler.execute(&input_clone).await {
                         Ok(text) => {
-                            // 提取文件状态（file_read），后面统一应用
                             let file_state = if name_clone == "file_read" {
                                 input_clone
                                     .get("file_path")
@@ -1032,12 +1039,7 @@ impl AiAgent {
             }));
         }
 
-        // 收集结果
-        let mut results: Vec<Option<String>> = vec![None; total];
-        let mut result_ids: Vec<Option<String>> = vec![None; total];
-        let mut log_lines: Vec<Option<String>> = vec![None; total];
-        let mut state_updates: Vec<(String, u64)> = Vec::new();
-
+        // 收集并发 future 的结果
         while let Some((idx, tool_use_id, result_text, file_state, log_line)) = futures.next().await
         {
             results[idx] = Some(result_text);
@@ -1092,26 +1094,8 @@ impl AiAgent {
 
         let mut params = CreateMessageParams::new(required);
         if !self.system_prompt.is_empty() {
-            // 拆分 system prompt 为静态块（可缓存）和动态块（不缓存）
-            let static_part = &self.system_prompt[..self.static_prompt_len];
-            let dynamic_part = &self.system_prompt[self.static_prompt_len..];
-
-            let mut blocks = vec![SystemBlock {
-                block_type: "text".to_string(),
-                text: static_part.to_string(),
-                cache_control: Some(CacheControl::ephemeral()),
-            }];
-
-            let trimmed_dynamic = dynamic_part.trim();
-            if !trimmed_dynamic.is_empty() {
-                blocks.push(SystemBlock {
-                    block_type: "text".to_string(),
-                    text: trimmed_dynamic.to_string(),
-                    cache_control: None,
-                });
-            }
-
-            params = params.with_system_blocks(blocks);
+            // 系统提示词完全静态，使用 with_system 简化发送
+            params = params.with_system(self.system_prompt.clone());
         }
         if stream {
             params = params.with_stream(true);
@@ -1801,34 +1785,21 @@ mod tests {
             let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch));
 
-            // 首次注册应该追加工具使用指引
-            assert!(
-                agent.system_prompt.contains("使用工具时请注意以下规则"),
-                "system prompt should contain usage guidance: {}",
-                agent.system_prompt
-            );
-            assert!(
-                agent.system_prompt.starts_with("原始提示"),
-                "original prompt should be preserved"
+            // 系统提示词完全静态化，自定义提示词保持原样（不再动态追加工具指引）
+            assert_eq!(
+                agent.system_prompt, "原始提示",
+                "custom prompt should not be modified"
             );
             assert_eq!(agent.tools.len(), 1);
-            // system prompt 不应包含原始 base 内容（已被重建追加了指引）
-            assert_ne!(agent.system_prompt, "原始提示");
 
-            // 第二次注册，system prompt 应更新包含更多工具
+            // 第二次注册
             let web_fetch2 = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
             agent.register_tool(ToolHandler::WebFetch(web_fetch2));
 
-            // 提示词被重建，工具数增加
+            // 工具数增加
             assert_eq!(agent.tools.len(), 2, "should have 2 tools registered");
-            // 原始提示词仍被保留
-            assert!(
-                agent.system_prompt.starts_with("原始提示"),
-                "original prompt should be preserved"
-            );
-            // 由于每次都重建，prompt 内容不同（有两个 web_fetch 条目）
-            // 但 prompt_builder 的基础提示词应始终与开始时一致
-            assert_eq!(agent.prompt_builder.base_prompt(), "原始提示");
+            // 系统提示词完全静态化，不受工具注册影响
+            assert_eq!(agent.system_prompt, "原始提示");
         });
     }
 
@@ -1856,12 +1827,8 @@ mod tests {
             agent.remove_tools(&["shell_exec"]);
             assert_eq!(agent.tools.len(), 1);
             assert_eq!(agent.tools[0].tool_definition().name, "web_fetch");
-            // system prompt 应被重建，不再包含 shell_exec
-            assert!(!agent.system_prompt.contains("shell_exec"));
-            assert!(
-                agent.system_prompt.contains("使用工具时请注意以下规则"),
-                "system prompt should still contain usage guidance"
-            );
+            // 系统提示词完全静态化，始终包含所有工具规则（shell_exec 规则也在其中）
+            assert!(agent.system_prompt.contains("不要使用 shell_exec 替代"));
         });
     }
 
@@ -2135,14 +2102,10 @@ mod tests {
             .unwrap();
             agent.register_tool(ToolHandler::WebSearch(ws));
 
-            assert!(
-                agent.system_prompt.contains("使用工具时请注意以下规则"),
-                "system prompt should contain usage guidance: {}",
-                agent.system_prompt
-            );
-            assert!(
-                agent.system_prompt.starts_with("原始提示"),
-                "original prompt should be preserved"
+            // 自定义提示词保持原样，不再动态追加工具指引
+            assert_eq!(
+                agent.system_prompt, "原始提示",
+                "custom prompt should not be modified"
             );
         });
     }
@@ -2505,11 +2468,12 @@ mod tests {
                 )];
 
                 let result = agent.execute_tools_serial(&tool_uses).await;
-                assert!(result.is_err(), "unknown tool should error");
-                let err = result.err().unwrap();
+                assert!(result.is_ok(), "unknown tool should not cause fatal error");
+                let blocks = result.unwrap();
+                assert_eq!(blocks.len(), 1, "should return one tool result");
                 assert!(
-                    err.contains("Unknown tool"),
-                    "error should mention unknown tool"
+                    extract_tool_result_content(&blocks[0]).contains("Unknown tool"),
+                    "tool result should mention unknown tool"
                 );
             });
         });
@@ -3417,10 +3381,96 @@ mod tests {
                 )];
 
                 let result = agent.execute_tools_concurrent(&tool_uses).await;
-                assert!(result.is_err(), "unknown tool should error");
+                assert!(result.is_ok(), "unknown tool should not cause fatal error");
+                let (blocks, _) = result.unwrap();
+                assert_eq!(blocks.len(), 1, "should return one tool result");
                 assert!(
-                    result.err().unwrap().contains("Unknown tool"),
-                    "error should mention unknown tool"
+                    extract_tool_result_content(&blocks[0]).contains("Unknown tool"),
+                    "tool result should mention unknown tool"
+                );
+            });
+        });
+    }
+
+    #[test]
+    fn test_execute_tools_unknown_tool_does_not_crash_agent() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let mut agent = make_agent_with_tools(home, &["file_find", "file_read"]);
+
+                // 混合已知和未知工具 —— 模拟用户报告的 bug 场景
+                let tool_uses = vec![
+                    (
+                        "tu01".to_string(),
+                        "file_find".to_string(),
+                        serde_json::json!({"pattern": "*.rs"}),
+                    ),
+                    (
+                        "tu02".to_string(),
+                        "nonexistent_tool".to_string(), // 这个工具未注册
+                        serde_json::json!({}),
+                    ),
+                    (
+                        "tu03".to_string(),
+                        "file_read".to_string(),
+                        serde_json::json!({"file_path": "Cargo.toml"}),
+                    ),
+                ];
+
+                // 串行执行 — 不应 panic 或返回 Err
+                let result = agent.execute_tools_serial(&tool_uses).await;
+                assert!(
+                    result.is_ok(),
+                    "serial: unknown tool mixed with known should not error"
+                );
+                let blocks = result.unwrap();
+                assert_eq!(
+                    blocks.len(),
+                    3,
+                    "serial: should return results for all tools"
+                );
+
+                // 验证已知工具返回正常结果（file_find 输出文件路径，不为空即可）
+                assert!(
+                    !extract_tool_result_content(&blocks[0]).is_empty(),
+                    "serial: file_find should still execute and return results"
+                );
+                assert!(
+                    !extract_tool_result_content(&blocks[0]).contains("Tool error"),
+                    "serial: file_find should not produce error"
+                );
+                // 未知工具返回错误信息
+                assert!(
+                    extract_tool_result_content(&blocks[1]).contains("Unknown tool"),
+                    "serial: nonexistent_tool should produce error"
+                );
+                // 已知工具 file_read 应正常执行
+                assert!(
+                    !extract_tool_result_content(&blocks[2]).is_empty(),
+                    "serial: file_read should still execute"
+                );
+                assert!(
+                    !extract_tool_result_content(&blocks[2]).contains("Tool error"),
+                    "serial: file_read should not produce error"
+                );
+
+                // 并发执行 — 不应 panic 或返回 Err
+                let result = agent.execute_tools_concurrent(&tool_uses).await;
+                assert!(
+                    result.is_ok(),
+                    "concurrent: unknown tool mixed with known should not error"
+                );
+                let (blocks, _) = result.unwrap();
+                assert_eq!(
+                    blocks.len(),
+                    3,
+                    "concurrent: should return results for all tools"
+                );
+
+                assert!(
+                    extract_tool_result_content(&blocks[1]).contains("Unknown tool"),
+                    "concurrent: nonexistent_tool should produce error"
                 );
             });
         });
@@ -3799,6 +3849,261 @@ mod tests {
                     );
                 }
             });
+        });
+    }
+
+    // ===== 缓存命中率相关测试 =====
+
+    /// 模拟首条用户消息（含 context reminder 注入）
+    fn simulate_first_turn(agent: &mut AiAgent, user_input: &str) {
+        agent.context_injected = true;
+        let reminder =
+            crate::agent::system_prompt::build_context_reminder(agent.agents_md_content.as_deref());
+        agent.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: format!("{}{}", reminder, user_input),
+            blocks: None,
+        });
+    }
+
+    /// 模拟后续对话轮次
+    /// 从 ToolResult ContentBlock 中提取 content 文本
+    fn extract_tool_result_content(block: &ContentBlock) -> &str {
+        if let ContentBlock::ToolResult { content, .. } = block {
+            content
+        } else {
+            panic!("expected ToolResult block, got {:?}", block);
+        }
+    }
+
+    fn simulate_turn(agent: &mut AiAgent, user_input: &str, assistant_prev: Option<&str>) {
+        if let Some(prev) = assistant_prev {
+            agent.messages.push(ConversationMessage {
+                role: "assistant".to_string(),
+                content: prev.to_string(),
+                blocks: None,
+            });
+        }
+        agent.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: user_input.to_string(),
+            blocks: None,
+        });
+    }
+
+    #[test]
+    fn test_cache_system_prompt_cross_session_stable() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent1 = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let agent2 = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            // 默认系统提示词完全静态，跨会话应当完全一致
+            assert_eq!(
+                agent1.system_prompt, agent2.system_prompt,
+                "同一设置的 Agent 应生成完全相同的系统提示词"
+            );
+            // 验证包含预期的静态工具规则
+            assert!(
+                agent1.system_prompt.contains("工具使用规则"),
+                "系统提示词应包含工具使用规则"
+            );
+            assert!(
+                agent1.system_prompt.contains("任务执行策略"),
+                "系统提示词应包含任务执行策略"
+            );
+        });
+    }
+
+    #[test]
+    fn test_cache_multi_turn_prefix_integrity() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // 注册一些工具
+            let shell_exec = crate::tools::shell_exec::ShellExec::new(Default::default());
+            agent.register_tool(ToolHandler::ShellExec(shell_exec));
+            let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
+            agent.register_tool(ToolHandler::WebFetch(web_fetch));
+
+            // Turn 1: 首条用户消息
+            simulate_first_turn(&mut agent, "hello");
+            let turn1_msgs = agent.messages.clone();
+
+            // Turn 2: assistant 回复 + 用户新消息
+            simulate_turn(&mut agent, "what's up?", Some("Hi! How can I help?"));
+            let turn2_msgs = agent.messages.clone();
+
+            // Turn 1 的消息应完整出现在 Turn 2 消息的前缀中（只追加不修改）
+            assert_eq!(
+                &turn2_msgs[..turn1_msgs.len()],
+                &turn1_msgs[..],
+                "多轮对话中历史消息应保持完整（只追加不修改）"
+            );
+
+            // Turn 3: 再一轮
+            simulate_turn(&mut agent, "tell me a joke", Some("I'm fine!"));
+            let turn3_msgs = agent.messages.clone();
+
+            // Turn 2 的消息应完整出现在 Turn 3 的前缀中
+            assert_eq!(
+                &turn3_msgs[..turn2_msgs.len()],
+                &turn2_msgs[..],
+                "Turn 3 应包含 Turn 2 的完整消息历史"
+            );
+
+            // 验证序列化请求中的 system prompt + tools 字段完全相同
+            let params_t1 = agent.build_params(false).unwrap();
+            // 清除 messages 后比较 system + tools 部分
+            let mut params_t1_stripped = params_t1;
+            params_t1_stripped.messages = Vec::new();
+            let json_t1_stripped = serde_json::to_string(&params_t1_stripped).unwrap();
+
+            // 清除 messages 后重新构建 Turn 3 的 params
+            let params_t3 = agent.build_params(false).unwrap();
+            let mut params_t3_stripped = params_t3;
+            params_t3_stripped.messages = Vec::new();
+            let json_t3_stripped = serde_json::to_string(&params_t3_stripped).unwrap();
+
+            assert_eq!(
+                json_t1_stripped, json_t3_stripped,
+                "多轮对话中 system prompt + tools 应保持不变"
+            );
+        });
+    }
+
+    #[test]
+    fn test_cache_cross_session_prefix_ratio() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+
+            // 创建两个相同配置的 Agent
+            fn make_agent(home: &std::path::Path) -> AiAgent {
+                let mut agent = AiAgent::new(AiAgentOptions {
+                    api_key: Some("test-key".to_string()),
+                    ..Default::default()
+                })
+                .unwrap();
+                let shell_exec = crate::tools::shell_exec::ShellExec::new(Default::default());
+                agent.register_tool(ToolHandler::ShellExec(shell_exec));
+                let web_fetch = crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap();
+                agent.register_tool(ToolHandler::WebFetch(web_fetch));
+                let web_search = crate::tools::web_search::WebSearch::new(
+                    "k".into(),
+                    "https://x.com".into(),
+                    "m".into(),
+                    100,
+                )
+                .unwrap();
+                agent.register_tool(ToolHandler::WebSearch(web_search));
+                agent
+            }
+
+            let mut agent_a = make_agent(home);
+            let mut agent_b = make_agent(home);
+
+            // 不同用户输入模拟跨会话场景
+            simulate_first_turn(&mut agent_a, "write a poem about Rust");
+            simulate_first_turn(&mut agent_b, "explain quantum computing");
+
+            // 计算可缓存部分占总请求的比率
+            // 稳定部分 = system_prompt + tool_defs + context_reminder中稳定前缀的长度
+            let system_prompt_len = agent_a.system_prompt.len();
+
+            let tool_defs_json: String = agent_a
+                .tools
+                .iter()
+                .map(|t| serde_json::to_string(&t.tool_definition()).unwrap())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            // 首条消息内容
+            let first_msg_content = &agent_a.messages[0].content;
+            // Context reminder 中稳定前缀 = 到 用户输入 之前的全部内容
+            // 稳定部分 = system + tools + context 前缀
+            let stable_parties = system_prompt_len + tool_defs_json.len();
+
+            // 总请求内容 = 稳定部分 + 首条消息的完整内容
+            let total_size = stable_parties + first_msg_content.len();
+
+            // 保守估计：仅 system_prompt + tool_defs 为可缓存前缀
+            let cacheable_ratio = stable_parties as f64 / total_size as f64 * 100.0;
+
+            eprintln!(
+                "[缓存] system_prompt={}B, tools={}B, first_msg={}B, \
+                 system+tools 占请求 {:.1}% (保守估计算法)",
+                system_prompt_len,
+                tool_defs_json.len(),
+                first_msg_content.len(),
+                cacheable_ratio
+            );
+
+            // 预期 system + tools 至少占请求的 40%+
+            assert!(
+                cacheable_ratio > 35.0,
+                "system_prompt + tools 应占请求 35% 以上，实际 {:.1}%（system: {}B, tools: {}B, msg: {}B）",
+                cacheable_ratio,
+                system_prompt_len,
+                tool_defs_json.len(),
+                first_msg_content.len()
+            );
+
+            // 验证两个 Agent 的 system prompt 完全相同
+            assert_eq!(
+                agent_a.system_prompt, agent_b.system_prompt,
+                "跨会话系统提示词应完全相同"
+            );
+
+            // 验证两个 Agent 的工具定义序列化结果完全相同
+            let tools_a = agent_a
+                .tools
+                .iter()
+                .map(|t| serde_json::to_string(&t.tool_definition()).unwrap())
+                .collect::<Vec<_>>();
+            let tools_b = agent_b
+                .tools
+                .iter()
+                .map(|t| serde_json::to_string(&t.tool_definition()).unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(tools_a, tools_b, "跨会话工具定义应完全相同");
+
+            // 验证首条消息的内容前缀（context reminder 稳定部分）完全相同
+            // 取两个消息中较短的内容进行比较
+            let min_len = agent_a.messages[0]
+                .content
+                .len()
+                .min(agent_b.messages[0].content.len());
+            let prefix_a = &agent_a.messages[0].content[..min_len];
+            let prefix_b = &agent_b.messages[0].content[..min_len];
+            // 找到公共前缀
+            let lcp = prefix_a
+                .chars()
+                .zip(prefix_b.chars())
+                .take_while(|(a, b)| a == b)
+                .count();
+            eprintln!(
+                "[缓存] context reminder LCP={} chars（两个不同输入的公共前缀长度）",
+                lcp
+            );
+
+            // context reminder 稳定部分（到用户输入之前）应完全相同
+            assert!(
+                lcp > 100,
+                "context reminder 前缀应有足够长的公共部分（{} chars）",
+                lcp
+            );
         });
     }
 }

@@ -2,9 +2,11 @@
 //!
 //! 集中管理系统提示词的构建逻辑，包括：
 //! - 基础身份定义（`DEFAULT_SYSTEM_PROMPT`）
-//! - 行为规范（`BEHAVIORAL_GUIDANCE`）
-//! - 工具使用指引
+//! - 行为规范与工具使用规则（`BEHAVIORAL_GUIDANCE`，完全静态）
 //! - 上下文环境提醒（首条消息注入）
+//!
+//! 整个系统提示词（身份 + 行为规范 + 工具规则）完全静态化，
+//! 确保 DeepSeek 前缀缓存可跨会话复用。
 
 /// 默认系统提示词 — 定义 AI 助手的基本身份和行为模式
 pub const DEFAULT_SYSTEM_PROMPT: &str = "你是 zapmyco，一个基于 AI 的命令行工具，帮助用户完成指定的任务。\n使用工具与用户交互，遵循用户指令完成任务。\n输出所有思考过程，让用户了解你的工作进度。";
@@ -44,12 +46,34 @@ pub const BEHAVIORAL_GUIDANCE: &str = "\n\
     - 除非用户明确要求，不要使用 emoji。\
     - 引用代码或文件时包含 file_path:line_number 格式。\
     - 先给答案或行动结果，再给推理过程。\
-    - 工具调用前不要加冒号（如不要写「让我读取文件：」然后调用工具，直接说「让我读取文件」即可）。";
+    - 工具调用前不要加冒号（如不要写「让我读取文件：」然后调用工具，直接说「让我读取文件」即可）。\
+    \n\
+    ## 工具使用规则\n\
+    \n\
+    - 有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。\
+    - 文件操作前必须先通过 file_read 读取文件内容。\
+    - 使用工具时请注意安全。\
+    \n\
+    ## 任务执行策略\n\
+    \n\
+    当使用 task_create 创建任务后，请按以下步骤执行：\
+    1. 调用 task_list 查看所有任务的依赖关系\
+    2. 选择 blocked_by 为空且状态为 pending 的任务\
+    3. 调用 task_update 将其标记为 in_progress\
+    4. 使用 shell_exec、file_edit 等工具完成该任务\
+    5. 调用 task_update 将其标记为 completed\
+    6. 重复步骤 1-5 直到所有任务完成\
+    \n\
+    注意：每次工具调用轮次只处理一个任务。完成后标记 completed \
+    然后检查 task_list 找出下一个可用任务。\
+    被 blocked 的任务跳过，等依赖任务完成后再处理。";
 
 /// 系统提示词构建器
 ///
-/// 管理基础系统提示词（身份定义 + 行为规范），
-/// 并提供工具使用指引和上下文提醒的构建方法。
+/// 管理系统提示词（身份定义 + 行为规范 + 工具使用规则），
+/// 并提供上下文提醒的构建方法。
+///
+/// 整个系统提示词完全静态化，确保 DeepSeek 前缀缓存可跨会话复用。
 pub struct SystemPromptBuilder {
     base_prompt: String,
 }
@@ -58,7 +82,7 @@ impl SystemPromptBuilder {
     /// 创建新的系统提示词构建器
     ///
     /// `custom_prompt` 为 `Some` 时使用自定义提示词，
-    /// 否则使用默认提示词 + 行为规范。
+    /// 否则使用默认提示词 + 行为规范（含完整的工具使用规则）。
     pub fn new(custom_prompt: Option<String>) -> Self {
         let base_prompt = match custom_prompt {
             Some(c) => c,
@@ -67,70 +91,10 @@ impl SystemPromptBuilder {
         Self { base_prompt }
     }
 
-    /// 获取基础提示词（不含工具使用指引）
+    /// 获取基础提示词
     pub fn base_prompt(&self) -> &str {
         &self.base_prompt
     }
-
-    /// 获取静态部分长度（用于提示词缓存拆分）
-    ///
-    /// 静态部分 = 基础提示词，可设置 `cache_control: ephemeral`；
-    /// 动态部分 = 工具使用指引和工具定义，不缓存。
-    pub fn static_prompt_len(&self) -> usize {
-        self.base_prompt.len()
-    }
-}
-
-/// 构建包含工具使用指引的完整系统提示词
-///
-/// * `base` — 基础系统提示词（身份 + 行为规范）
-/// * `tool_names` — 已注册的工具名称列表
-///
-/// 根据已注册的工具动态生成对应的使用规则说明。
-pub fn build_with_tool_guidance(base: &str, tool_names: &[&str]) -> String {
-    let mut prompt = base.to_string();
-    if tool_names.is_empty() {
-        return prompt;
-    }
-
-    prompt.push_str("\n\n使用工具时请注意以下规则：\n");
-
-    // 强调专用工具优先于 shell_exec
-    if tool_names.contains(&"shell_exec") {
-        prompt.push_str("注意：有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。\n");
-    }
-
-    // 文件操作安全规则
-    let has_file_tools = tool_names.contains(&"file_read")
-        || tool_names.contains(&"file_edit")
-        || tool_names.contains(&"file_write");
-    if has_file_tools {
-        prompt.push_str("文件操作前必须先通过 file_read 读取文件内容。\n");
-    }
-
-    prompt.push_str("使用工具时请注意安全。");
-
-    // 任务执行策略
-    let has_task_tools = tool_names.contains(&"task_create")
-        || tool_names.contains(&"task_update")
-        || tool_names.contains(&"task_list");
-    if has_task_tools {
-        prompt.push_str(
-            "\n\n## 任务执行策略\n\
-             当使用 task_create 创建任务后，请按以下步骤执行：\n\
-             1. 调用 task_list 查看所有任务的依赖关系\n\
-             2. 选择 blocked_by 为空且状态为 pending 的任务\n\
-             3. 调用 task_update 将其标记为 in_progress\n\
-             4. 使用 shell_exec、file_edit 等工具完成该任务\n\
-             5. 调用 task_update 将其标记为 completed\n\
-             6. 重复步骤 1-5 直到所有任务完成\n\
-             注意：每次工具调用轮次只处理一个任务。完成后标记 completed \
-             然后检查 task_list 找出下一个可用任务。\
-             被 blocked 的任务跳过，等依赖任务完成后再处理。",
-        );
-    }
-
-    prompt
 }
 
 /// 构建上下文环境提醒（注入到首条用户消息前）
@@ -143,32 +107,53 @@ pub fn build_context_reminder(agents_md: Option<&str>) -> String {
         .unwrap_or_else(|_| "unknown".to_string());
 
     let now = chrono::Local::now();
-    let date_str = now.format("%Y-%m-%d %H:%M").to_string();
+    // 仅精确到天，确保同一天内缓存前缀稳定
+    let date_str = now.format("%Y-%m-%d").to_string();
 
-    let mut parts = vec![
-        format!("当前工作目录：{}", cwd),
-        format!("当前日期：{}", date_str),
-    ];
+    // 稳定内容前置（跨会话不变），动态内容后置（仅影响末尾缓存块）
+    let mut parts = vec![];
 
-    // 操作系统信息
+    // 操作系统信息（稳定）
     let os = crate::env_info::os_info();
     if !os.is_empty() {
         parts.push(format!("操作系统：{}", os));
     }
 
-    // Shell 信息
+    // Shell 信息（稳定）
     let shell = crate::env_info::shell_name();
     if !shell.is_empty() {
         parts.push(format!("Shell：{}", shell));
     }
 
-    // 语言/区域
+    // 语言/区域（稳定）
     let locale = crate::env_info::locale_info();
     if !locale.is_empty() {
         parts.push(format!("语言/区域：{}", locale));
     }
 
-    // Git 状态
+    // 已知命令行工具（进程内稳定）
+    let tools = crate::env_info::available_tools();
+    if !tools.is_empty() {
+        parts.push(format!("\n# 已知命令行工具\n{}", tools));
+    }
+
+    // 工作目录（半动态，后置）
+    parts.push(format!("当前工作目录：{}", cwd));
+    // 日期（仅精确到天，每天只变一次）
+    parts.push(format!("当前日期：{}", date_str));
+
+    // AGENTS.md 内容（半稳定）
+    if let Some(md) = agents_md {
+        let md = md.trim();
+        if !md.is_empty() {
+            parts.push(format!(
+                "\n# AGENTS.md\n以下是指令文件内容，模型必须严格遵守：\n\n{}",
+                md
+            ));
+        }
+    }
+
+    // Git 状态（最易变，放到最后）
     if let Some(output) = std::process::Command::new("git")
         .args(["status", "--branch", "--short"])
         .output()
@@ -179,23 +164,6 @@ pub fn build_context_reminder(agents_md: Option<&str>) -> String {
         let git_status = git_status.trim();
         if !git_status.is_empty() {
             parts.push(format!("\n# Git 状态\n{}", git_status));
-        }
-    }
-
-    // 已知命令行工具
-    let tools = crate::env_info::available_tools();
-    if !tools.is_empty() {
-        parts.push(format!("\n# 已知命令行工具\n{}", tools));
-    }
-
-    // AGENTS.md 内容
-    if let Some(md) = agents_md {
-        let md = md.trim();
-        if !md.is_empty() {
-            parts.push(format!(
-                "\n# AGENTS.md\n以下是指令文件内容，模型必须严格遵守：\n\n{}",
-                md
-            ));
         }
     }
 
@@ -225,57 +193,29 @@ mod tests {
     }
 
     #[test]
-    fn test_build_with_tool_guidance_no_tools() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(base, &[]);
-        assert_eq!(result, base);
-    }
-
-    #[test]
-    fn test_build_with_tool_guidance_shell_exec() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(base, &["shell_exec"]);
-        assert!(result.contains("不要使用 shell_exec 替代"));
-    }
-
-    #[test]
-    fn test_build_with_tool_guidance_file_tools() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(base, &["file_read", "file_edit"]);
-        assert!(result.contains("文件操作前必须先通过 file_read 读取"));
-    }
-
-    #[test]
-    fn test_build_with_tool_guidance_task_tools() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(base, &["task_create", "task_update", "task_list"]);
-        assert!(result.contains("任务执行策略"));
-    }
-
-    #[test]
-    fn test_build_with_tool_guidance_all_tools() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(
-            base,
-            &["shell_exec", "file_read", "file_edit", "task_create"],
-        );
-        assert!(result.contains("不要使用 shell_exec 替代"));
-        assert!(result.contains("文件操作前必须先通过 file_read 读取"));
-        assert!(result.contains("任务执行策略"));
-    }
-
-    #[test]
-    fn test_static_prompt_len_custom() {
-        let base = "hello world";
-        let builder = SystemPromptBuilder::new(Some(base.to_string()));
-        assert_eq!(builder.static_prompt_len(), base.len());
-    }
-
-    #[test]
-    fn test_static_prompt_len_default() {
+    fn test_default_prompt_contains_tool_rules() {
         let builder = SystemPromptBuilder::new(None);
-        let expected_len = format!("{}{}", DEFAULT_SYSTEM_PROMPT, BEHAVIORAL_GUIDANCE).len();
-        assert_eq!(builder.static_prompt_len(), expected_len);
+        let prompt = builder.base_prompt();
+        assert!(
+            prompt.contains("不要使用 shell_exec 替代"),
+            "应包含 shell 专用工具规则"
+        );
+        assert!(
+            prompt.contains("文件操作前必须先通过 file_read 读取"),
+            "应包含文件操作规则"
+        );
+        assert!(prompt.contains("任务执行策略"), "应包含任务执行策略");
+        assert!(prompt.contains("使用工具时请注意安全"), "应包含安全提示");
+    }
+
+    #[test]
+    fn test_default_prompt_tool_rules_position() {
+        let builder = SystemPromptBuilder::new(None);
+        let prompt = builder.base_prompt();
+        // 工具规则应在行为规范之后
+        let guidance_pos = prompt.find("## 执行规则").unwrap();
+        let tool_pos = prompt.find("## 工具使用规则").unwrap();
+        assert!(tool_pos > guidance_pos, "工具规则应在执行规则之后");
     }
 
     // ---- build_context_reminder tests ----
@@ -345,6 +285,78 @@ mod tests {
     }
 
     #[test]
+    fn test_cache_context_reminder_stable_first() {
+        let result = build_context_reminder(None);
+        // 稳定内容（操作系统）应出现在动态内容（工作目录）之前
+        let os_pos = result.find("操作系统：").unwrap();
+        let cwd_pos = result.find("当前工作目录：").unwrap();
+        assert!(
+            os_pos < cwd_pos,
+            "稳定内容（操作系统）应在动态内容（工作目录）之前"
+        );
+
+        // Shell（稳定）应在 CWD（动态）之前
+        let shell_pos = result.find("Shell：");
+        if let Some(sp) = shell_pos {
+            assert!(sp < cwd_pos, "Shell 应在当前工作目录之前");
+        }
+
+        // CWD 之后不应再出现操作系统、Shell 等稳定字段
+        let after_cwd = &result[cwd_pos..];
+        assert!(
+            !after_cwd.contains("操作系统："),
+            "CWD 之后不应再出现稳定字段（操作系统）"
+        );
+        // 语言/区域（稳定）应在 CWD 之前
+        let locale_pos = result.find("语言/区域：");
+        if let Some(lp) = locale_pos {
+            assert!(lp < cwd_pos, "语言/区域应在当前工作目录之前");
+        }
+    }
+
+    #[test]
+    fn test_cache_context_reminder_date_no_minutes() {
+        let result = build_context_reminder(None);
+        // 日期不包含分钟（仅精确到天）
+        let date_line = result
+            .lines()
+            .find(|l| l.starts_with("当前日期："))
+            .expect("应包含当前日期");
+        // 格式应为 YYYY-MM-DD，不应包含 HH:MM
+        assert!(
+            !date_line.contains(':'),
+            "日期不应包含分钟（仅 YYYY-MM-DD）: {}",
+            date_line
+        );
+        // 应包含数字日期
+        assert!(
+            date_line.chars().any(|c| c.is_ascii_digit()),
+            "日期应包含数字"
+        );
+    }
+
+    #[test]
+    fn test_cache_context_reminder_git_status_at_end() {
+        let result = build_context_reminder(None);
+        let git_pos = result.find("# Git 状态");
+        if let Some(pos) = git_pos {
+            // Git 状态应在 </system-reminder> 之前（即内容的末尾）
+            let tail = &result[pos..];
+            let close_pos = tail.find("</system-reminder>").unwrap();
+            // Git 状态与 </system-reminder> 之间不应有其它 section 标题
+            let between = &tail[..close_pos];
+            assert!(
+                !between.contains("# 已知命令行工具"),
+                "Git 状态后不应有已知命令行工具"
+            );
+            assert!(
+                !between.contains("# AGENTS.md"),
+                "Git 状态后不应有 AGENTS.md"
+            );
+        }
+    }
+
+    #[test]
     fn test_context_reminder_contains_shell() {
         let result = build_context_reminder(None);
         // Shell 在 CI 或某些环境中可能为空，不为空时才验证
@@ -357,48 +369,5 @@ mod tests {
             assert!(!shell_val.is_empty(), "Shell 值不应为空");
         }
         // 如果不包含 Shell 信息（环境未设置 $SHELL）也允许
-    }
-
-    // ---- build_with_tool_guidance boundary tests ----
-
-    #[test]
-    fn test_build_with_tool_guidance_file_write_only() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(base, &["file_write"]);
-        assert!(
-            result.contains("文件操作前必须先通过 file_read 读取"),
-            "仅有 file_write 也应触发文件安全规则: {}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_build_with_tool_guidance_duplicate_names() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(base, &["shell_exec", "shell_exec", "shell_exec"]);
-        // 重复名称不应导致多次插入或 panic
-        let count = result.matches("不要使用 shell_exec 替代").count();
-        assert_eq!(count, 1, "重复名称应只出现一次提示");
-    }
-
-    #[test]
-    fn test_build_with_tool_guidance_large_tool_list() {
-        let base = "test prompt";
-        let mut tools: Vec<String> = (0..150).map(|i| format!("tool_{}", i)).collect();
-        tools.push("shell_exec".to_string());
-        tools.push("file_read".to_string());
-        let tool_refs: Vec<&str> = tools.iter().map(|s| s.as_str()).collect();
-        let result = build_with_tool_guidance(base, &tool_refs);
-        assert!(result.contains("shell_exec"), "大型列表应正常工作");
-        assert!(result.contains("file_read"), "大型列表应包含文件提示");
-    }
-
-    #[test]
-    fn test_build_with_tool_guidance_unknown_tools() {
-        let base = "test prompt";
-        let result = build_with_tool_guidance(base, &["unknown_tool_1", "unknown_tool_2"]);
-        // 未知工具不应导致 panic，应正常输出基础提示词
-        assert!(result.starts_with(base), "应保留基础提示词");
-        assert!(result.contains("使用工具时请注意安全"), "应包含安全提示");
     }
 }
