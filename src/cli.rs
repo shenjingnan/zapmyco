@@ -226,6 +226,7 @@ fn prompt_provider() -> Option<&'static str> {
         vec![
             "Anthropic",
             "DeepSeek",
+            "Qwen（通义千问）",
             "MiniMax",
             "GLM（智谱）",
             "Kimi（月之暗面）",
@@ -239,6 +240,7 @@ fn prompt_provider() -> Option<&'static str> {
     .map(|s| match s {
         "Anthropic" => "anthropic",
         "DeepSeek" => "deepseek",
+        "Qwen（通义千问）" => "qwen",
         "MiniMax" => "minimax",
         "GLM（智谱）" => "glm",
         "Kimi（月之暗面）" => "kimi",
@@ -1084,7 +1086,7 @@ mod tests {
     #[test]
     fn test_filter_models_by_provider_custom() {
         let models = filter_models_by_provider("custom");
-        assert_eq!(models.len(), 36);
+        assert_eq!(models.len(), 59);
     }
 
     #[test]

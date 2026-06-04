@@ -73,7 +73,7 @@ zapmyco init
 ```
 
 交互式向导会引导你完成：
-- 选择 AI 供应商（Anthropic / DeepSeek / MiniMax / GLM / Kimi / Doubao / 自定义）
+- 选择 AI 供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao / 自定义）
 - 配置 API Key（直接输入或使用环境变量）
 - 选择默认模型
 
@@ -104,7 +104,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 ## 特性
 
 - **Rust 实现**: 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动
-- **多供应商**: 内置 6 个供应商（Anthropic / DeepSeek / MiniMax / GLM / Kimi / Doubao）32 个模型，可自定义供应商
+- **多供应商**: 内置 7 个供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao）59 个模型，可自定义供应商
 - **流式输出**: AI 回复实时逐字显示
 - **交互式对话**: 支持 `/exit`、`/clear` 命令的终端聊天模式
 - **配置管理**: 自动兼容旧版配置格式，支持 `${env.VAR}` 语法
@@ -185,6 +185,29 @@ zapmyco completion powershell | Out-String | Invoke-Expression
 | doubao-seed-2-0-lite | Doubao（火山引擎） | 256K tokens（支持视觉） |
 | doubao-seed-2-0-mini | Doubao（火山引擎） | 256K tokens（支持视觉） |
 | doubao-seed-2-0-code-preview | Doubao（火山引擎） | 256K tokens（支持视觉） |
+| qwen3.7-max | Qwen（通义千问） | 1M tokens |
+| qwen3.6-max-preview | Qwen（通义千问） | 1M tokens |
+| qwen3-max | Qwen（通义千问） | 1M tokens |
+| qwen3.7-plus | Qwen（通义千问） | 1M tokens（支持视觉） |
+| qwen3.6-plus | Qwen（通义千问） | 1M tokens |
+| qwen3.5-plus | Qwen（通义千问） | 1M tokens |
+| qwen-plus | Qwen（通义千问） | 128K tokens |
+| qwen3.6-flash | Qwen（通义千问） | 1M tokens |
+| qwen3.5-flash | Qwen（通义千问） | 1M tokens |
+| qwen-flash | Qwen（通义千问） | 128K tokens |
+| qwen-turbo | Qwen（通义千问） | 128K tokens |
+| qwen3-coder-next | Qwen（通义千问） | 1M tokens |
+| qwen3-coder-plus | Qwen（通义千问） | 1M tokens |
+| qwen3-coder-flash | Qwen（通义千问） | 1M tokens |
+| qwen3-vl-plus | Qwen（通义千问） | 1M tokens（支持视觉） |
+| qwen3-vl-flash | Qwen（通义千问） | 1M tokens（支持视觉） |
+| qwen-vl-max | Qwen（通义千问） | 128K tokens（支持视觉） |
+| qwen-vl-plus | Qwen（通义千问） | 128K tokens（支持视觉） |
+| qwen3.6-27b | Qwen（通义千问） | 256K tokens |
+| qwen3.5-397b-a17b | Qwen（通义千问） | 256K tokens |
+| qwen3.5-122b-a10b | Qwen（通义千问） | 256K tokens |
+| qwen3.5-27b | Qwen（通义千问） | 256K tokens |
+| qwen3.5-35b-a3b | Qwen（通义千问） | 256K tokens |
 
 ## 贡献指南
 

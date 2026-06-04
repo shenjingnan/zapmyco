@@ -394,8 +394,238 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(128_000),
         },
     ),
+    // --- Qwen 通义千问 ---
+    (
+        "qwen3.7-max",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "qwen3.6-max-preview",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "qwen3-max",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(128_000),
+        },
+    ),
+    (
+        "qwen3.7-plus",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3.6-plus",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3.5-plus",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen-plus",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(128_000),
+            max_output_tokens: Some(8_192),
+        },
+    ),
+    (
+        "qwen3.6-flash",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3.5-flash",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen-flash",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(128_000),
+            max_output_tokens: Some(8_192),
+        },
+    ),
+    (
+        "qwen-turbo",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(128_000),
+            max_output_tokens: Some(8_192),
+        },
+    ),
+    (
+        "qwen3-coder-next",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3-coder-plus",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3-coder-flash",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3-vl-plus",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3-vl-flash",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(1_000_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen-vl-max",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(128_000),
+            max_output_tokens: Some(8_192),
+        },
+    ),
+    (
+        "qwen-vl-plus",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
+            context_window: Some(128_000),
+            max_output_tokens: Some(8_192),
+        },
+    ),
+    (
+        "qwen3.6-27b",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(256_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3.5-397b-a17b",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(256_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3.5-122b-a10b",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(256_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3.5-27b",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(256_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
+    (
+        "qwen3.5-35b-a3b",
+        BuiltInModel {
+            provider: "qwen",
+            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+            capabilities: &[ModelCapability::Text],
+            context_window: Some(256_000),
+            max_output_tokens: Some(64_000),
+        },
+    ),
 ];
-
 /// 根据模型名称获取内置模型信息
 pub fn get_model_info(name: &str) -> Option<&'static BuiltInModel> {
     BUILT_IN_MODELS
@@ -446,7 +676,7 @@ mod tests {
         assert!(names.contains(&"MiniMax-M3"));
         assert!(names.contains(&"kimi-for-coding"));
         assert!(names.contains(&"doubao-seed-code"));
-        assert_eq!(names.len(), 36);
+        assert_eq!(names.len(), 59);
     }
 
     #[test]
