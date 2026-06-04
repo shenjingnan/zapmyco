@@ -1,3 +1,4 @@
+pub mod agents_md;
 pub mod chat;
 pub mod conversation_logger;
 

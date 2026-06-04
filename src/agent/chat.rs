@@ -265,6 +265,8 @@ pub struct AiAgent {
     context_injected: bool,
     /// 静态提示词长度边界（静态部分可缓存，动态部分不缓存）
     static_prompt_len: usize,
+    /// AGENTS.md 内容（启动时加载，缓存复用）
+    agents_md_content: Option<String>,
 }
 
 /// 流式响应解析状态机
@@ -389,6 +391,10 @@ impl AiAgent {
             None
         };
 
+        // 10. 加载 AGENTS.md
+        let agents_md_content =
+            crate::agent::agents_md::load_agents_md(&std::env::current_dir().unwrap_or_default());
+
         Ok(Self {
             client,
             model: model_name.to_string(),
@@ -404,11 +410,12 @@ impl AiAgent {
             task_display: None,
             context_injected: false,
             static_prompt_len,
+            agents_md_content,
         })
     }
 
     /// 构建上下文提醒（首条消息时注入到用户输入前）
-    fn build_context_reminder() -> String {
+    fn build_context_reminder(&self) -> String {
         let cwd = std::env::current_dir()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| "unknown".to_string());
@@ -435,6 +442,14 @@ impl AiAgent {
             }
         }
 
+        // AGENTS.md 内容
+        if let Some(ref agents_md) = self.agents_md_content {
+            parts.push(format!(
+                "\n# AGENTS.md\n以下是指令文件内容，模型必须严格遵守：\n\n{}",
+                agents_md
+            ));
+        }
+
         format!(
             "<system-reminder>\n{}\n</system-reminder>\n\n",
             parts.join("\n")
@@ -445,7 +460,7 @@ impl AiAgent {
     pub async fn chat(&mut self, input: &str) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
-            format!("{}{}", Self::build_context_reminder(), input)
+            format!("{}{}", self.build_context_reminder(), input)
         } else {
             input.to_string()
         };
@@ -501,7 +516,7 @@ impl AiAgent {
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
-            format!("{}{}", Self::build_context_reminder(), input)
+            format!("{}{}", self.build_context_reminder(), input)
         } else {
             input.to_string()
         };
