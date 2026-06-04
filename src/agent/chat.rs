@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use std::io::IsTerminal;
 use std::pin::Pin;
 use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
@@ -10,8 +11,12 @@ use zapmyco_anthropic_ai_sdk::types::message::{
 
 use crate::agent::conversation_logger::ConversationLogger;
 use crate::agent::system_prompt::SystemPromptBuilder;
-use crate::config::models::get_model_info;
-use crate::config::settings::{is_conversation_log_enabled, load_settings, resolve_env_ref};
+use crate::config::models::{
+    get_built_in_model_names, get_model_info, guess_provider_from_model_name,
+};
+use crate::config::settings::{
+    is_conversation_log_enabled, load_settings, resolve_env_ref, update_settings_model,
+};
 use crate::datetime;
 
 /// AiAgent 配置选项
@@ -256,14 +261,51 @@ impl AiAgent {
             .map(|s| s.as_str());
 
         // 3. 最终模型名称：options.model > 配置档模型名 > 默认值
-        let model_name = options
+        let initial_model = options
             .model
             .as_deref()
             .or(profile_model_name)
             .unwrap_or(DEFAULT_MODEL);
 
+        let mut model_name = initial_model.to_string();
+
         // 4. 从内置注册表查找模型信息
-        let model_info = get_model_info(model_name);
+        let mut model_info = get_model_info(&model_name);
+
+        // 4.5 模型已在内置列表中找到，或用户已配置自定义 base_url 时跳过提示
+        if model_info.is_none() {
+            let guessed_provider = guess_provider_from_model_name(&model_name);
+            let has_custom_base_url = options.base_url.is_some()
+                || guessed_provider
+                    .and_then(|p| {
+                        llm.and_then(|l| l.providers.as_ref())
+                            .and_then(|provs| provs.get(p))
+                            .and_then(|c| c.base_url.as_ref())
+                    })
+                    .is_some();
+
+            if !has_custom_base_url {
+                match prompt_model_replacement(&model_name, guessed_provider) {
+                    Ok(Some(new_model)) => {
+                        // 用户选择了替代模型，持久化到 settings.toml
+                        if let Err(e) = update_settings_model(&new_model) {
+                            eprintln!("[警告] 自动更新 settings.toml 失败: {}", e);
+                        } else {
+                            eprintln!(
+                                "✓ 已选择替代模型 '{}'，已自动更新 settings.toml。\n",
+                                new_model
+                            );
+                        }
+                        model_name = new_model;
+                        model_info = get_model_info(&model_name);
+                    }
+                    Ok(None) => {
+                        // 用户选择跳过，继续使用原模型（可能失败）
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
 
         // 5. 确定供应商名称：options.provider > 注册表中的供应商 > 'default'
         let provider_name = options
@@ -322,7 +364,7 @@ impl AiAgent {
 
         Ok(Self {
             client,
-            model: model_name.to_string(),
+            model: model_name,
             max_tokens,
             prompt_builder,
             system_prompt,
@@ -1169,6 +1211,119 @@ pub(crate) fn resolve_api_key(
         "DEEPSEEK_API_KEY 未设置。请运行 `zapmyco init` 或设置环境变量 DEEPSEEK_API_KEY。"
             .to_string(),
     )
+}
+
+/// 获取某供应商的可用替代模型列表（纯函数，可测试）
+fn get_alternative_models(guessed_provider: Option<&str>) -> Vec<&'static str> {
+    match guessed_provider {
+        Some(provider) => get_built_in_model_names()
+            .into_iter()
+            .filter(|name| get_model_info(name).is_some_and(|info| info.provider == provider))
+            .collect(),
+        None => get_built_in_model_names(),
+    }
+}
+
+/// 格式化模型显示标签（纯函数，可测试）
+fn format_model_label(name: &str) -> String {
+    let info = get_model_info(name);
+    match (
+        info.and_then(|i| i.context_window),
+        info.and_then(|i| i.max_output_tokens),
+    ) {
+        (Some(ctx), Some(max)) => {
+            format!("{}  ({}K context, {} max output)", name, ctx / 1000, max)
+        }
+        (Some(ctx), None) => format!("{}  ({}K context)", name, ctx / 1000),
+        (None, Some(max)) => format!("{}  ({} max output)", name, max),
+        (None, None) => name.to_string(),
+    }
+}
+
+/// 当模型不在内置列表中时，交互式提示用户选择替代模型或跳过
+///
+/// 返回：
+/// - `Ok(Some(new_model))` — 用户选择了替代模型
+/// - `Ok(None)` — 用户选择跳过
+/// - `Err(msg)` — 无法提示（非 TTY 等），向上传播错误
+fn prompt_model_replacement(
+    old_model: &str,
+    guessed_provider: Option<&str>,
+) -> Result<Option<String>, String> {
+    // 获取该供应商的可用模型列表
+    let available = get_alternative_models(guessed_provider);
+
+    if available.is_empty() {
+        return Err(format!(
+            "模型 '{}' 已不再支持，且未找到可替代的内置模型。\n\
+             请通过 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。",
+            old_model
+        ));
+    }
+
+    // 非交互环境（CI、管道等）跳过 inquire，直接 Warning 降级
+    if !std::io::stdin().is_terminal() {
+        eprintln!("[警告] 模型 '{}' 已不在支持列表中。", old_model);
+        eprintln!("       请运行 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。");
+        return Ok(None);
+    }
+
+    // 构建显示标签
+    let choices: Vec<(String, &str)> = available
+        .into_iter()
+        .map(|name| {
+            let label = format_model_label(name);
+            (label, name)
+        })
+        .collect();
+
+    let display_labels: Vec<&str> = choices.iter().map(|(label, _)| label.as_str()).collect();
+
+    let provider_hint = guessed_provider.unwrap_or("未知");
+
+    eprintln!("\n⚠️  模型 '{}' 已在最新版本中移除。", old_model);
+    eprintln!(
+        "发现您使用 {} 系列，以下是当前可用的模型：\n",
+        provider_hint
+    );
+
+    let selection =
+        inquire::Select::new("请选择替代模型（或选择最后一项跳过）", {
+            let mut opts = display_labels.clone();
+            opts.push("─ 跳过，稍后自行配置 baseUrl ─");
+            opts
+        })
+        .with_vim_mode(true)
+        .prompt();
+
+    match selection {
+        Ok(selected) => {
+            if selected.starts_with("─") {
+                // 用户选择跳过
+                eprintln!(
+                    "[提示] 请在 settings.toml 中为 [llm.providers.{}] 设置 baseUrl，",
+                    provider_hint
+                );
+                eprintln!("       或在提供商处获取新的 API 地址。");
+                Ok(None)
+            } else {
+                // 用户选择了替代模型
+                if let Some(idx) = choices.iter().position(|(label, _)| label == selected) {
+                    let new_model = choices[idx].1.to_string();
+                    eprintln!("✓ 已选择替代模型 '{}'。\n", new_model);
+                    Ok(Some(new_model))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+        Err(_) => {
+            // 非 TTY 环境或用户取消
+            eprintln!("[警告] 模型 '{}' 已不在支持列表中。", old_model);
+            eprintln!("       请运行 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。");
+            Ok(None)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -4120,6 +4275,114 @@ mod tests {
                 "context reminder 前缀应有足够长的公共部分（{} chars）",
                 lcp
             );
+        });
+    }
+
+    // --- 测试提取的纯函数 ---
+
+    #[test]
+    fn test_get_alternative_models_known_provider() {
+        let models = get_alternative_models(Some("deepseek"));
+        assert_eq!(models.len(), 2);
+        assert!(models.contains(&"deepseek-v4-flash"));
+        assert!(models.contains(&"deepseek-v4-pro"));
+    }
+
+    #[test]
+    fn test_get_alternative_models_none_provider() {
+        let models = get_alternative_models(None);
+        assert_eq!(models.len(), 64); // 全部模型
+    }
+
+    #[test]
+    fn test_get_alternative_models_unknown_provider() {
+        let models = get_alternative_models(Some("nonexistent"));
+        assert!(models.is_empty());
+    }
+
+    #[test]
+    fn test_get_alternative_models_anthropic() {
+        let models = get_alternative_models(Some("anthropic"));
+        assert!(models.contains(&"claude-opus-4-7"));
+        assert!(models.contains(&"claude-haiku-4-5"));
+    }
+
+    #[test]
+    fn test_format_model_label_known_model_full() {
+        let label = format_model_label("deepseek-v4-flash");
+        assert!(label.contains("deepseek-v4-flash"));
+        assert!(label.contains("1000K"), "应有上下文窗口信息");
+        assert!(label.contains("384000"), "应有 max output 信息");
+    }
+
+    #[test]
+    fn test_format_model_label_known_model_vision() {
+        let label = format_model_label("glm-4v");
+        // glm-4v 有 context_window 和 max_output_tokens
+        assert!(label.contains("glm-4v"));
+        assert!(label.contains("128K"));
+    }
+
+    #[test]
+    fn test_format_model_label_unknown_model() {
+        let label = format_model_label("some-unknown-model");
+        assert_eq!(label, "some-unknown-model");
+    }
+
+    // --- 测试 AiAgent::new() 在未知模型 + 自定义 baseUrl 时的行为 ---
+
+    #[test]
+    fn test_agent_unknown_model_with_options_base_url() {
+        run_with_temp_home(|home| {
+            create_test_settings(
+                home,
+                "[llm]\n\n[llm.providers.deepseek]\napiKey = \"test-key\"\n\n[llm.models]\ndefault = \"deepseek-v3\"\n",
+            );
+            // deepseek-v3 不在内置列表中，但 options.base_url 已设置 → 应跳过提示
+            let result = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                base_url: Some("https://custom.example.com".to_string()),
+                ..Default::default()
+            });
+            assert!(result.is_ok());
+            let agent = result.unwrap();
+            assert_eq!(agent.model, "deepseek-v3");
+        });
+    }
+
+    #[test]
+    fn test_agent_unknown_model_with_provider_base_url_in_settings() {
+        run_with_temp_home(|home| {
+            create_test_settings(
+                home,
+                "[llm]\n\n[llm.providers.deepseek]\napiKey = \"test-key\"\nbaseUrl = \"https://custom.example.com\"\n\n[llm.models]\ndefault = \"deepseek-v3\"\n",
+            );
+            // deepseek-v3 不在内置列表中，但 providers.deepseek.baseUrl 已设置 → 应跳过提示
+            let result = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            });
+            assert!(result.is_ok());
+            let agent = result.unwrap();
+            assert_eq!(agent.model, "deepseek-v3");
+        });
+    }
+
+    #[test]
+    fn test_agent_known_model_skips_prompt() {
+        run_with_temp_home(|home| {
+            create_test_settings(
+                home,
+                "[llm]\n\n[llm.providers.deepseek]\napiKey = \"test-key\"\n\n[llm.models]\ndefault = \"deepseek-v4-flash\"\n",
+            );
+            // deepseek-v4-flash 在内置列表中 → 正常流程，无提示
+            let result = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            });
+            assert!(result.is_ok());
+            let agent = result.unwrap();
+            assert_eq!(agent.model, "deepseek-v4-flash");
         });
     }
 }

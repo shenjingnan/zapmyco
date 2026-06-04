@@ -176,6 +176,30 @@ pub fn display_settings() -> Result<String, String> {
     toml::to_string(&masked).map_err(|e| format!("序列化配置失败: {}", e))
 }
 
+/// 更新 settings.toml 中的默认模型名称（default profile）并持久化
+pub fn update_settings_model(new_model: &str) -> Result<(), String> {
+    let mut settings = load_settings()?.ok_or_else(|| "设置文件不存在".to_string())?;
+
+    if let Some(llm) = settings.llm.as_mut() {
+        if let Some(models) = llm.models.as_mut() {
+            if let Some(default) = models.get_mut("default") {
+                *default = new_model.to_string();
+            } else {
+                models.insert("default".to_string(), new_model.to_string());
+            }
+        } else {
+            let mut models = std::collections::HashMap::new();
+            models.insert("default".to_string(), new_model.to_string());
+            llm.models = Some(models);
+        }
+    }
+
+    let content = toml::to_string(&settings).map_err(|e| format!("序列化设置失败: {}", e))?;
+    std::fs::write(get_settings_path(), content).map_err(|e| format!("写入设置文件失败: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,5 +637,106 @@ advanced = "deepseek-v4-flash"
             conversation_log: Some(ConversationLogSettings { enabled: false }),
         };
         assert!(!is_conversation_log_enabled(&settings));
+    }
+
+    #[test]
+    fn test_update_settings_model_updates_existing() {
+        with_temp_home(|home| {
+            write_toml_settings(
+                home,
+                "[llm]\n\n[llm.providers.deepseek]\napiKey = \"key\"\n\n[llm.models]\ndefault = \"deepseek-v3\"\n",
+            );
+
+            // 确保原始配置已加载
+            let loaded = load_settings().unwrap().unwrap();
+            let default_model = loaded
+                .llm
+                .as_ref()
+                .unwrap()
+                .models
+                .as_ref()
+                .unwrap()
+                .get("default")
+                .unwrap()
+                .clone();
+            assert_eq!(default_model, "deepseek-v3");
+
+            // 更新模型名
+            update_settings_model("deepseek-v4-flash").unwrap();
+
+            // 验证已更新
+            let updated = load_settings().unwrap().unwrap();
+            let new_model = updated
+                .llm
+                .as_ref()
+                .unwrap()
+                .models
+                .as_ref()
+                .unwrap()
+                .get("default")
+                .unwrap()
+                .clone();
+            assert_eq!(new_model, "deepseek-v4-flash");
+
+            // 确保其他配置未受影响
+            let provider = updated
+                .llm
+                .as_ref()
+                .unwrap()
+                .providers
+                .as_ref()
+                .unwrap()
+                .get("deepseek")
+                .unwrap();
+            assert_eq!(provider.api_key, Some("key".to_string()));
+        });
+    }
+
+    #[test]
+    fn test_update_settings_model_adds_default_when_missing() {
+        with_temp_home(|home| {
+            write_toml_settings(
+                home,
+                "[llm]\n\n[llm.providers.deepseek]\napiKey = \"key\"\n",
+            );
+
+            update_settings_model("deepseek-v4-flash").unwrap();
+
+            let updated = load_settings().unwrap().unwrap();
+            let new_model = updated
+                .llm
+                .as_ref()
+                .unwrap()
+                .models
+                .as_ref()
+                .unwrap()
+                .get("default")
+                .unwrap()
+                .clone();
+            assert_eq!(new_model, "deepseek-v4-flash");
+        });
+    }
+
+    #[test]
+    fn test_update_settings_model_no_llm_section() {
+        with_temp_home(|home| {
+            write_toml_settings(home, "[other]\nfoo = \"bar\"\n");
+
+            let result = update_settings_model("deepseek-v4-flash");
+            assert!(result.is_ok());
+
+            let updated = load_settings().unwrap().unwrap();
+            // llm section 不存在时，不会创建
+            assert!(updated.llm.is_none());
+        });
+    }
+
+    #[test]
+    fn test_update_settings_model_file_not_found() {
+        with_temp_home(|_home| {
+            let result = update_settings_model("deepseek-v4-flash");
+            assert!(result.is_err());
+            assert!(result.err().unwrap().contains("不存在"));
+        });
     }
 }
