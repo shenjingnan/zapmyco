@@ -312,3 +312,92 @@ async fn test_agent_stream_error_event() {
     assert!(result.is_err());
     assert!(result.err().unwrap().contains("API 错误"));
 }
+
+#[tokio::test]
+async fn test_agent_with_custom_prompt() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_NON_STREAM_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        system_prompt: Some("你是自定义助手".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent with custom prompt");
+
+    let response = agent.chat("你好").await.expect("Chat failed");
+    assert_eq!(response, "你好！我是 AI 助手。");
+
+    // 验证第一条消息仍包含 context reminder
+    assert_eq!(agent.get_messages().len(), 2);
+    assert!(
+        agent.get_messages()[0]
+            .content
+            .starts_with("<system-reminder>"),
+        "自定义 prompt 时首条消息仍应包含 context reminder"
+    );
+}
+
+#[tokio::test]
+async fn test_agent_context_injected_only_once() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    // 使用同一个响应，测试只关注 context reminder 的注入行为
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_NON_STREAM_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    // 第一次调用
+    let resp1 = agent.chat("第一条消息").await.expect("First chat failed");
+    assert_eq!(resp1, "你好！我是 AI 助手。");
+
+    // 获取第一条用户消息的内容
+    let first_msg_content = agent.get_messages()[0].content.clone();
+
+    // 第二次调用
+    let resp2 = agent.chat("第二条消息").await.expect("Second chat failed");
+    assert_eq!(resp2, "你好！我是 AI 助手。");
+
+    // 验证第一条消息包含 context reminder
+    assert!(
+        first_msg_content.starts_with("<system-reminder>"),
+        "首条消息应包含 context reminder"
+    );
+
+    // 验证第二条用户消息不包含 context reminder（不被重复注入）
+    assert_eq!(agent.get_messages().len(), 4);
+    let second_user_msg = &agent.get_messages()[2];
+    assert_eq!(second_user_msg.role, "user");
+    assert!(
+        !second_user_msg.content.starts_with("<system-reminder>"),
+        "第二条消息不应包含 context reminder"
+    );
+    assert_eq!(second_user_msg.content, "第二条消息");
+}

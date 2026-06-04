@@ -293,4 +293,71 @@ mod tests {
             info
         );
     }
+
+    #[test]
+    fn test_available_tools_cached() {
+        // 两次调用应返回相同结果（缓存验证）
+        let first = available_tools();
+        let second = available_tools();
+        assert_eq!(first, second, "可用工具列表应被缓存");
+    }
+
+    #[test]
+    fn test_os_info_known_os() {
+        let info = os_info();
+        let known = ["macOS", "Linux", "Windows"];
+        assert!(
+            known.iter().any(|&os| info.contains(os)),
+            "os_info() 应返回已知 OS 名称: {}",
+            info
+        );
+    }
+
+    // ---- 跨平台条件编译测试 ----
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_macos_os_version_sw_vers() {
+        let version = get_os_version();
+        assert!(version.is_some(), "macOS 上应能获取版本号");
+        let v = version.unwrap();
+        assert!(!v.is_empty(), "版本号不应为空");
+        // 版本号格式: "15.5" 或类似
+        assert!(
+            v.chars().next().map_or(false, |c| c.is_ascii_digit()),
+            "版本号应以数字开头: {}",
+            v
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_linux_os_version_uname() {
+        let version = get_os_version();
+        assert!(version.is_some(), "Linux 上应能获取版本号");
+        let v = version.unwrap();
+        assert!(!v.is_empty(), "版本号不应为空");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_windows_os_version_parse() {
+        let version = get_os_version();
+        assert!(version.is_some(), "Windows 上应能获取版本号");
+        let v = version.unwrap();
+        assert!(!v.is_empty(), "版本号不应为空");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_windows_shell_name_from_comspec() {
+        let shell = shell_name();
+        assert!(!shell.is_empty(), "Windows 上应能获取 Shell 名称");
+        let known = ["cmd", "pwsh", "powershell"];
+        assert!(
+            known.contains(&shell.as_str()),
+            "Shell 应为已知的 Windows Shell: {}",
+            shell
+        );
+    }
 }

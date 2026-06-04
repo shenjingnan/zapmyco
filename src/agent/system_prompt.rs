@@ -190,10 +190,13 @@ pub fn build_context_reminder(agents_md: Option<&str>) -> String {
 
     // AGENTS.md 内容
     if let Some(md) = agents_md {
-        parts.push(format!(
-            "\n# AGENTS.md\n以下是指令文件内容，模型必须严格遵守：\n\n{}",
-            md
-        ));
+        let md = md.trim();
+        if !md.is_empty() {
+            parts.push(format!(
+                "\n# AGENTS.md\n以下是指令文件内容，模型必须严格遵守：\n\n{}",
+                md
+            ));
+        }
     }
 
     format!(
@@ -273,5 +276,129 @@ mod tests {
         let builder = SystemPromptBuilder::new(None);
         let expected_len = format!("{}{}", DEFAULT_SYSTEM_PROMPT, BEHAVIORAL_GUIDANCE).len();
         assert_eq!(builder.static_prompt_len(), expected_len);
+    }
+
+    // ---- build_context_reminder tests ----
+
+    #[test]
+    fn test_context_reminder_basic_structure() {
+        let result = build_context_reminder(None);
+        assert!(
+            result.contains("<system-reminder>"),
+            "应包含 system-reminder 开始标签"
+        );
+        assert!(
+            result.contains("</system-reminder>"),
+            "应包含 system-reminder 结束标签"
+        );
+        assert!(result.contains("当前工作目录："), "应包含工作目录");
+        assert!(result.contains("当前日期："), "应包含当前日期");
+        assert!(result.ends_with("\n\n"), "应以空行结尾用于与用户输入分隔");
+    }
+
+    #[test]
+    fn test_context_reminder_with_agents_md() {
+        let result = build_context_reminder(Some("请使用中文回复"));
+        assert!(result.contains("# AGENTS.md"), "应包含 AGENTS.md 标题");
+        assert!(result.contains("请使用中文回复"), "应包含 agents_md 内容");
+    }
+
+    #[test]
+    fn test_context_reminder_without_agents_md() {
+        let result = build_context_reminder(None);
+        assert!(!result.contains("AGENTS.md"), "不应包含 AGENTS.md 章节");
+        assert!(
+            !result.contains("模型必须严格遵守"),
+            "不应包含 agents_md 提示语"
+        );
+    }
+
+    #[test]
+    fn test_context_reminder_contains_os() {
+        let result = build_context_reminder(None);
+        let has_os = ["操作系统：macOS", "操作系统：Linux", "操作系统：Windows"]
+            .iter()
+            .any(|&os| result.contains(os));
+        assert!(has_os, "应包含操作系统信息: {}", result);
+    }
+
+    #[test]
+    fn test_context_reminder_agents_md_empty_string() {
+        let result = build_context_reminder(Some(""));
+        assert!(
+            !result.contains("AGENTS.md"),
+            "空字符串不应输出 AGENTS.md 章节"
+        );
+        assert!(
+            !result.contains("模型必须严格遵守"),
+            "空字符串不应输出 agents_md 提示语"
+        );
+    }
+
+    #[test]
+    fn test_context_reminder_agents_md_multiline() {
+        let multiline = "规则1：xxx\n规则2：yyy\n规则3：zzz";
+        let result = build_context_reminder(Some(multiline));
+        assert!(result.contains("规则1：xxx"), "应包含第一行");
+        assert!(result.contains("规则2：yyy"), "应包含第二行");
+        assert!(result.contains("规则3：zzz"), "应包含第三行");
+    }
+
+    #[test]
+    fn test_context_reminder_contains_shell() {
+        let result = build_context_reminder(None);
+        // Shell 在 CI 或某些环境中可能为空，不为空时才验证
+        let shell_prefix = "Shell：";
+        if let Some(idx) = result.find(shell_prefix) {
+            let shell_val = &result[idx + shell_prefix.len()..]
+                .lines()
+                .next()
+                .unwrap_or("");
+            assert!(!shell_val.is_empty(), "Shell 值不应为空");
+        }
+        // 如果不包含 Shell 信息（环境未设置 $SHELL）也允许
+    }
+
+    // ---- build_with_tool_guidance boundary tests ----
+
+    #[test]
+    fn test_build_with_tool_guidance_file_write_only() {
+        let base = "test prompt";
+        let result = build_with_tool_guidance(base, &["file_write"]);
+        assert!(
+            result.contains("文件操作前必须先通过 file_read 读取"),
+            "仅有 file_write 也应触发文件安全规则: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_build_with_tool_guidance_duplicate_names() {
+        let base = "test prompt";
+        let result = build_with_tool_guidance(base, &["shell_exec", "shell_exec", "shell_exec"]);
+        // 重复名称不应导致多次插入或 panic
+        let count = result.matches("不要使用 shell_exec 替代").count();
+        assert_eq!(count, 1, "重复名称应只出现一次提示");
+    }
+
+    #[test]
+    fn test_build_with_tool_guidance_large_tool_list() {
+        let base = "test prompt";
+        let mut tools: Vec<String> = (0..150).map(|i| format!("tool_{}", i)).collect();
+        tools.push("shell_exec".to_string());
+        tools.push("file_read".to_string());
+        let tool_refs: Vec<&str> = tools.iter().map(|s| s.as_str()).collect();
+        let result = build_with_tool_guidance(base, &tool_refs);
+        assert!(result.contains("shell_exec"), "大型列表应正常工作");
+        assert!(result.contains("file_read"), "大型列表应包含文件提示");
+    }
+
+    #[test]
+    fn test_build_with_tool_guidance_unknown_tools() {
+        let base = "test prompt";
+        let result = build_with_tool_guidance(base, &["unknown_tool_1", "unknown_tool_2"]);
+        // 未知工具不应导致 panic，应正常输出基础提示词
+        assert!(result.starts_with(base), "应保留基础提示词");
+        assert!(result.contains("使用工具时请注意安全"), "应包含安全提示");
     }
 }

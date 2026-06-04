@@ -143,6 +143,7 @@ fn detect_target_triple() -> Result<&'static str, String> {
         ("x86_64", "macos") => Ok("x86_64-apple-darwin"),
         ("aarch64", "linux") => Ok("aarch64-unknown-linux-gnu"),
         ("x86_64", "linux") => Ok("x86_64-unknown-linux-gnu"),
+        ("aarch64", "windows") => Ok("aarch64-pc-windows-msvc"),
         ("x86_64", "windows") => Ok("x86_64-pc-windows-msvc"),
         _ => Err(format!(
             "不支持的平台: {}-{}",
