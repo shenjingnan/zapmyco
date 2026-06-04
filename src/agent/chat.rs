@@ -260,6 +260,8 @@ pub struct AiAgent {
     task_manager: Option<std::sync::Arc<crate::tools::task_manager::TaskManager>>,
     /// 任务展示状态机（可选，用于事件流 + 检查点快照展示）
     task_display: Option<crate::tools::task_display::TaskDisplayState>,
+    /// 是否已注入上下文信息（仅首条消息注入一次）
+    context_injected: bool,
 }
 
 /// 流式响应解析状态机
@@ -394,14 +396,56 @@ impl AiAgent {
             read_file_state: std::collections::HashMap::new(),
             task_manager: None,
             task_display: None,
+            context_injected: false,
         })
+    }
+
+    /// 构建上下文提醒（首条消息时注入到用户输入前）
+    fn build_context_reminder() -> String {
+        let cwd = std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        let now = chrono::Local::now();
+        let date_str = now.format("%Y-%m-%d").to_string();
+
+        let mut parts = vec![
+            format!("当前工作目录：{}", cwd),
+            format!("当前日期：{}", date_str),
+        ];
+
+        // Git 状态
+        if let Some(output) = std::process::Command::new("git")
+            .args(["status", "--branch", "--short"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+        {
+            let git_status = String::from_utf8_lossy(&output.stdout);
+            let git_status = git_status.trim();
+            if !git_status.is_empty() {
+                parts.push(format!("\n# Git 状态\n{}", git_status));
+            }
+        }
+
+        format!(
+            "<system-reminder>\n{}\n</system-reminder>\n\n",
+            parts.join("\n")
+        )
     }
 
     /// 非流式对话 - 发送消息并获取完整回复
     pub async fn chat(&mut self, input: &str) -> Result<String, String> {
+        let full_input = if !self.context_injected {
+            self.context_injected = true;
+            format!("{}{}", Self::build_context_reminder(), input)
+        } else {
+            input.to_string()
+        };
+
         self.messages.push(ConversationMessage {
             role: "user".to_string(),
-            content: input.to_string(),
+            content: full_input,
             blocks: None,
         });
 
@@ -448,9 +492,16 @@ impl AiAgent {
         input: &str,
         on_chunk: impl FnMut(&str),
     ) -> Result<String, String> {
+        let full_input = if !self.context_injected {
+            self.context_injected = true;
+            format!("{}{}", Self::build_context_reminder(), input)
+        } else {
+            input.to_string()
+        };
+
         self.messages.push(ConversationMessage {
             role: "user".to_string(),
-            content: input.to_string(),
+            content: full_input,
             blocks: None,
         });
 

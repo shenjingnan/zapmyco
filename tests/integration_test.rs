@@ -111,7 +111,16 @@ async fn test_agent_non_streaming() {
     // 验证上下文已更新
     assert_eq!(agent.get_messages().len(), 2);
     assert_eq!(agent.get_messages()[0].role, "user");
-    assert_eq!(agent.get_messages()[0].content, "你好");
+    assert!(
+        agent.get_messages()[0]
+            .content
+            .starts_with("<system-reminder>"),
+        "first message should contain context reminder"
+    );
+    assert!(
+        agent.get_messages()[0].content.ends_with("你好"),
+        "first message should end with original input"
+    );
     assert_eq!(agent.get_messages()[1].role, "assistant");
     assert_eq!(agent.get_messages()[1].content, "你好！我是 AI 助手。");
 }
