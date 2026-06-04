@@ -4,8 +4,9 @@ use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
 use zapmyco_anthropic_ai_sdk::types::message::{
-    ContentBlock, ContentBlockDelta, CreateMessageParams, CreateMessageResponse, Message,
-    MessageClient, MessageError, RequiredMessageParams, Role, StreamEvent, Tool,
+    CacheControl, ContentBlock, ContentBlockDelta, CreateMessageParams, CreateMessageResponse,
+    Message, MessageClient, MessageError, RequiredMessageParams, Role, StreamEvent, SystemBlock,
+    Tool,
 };
 
 use crate::agent::conversation_logger::ConversationLogger;
@@ -262,6 +263,8 @@ pub struct AiAgent {
     task_display: Option<crate::tools::task_display::TaskDisplayState>,
     /// 是否已注入上下文信息（仅首条消息注入一次）
     context_injected: bool,
+    /// 静态提示词长度边界（静态部分可缓存，动态部分不缓存）
+    static_prompt_len: usize,
 }
 
 /// 流式响应解析状态机
@@ -370,6 +373,9 @@ impl AiAgent {
             format!("{}{}", DEFAULT_SYSTEM_PROMPT, BEHAVIORAL_GUIDANCE)
         };
 
+        // 记录静态部分长度（用于缓存拆分：静态块带 cache_control，动态块不带）
+        let static_prompt_len = system_prompt.len();
+
         // 初始化对话日志记录器
         let logger = if is_conversation_log_enabled(&settings) {
             match ConversationLogger::new() {
@@ -397,6 +403,7 @@ impl AiAgent {
             task_manager: None,
             task_display: None,
             context_injected: false,
+            static_prompt_len,
         })
     }
 
@@ -1313,7 +1320,26 @@ impl AiAgent {
 
         let mut params = CreateMessageParams::new(required);
         if !self.system_prompt.is_empty() {
-            params = params.with_system(&self.system_prompt);
+            // 拆分 system prompt 为静态块（可缓存）和动态块（不缓存）
+            let static_part = &self.system_prompt[..self.static_prompt_len];
+            let dynamic_part = &self.system_prompt[self.static_prompt_len..];
+
+            let mut blocks = vec![SystemBlock {
+                block_type: "text".to_string(),
+                text: static_part.to_string(),
+                cache_control: Some(CacheControl::ephemeral()),
+            }];
+
+            let trimmed_dynamic = dynamic_part.trim();
+            if !trimmed_dynamic.is_empty() {
+                blocks.push(SystemBlock {
+                    block_type: "text".to_string(),
+                    text: trimmed_dynamic.to_string(),
+                    cache_control: None,
+                });
+            }
+
+            params = params.with_system_blocks(blocks);
         }
         if stream {
             params = params.with_stream(true);
