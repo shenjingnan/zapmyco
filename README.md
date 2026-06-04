@@ -11,17 +11,11 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg" alt="License: MIT"></a>
 </p>
 
-基于 Rust 的 AI 驱动命令行工具，提供与 LLM 的交互式聊天体验。
+基于 Rust 的多供应商 AI 命令行工具，内置 60+ 模型，支持 Anthropic API 兼容的云端与本地推理框架。
 
 ## 安装方式
 
-### 通过 cargo 安装
-
-```bash
-cargo install zapmyco
-```
-
-### 一键安装脚本（推荐，无需安装 Rust）
+### 一键安装脚本（推荐）
 
 **macOS / Linux**
 
@@ -32,11 +26,13 @@ curl -fsSL https://zapmyco.com/install.sh | sh
 **Windows (PowerShell)**
 
 在 PowerShell 中（推荐）:
+
 ```powershell
 irm https://zapmyco.com/install.ps1 | iex
 ```
 
 在 cmd.exe 中:
+
 ```powershell
 powershell -c "irm https://zapmyco.com/install.ps1 | iex"
 ```
@@ -45,7 +41,7 @@ powershell -c "irm https://zapmyco.com/install.ps1 | iex"
 
 ### 手动下载
 
-每个版本都会发布预编译的二进制归档（`.tar.xz` / `.zip`）：
+从 [GitHub Releases](https://github.com/shenjingnan/zapmyco/releases/latest) 下载对应平台的压缩包，解压后将 `zapmyco`（或 `zapmyco.exe`）放入 `PATH` 环境变量中的目录即可。
 
 | 平台    | 架构          | 下载链接                                                                                                                             |
 | ------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -54,15 +50,6 @@ powershell -c "irm https://zapmyco.com/install.ps1 | iex"
 | macOS   | Apple Silicon | [zapmyco-aarch64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-apple-darwin.tar.xz) |
 | macOS   | Intel         | [zapmyco-x86_64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-apple-darwin.tar.xz) |
 | Windows | x86_64        | [zapmyco-x86_64-pc-windows-msvc.zip](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-pc-windows-msvc.zip) |
-
-### 从源码编译
-
-```bash
-git clone https://github.com/shenjingnan/zapmyco.git
-cd zapmyco
-cargo build --release
-# 产物位于 target/release/zapmyco
-```
 
 ## 快速开始
 
@@ -73,6 +60,7 @@ zapmyco init
 ```
 
 交互式向导会引导你完成：
+
 - 选择 AI 供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao / MIMO / 自定义）
 - 配置 API Key（直接输入或使用环境变量）
 - 选择默认模型
@@ -82,9 +70,6 @@ zapmyco init
 ```bash
 # 一次性 AI 任务
 zapmyco run "用中文介绍 Rust 语言的特点"
-
-# 交互式对话模式
-zapmyco
 
 # 查看配置
 zapmyco settings
@@ -103,18 +88,17 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 
 ## 特性
 
-- **Rust 实现**: 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动
-- **多供应商**: 内置 8 个供应商（Anthropic / DeepSeek / Qwen / MiniMax / GLM / Kimi / Doubao / MIMO）64 个模型，可自定义供应商
-- **流式输出**: AI 回复实时逐字显示
-- **交互式对话**: 支持 `/exit`、`/clear` 命令的终端聊天模式
-- **配置管理**: 自动兼容旧版配置格式，支持 `${env.VAR}` 语法
-- **CI/CD**: GitHub Actions 自动化测试和 5 平台交叉编译
+- **Rust 实现**: 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动，无需 Node.js 或 Python 运行时
+- **多供应商 64+ 模型**: 内置 DeepSeek、Anthropic、Qwen、MiniMax、GLM、Kimi、Doubao、MIMO 等主流供应商，覆盖旗舰、开源、视觉模型
+- **本地模型支持**: 通过自定义 `baseUrl` 接入 Ollama、llama.cpp、LM Studio、vLLM 等推理框架
+- **聚合平台支持**: 兼容 OpenRouter（400+ 模型）、SiliconFlow（200+ 模型）
+- **灵活的自定义配置**: 任何 Anthropic API 兼容的服务均可通过 `settings.toml` 配置，支持 `${env.VAR}` 语法引用环境变量
 
 ## 命令参考
 
 | 命令 | 说明 |
 |------|------|
-| `zapmyco` | 无参启动交互式对话模式 |
+| `zapmyco` | 查看帮助信息（等同于 `zapmyco --help`） |
 | `zapmyco run <prompt>` | 一次性执行 AI 任务 |
 | `zapmyco note add [content]` | 快速记录笔记（灵感/待办/想法），留空则交互式编辑 |
 | `zapmyco init` | 交互式初始化向导 |
@@ -143,76 +127,36 @@ zapmyco completion fish | source
 zapmyco completion powershell | Out-String | Invoke-Expression
 ```
 
-启用后，输入 `zapmyco ` 然后按 Tab 即可看到所有可用子命令。
+启用后，输入 `zapmyco` 然后按 Tab 即可看到所有可用子命令。
 
 ## 内置模型
 
+ZapMyCo 内置了 **8 个供应商共 64 个模型**，以下是各供应商的旗舰模型，完整列表请参阅 [内置模型文档](https://docs.zapmyco.com/guide/models)：
+
 | 模型 | 供应商 | 上下文窗口 |
 |------|--------|-----------|
-| deepseek-v4-flash（推荐） | DeepSeek | 1M tokens |
+| deepseek-v4-flash (推荐) | DeepSeek | 1M tokens |
 | deepseek-v4-pro | DeepSeek | 1M tokens |
-| glm-4-flash | GLM（智谱） | 128K tokens |
-| glm-4v | GLM（智谱） | 128K tokens（支持视觉） |
-| glm-5v-turbo | GLM（智谱） | 200K tokens（支持视觉） |
-| glm-5.1 | GLM（智谱） | 200K tokens |
-| glm-5 | GLM（智谱） | 200K tokens |
-| glm-5-turbo | GLM（智谱） | 200K tokens |
-| glm-4.7 | GLM（智谱） | 200K tokens |
-| glm-4.7-flash | GLM（智谱） | 200K tokens |
-| glm-4.6 | GLM（智谱） | 200K tokens |
-| glm-4.5-airx | GLM（智谱） | 128K tokens |
-| glm-4-long | GLM（智谱） | 1M tokens |
-| glm-4.6v | GLM（智谱） | 128K tokens（支持视觉） |
-| glm-4.5-air | GLM（智谱） | 200K tokens |
-| glm-4.5v | GLM（智谱） | 128K tokens（支持视觉） |
 | claude-opus-4-8 | Anthropic | 1M tokens |
-| claude-opus-4-7 | Anthropic | 1M tokens |
-| claude-opus-4-6 | Anthropic | 1M tokens |
 | claude-sonnet-4-6 | Anthropic | 1M tokens |
-| claude-haiku-4-5 | Anthropic | 200K tokens |
-| claude-opus-4-1 | Anthropic | 200K tokens |
+| qwen3.7-max | Qwen（通义千问） | 1M tokens |
+| qwen3.7-plus | Qwen（通义千问） | 1M tokens（支持视觉） |
 | MiniMax-M3 | MiniMax | 1M tokens（支持视觉） |
 | MiniMax-M2.7 | MiniMax | 204.8K tokens |
-| MiniMax-M2.7-highspeed | MiniMax | 204.8K tokens |
-| MiniMax-M2.5 | MiniMax | 204.8K tokens |
-| MiniMax-M2.1 | MiniMax | 204.8K tokens |
-| MiniMax-M2 | MiniMax | 204.8K tokens |
+| glm-5.1 | GLM（智谱） | 200K tokens |
+| glm-5v-turbo | GLM（智谱） | 200K tokens（支持视觉） |
 | kimi-for-coding | Kimi（月之暗面） | 256K tokens（支持视觉） |
 | kimi-k2.6 | Kimi（月之暗面） | 256K tokens（支持视觉） |
-| kimi-k2.5 | Kimi（月之暗面） | 256K tokens（支持视觉） |
-| doubao-seed-code | Doubao（火山引擎） | 256K tokens（支持视觉） |
 | doubao-seed-2-0-pro | Doubao（火山引擎） | 256K tokens（支持视觉） |
 | doubao-seed-2-0-lite | Doubao（火山引擎） | 256K tokens（支持视觉） |
-| doubao-seed-2-0-mini | Doubao（火山引擎） | 256K tokens（支持视觉） |
-| doubao-seed-2-0-code-preview | Doubao（火山引擎） | 256K tokens（支持视觉） |
-| qwen3.7-max | Qwen（通义千问） | 1M tokens |
-| qwen3.6-max-preview | Qwen（通义千问） | 1M tokens |
-| qwen3-max | Qwen（通义千问） | 1M tokens |
-| qwen3.7-plus | Qwen（通义千问） | 1M tokens（支持视觉） |
-| qwen3.6-plus | Qwen（通义千问） | 1M tokens |
-| qwen3.5-plus | Qwen（通义千问） | 1M tokens |
-| qwen-plus | Qwen（通义千问） | 128K tokens |
-| qwen3.6-flash | Qwen（通义千问） | 1M tokens |
-| qwen3.5-flash | Qwen（通义千问） | 1M tokens |
-| qwen-flash | Qwen（通义千问） | 128K tokens |
-| qwen-turbo | Qwen（通义千问） | 128K tokens |
-| qwen3-coder-next | Qwen（通义千问） | 1M tokens |
-| qwen3-coder-plus | Qwen（通义千问） | 1M tokens |
-| qwen3-coder-flash | Qwen（通义千问） | 1M tokens |
-| qwen3-vl-plus | Qwen（通义千问） | 1M tokens（支持视觉） |
-| qwen3-vl-flash | Qwen（通义千问） | 1M tokens（支持视觉） |
-| qwen-vl-max | Qwen（通义千问） | 128K tokens（支持视觉） |
-| qwen-vl-plus | Qwen（通义千问） | 128K tokens（支持视觉） |
-| qwen3.6-27b | Qwen（通义千问） | 256K tokens |
-| qwen3.5-397b-a17b | Qwen（通义千问） | 256K tokens |
-| qwen3.5-122b-a10b | Qwen（通义千问） | 256K tokens |
-| qwen3.5-27b | Qwen（通义千问） | 256K tokens |
-| qwen3.5-35b-a3b | Qwen（通义千问） | 256K tokens |
 | mimo-v2.5-pro | MIMO（小米） | 1M tokens |
-| mimo-v2-pro | MIMO（小米） | 1M tokens |
 | mimo-v2.5 | MIMO（小米） | 1M tokens（支持视觉） |
-| mimo-v2-omni | MIMO（小米） | 256K tokens（支持视觉） |
-| mimo-v2-flash | MIMO（小米） | 256K tokens |
+
+此外还支持：
+
+- **本地模型** — 通过自定义 `baseUrl` 接入 Ollama、llama.cpp、LM Studio、vLLM 等推理框架
+- **API 聚合平台** — 支持 OpenRouter（400+ 模型）、SiliconFlow（200+ 模型）
+- **自定义供应商** — 任何 Anthropic API 兼容的服务均可通过 `settings.toml` 配置
 
 ## 贡献指南
 
