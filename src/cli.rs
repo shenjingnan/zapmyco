@@ -52,7 +52,14 @@ impl TypedValueParser for ModelValueParser {
         _arg: Option<&clap::Arg>,
         value: &std::ffi::OsStr,
     ) -> Result<Self::Value, clap::Error> {
-        Ok(value.to_string_lossy().into_owned())
+        let s = value.to_string_lossy().into_owned();
+        if s.is_empty() {
+            return Err(clap::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "--model 不能为空",
+            ));
+        }
+        Ok(s)
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
@@ -2377,6 +2384,68 @@ mod tests {
     #[test]
     fn test_base_url_rejects_empty() {
         let result = Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "", "hello"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_base_url_accepts_with_path() {
+        // 最常见的真实使用场景：base URL 包含路径
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "https://api.deepseek.com/anthropic",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "https://api.deepseek.com/anthropic");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_accepts_ip_address() {
+        // 本地开发常用 IP + 端口
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "http://127.0.0.1:11434",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "http://127.0.0.1:11434");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_rejects_ftp() {
+        // 非 http/https 协议应拒绝
+        let result = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "ftp://example.com",
+            "hello",
+        ]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_base_url_rejects_scheme_only() {
+        // 只有协议没有 host 应拒绝
+        let result = Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "https://", "hello"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_model_flag_rejects_empty() {
+        let result = Cli::try_parse_from(vec!["zapmyco", "run", "--model", "", "hello"]);
         assert!(result.is_err());
     }
 
