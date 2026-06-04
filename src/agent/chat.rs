@@ -421,12 +421,30 @@ impl AiAgent {
             .unwrap_or_else(|_| "unknown".to_string());
 
         let now = chrono::Local::now();
-        let date_str = now.format("%Y-%m-%d").to_string();
+        let date_str = now.format("%Y-%m-%d %H:%M").to_string();
 
         let mut parts = vec![
             format!("当前工作目录：{}", cwd),
             format!("当前日期：{}", date_str),
         ];
+
+        // 操作系统信息
+        let os = crate::env_info::os_info();
+        if !os.is_empty() {
+            parts.push(format!("操作系统：{}", os));
+        }
+
+        // Shell 信息
+        let shell = crate::env_info::shell_name();
+        if !shell.is_empty() {
+            parts.push(format!("Shell：{}", shell));
+        }
+
+        // 语言/区域
+        let locale = crate::env_info::locale_info();
+        if !locale.is_empty() {
+            parts.push(format!("语言/区域：{}", locale));
+        }
 
         // Git 状态
         if let Some(output) = std::process::Command::new("git")
@@ -440,6 +458,12 @@ impl AiAgent {
             if !git_status.is_empty() {
                 parts.push(format!("\n# Git 状态\n{}", git_status));
             }
+        }
+
+        // 已知命令行工具
+        let tools = crate::env_info::available_tools();
+        if !tools.is_empty() {
+            parts.push(format!("\n# 已知命令行工具\n{}", tools));
         }
 
         // AGENTS.md 内容
@@ -749,9 +773,16 @@ impl AiAgent {
         input: &str,
         mut on_chunk: impl FnMut(&str),
     ) -> Result<String, String> {
+        let full_input = if !self.context_injected {
+            self.context_injected = true;
+            format!("{}{}", self.build_context_reminder(), input)
+        } else {
+            input.to_string()
+        };
+
         self.messages.push(ConversationMessage {
             role: "user".to_string(),
-            content: input.to_string(),
+            content: full_input,
             blocks: None,
         });
 
