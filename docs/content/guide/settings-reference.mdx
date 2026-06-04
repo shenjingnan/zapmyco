@@ -74,17 +74,20 @@ apiKey = "${env.DEEPSEEK_API_KEY}"
 
 ## 内置模型列表
 
-ZapMyCo 内置以下模型，可直接在 `[llm.models]` 中引用：
+ZapMyCo 内置了 8 个供应商共 64 个模型，全部支持 Anthropic Messages API 格式：
 
-| 模型名称 | 供应商 | Base URL | 上下文窗口 | 最大输出 | 能力 |
-|----------|--------|----------|:----------:|:--------:|:----:|
-| `deepseek-v4-flash` | deepseek | `https://api.deepseek.com/anthropic` | 1,000,000 | 384,000 | 文本 |
-| `deepseek-v4-pro` | deepseek | `https://api.deepseek.com/anthropic` | 1,000,000 | 384,000 | 文本 |
-| `deepseek-reasoner` | deepseek | `https://api.deepseek.com/anthropic` | 128,000 | 16,384 | 文本 |
-| `glm-4-flash` | glm | `https://open.bigmodel.cn/api/anthropic` | 128,000 | 16,384 | 文本 |
-| `glm-4v` | glm | `https://open.bigmodel.cn/api/anthropic` | 128,000 | 16,384 | 文本、视觉 |
-| `glm-5v-turbo` | glm | `https://open.bigmodel.cn/api/anthropic` | 200,000 | 128,000 | 文本、视觉 |
-| `glm-5.1` | glm | `https://open.bigmodel.cn/api/anthropic` | 200,000 | 128,000 | 文本 |
+| 供应商 | 模型数 | 代表模型 |
+|--------|:------:|----------|
+| DeepSeek | 2 | `deepseek-v4-flash`（推荐） |
+| Anthropic | 6 | `claude-sonnet-4-6` |
+| Qwen（通义千问） | 23 | `qwen3.7-max` |
+| MiniMax | 6 | `MiniMax-M3`（1M 上下文，支持视觉） |
+| GLM（智谱） | 14 | `glm-5.1` |
+| Kimi（月之暗面） | 3 | `kimi-for-coding` |
+| Doubao（火山引擎） | 5 | `doubao-seed-code` |
+| MIMO（小米） | 5 | `mimo-v2.5-pro` |
+
+查看完整列表和详细信息：[内置模型](/guide/models)
 
 ## 配置优先级
 

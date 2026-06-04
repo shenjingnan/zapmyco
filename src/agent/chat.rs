@@ -275,10 +275,16 @@ impl AiAgent {
         // 6. 解析 apiKey：options > settings.providers[provider].apiKey > 环境变量
         let api_key = resolve_api_key(options.api_key.as_deref(), llm, provider_name)?;
 
-        // 7. 确定 baseURL：options > 注册表中的 baseURL > 默认值
+        // 7. 确定 baseURL：options > settings.providers[provider].base_url > 注册表中的 baseURL > 默认值
         let base_url = options
             .base_url
             .as_deref()
+            .or_else(|| {
+                llm.as_ref()
+                    .and_then(|s| s.providers.as_ref())
+                    .and_then(|p| p.get(provider_name))
+                    .and_then(|c| c.base_url.as_deref())
+            })
             .or(model_info.map(|i| i.base_url))
             .unwrap_or(DEFAULT_BASE_URL);
 
@@ -1309,6 +1315,7 @@ mod tests {
             "deepseek".to_string(),
             ProviderConfig {
                 api_key: Some("provider-key".to_string()),
+                base_url: None,
             },
         );
         let llm = LlmSettings {
@@ -1352,6 +1359,7 @@ mod tests {
             "test-prov".to_string(),
             ProviderConfig {
                 api_key: Some("${env.TEST_PROVIDER_KEY}".to_string()),
+                base_url: None,
             },
         );
         let llm = LlmSettings {
@@ -1375,6 +1383,7 @@ mod tests {
             "deepseek".to_string(),
             ProviderConfig {
                 api_key: Some("provider-key".to_string()),
+                base_url: None,
             },
         );
         let llm = LlmSettings {
@@ -1422,7 +1431,7 @@ mod tests {
         run_with_temp_home(|home| {
             create_test_settings(
                 home,
-                "[llm]\n\n[llm.models]\nadvanced = \"deepseek-reasoner\"\n",
+                "[llm]\n\n[llm.models]\nadvanced = \"deepseek-v4-flash\"\n",
             );
             let agent = AiAgent::new(AiAgentOptions {
                 api_key: Some("test-key".to_string()),
@@ -1430,7 +1439,7 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-            assert_eq!(agent.model(), "deepseek-reasoner");
+            assert_eq!(agent.model(), "deepseek-v4-flash");
         });
     }
 
@@ -1440,7 +1449,13 @@ mod tests {
         use std::collections::HashMap;
 
         let mut providers = HashMap::new();
-        providers.insert("deepseek".to_string(), ProviderConfig { api_key: None });
+        providers.insert(
+            "deepseek".to_string(),
+            ProviderConfig {
+                api_key: None,
+                base_url: None,
+            },
+        );
         let llm = LlmSettings {
             providers: Some(providers),
             models: None,
@@ -1469,6 +1484,7 @@ mod tests {
             "deepseek".to_string(),
             ProviderConfig {
                 api_key: Some(String::new()),
+                base_url: None,
             },
         );
         let llm = LlmSettings {
