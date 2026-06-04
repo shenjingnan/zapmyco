@@ -34,7 +34,7 @@ pub struct AiAgentOptions {
 
 const DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic";
 const DEFAULT_MODEL: &str = "deepseek-v4-flash";
-const DEFAULT_SYSTEM_PROMPT: &str = "你是一个 AI 编程助手，帮助用户解决编程问题。";
+const DEFAULT_SYSTEM_PROMPT: &str = "你是 zapmyco，一个基于 AI 的命令行工具，帮助用户完成指定的任务。\n使用工具与用户交互，遵循用户指令完成任务。\n输出所有思考过程，让用户了解你的工作进度。";
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 /// 对话消息
