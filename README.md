@@ -1,5 +1,9 @@
 # zapmyco
 
+<p align="right">
+  <a href="README.en.md">English</a> | <strong>中文</strong>
+</p>
+
 <p align="center">
   <img src="docs/public/logo.svg" alt="zapmyco logo" width="300" />
 </p>
