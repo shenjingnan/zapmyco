@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.35.0](https://github.com/shenjingnan/zapmyco/compare/v0.34.0...v0.35.0) - 2026-06-04
+
+### Added
+
+- *(config)* 完善内置模型列表并新增 baseUrl 配置项 ([#389](https://github.com/shenjingnan/zapmyco/pull/389))
+- *(agent)* 优化系统提示词静态化与 KV Cache 缓存利用率，修复未知工具中断 ([#388](https://github.com/shenjingnan/zapmyco/pull/388))
+- *(agent)* 支持工具并发调用以提升执行效率 ([#387](https://github.com/shenjingnan/zapmyco/pull/387))
+
+### Other
+
+- 更新 README 项目描述和安装说明 ([#390](https://github.com/shenjingnan/zapmyco/pull/390))
+- *(agent)* 添加工具流式处理的 20 个测试用例 ([#385](https://github.com/shenjingnan/zapmyco/pull/385))
+
 ## [0.34.0](https://github.com/shenjingnan/zapmyco/compare/v0.33.0...v0.34.0) - 2026-06-03
 
 ### Added

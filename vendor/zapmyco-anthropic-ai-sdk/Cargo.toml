@@ -1,6 +1,6 @@
 [package]
 name = "zapmyco-anthropic-ai-sdk"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 authors = ["Katsuhiro Honda<freewave3@gmail.com>"]
 categories = ["api-bindings"]
