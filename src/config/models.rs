@@ -690,6 +690,27 @@ pub fn get_built_in_model_names() -> Vec<&'static str> {
     BUILT_IN_MODELS.iter().map(|(key, _)| *key).collect()
 }
 
+/// 已知的模型名前缀 -> 供应商映射（用于识别已移除模型的归属）
+const MODEL_PREFIX_PROVIDER: &[(&str, &str)] = &[
+    ("deepseek-", "deepseek"),
+    ("glm-", "glm"),
+    ("claude-", "anthropic"),
+    ("MiniMax-", "minimax"),
+    ("minimax-", "minimax"),
+    ("kimi-", "kimi"),
+    ("doubao-", "doubao"),
+    ("qwen", "qwen"),
+    ("mimo-", "mimo"),
+];
+
+/// 根据模型名称猜测其所属供应商（用于模型已从内置列表移除的情况）
+pub fn guess_provider_from_model_name(name: &str) -> Option<&'static str> {
+    MODEL_PREFIX_PROVIDER
+        .iter()
+        .find(|(prefix, _)| name.starts_with(prefix))
+        .map(|(_, provider)| *provider)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -808,5 +829,105 @@ mod tests {
         assert_eq!(ModelCapability::Text, ModelCapability::Text);
         assert_eq!(ModelCapability::Vision, ModelCapability::Vision);
         assert_ne!(ModelCapability::Text, ModelCapability::Vision);
+    }
+
+    #[test]
+    fn test_guess_provider_deepseek() {
+        assert_eq!(
+            guess_provider_from_model_name("deepseek-v3"),
+            Some("deepseek")
+        );
+        assert_eq!(
+            guess_provider_from_model_name("deepseek-v4-flash"),
+            Some("deepseek")
+        );
+    }
+
+    #[test]
+    fn test_guess_provider_anthropic() {
+        assert_eq!(
+            guess_provider_from_model_name("claude-sonnet-4-5"),
+            Some("anthropic")
+        );
+        assert_eq!(
+            guess_provider_from_model_name("claude-opus-4-6"),
+            Some("anthropic")
+        );
+    }
+
+    #[test]
+    fn test_guess_provider_qwen() {
+        assert_eq!(guess_provider_from_model_name("qwen3.7-max"), Some("qwen"));
+        assert_eq!(guess_provider_from_model_name("qwen-plus"), Some("qwen"));
+    }
+
+    #[test]
+    fn test_guess_provider_unknown() {
+        assert_eq!(guess_provider_from_model_name("some-random-model"), None);
+        assert_eq!(guess_provider_from_model_name(""), None);
+    }
+
+    #[test]
+    fn test_guess_provider_glm() {
+        assert_eq!(guess_provider_from_model_name("glm-4-flash"), Some("glm"));
+    }
+
+    #[test]
+    fn test_guess_provider_minimax() {
+        assert_eq!(
+            guess_provider_from_model_name("MiniMax-M3"),
+            Some("minimax")
+        );
+    }
+
+    #[test]
+    fn test_guess_provider_kimi() {
+        assert_eq!(guess_provider_from_model_name("kimi-k2.5"), Some("kimi"));
+    }
+
+    #[test]
+    fn test_guess_provider_doubao() {
+        assert_eq!(
+            guess_provider_from_model_name("doubao-seed-code"),
+            Some("doubao")
+        );
+    }
+
+    #[test]
+    fn test_guess_provider_mimo() {
+        assert_eq!(
+            guess_provider_from_model_name("mimo-v2.5-pro"),
+            Some("mimo")
+        );
+    }
+
+    #[test]
+    fn test_guess_provider_case_sensitive_minimax_lowercase() {
+        // MiniMax 前缀大小写兼容
+        assert_eq!(
+            guess_provider_from_model_name("minimax-m3"),
+            Some("minimax")
+        );
+    }
+
+    #[test]
+    fn test_guess_provider_case_sensitive_minimax_capital() {
+        assert_eq!(
+            guess_provider_from_model_name("MiniMax-M3"),
+            Some("minimax")
+        );
+    }
+
+    #[test]
+    fn test_guess_provider_case_sensitive_claude_uppercase() {
+        // 大写 claude 不应匹配小写前缀 "claude-"
+        assert_eq!(guess_provider_from_model_name("CLAUDE-opus-4"), None);
+    }
+
+    #[test]
+    fn test_guess_provider_model_name_exact_match_prefix() {
+        // 模型名刚好等于前缀
+        assert_eq!(guess_provider_from_model_name("qwen"), Some("qwen"));
+        assert_eq!(guess_provider_from_model_name("kimi-"), Some("kimi"));
     }
 }
