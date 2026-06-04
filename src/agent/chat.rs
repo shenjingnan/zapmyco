@@ -1,15 +1,15 @@
-use futures_util::{Stream, StreamExt};
+use futures_util::StreamExt;
 use std::pin::Pin;
 use std::time::Instant;
 /// AI Agent - 基于 anthropic-ai-sdk 的 LLM 对话代理
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
 use zapmyco_anthropic_ai_sdk::types::message::{
-    CacheControl, ContentBlock, ContentBlockDelta, CreateMessageParams, CreateMessageResponse,
-    Message, MessageClient, MessageError, RequiredMessageParams, Role, StreamEvent, SystemBlock,
-    Tool,
+    CacheControl, ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient,
+    MessageError, RequiredMessageParams, Role, StreamEvent, SystemBlock, Tool,
 };
 
 use crate::agent::conversation_logger::ConversationLogger;
+use crate::agent::system_prompt::SystemPromptBuilder;
 use crate::config::models::get_model_info;
 use crate::config::settings::{is_conversation_log_enabled, load_settings, resolve_env_ref};
 use crate::datetime;
@@ -35,44 +35,7 @@ pub struct AiAgentOptions {
 
 const DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic";
 const DEFAULT_MODEL: &str = "deepseek-v4-flash";
-const DEFAULT_SYSTEM_PROMPT: &str = "你是 zapmyco，一个基于 AI 的命令行工具，帮助用户完成指定的任务。\n使用工具与用户交互，遵循用户指令完成任务。\n输出所有思考过程，让用户了解你的工作进度。";
 const DEFAULT_MAX_TOKENS: u32 = 4096;
-
-const BEHAVIORAL_GUIDANCE: &str = "\n\
-    \n\
-    ## 执行规则\n\
-    \n\
-    - 不要添加超出要求范围的功能、重构或擅自「改进」。\
-      一个简单的需求不需要额外的配置项、注释或文档。\
-    - 不要为不可能发生的场景添加错误处理、降级逻辑或校验。\
-      只在系统边界（用户输入、外部 API）做校验。\
-    - 不要为一次性操作创建工具、工具类或抽象。\
-      三个相似的代码段好过一个提前的抽象。\
-    - 不要建议修改未读过的内容，操作前先通过 file_read 了解现状。\
-    - 不要创建不必要的文件，优先修改已有的文件。\
-    - 遇到失败时先诊断根因——读取错误信息、检查假设条件、尝试有针对性的修复。\
-      不要盲目重试相同的操作，也不要因为一次失败就放弃一个可行的方法。\
-      只在真正卡住时向用户提问。\
-    - 避免引入安全漏洞：命令注入、路径遍历、SQL 注入等。\
-      如果发现写入了不安全的代码，立即修复。\
-    - 避免向后兼容的黑客手段（如重命名未使用的变量但仍保留旧名称）。\
-      确定某物不再使用时，直接删除，不要保留。\
-    \n\
-    ## 行动指南\n\
-    \n\
-    - 谨慎评估操作的可逆性和影响范围。\
-      可逆的本地操作（编辑文件、运行命令）可直接执行。\
-    - 不可逆或高风险操作（删除文件/分支、强制推送、终止进程）必须先征得用户确认。\
-    - 不要用破坏性操作走捷径。遇到问题时分析根因，不要通过跳过安全检查来解决问题。\
-    - 发现不熟悉的文件、分支或配置时先调查了解，不要直接删除或覆盖。\
-    \n\
-    ## 输出风格\n\
-    \n\
-    - 回复应简短精确，不要啰嗦。\
-    - 除非用户明确要求，不要使用 emoji。\
-    - 引用代码或文件时包含 file_path:line_number 格式。\
-    - 先给答案或行动结果，再给推理过程。\
-    - 工具调用前不要加冒号（如不要写「让我读取文件：」然后调用工具，直接说「让我读取文件」即可）。";
 
 /// 对话消息
 #[derive(Debug, Clone)]
@@ -106,7 +69,7 @@ pub enum ToolHandler {
 }
 
 impl ToolHandler {
-    fn tool_definition(&self) -> Tool {
+    pub(crate) fn tool_definition(&self) -> Tool {
         match self {
             ToolHandler::AskUser(_) => crate::tools::ask_user::AskUser::tool_definition(),
             ToolHandler::WebFetch(_) => crate::tools::web_fetch::WebFetch::tool_definition(),
@@ -182,7 +145,7 @@ impl ToolHandler {
     }
 
     /// 判断工具在当前输入下是否可以与其他工具并行执行
-    fn is_concurrency_safe(&self, input: &serde_json::Value) -> bool {
+    pub(crate) fn is_concurrency_safe(&self, input: &serde_json::Value) -> bool {
         match self {
             // 只读文件操作 —— 安全
             ToolHandler::FileRead(_) | ToolHandler::FileSearch(_) | ToolHandler::FileFind(_) => {
@@ -247,8 +210,8 @@ pub struct AiAgent {
     model: String,
     max_tokens: u32,
     system_prompt: String,
-    /// 原始系统提示词（不含工具描述，用于重建 system_prompt）
-    base_system_prompt: String,
+    /// 系统提示词构建器（管理基础提示词与静态长度）
+    prompt_builder: crate::agent::system_prompt::SystemPromptBuilder,
     messages: Vec<ConversationMessage>,
     logger: Option<ConversationLogger>,
     /// 已注册的工具
@@ -267,42 +230,6 @@ pub struct AiAgent {
     static_prompt_len: usize,
     /// AGENTS.md 内容（启动时加载，缓存复用）
     agents_md_content: Option<String>,
-}
-
-/// 流式响应解析状态机
-enum StreamParseState {
-    /// 不在任何 content block 中
-    Idle,
-    /// 正在收集文本（TextDelta）
-    TextBlock,
-    /// 正在收集工具调用的 JSON 参数（InputJsonDelta）
-    ToolUseBlock {
-        id: String,
-        name: String,
-        input_buffer: String,
-    },
-}
-
-/// 一轮流式请求的结果
-struct RoundResult {
-    /// 从 text blocks 拼接的完整文本
-    full_text: String,
-    /// 收集到的工具调用列表 (id, name, input)
-    tool_uses: Vec<(String, String, serde_json::Value)>,
-    /// 按原始顺序重建的 ContentBlock 列表（用于对话历史记录）
-    blocks: Vec<ContentBlock>,
-    /// input token 数
-    input_tokens: u32,
-    /// output token 数
-    output_tokens: u32,
-    /// cache read tokens
-    cache_read_input_tokens: Option<u32>,
-    /// cache creation tokens
-    cache_creation_input_tokens: Option<u32>,
-    /// API 耗时（毫秒）
-    duration_ms: u64,
-    /// 模型名称
-    model: String,
 }
 
 impl AiAgent {
@@ -369,14 +296,9 @@ impl AiAgent {
             .build::<MessageError>()
             .map_err(|e| format!("创建 AI 客户端失败: {}", e))?;
 
-        let system_prompt = if let Some(custom) = options.system_prompt {
-            custom
-        } else {
-            format!("{}{}", DEFAULT_SYSTEM_PROMPT, BEHAVIORAL_GUIDANCE)
-        };
-
-        // 记录静态部分长度（用于缓存拆分：静态块带 cache_control，动态块不带）
-        let static_prompt_len = system_prompt.len();
+        let prompt_builder = SystemPromptBuilder::new(options.system_prompt);
+        let system_prompt = prompt_builder.base_prompt().to_string();
+        let static_prompt_len = prompt_builder.static_prompt_len();
 
         // 初始化对话日志记录器
         let logger = if is_conversation_log_enabled(&settings) {
@@ -399,7 +321,7 @@ impl AiAgent {
             client,
             model: model_name.to_string(),
             max_tokens,
-            base_system_prompt: system_prompt.clone(),
+            prompt_builder,
             system_prompt,
             messages: Vec::new(),
             logger,
@@ -414,77 +336,17 @@ impl AiAgent {
         })
     }
 
-    /// 构建上下文提醒（首条消息时注入到用户输入前）
-    fn build_context_reminder(&self) -> String {
-        let cwd = std::env::current_dir()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
-
-        let now = chrono::Local::now();
-        let date_str = now.format("%Y-%m-%d %H:%M").to_string();
-
-        let mut parts = vec![
-            format!("当前工作目录：{}", cwd),
-            format!("当前日期：{}", date_str),
-        ];
-
-        // 操作系统信息
-        let os = crate::env_info::os_info();
-        if !os.is_empty() {
-            parts.push(format!("操作系统：{}", os));
-        }
-
-        // Shell 信息
-        let shell = crate::env_info::shell_name();
-        if !shell.is_empty() {
-            parts.push(format!("Shell：{}", shell));
-        }
-
-        // 语言/区域
-        let locale = crate::env_info::locale_info();
-        if !locale.is_empty() {
-            parts.push(format!("语言/区域：{}", locale));
-        }
-
-        // Git 状态
-        if let Some(output) = std::process::Command::new("git")
-            .args(["status", "--branch", "--short"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-        {
-            let git_status = String::from_utf8_lossy(&output.stdout);
-            let git_status = git_status.trim();
-            if !git_status.is_empty() {
-                parts.push(format!("\n# Git 状态\n{}", git_status));
-            }
-        }
-
-        // 已知命令行工具
-        let tools = crate::env_info::available_tools();
-        if !tools.is_empty() {
-            parts.push(format!("\n# 已知命令行工具\n{}", tools));
-        }
-
-        // AGENTS.md 内容
-        if let Some(ref agents_md) = self.agents_md_content {
-            parts.push(format!(
-                "\n# AGENTS.md\n以下是指令文件内容，模型必须严格遵守：\n\n{}",
-                agents_md
-            ));
-        }
-
-        format!(
-            "<system-reminder>\n{}\n</system-reminder>\n\n",
-            parts.join("\n")
-        )
-    }
-
     /// 非流式对话 - 发送消息并获取完整回复
     pub async fn chat(&mut self, input: &str) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
-            format!("{}{}", self.build_context_reminder(), input)
+            format!(
+                "{}{}",
+                crate::agent::system_prompt::build_context_reminder(
+                    self.agents_md_content.as_deref()
+                ),
+                input
+            )
         } else {
             input.to_string()
         };
@@ -506,7 +368,7 @@ impl AiAgent {
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
-        let full_content = extract_text_from_blocks(&response.content);
+        let full_content = crate::agent::executor::extract_text_from_blocks(&response.content);
 
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
@@ -515,7 +377,7 @@ impl AiAgent {
         });
 
         // 输出 token 用量
-        print_usage_line(
+        crate::agent::executor::print_usage_line(
             None,
             response.usage.input_tokens,
             response.usage.output_tokens,
@@ -526,7 +388,7 @@ impl AiAgent {
 
         // 记录日志
         if let Some(ref logger) = self.logger {
-            log_round_trip(logger, &params, &response, duration_ms);
+            crate::agent::executor::log_round_trip(logger, &params, &response, duration_ms);
         }
 
         Ok(full_content)
@@ -540,7 +402,13 @@ impl AiAgent {
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
-            format!("{}{}", self.build_context_reminder(), input)
+            format!(
+                "{}{}",
+                crate::agent::system_prompt::build_context_reminder(
+                    self.agents_md_content.as_deref()
+                ),
+                input
+            )
         } else {
             input.to_string()
         };
@@ -608,7 +476,7 @@ impl AiAgent {
         let duration_ms = start.elapsed().as_millis() as u64;
 
         // 输出 token 用量
-        print_usage_line(
+        crate::agent::executor::print_usage_line(
             None,
             resp_input_tokens,
             resp_output_tokens,
@@ -652,14 +520,28 @@ impl AiAgent {
     /// 注册工具处理器
     pub fn register_tool(&mut self, handler: ToolHandler) {
         self.tools.push(handler);
-        self.rebuild_tool_usage_guidance();
+        self.rebuild_system_prompt_with_tools();
     }
 
     /// 根据名称批量移除已注册的工具
     pub fn remove_tools(&mut self, names: &[&str]) {
         self.tools
             .retain(|t| !names.contains(&t.tool_definition().name.as_str()));
-        self.rebuild_tool_usage_guidance();
+        self.rebuild_system_prompt_with_tools();
+    }
+
+    /// 根据当前注册的工具重建 system_prompt（含工具使用指引）
+    fn rebuild_system_prompt_with_tools(&mut self) {
+        let tool_names: Vec<String> = self
+            .tools
+            .iter()
+            .map(|t| t.tool_definition().name.clone())
+            .collect();
+        let tool_name_refs: Vec<&str> = tool_names.iter().map(|s| s.as_str()).collect();
+        self.system_prompt = crate::agent::system_prompt::build_with_tool_guidance(
+            self.prompt_builder.base_prompt(),
+            &tool_name_refs,
+        );
     }
 
     /// 设置任务管理器（用于在终端展示任务列表）
@@ -700,60 +582,6 @@ impl AiAgent {
         }
     }
 
-    /// 从 base_system_prompt 重建 system_prompt，仅追加工具使用指引（不含工具描述）
-    fn rebuild_tool_usage_guidance(&mut self) {
-        self.system_prompt = self.base_system_prompt.clone();
-        if self.tools.is_empty() {
-            return;
-        }
-
-        self.system_prompt
-            .push_str("\n\n使用工具时请注意以下规则：\n");
-
-        // 强调专用工具优先于 shell_exec（仅当 shell_exec 已注册时）
-        let has_shell_exec = self
-            .tools
-            .iter()
-            .any(|t| t.tool_definition().name == "shell_exec");
-        if has_shell_exec {
-            self.system_prompt
-                .push_str("注意：有专用工具的任务应使用专用工具，不要使用 shell_exec 替代。\n");
-        }
-
-        // 文件操作安全规则（仅当文件操作工具已注册时）
-        let has_file_tools = self.tools.iter().any(|t| {
-            let name = t.tool_definition().name;
-            name == "file_read" || name == "file_edit" || name == "file_write"
-        });
-        if has_file_tools {
-            self.system_prompt
-                .push_str("文件操作前必须先通过 file_read 读取文件内容。\n");
-        }
-
-        self.system_prompt.push_str("使用工具时请注意安全。");
-
-        // 如果有 Task 工具注册，追加任务执行策略
-        let has_task_tools = self.tools.iter().any(|t| {
-            let name = t.tool_definition().name;
-            name == "task_create" || name == "task_update" || name == "task_list"
-        });
-        if has_task_tools {
-            self.system_prompt.push_str(
-                "\n\n## 任务执行策略\n\
-                 当使用 task_create 创建任务后，请按以下步骤执行：\n\
-                 1. 调用 task_list 查看所有任务的依赖关系\n\
-                 2. 选择 blocked_by 为空且状态为 pending 的任务\n\
-                 3. 调用 task_update 将其标记为 in_progress\n\
-                 4. 使用 shell_exec、file_edit 等工具完成该任务\n\
-                 5. 调用 task_update 将其标记为 completed\n\
-                 6. 重复步骤 1-5 直到所有任务完成\n\
-                 注意：每次工具调用轮次只处理一个任务。完成后标记 completed \
-                 然后检查 task_list 找出下一个可用任务。\
-                 被 blocked 的任务跳过，等依赖任务完成后再处理。",
-            );
-        }
-    }
-
     /// 获取当前使用的模型名称
     pub fn model(&self) -> &str {
         &self.model
@@ -775,7 +603,13 @@ impl AiAgent {
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
-            format!("{}{}", self.build_context_reminder(), input)
+            format!(
+                "{}{}",
+                crate::agent::system_prompt::build_context_reminder(
+                    self.agents_md_content.as_deref()
+                ),
+                input
+            )
         } else {
             input.to_string()
         };
@@ -792,7 +626,7 @@ impl AiAgent {
             let result = self.stream_one_round(&mut on_chunk).await?;
 
             // 输出 token 用量
-            print_usage_line(
+            crate::agent::executor::print_usage_line(
                 Some(round),
                 result.input_tokens,
                 result.output_tokens,
@@ -805,7 +639,12 @@ impl AiAgent {
             if let Some(ref logger) = self.logger
                 && let Ok(params) = self.build_params(true)
             {
-                log_round_trip_stream(logger, &params, &result, result.duration_ms);
+                crate::agent::executor::log_round_trip_stream(
+                    logger,
+                    &params,
+                    &result,
+                    result.duration_ms,
+                );
             }
 
             // 保存 assistant 消息（含重建的 blocks）
@@ -823,8 +662,8 @@ impl AiAgent {
             }
 
             // 有工具调用——合并同文件编辑并按安全分区并行/串行执行
-            let merged = merge_file_edits(&result.tool_uses);
-            let batches = partition_tool_calls(merged, &self.tools);
+            let merged = crate::agent::executor::merge_file_edits(&result.tool_uses);
+            let batches = crate::agent::executor::partition_tool_calls(merged, &self.tools);
             let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
 
             for batch in batches {
@@ -862,7 +701,7 @@ impl AiAgent {
     async fn stream_one_round(
         &mut self,
         on_chunk: &mut dyn FnMut(&str),
-    ) -> Result<RoundResult, String> {
+    ) -> Result<crate::agent::stream::RoundResult, String> {
         let params = self.build_params(true)?;
         let start = Instant::now();
 
@@ -873,133 +712,10 @@ impl AiAgent {
             .map_err(|e| format!("API 流式请求失败: {}", e))?;
 
         let event_stream = stream.map(|r| r.map_err(|e| format!("流式读取失败: {}", e)));
-        let mut result = Self::process_stream_events(event_stream, on_chunk).await?;
+        let mut result =
+            crate::agent::stream::process_stream_events(event_stream, on_chunk).await?;
         result.duration_ms = start.elapsed().as_millis() as u64;
         Ok(result)
-    }
-
-    /// 处理流式事件序列，返回解析结果（纯逻辑，可单元测试）
-    async fn process_stream_events(
-        events: impl Stream<Item = Result<StreamEvent, String>>,
-        on_chunk: &mut dyn FnMut(&str),
-    ) -> Result<RoundResult, String> {
-        let mut state = StreamParseState::Idle;
-        let mut full_text = String::new();
-        let mut tool_uses = Vec::new();
-        let mut blocks = Vec::new();
-        let mut input_tokens = 0u32;
-        let mut output_tokens = 0u32;
-        let mut cache_read = None;
-        let mut cache_create = None;
-        let mut model = String::new();
-
-        let mut stream = std::pin::pin!(events);
-        while let Some(event) = stream.next().await {
-            let event = event?;
-            match event {
-                StreamEvent::MessageStart { message } => {
-                    input_tokens = message.usage.input_tokens;
-                    model = message.model;
-                }
-                StreamEvent::ContentBlockStart { content_block, .. } => match content_block {
-                    ContentBlock::Text { .. } => {
-                        state = StreamParseState::TextBlock;
-                    }
-                    ContentBlock::ToolUse { id, name, input } => {
-                        // 判断 ContentBlockStart 是否已包含完整参数
-                        let has_full_input =
-                            input.is_object() && input.as_object().is_some_and(|m| !m.is_empty());
-                        if has_full_input {
-                            // API 直接在 ContentBlockStart 中提供了完整参数
-                            blocks.push(ContentBlock::ToolUse {
-                                id: id.clone(),
-                                name: name.clone(),
-                                input: input.clone(),
-                            });
-                            tool_uses.push((id, name, input));
-                        // state 保持 Idle，ContentBlockStop 跳过
-                        } else {
-                            // ContentBlockStart 中 input 为空占位符，
-                            // 等待 InputJsonDelta 增量到达
-                            state = StreamParseState::ToolUseBlock {
-                                id,
-                                name,
-                                input_buffer: String::new(),
-                            };
-                        }
-                    }
-                    _ => {}
-                },
-                StreamEvent::ContentBlockDelta { delta, .. } => match delta {
-                    ContentBlockDelta::TextDelta { text } => {
-                        full_text.push_str(&text);
-                        on_chunk(&text);
-                    }
-                    ContentBlockDelta::InputJsonDelta { partial_json } => {
-                        if let StreamParseState::ToolUseBlock {
-                            ref mut input_buffer,
-                            ..
-                        } = state
-                        {
-                            input_buffer.push_str(&partial_json);
-                        }
-                    }
-                    _ => {}
-                },
-                StreamEvent::ContentBlockStop { .. } => {
-                    if let StreamParseState::ToolUseBlock {
-                        id,
-                        name,
-                        input_buffer,
-                    } = std::mem::replace(&mut state, StreamParseState::Idle)
-                    {
-                        let input: serde_json::Value = serde_json::from_str(&input_buffer)
-                            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
-                        blocks.push(ContentBlock::ToolUse {
-                            id: id.clone(),
-                            name: name.clone(),
-                            input: input.clone(),
-                        });
-                        tool_uses.push((id, name, input));
-                    }
-                }
-                StreamEvent::MessageDelta { usage: Some(u), .. } => {
-                    output_tokens = u.output_tokens;
-                    cache_read = u.cache_read_input_tokens;
-                    cache_create = u.cache_creation_input_tokens;
-                }
-                StreamEvent::MessageStop => {
-                    break;
-                }
-                StreamEvent::Error { error } => {
-                    return Err(format!("API 流式错误: {} ({})", error.message, error.type_));
-                }
-                _ => {}
-            }
-        }
-
-        // 在 blocks 开头插入 Text block（如果存在文本内容）
-        if !full_text.is_empty() {
-            blocks.insert(
-                0,
-                ContentBlock::Text {
-                    text: full_text.clone(),
-                    citations: None,
-                },
-            );
-        }
-
-        Ok(RoundResult {
-            full_text,
-            tool_uses,
-            blocks,
-            input_tokens,
-            output_tokens,
-            cache_read_input_tokens: cache_read,
-            cache_creation_input_tokens: cache_create,
-            duration_ms: 0,
-            model,
-        })
     }
 
     /// 串行执行工具调用列表（逐个 await），返回 ToolResult ContentBlock 列表
@@ -1018,9 +734,14 @@ impl AiAgent {
                 .iter()
                 .map(|(name, count)| {
                     if *count > 1 {
-                        format!("{} {} ×{}", tool_icon(name), name, count)
+                        format!(
+                            "{} {} ×{}",
+                            crate::agent::executor::tool_icon(name),
+                            name,
+                            count
+                        )
                     } else {
-                        format!("{} {}", tool_icon(name), name)
+                        format!("{} {}", crate::agent::executor::tool_icon(name), name)
                     }
                 })
                 .collect::<Vec<_>>()
@@ -1089,8 +810,8 @@ impl AiAgent {
                 _ => None,
             };
 
-            let icon = tool_icon(name);
-            let param = format_tool_param(name, input);
+            let icon = crate::agent::executor::tool_icon(name);
+            let param = crate::agent::executor::format_tool_param(name, input);
 
             let result_text = if let Some(err_msg) = pre_read_error {
                 tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
@@ -1163,9 +884,14 @@ impl AiAgent {
                 .iter()
                 .map(|(name, count)| {
                     if *count > 1 {
-                        format!("{} {} ×{}", tool_icon(name), name, count)
+                        format!(
+                            "{} {} ×{}",
+                            crate::agent::executor::tool_icon(name),
+                            name,
+                            count
+                        )
                     } else {
-                        format!("{} {}", tool_icon(name), name)
+                        format!("{} {}", crate::agent::executor::tool_icon(name), name)
                     }
                 })
                 .collect::<Vec<_>>()
@@ -1192,8 +918,8 @@ impl AiAgent {
                 .find(|h| h.tool_definition().name == *name)
                 .ok_or_else(|| format!("Unknown tool: {}", name))?;
 
-            let icon = tool_icon(name);
-            let param = format_tool_param(name, input);
+            let icon = crate::agent::executor::tool_icon(name);
+            let param = crate::agent::executor::format_tool_param(name, input);
             let input_clone = input.clone();
             let tool_use_id_clone = tool_use_id.clone();
             let name_clone = name.clone();
@@ -1423,145 +1149,6 @@ impl AiAgent {
     }
 }
 
-/// 获取工具类型对应的终端图标
-fn tool_icon(name: &str) -> &'static str {
-    match name {
-        "file_read" => "\u{1f4d6}",                       // 📖
-        "file_find" | "file_search" => "\u{1f50d}",       // 🔍
-        "file_write" | "file_edit" => "\u{270f}\u{fe0f}", // ✏️
-        "shell_exec" => "\u{1f4bb}",                      // 💻
-        "web_search" => "\u{1f310}",                      // 🌐
-        "web_fetch" => "\u{1f4e1}",                       // 📡
-        "ask_user" => "\u{1f4ac}",                        // 💬
-        "task_create" | "task_get" | "task_list" | "task_update" => "\u{1f4cb}", // 📋
-        _ => "\u{1f527}",                                 // 🔧
-    }
-}
-
-/// 生成工具参数的紧凑单行描述
-fn format_tool_param(name: &str, input: &serde_json::Value) -> String {
-    match name {
-        "file_read" => input
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "file_find" => {
-            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
-            let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            if path.is_empty() {
-                pattern.to_string()
-            } else {
-                format!("{}  in  {}", pattern, path)
-            }
-        }
-        "file_search" => {
-            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
-            let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            let output_mode = input.get("output_mode").and_then(|v| v.as_str());
-            let base = if path.is_empty() {
-                pattern.to_string()
-            } else {
-                format!("{}  in  {}", pattern, path)
-            };
-            if let Some(mode) = output_mode
-                && mode != "content"
-            {
-                format!("[{}] {}", mode, base)
-            } else {
-                base
-            }
-        }
-        "file_write" => input
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "file_edit" => {
-            let fp = input
-                .get("file_path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let old = input.get("old_string").and_then(|v| v.as_str());
-            if let Some(old) = old {
-                let truncated = if old.len() > 40 {
-                    format!("{}...", &old[..40])
-                } else {
-                    old.to_string()
-                };
-                format!("{}  查找: \"{}\"", fp, truncated)
-            } else {
-                fp.to_string()
-            }
-        }
-        "shell_exec" => input
-            .get("command")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                if s.len() > 60 {
-                    format!("{}...", &s[..60])
-                } else {
-                    s.to_string()
-                }
-            })
-            .unwrap_or_default(),
-        "web_search" => input
-            .get("query")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                if s.len() > 60 {
-                    format!("\"{}...\"", &s[..60])
-                } else {
-                    format!("\"{}\"", s)
-                }
-            })
-            .unwrap_or_default(),
-        "web_fetch" => input
-            .get("url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "ask_user" => input
-            .get("question")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                if s.len() > 60 {
-                    format!("{}...", &s[..60])
-                } else {
-                    s.to_string()
-                }
-            })
-            .unwrap_or_default(),
-        "task_create" => input
-            .get("subject")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                if s.len() > 60 {
-                    format!("{}...", &s[..60])
-                } else {
-                    s.to_string()
-                }
-            })
-            .unwrap_or_default(),
-        "task_update" => {
-            let id = input.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
-            let status = input.get("status").and_then(|v| v.as_str());
-            if let Some(status) = status {
-                format!("#{} \u{2192} {}", id, status) // →
-            } else {
-                format!("#{}", id)
-            }
-        }
-        "task_get" => input
-            .get("task_id")
-            .and_then(|v| v.as_str())
-            .map(|s| format!("#{}", s))
-            .unwrap_or_default(),
-        "task_list" => String::new(),
-        _ => String::new(),
-    }
-}
-
 /// 解析 API Key
 pub(crate) fn resolve_api_key(
     explicit_key: Option<&str>,
@@ -1592,204 +1179,6 @@ pub(crate) fn resolve_api_key(
         "DEEPSEEK_API_KEY 未设置。请运行 `zapmyco init` 或设置环境变量 DEEPSEEK_API_KEY。"
             .to_string(),
     )
-}
-
-/// 从 ContentBlock 列表中提取纯文本
-fn extract_text_from_blocks(blocks: &[ContentBlock]) -> String {
-    blocks
-        .iter()
-        .filter_map(|block| {
-            if let ContentBlock::Text { text, .. } = block {
-                Some(text.as_str())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("")
-}
-
-/// 合并同文件的 file_edit 调用（line_range 模式）为批量编辑
-fn merge_file_edits(
-    tool_uses: &[(String, String, serde_json::Value)],
-) -> Vec<(String, String, serde_json::Value)> {
-    use std::collections::HashMap;
-    let mut file_edit_groups: HashMap<String, Vec<(String, serde_json::Value)>> = HashMap::new();
-    let mut other = Vec::new();
-
-    for (tid, name, input) in tool_uses {
-        if name == "file_edit"
-            && input.get("start_line").and_then(|v| v.as_u64()).is_some()
-            && let Some(fp) = input.get("file_path").and_then(|v| v.as_str())
-        {
-            file_edit_groups
-                .entry(fp.to_string())
-                .or_default()
-                .push((tid.clone(), input.clone()));
-            continue;
-        }
-        other.push((tid.clone(), name.clone(), input.clone()));
-    }
-
-    for (file_path, edits) in &file_edit_groups {
-        if edits.len() == 1 {
-            let (tid, input) = &edits[0];
-            other.push((tid.clone(), "file_edit".to_string(), input.clone()));
-        } else {
-            let edit_items: Vec<serde_json::Value> = edits
-                .iter()
-                .map(|(_, inp)| {
-                    serde_json::json!({
-                        "start_line": inp["start_line"],
-                        "end_line": inp["end_line"],
-                        "expected": inp["expected"],
-                        "new_content": inp["new_content"],
-                    })
-                })
-                .collect();
-
-            let merged_input = serde_json::json!({
-                "file_path": file_path,
-                "edits": edit_items,
-            });
-            other.push((edits[0].0.clone(), "file_edit".to_string(), merged_input));
-
-            eprintln!(
-                "[工具] 🔗 合并 {} 个 file_edit 调用 (文件: {})",
-                edits.len(),
-                file_path,
-            );
-        }
-    }
-
-    other
-}
-
-/// 工具执行批次，用于并行/串行分区
-struct ToolBatch {
-    /// 批次内所有工具是否可以并行执行
-    is_concurrency_safe: bool,
-    /// (tool_use_id, name, input)
-    items: Vec<(String, String, serde_json::Value)>,
-}
-
-/// 将工具调用列表按并发安全属性分区：
-/// 连续的 safe 工具合并在一个 batch 中（可并行），
-/// 每个 unsafe 工具单独一个 batch（串行执行）。
-fn partition_tool_calls(
-    tool_uses: Vec<(String, String, serde_json::Value)>,
-    tools: &[ToolHandler],
-) -> Vec<ToolBatch> {
-    let mut batches: Vec<ToolBatch> = Vec::new();
-
-    for (tool_use_id, name, input) in tool_uses {
-        // 查找 ToolHandler 判断并发安全
-        let is_safe = tools
-            .iter()
-            .find(|h| h.tool_definition().name == name)
-            .map(|h| h.is_concurrency_safe(&input))
-            .unwrap_or(false);
-
-        if is_safe {
-            // 尝试追加到上一个 batch（如果前一个也是 safe batch）
-            if let Some(last) = batches.last_mut()
-                && last.is_concurrency_safe
-            {
-                last.items.push((tool_use_id, name, input));
-            } else {
-                batches.push(ToolBatch {
-                    is_concurrency_safe: true,
-                    items: vec![(tool_use_id, name, input)],
-                });
-            }
-        } else {
-            // 不安全工具各自独立 batch
-            batches.push(ToolBatch {
-                is_concurrency_safe: false,
-                items: vec![(tool_use_id, name, input)],
-            });
-        }
-    }
-
-    batches
-}
-
-/// 在终端输出当前轮次的 token 用量和缓存命中率信息
-fn print_usage_line(
-    round: Option<u32>,
-    input_tokens: u32,
-    output_tokens: u32,
-    cache_read: Option<u32>,
-    cache_create: Option<u32>,
-    duration_ms: u64,
-) {
-    let round_str = match round {
-        Some(r) => format!(" 轮次 {r} |"),
-        None => String::new(),
-    };
-
-    let cache_read_val = cache_read.unwrap_or(0);
-    let cache_create_val = cache_create.unwrap_or(0);
-    let total = input_tokens + cache_read_val + cache_create_val;
-
-    let cache_part = if cache_read_val > 0 || cache_create_val > 0 {
-        let savings = if total > 0 {
-            (cache_read_val as f64 / total as f64 * 100.0) as u32
-        } else {
-            0
-        };
-        format!(
-            " | cache read: {}, create: {} | 节省 {}%",
-            cache_read_val, cache_create_val, savings
-        )
-    } else {
-        String::new()
-    };
-
-    eprintln!(
-        "[LLM]{round_str} in: {input_tokens}, out: {output_tokens}{cache_part} ({dur:.1}s)",
-        dur = duration_ms as f64 / 1000.0,
-    );
-}
-
-/// 记录非流式对话的 round-trip 日志
-fn log_round_trip(
-    logger: &ConversationLogger,
-    params: &CreateMessageParams,
-    response: &CreateMessageResponse,
-    duration_ms: u64,
-) {
-    let ts = datetime::iso_timestamp_now();
-    let request_value = serde_json::to_value(params).unwrap_or_default();
-    let response_value = serde_json::to_value(response).unwrap_or_default();
-    let _ = logger.append_record(ts, duration_ms, request_value, response_value);
-}
-
-/// 记录流式对话的 round-trip 日志（从 RoundResult 重建响应）
-fn log_round_trip_stream(
-    logger: &ConversationLogger,
-    params: &CreateMessageParams,
-    result: &RoundResult,
-    duration_ms: u64,
-) {
-    let ts = datetime::iso_timestamp_now();
-    let request_value = serde_json::to_value(params).unwrap_or_default();
-    let response_value = serde_json::json!({
-        "id": null,
-        "type": "message",
-        "role": "assistant",
-        "content": result.blocks,
-        "model": result.model,
-        "stop_reason": if result.tool_uses.is_empty() { "end_turn" } else { "tool_use" },
-        "stop_sequence": null,
-        "usage": {
-            "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens,
-            "cache_creation_input_tokens": result.cache_creation_input_tokens,
-            "cache_read_input_tokens": result.cache_read_input_tokens,
-        }
-    });
-    let _ = logger.append_record(ts, duration_ms, request_value, response_value);
 }
 
 #[cfg(test)]
@@ -1901,27 +1290,6 @@ mod tests {
             });
             assert!(agent.is_ok());
         });
-    }
-
-    #[test]
-    fn test_extract_text_from_blocks() {
-        let blocks = vec![
-            ContentBlock::Text {
-                text: "Hello".to_string(),
-                citations: None,
-            },
-            ContentBlock::Text {
-                text: " World".to_string(),
-                citations: None,
-            },
-        ];
-        assert_eq!(extract_text_from_blocks(&blocks), "Hello World");
-    }
-
-    #[test]
-    fn test_extract_text_from_blocks_empty() {
-        let blocks: Vec<ContentBlock> = vec![];
-        assert_eq!(extract_text_from_blocks(&blocks), "");
     }
 
     #[test]
@@ -2051,35 +1419,6 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_text_from_blocks_mixed() {
-        let blocks = vec![
-            ContentBlock::Text {
-                text: "Hello".to_string(),
-                citations: None,
-            },
-            ContentBlock::ToolUse {
-                id: "id1".to_string(),
-                name: "my_tool".to_string(),
-                input: serde_json::Value::Null,
-            },
-            ContentBlock::Text {
-                text: " World".to_string(),
-                citations: None,
-            },
-        ];
-        assert_eq!(extract_text_from_blocks(&blocks), "Hello World");
-    }
-
-    #[test]
-    fn test_extract_text_from_blocks_only_non_text() {
-        let blocks = vec![ContentBlock::ToolUse {
-            id: "id1".to_string(),
-            name: "my_tool".to_string(),
-            input: serde_json::Value::Null,
-        }];
-        assert_eq!(extract_text_from_blocks(&blocks), "");
-    }
-
     #[test]
     fn test_agent_model_getter() {
         run_with_temp_home(|home| {
@@ -2279,8 +1618,9 @@ mod tests {
                 max_tokens: 100,
             });
 
-            let response: CreateMessageResponse = serde_json::from_str(
-                r#"{
+            let response: zapmyco_anthropic_ai_sdk::types::message::CreateMessageResponse =
+                serde_json::from_str(
+                    r#"{
                     "id": "msg_001",
                     "type": "message",
                     "role": "assistant",
@@ -2290,10 +1630,10 @@ mod tests {
                     "stop_sequence": null,
                     "usage": {"input_tokens": 5, "output_tokens": 3}
                 }"#,
-            )
-            .unwrap();
+                )
+                .unwrap();
 
-            log_round_trip(&logger, &params, &response, 100);
+            crate::agent::executor::log_round_trip(&logger, &params, &response, 100);
 
             // 验证日志文件被正确写入
             let log_dir = home.join(".zapmyco/conversations");
@@ -2487,8 +1827,8 @@ mod tests {
                 "original prompt should be preserved"
             );
             // 由于每次都重建，prompt 内容不同（有两个 web_fetch 条目）
-            // 但 base_system_prompt 应始终与开始时一致
-            assert_eq!(agent.base_system_prompt, "原始提示");
+            // 但 prompt_builder 的基础提示词应始终与开始时一致
+            assert_eq!(agent.prompt_builder.base_prompt(), "原始提示");
         });
     }
 
@@ -2864,487 +2204,6 @@ mod tests {
         });
     }
 
-    // ---- process_stream_events tests ----
-
-    fn make_msg_start(input_tokens: u32, model: &str) -> StreamEvent {
-        StreamEvent::MessageStart {
-            message: MessageStartContent {
-                id: "msg_t".to_string(),
-                type_: "message".to_string(),
-                role: Role::Assistant,
-                content: vec![],
-                model: model.to_string(),
-                stop_reason: None,
-                stop_sequence: None,
-                usage: Usage {
-                    input_tokens,
-                    output_tokens: 0,
-                    cache_creation_input_tokens: None,
-                    cache_read_input_tokens: None,
-                    cache_creation: None,
-                    output_tokens_details: None,
-                    inference_geo: None,
-                    service_tier: None,
-                    server_tool_use: None,
-                },
-                container: None,
-                stop_details: None,
-            },
-        }
-    }
-
-    fn make_msg_delta(
-        stop_reason: StopReason,
-        output_tokens: u32,
-        cache_read: Option<u32>,
-        cache_create: Option<u32>,
-    ) -> StreamEvent {
-        StreamEvent::MessageDelta {
-            delta: MessageDeltaContent {
-                stop_reason: Some(stop_reason),
-                stop_sequence: None,
-            },
-            usage: Some(StreamUsage {
-                input_tokens: 0,
-                output_tokens,
-                cache_creation_input_tokens: cache_create,
-                cache_read_input_tokens: cache_read,
-                output_tokens_details: None,
-                server_tool_use: None,
-            }),
-        }
-    }
-
-    fn make_text_block_start() -> StreamEvent {
-        StreamEvent::ContentBlockStart {
-            index: 0,
-            content_block: ContentBlock::Text {
-                text: String::new(),
-                citations: None,
-            },
-        }
-    }
-
-    fn make_text_delta(text: &str) -> StreamEvent {
-        StreamEvent::ContentBlockDelta {
-            index: 0,
-            delta: ContentBlockDelta::TextDelta {
-                text: text.to_string(),
-            },
-        }
-    }
-
-    fn make_tool_use_start_empty(id: &str, name: &str) -> StreamEvent {
-        StreamEvent::ContentBlockStart {
-            index: 0,
-            content_block: ContentBlock::ToolUse {
-                id: id.to_string(),
-                name: name.to_string(),
-                input: serde_json::Value::Object(serde_json::Map::new()),
-            },
-        }
-    }
-
-    fn make_tool_use_start_full(id: &str, name: &str, input: serde_json::Value) -> StreamEvent {
-        StreamEvent::ContentBlockStart {
-            index: 0,
-            content_block: ContentBlock::ToolUse {
-                id: id.to_string(),
-                name: name.to_string(),
-                input,
-            },
-        }
-    }
-
-    fn make_input_json_delta(partial: &str) -> StreamEvent {
-        StreamEvent::ContentBlockDelta {
-            index: 0,
-            delta: ContentBlockDelta::InputJsonDelta {
-                partial_json: partial.to_string(),
-            },
-        }
-    }
-
-    fn make_block_stop() -> StreamEvent {
-        StreamEvent::ContentBlockStop { index: 0 }
-    }
-
-    fn make_message_stop() -> StreamEvent {
-        StreamEvent::MessageStop
-    }
-
-    fn make_error_event(msg: &str) -> StreamEvent {
-        StreamEvent::Error {
-            error: StreamError {
-                type_: "server_error".to_string(),
-                message: msg.to_string(),
-            },
-        }
-    }
-
-    /// 构造一轮只含文本的 events
-    fn text_only_events(text: &str, input_tokens: u32, output_tokens: u32) -> Vec<StreamEvent> {
-        let mut events = vec![make_msg_start(input_tokens, "test-model")];
-        events.push(make_text_block_start());
-        events.push(make_text_delta(text));
-        events.push(make_block_stop());
-        events.push(make_msg_delta(
-            StopReason::EndTurn,
-            output_tokens,
-            None,
-            None,
-        ));
-        events.push(make_message_stop());
-        events
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_plain_text() {
-        let events = text_only_events("你好世界", 10, 5);
-        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
-        let mut chunks = String::new();
-        let result = AiAgent::process_stream_events(stream, &mut |chunk| {
-            chunks.push_str(chunk);
-        })
-        .await
-        .expect("process_stream_events should succeed");
-
-        assert_eq!(result.full_text, "你好世界");
-        assert!(result.tool_uses.is_empty(), "no tool calls expected");
-        assert_eq!(result.input_tokens, 10);
-        assert_eq!(result.output_tokens, 5);
-        assert_eq!(result.model, "test-model");
-        assert_eq!(result.blocks.len(), 1);
-        assert!(matches!(result.blocks[0], ContentBlock::Text { .. }));
-        assert_eq!(chunks, "你好世界");
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_tool_use_input_json_delta() {
-        let events = vec![
-            make_msg_start(10, "test-model"),
-            make_tool_use_start_empty("tu01", "file_find"),
-            // 使用 r##"..."## 避免末尾引号被吃掉
-            make_input_json_delta(r##"{"pattern":""##),
-            make_input_json_delta("**/*.rs"),
-            make_input_json_delta(r##""}"##),
-            make_block_stop(),
-            make_msg_delta(StopReason::ToolUse, 20, None, None),
-            make_message_stop(),
-        ];
-        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
-        let mut chunks = String::new();
-        let result = AiAgent::process_stream_events(stream, &mut |c| chunks.push_str(c))
-            .await
-            .expect("should succeed");
-
-        assert!(result.full_text.is_empty(), "no text expected");
-        assert_eq!(result.tool_uses.len(), 1);
-        assert_eq!(result.tool_uses[0].0, "tu01");
-        assert_eq!(result.tool_uses[0].1, "file_find");
-        assert_eq!(
-            result.tool_uses[0].2,
-            serde_json::json!({"pattern": "**/*.rs"})
-        );
-        assert_eq!(result.blocks.len(), 1);
-        assert!(matches!(result.blocks[0], ContentBlock::ToolUse { .. }));
-        assert!(
-            chunks.is_empty(),
-            "on_chunk should not be called for tool use"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_tool_use_full_input_in_start() {
-        let events = vec![
-            make_msg_start(10, "test-model"),
-            make_tool_use_start_full("tu01", "file_find", serde_json::json!({"pattern": "*.rs"})),
-            make_block_stop(),
-            make_msg_delta(StopReason::ToolUse, 15, None, None),
-            make_message_stop(),
-        ];
-        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
-        let result = AiAgent::process_stream_events(stream, &mut |_| {})
-            .await
-            .expect("should succeed");
-
-        assert_eq!(result.tool_uses.len(), 1);
-        assert_eq!(
-            result.tool_uses[0].2,
-            serde_json::json!({"pattern": "*.rs"})
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_mixed_text_and_tool() {
-        let events = vec![
-            make_msg_start(10, "test-model"),
-            make_text_block_start(),
-            make_text_delta("我来分析这个代码..."),
-            make_block_stop(),
-            make_tool_use_start_empty("tu01", "file_read"),
-            make_input_json_delta(r##"{"file_path":"src/main.rs"}"##),
-            make_block_stop(),
-            make_msg_delta(StopReason::ToolUse, 30, None, None),
-            make_message_stop(),
-        ];
-        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
-        let mut chunks = String::new();
-        let result = AiAgent::process_stream_events(stream, &mut |c| chunks.push_str(c))
-            .await
-            .expect("should succeed");
-
-        assert_eq!(result.full_text, "我来分析这个代码...");
-        assert_eq!(result.tool_uses.len(), 1);
-        assert_eq!(result.tool_uses[0].1, "file_read");
-        assert_eq!(result.blocks.len(), 2);
-        assert!(matches!(result.blocks[0], ContentBlock::Text { .. }));
-        assert!(matches!(result.blocks[1], ContentBlock::ToolUse { .. }));
-        assert_eq!(chunks, "我来分析这个代码...");
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_multiple_tools() {
-        let events = vec![
-            make_msg_start(10, "test-model"),
-            make_tool_use_start_empty("tu01", "file_find"),
-            make_input_json_delta(r##"{"pattern":"*.rs"}"##),
-            make_block_stop(),
-            make_tool_use_start_empty("tu02", "file_read"),
-            make_input_json_delta(r##"{"file_path":"src/main.rs"}"##),
-            make_block_stop(),
-            make_msg_delta(StopReason::ToolUse, 25, None, None),
-            make_message_stop(),
-        ];
-        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
-        let result = AiAgent::process_stream_events(stream, &mut |_| {})
-            .await
-            .expect("should succeed");
-
-        assert_eq!(result.tool_uses.len(), 2);
-        assert_eq!(result.tool_uses[0].0, "tu01");
-        assert_eq!(result.tool_uses[0].1, "file_find");
-        assert_eq!(result.tool_uses[1].0, "tu02");
-        assert_eq!(result.tool_uses[1].1, "file_read");
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_empty_input_json_delta() {
-        // 边缘情况：ContentBlockStart 后没有 InputJsonDelta 就 ContentBlockStop
-        let events = vec![
-            make_msg_start(10, "test-model"),
-            make_tool_use_start_empty("tu01", "file_find"),
-            make_block_stop(),
-            make_msg_delta(StopReason::ToolUse, 5, None, None),
-            make_message_stop(),
-        ];
-        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
-        let result = AiAgent::process_stream_events(stream, &mut |_| {})
-            .await
-            .expect("should succeed");
-
-        assert_eq!(result.tool_uses.len(), 1);
-        // 没有 InputJsonDelta → 输入应为 {}（空对象）
-        assert_eq!(
-            result.tool_uses[0].2,
-            serde_json::Value::Object(serde_json::Map::new())
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_error_event() {
-        let events = vec![
-            make_msg_start(10, "test-model"),
-            make_error_event("Internal server error"),
-        ];
-        let stream = futures_util::stream::iter(events.into_iter().map(Ok));
-        let result = AiAgent::process_stream_events(stream, &mut |_| {}).await;
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert!(err.contains("Internal server error"));
-    }
-
-    #[tokio::test]
-    async fn test_process_stream_events_stream_error() {
-        // 测试流中直接返回 Err 的情况
-        let events: Vec<Result<StreamEvent, String>> = vec![
-            Ok(make_msg_start(10, "test-model")),
-            Err("connection reset".to_string()),
-        ];
-        let stream = futures_util::stream::iter(events);
-        let result = AiAgent::process_stream_events(stream, &mut |_| {}).await;
-        assert!(result.is_err());
-        assert!(result.err().unwrap().contains("connection reset"));
-    }
-
-    // ---- merge_file_edits tests ----
-
-    #[test]
-    fn test_merge_file_edits_same_file() {
-        let tool_uses = vec![
-            (
-                "tu01".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/main.rs",
-                    "start_line": 1,
-                    "end_line": 3,
-                    "expected": "line1\nline2\nline3",
-                    "new_content": "new1\nnew2\nnew3"
-                }),
-            ),
-            (
-                "tu02".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/main.rs",
-                    "start_line": 10,
-                    "end_line": 12,
-                    "expected": "old10\nold11\nold12",
-                    "new_content": "new10\nnew11\nnew12"
-                }),
-            ),
-        ];
-        let merged = merge_file_edits(&tool_uses);
-        assert_eq!(merged.len(), 1, "should merge into 1");
-        assert_eq!(merged[0].0, "tu01");
-        assert_eq!(merged[0].1, "file_edit");
-        let edits = merged[0].2["edits"].as_array().unwrap();
-        assert_eq!(edits.len(), 2);
-    }
-
-    #[test]
-    fn test_merge_file_edits_different_files() {
-        let tool_uses = vec![
-            (
-                "tu01".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/a.rs",
-                    "start_line": 1,
-                    "end_line": 1,
-                    "expected": "a",
-                    "new_content": "A"
-                }),
-            ),
-            (
-                "tu02".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/b.rs",
-                    "start_line": 1,
-                    "end_line": 1,
-                    "expected": "b",
-                    "new_content": "B"
-                }),
-            ),
-        ];
-        let merged = merge_file_edits(&tool_uses);
-        assert_eq!(merged.len(), 2, "different files should not merge");
-    }
-
-    #[test]
-    fn test_merge_file_edits_old_string_mode_not_merged() {
-        let tool_uses = vec![
-            (
-                "tu01".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/main.rs",
-                    "old_string": "foo",
-                    "new_string": "bar"
-                }),
-            ),
-            (
-                "tu02".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/main.rs",
-                    "start_line": 5,
-                    "end_line": 5,
-                    "expected": "baz",
-                    "new_content": "qux"
-                }),
-            ),
-        ];
-        let merged = merge_file_edits(&tool_uses);
-        assert_eq!(
-            merged.len(),
-            2,
-            "old_string mode should not merge with line_range"
-        );
-    }
-
-    #[test]
-    fn test_merge_file_edits_single_line_range_not_batched() {
-        let tool_uses = vec![(
-            "tu01".to_string(),
-            "file_edit".to_string(),
-            serde_json::json!({
-                "file_path": "src/main.rs",
-                "start_line": 1,
-                "end_line": 1,
-                "expected": "a",
-                "new_content": "A"
-            }),
-        )];
-        let merged = merge_file_edits(&tool_uses);
-        assert_eq!(merged.len(), 1);
-        // 单条不应该包装为 edits 数组
-        assert!(merged[0].2.get("edits").is_none());
-    }
-
-    #[test]
-    fn test_merge_file_edits_mixed_tool_types() {
-        let tool_uses = vec![
-            (
-                "tu01".to_string(),
-                "file_read".to_string(),
-                serde_json::json!({"file_path": "src/main.rs"}),
-            ),
-            (
-                "tu02".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/main.rs",
-                    "start_line": 1,
-                    "end_line": 3,
-                    "expected": "a\nb\nc",
-                    "new_content": "A\nB\nC"
-                }),
-            ),
-            (
-                "tu03".to_string(),
-                "file_find".to_string(),
-                serde_json::json!({"pattern": "*.rs"}),
-            ),
-            (
-                "tu04".to_string(),
-                "file_edit".to_string(),
-                serde_json::json!({
-                    "file_path": "src/main.rs",
-                    "start_line": 10,
-                    "end_line": 10,
-                    "expected": "old",
-                    "new_content": "new"
-                }),
-            ),
-        ];
-        let merged = merge_file_edits(&tool_uses);
-        // file_read + file_find + 合并后的 file_edit = 3
-        // 非编辑工具保持原始顺序排在前面
-        assert_eq!(
-            merged.len(),
-            3,
-            "file_read + merged file_edit + file_find = 3"
-        );
-        assert_eq!(merged[0].1, "file_read");
-        assert_eq!(merged[1].1, "file_find");
-        assert_eq!(merged[2].1, "file_edit");
-        assert!(merged[2].2.get("edits").is_some());
-        assert_eq!(merged[2].2["edits"].as_array().unwrap().len(), 2);
-    }
-
     // ---- log_round_trip_stream tests ----
 
     #[test]
@@ -3358,7 +2217,7 @@ mod tests {
                 max_tokens: 100,
             });
 
-            let result = RoundResult {
+            let result = crate::agent::stream::RoundResult {
                 full_text: "你好".to_string(),
                 tool_uses: vec![],
                 blocks: vec![ContentBlock::Text {
@@ -3373,7 +2232,7 @@ mod tests {
                 model: "test-model".to_string(),
             };
 
-            log_round_trip_stream(&logger, &params, &result, 100);
+            crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 100);
 
             // 验证日志文件被正确写入
             let log_dir = home.join(".zapmyco/conversations");
@@ -3397,7 +2256,7 @@ mod tests {
                 max_tokens: 100,
             });
 
-            let result = RoundResult {
+            let result = crate::agent::stream::RoundResult {
                 full_text: String::new(),
                 tool_uses: vec![(
                     "tu01".to_string(),
@@ -3417,7 +2276,7 @@ mod tests {
                 model: "test-model".to_string(),
             };
 
-            log_round_trip_stream(&logger, &params, &result, 100);
+            crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 100);
 
             let log_dir = home.join(".zapmyco/conversations");
             let log_file = log_dir.join(format!("{}.jsonl", logger.session_id()));
@@ -3966,7 +2825,7 @@ mod tests {
             make_safe_tool_handler("file_read"),
         ];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         assert_eq!(batches.len(), 1, "all safe tools should be in one batch");
         assert!(batches[0].is_concurrency_safe);
         assert_eq!(batches[0].items.len(), 2);
@@ -3991,7 +2850,7 @@ mod tests {
             make_unsafe_tool_handler("file_edit"),
         ];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         assert_eq!(batches.len(), 2, "each unsafe tool should be its own batch");
         assert!(!batches[0].is_concurrency_safe);
         assert!(!batches[1].is_concurrency_safe);
@@ -4040,7 +2899,7 @@ mod tests {
             make_unsafe_tool_handler("file_edit"),
         ];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         // 预期: [safe, safe] [unsafe(file_write)] [safe] [unsafe(file_edit)] [safe]
         assert_eq!(batches.len(), 5);
         assert!(batches[0].is_concurrency_safe);
@@ -4057,7 +2916,7 @@ mod tests {
 
     #[test]
     fn test_partition_tool_calls_empty() {
-        let batches = partition_tool_calls(vec![], &[]);
+        let batches = crate::agent::executor::partition_tool_calls(vec![], &[]);
         assert!(batches.is_empty());
     }
 
@@ -4077,7 +2936,7 @@ mod tests {
         ];
         let tools = vec![make_unsafe_tool_handler("file_write")];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         // Each unsafe tool is its own batch, even if consecutive
         assert_eq!(batches.len(), 2);
         assert!(!batches[0].is_concurrency_safe);
@@ -4095,7 +2954,7 @@ mod tests {
         )];
         let tools = vec![make_safe_tool_handler("file_read")];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         assert_eq!(batches.len(), 1);
         assert!(batches[0].is_concurrency_safe);
         assert_eq!(batches[0].items.len(), 1);
@@ -4110,7 +2969,7 @@ mod tests {
         )];
         let tools = vec![make_unsafe_tool_handler("file_write")];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         assert_eq!(batches.len(), 1);
         assert!(!batches[0].is_concurrency_safe);
         assert_eq!(batches[0].items.len(), 1);
@@ -4126,7 +2985,7 @@ mod tests {
         )];
         let tools: Vec<ToolHandler> = vec![];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         assert_eq!(batches.len(), 1);
         assert!(
             !batches[0].is_concurrency_safe,
@@ -4158,7 +3017,7 @@ mod tests {
         ];
         let tools = vec![make_safe_tool_handler("file_read")];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         // [safe] [unsafe(unknown)] [safe]
         assert_eq!(batches.len(), 3);
         assert!(batches[0].is_concurrency_safe);
@@ -4181,7 +3040,7 @@ mod tests {
             tools.push(make_safe_tool_handler("file_read"));
         }
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         assert_eq!(batches.len(), 1, "all 10 safe tools should be in one batch");
         assert!(batches[0].is_concurrency_safe);
         assert_eq!(batches[0].items.len(), 10);
@@ -4217,7 +3076,7 @@ mod tests {
             make_unsafe_tool_handler("file_write"),
         ];
 
-        let batches = partition_tool_calls(tool_uses, &tools);
+        let batches = crate::agent::executor::partition_tool_calls(tool_uses, &tools);
         assert_eq!(batches.len(), 4);
         assert!(batches[0].is_concurrency_safe);
         assert!(!batches[1].is_concurrency_safe);
@@ -4825,7 +3684,7 @@ mod tests {
                 ];
 
                 // 模拟 chat_with_tools 中的分区逻辑
-                let batches = partition_tool_calls(merged, &agent.tools);
+                let batches = crate::agent::executor::partition_tool_calls(merged, &agent.tools);
                 assert_eq!(batches.len(), 3, "should be 3 batches: safe, unsafe, safe");
 
                 // Batch 1: safe — 并发执行
