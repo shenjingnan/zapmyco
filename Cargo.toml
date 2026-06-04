@@ -7,7 +7,7 @@ members = [
 
 [package]
 name = "zapmyco"
-version = "0.34.0"
+version = "0.35.0"
 edition = "2024"
 rust-version = "1.95"
 description = "An AI-powered CLI tool for interactive chat with LLMs"
@@ -17,7 +17,7 @@ repository = "https://github.com/shenjingnan/zapmyco"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
-zapmyco-anthropic-ai-sdk = { version = "0.3.1", path = "vendor/zapmyco-anthropic-ai-sdk" }
+zapmyco-anthropic-ai-sdk = { version = "0.3.2", path = "vendor/zapmyco-anthropic-ai-sdk" }
 zapmyco-grep = { version = "0.1.0", path = "vendor/zapmyco-grep" }
 inquire = "0.9"
 tokio = { version = "1", features = ["full"] }
