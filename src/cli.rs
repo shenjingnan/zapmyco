@@ -809,6 +809,10 @@ fn cmd_completion<W: std::io::Write>(shell: clap_complete::Shell, writer: &mut W
         generate_powershell_completion(writer);
         return;
     }
+    if matches!(shell, clap_complete::Shell::Zsh) {
+        generate_zsh_completion(writer);
+        return;
+    }
     let mut cmd = Cli::command();
     clap_complete::generate(shell, &mut cmd, "zapmyco", writer);
 }
@@ -891,6 +895,116 @@ fn generate_powershell_completion(writer: &mut impl std::io::Write) {
     }
 
     let _ = write!(writer, "{script}");
+}
+
+/// 生成 zsh 补全脚本（在 clap_complete 基础上增加值补全，保证描述可见）
+fn generate_zsh_completion(writer: &mut impl std::io::Write) {
+    use clap::ValueEnum;
+
+    let mut buf = Vec::new();
+    let mut cmd = Cli::command();
+    clap_complete::generate(clap_complete::Shell::Zsh, &mut cmd, "zapmyco", &mut buf);
+    let mut script = String::from_utf8(buf).unwrap_or_default();
+
+    // 替换 --model 的内联值((…)) 为函数引用
+    replace_inline_zsh_values(&mut script, "--model", "MODEL", "_zapmyco_model_values");
+    // 替换 --base-url
+    replace_inline_zsh_values(
+        &mut script,
+        "--base-url",
+        "BASE_URL",
+        "_zapmyco_base_url_values",
+    );
+    // 替换 --permission-mode
+    replace_inline_zsh_values(
+        &mut script,
+        "--permission-mode",
+        "PERMISSION_MODE",
+        "_zapmyco_permission_mode_values",
+    );
+
+    // 追加自定义补全函数
+    script.push_str("\n\n# 自定义补全函数（zapmyco 内置）\n");
+    script.push_str("_zapmyco_model_values() {\n");
+    script.push_str("    local -a _zapmyco_models\n");
+    script.push_str("    _zapmyco_models=(\n");
+    for name in get_built_in_model_names() {
+        let help = format_model_help(name);
+        script.push_str(&format!(
+            "        '{}:{}'\n",
+            name.replace('\'', "''"),
+            help.replace('\'', "''"),
+        ));
+    }
+    script.push_str("    )\n");
+    script.push_str("    _describe 'model' _zapmyco_models\n");
+    script.push_str("}\n\n");
+
+    script.push_str("_zapmyco_base_url_values() {\n");
+    script.push_str("    local -a _zapmyco_urls\n");
+    script.push_str("    _zapmyco_urls=(\n");
+    for (host, provider, region) in get_built_in_base_host_info() {
+        let tip = format!("{} · {}", provider, region);
+        script.push_str(&format!(
+            "        '{}:{}'\n",
+            host.replace('\'', "''"),
+            tip.replace('\'', "''"),
+        ));
+    }
+    script.push_str("    )\n");
+    script.push_str("    _describe 'base-url' _zapmyco_urls\n");
+    script.push_str("}\n\n");
+
+    script.push_str("_zapmyco_permission_mode_values() {\n");
+    script.push_str("    local -a _zapmyco_modes\n");
+    script.push_str("    _zapmyco_modes=(\n");
+    for variant in PermissionMode::value_variants() {
+        if let Some(pv) = variant.to_possible_value() {
+            let name = pv.get_name();
+            let desc = pv.get_help().map(|s| s.to_string()).unwrap_or_default();
+            script.push_str(&format!(
+                "        '{}:{}'\n",
+                name.replace('\'', "''"),
+                desc.replace('\'', "''"),
+            ));
+        }
+    }
+    script.push_str("    )\n");
+    script.push_str("    _describe 'permission-mode' _zapmyco_modes\n");
+    script.push_str("}\n");
+
+    let _ = write!(writer, "{script}");
+}
+
+/// 替换 zsh 脚本中内联的 `((…))` 值列表为函数引用
+fn replace_inline_zsh_values(
+    script: &mut String,
+    opt_name: &str,
+    value_tag: &str,
+    func_name: &str,
+) {
+    // 搜索 "'--opt_name="（zsh 的 _arguments 格式中用 = 分隔选项和描述）
+    let search_pattern = format!("'{opt_name}=");
+    let Some(opt_pos) = script.find(&search_pattern) else {
+        return;
+    };
+    let value_marker = format!(":{value_tag}:(");
+    let after_opt = &script[opt_pos..];
+    let Some(marker_pos) = after_opt.find(&value_marker) else {
+        return;
+    };
+    let values_start = opt_pos + marker_pos + value_marker.len();
+    // 确认是 `((` 而非 `(`
+    if !script[values_start..].starts_with('(') {
+        return;
+    }
+    // 找到 `))' \` — 内联值列表的结尾
+    let Some(end) = script[values_start + 1..].find("))' \\") else {
+        return;
+    };
+    let abs_end = values_start + 1 + end + 5; // "))' \\" 为 5 字符
+    let new_action = format!("{func_name}' \\");
+    script.replace_range(values_start - 1..abs_end, &new_action);
 }
 
 /// 检测当前 shell（从 $SHELL 环境变量解析）
