@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.36.1](https://github.com/shenjingnan/zapmyco/compare/v0.36.0...v0.36.1) - 2026-06-05
+
+### Added
+
+- *(run)* 优化 base-url 和 model 的 Tab 补全体验 ([#395](https://github.com/shenjingnan/zapmyco/pull/395))
+
+### Other
+
+- *(readme)* 修正文档中内置模型数量与实际代码不一致的问题 ([#397](https://github.com/shenjingnan/zapmyco/pull/397))
+
 ## [0.36.0](https://github.com/shenjingnan/zapmyco/compare/v0.35.0...v0.36.0) - 2026-06-05
 
 ### Added
