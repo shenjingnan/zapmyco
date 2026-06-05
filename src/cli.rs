@@ -1231,7 +1231,7 @@ mod tests {
     #[test]
     fn test_filter_models_by_provider_custom() {
         let models = filter_models_by_provider("custom");
-        assert_eq!(models.len(), 47);
+        assert_eq!(models.len(), 22);
     }
 
     #[test]
