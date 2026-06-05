@@ -269,6 +269,38 @@ pub fn get_built_in_model_names() -> Vec<&'static str> {
     BUILT_IN_MODELS.iter().map(|(key, _)| *key).collect()
 }
 
+/// 格式化模型帮助信息（用于 Tab 补全的描述）
+pub fn format_model_help(name: &str) -> String {
+    let Some(info) = get_model_info(name) else {
+        return String::new();
+    };
+    let ctx = info.context_window.map_or(String::new(), |n| {
+        if n >= 1_000_000 {
+            format!("{}M", n / 1_000_000)
+        } else {
+            format!("{}K", n / 1000)
+        }
+    });
+    let out = info.max_output_tokens.map_or(String::new(), |n| {
+        if n >= 1_000 {
+            format!("{}K", n / 1000)
+        } else {
+            n.to_string()
+        }
+    });
+    let caps = info
+        .capabilities
+        .iter()
+        .map(|c| match c {
+            ModelCapability::Text => "文本",
+            ModelCapability::Vision => "视觉",
+        })
+        .collect::<Vec<_>>()
+        .join("、");
+
+    format!("{ctx}上下文 · {out}输出 · {caps}")
+}
+
 /// 获取所有内置模型的唯一 base URL 列表（排序后去重）
 pub fn get_built_in_base_urls() -> Vec<&'static str> {
     let mut urls: Vec<&'static str> = BUILT_IN_MODELS
@@ -278,6 +310,84 @@ pub fn get_built_in_base_urls() -> Vec<&'static str> {
     urls.sort_unstable();
     urls.dedup();
     urls
+}
+
+/// 获取所有内置模型的 base host（去除 https:// 前缀，用于 Tab 补全避免冒号导致 zsh 解析错误）
+pub fn get_built_in_base_hosts() -> Vec<&'static str> {
+    let mut hosts: Vec<&'static str> = BUILT_IN_MODELS
+        .iter()
+        .map(|(_, info)| info.base_url)
+        .filter(|url| url.starts_with("https://"))
+        .map(|url| &url["https://".len()..])
+        .collect();
+    hosts.sort_unstable();
+    hosts.dedup();
+    hosts
+}
+
+/// base URL hostname 到地域的映射
+const BASE_URL_REGION: &[(&str, &str)] = &[
+    ("api.deepseek.com", "通用"),
+    ("api.anthropic.com", "通用"),
+    ("open.bigmodel.cn", "国内"),
+    ("api.minimaxi.com", "国内"),
+    ("api.moonshot.cn", "国内"),
+    ("ark.cn-beijing.volces.com", "国内"),
+    ("dashscope.aliyuncs.com", "国内"),
+    ("api.xiaomimimo.com", "国内"),
+    // 海外端点
+    ("api.minimax.io", "海外"),
+    ("api.z.ai", "海外"),
+    ("api.moonshot.ai", "海外"),
+    ("dashscope-us.aliyuncs.com", "海外"),
+];
+
+/// 海外 base URL 列表
+const OVERSEAS_BASE_URLS: &[(&str, &str, &str)] = &[
+    // (host 不含 https://, provider, region)
+    ("api.minimax.io/anthropic", "minimax", "海外"),
+    ("api.z.ai/api/anthropic", "glm", "海外"),
+    ("api.moonshot.ai/anthropic", "kimi", "海外"),
+    ("dashscope-us.aliyuncs.com/apps/anthropic", "qwen", "海外"),
+];
+
+/// 获取内置 base host 的厂商和地域信息（用于 Tab 补全的描述）
+pub fn get_built_in_base_host_info() -> Vec<(&'static str, &'static str, &'static str)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    // 国内/默认端点
+    for (_, info) in BUILT_IN_MODELS {
+        if let Some(host) = info.base_url.strip_prefix("https://")
+            && seen.insert(host)
+        {
+            let hostname = host.split('/').next().unwrap_or(host);
+            let region = BASE_URL_REGION
+                .iter()
+                .find(|(h, _)| *h == hostname)
+                .map(|(_, r)| *r)
+                .unwrap_or("");
+            result.push((host, info.provider, region));
+        }
+    }
+    // 海外端点
+    for &(host, provider, region) in OVERSEAS_BASE_URLS {
+        if seen.insert(host) {
+            result.push((host, provider, region));
+        }
+    }
+    // 按 BUILT_IN_MODELS 的厂商顺序排序
+    result.sort_by(|a, b| {
+        let a_idx = BUILT_IN_MODELS
+            .iter()
+            .position(|(_, info)| info.provider == a.1)
+            .unwrap_or(usize::MAX);
+        let b_idx = BUILT_IN_MODELS
+            .iter()
+            .position(|(_, info)| info.provider == b.1)
+            .unwrap_or(usize::MAX);
+        a_idx.cmp(&b_idx)
+    });
+    result
 }
 
 /// 已知的模型名前缀 -> 供应商映射（用于识别已移除模型的归属）
@@ -388,6 +498,35 @@ mod tests {
             &[ModelCapability::Text, ModelCapability::Vision]
         );
         assert_eq!(info.context_window, Some(256_000));
+    }
+
+    #[test]
+    fn test_format_model_help_text_only() {
+        let help = format_model_help("deepseek-v4-flash");
+        assert_eq!(help, "1M上下文 · 384K输出 · 文本");
+    }
+
+    #[test]
+    fn test_format_model_help_vision() {
+        let help = format_model_help("glm-5v-turbo");
+        assert_eq!(help, "200K上下文 · 128K输出 · 文本、视觉");
+    }
+
+    #[test]
+    fn test_format_model_help_unknown() {
+        let help = format_model_help("unknown-model");
+        assert_eq!(help, "");
+    }
+
+    #[test]
+    fn test_format_model_help_all_models() {
+        for name in get_built_in_model_names() {
+            let help = format_model_help(name);
+            assert!(!help.is_empty(), "模型 {} 的 help 为空", name);
+            assert!(help.contains("上下文"), "模型 {} 缺少「上下文」", name);
+            assert!(help.contains("输出"), "模型 {} 缺少「输出」", name);
+            assert!(help.contains("文本"), "模型 {} 缺少能力", name);
+        }
     }
 
     #[test]
@@ -557,6 +696,131 @@ mod tests {
         ];
         for url in &expected {
             assert!(urls.contains(url), "应包含 base URL: {}", url);
+        }
+    }
+
+    // ────── get_built_in_base_host_info 测试 ──────
+
+    #[test]
+    fn test_get_built_in_base_host_info_count() {
+        let info = get_built_in_base_host_info();
+        assert_eq!(
+            info.len(),
+            12,
+            "应有 12 条 base host 信息（8 国内 + 4 海外）"
+        );
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_no_https_prefix() {
+        for (host, _, _) in get_built_in_base_host_info() {
+            assert!(
+                !host.starts_with("https://"),
+                "host '{}' 不应包含 https:// 前缀",
+                host
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_contains_domestic() {
+        let info = get_built_in_base_host_info();
+        assert!(info.contains(&("api.deepseek.com/anthropic", "deepseek", "通用")));
+        assert!(info.contains(&("open.bigmodel.cn/api/anthropic", "glm", "国内")));
+        assert!(info.contains(&("api.anthropic.com", "anthropic", "通用")));
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_contains_overseas() {
+        let info = get_built_in_base_host_info();
+        assert!(info.contains(&("api.z.ai/api/anthropic", "glm", "海外")));
+        assert!(info.contains(&("api.minimax.io/anthropic", "minimax", "海外")));
+        assert!(info.contains(&("api.moonshot.ai/anthropic", "kimi", "海外")));
+        assert!(info.contains(&("dashscope-us.aliyuncs.com/apps/anthropic", "qwen", "海外")));
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_order() {
+        let info = get_built_in_base_host_info();
+        assert_eq!(info[0].1, "deepseek", "deepseek 应在最前面");
+        assert!(info[0].1 < info[1].1, "deepseek 应在 glm 之前");
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_domestic_before_overseas() {
+        let info = get_built_in_base_host_info();
+        // glm: 国内在前、海外在后
+        let glm_domestic = info
+            .iter()
+            .position(|(_, p, r)| *p == "glm" && *r == "国内");
+        let glm_overseas = info
+            .iter()
+            .position(|(_, p, r)| *p == "glm" && *r == "海外");
+        assert!(
+            glm_domestic.unwrap() < glm_overseas.unwrap(),
+            "glm 国内应在海外之前"
+        );
+        // minimax: 国内在前、海外在后
+        let mm_domestic = info
+            .iter()
+            .position(|(_, p, r)| *p == "minimax" && *r == "国内");
+        let mm_overseas = info
+            .iter()
+            .position(|(_, p, r)| *p == "minimax" && *r == "海外");
+        assert!(
+            mm_domestic.unwrap() < mm_overseas.unwrap(),
+            "minimax 国内应在海外之前"
+        );
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_no_duplicates() {
+        let info = get_built_in_base_host_info();
+        let mut hosts: Vec<&str> = info.iter().map(|(h, _, _)| *h).collect();
+        let original_len = hosts.len();
+        hosts.sort_unstable();
+        hosts.dedup();
+        assert_eq!(hosts.len(), original_len, "base host 列表不应包含重复项");
+    }
+
+    #[test]
+    fn test_base_url_region_covers_all_hostnames() {
+        let mut hostnames = std::collections::HashSet::new();
+        for (_, m) in BUILT_IN_MODELS {
+            if let Some(rest) = m.base_url.strip_prefix("https://") {
+                let hostname = rest.split('/').next().unwrap_or(rest);
+                hostnames.insert(hostname);
+            }
+        }
+        for (host, _, _) in OVERSEAS_BASE_URLS {
+            let hostname = host.split('/').next().unwrap_or(host);
+            hostnames.insert(hostname);
+        }
+        for hostname in &hostnames {
+            let has_region = BASE_URL_REGION.iter().any(|(h, _)| *h == *hostname);
+            assert!(has_region, "hostname '{}' 缺少地域映射", hostname);
+        }
+    }
+
+    #[test]
+    fn test_overseas_base_urls_count() {
+        assert_eq!(OVERSEAS_BASE_URLS.len(), 4, "应有 4 个海外 base URL");
+    }
+
+    #[test]
+    fn test_overseas_base_urls_format() {
+        for (host, provider, region) in OVERSEAS_BASE_URLS {
+            assert!(
+                !host.starts_with("https://"),
+                "海外 host '{}' 不应包含 https:// 前缀",
+                host
+            );
+            assert_eq!(*region, "海外", "海外 URL '{}' 地域应为「海外」", host);
+            assert!(
+                !provider.is_empty(),
+                "海外 URL '{}' 的 provider 不能为空",
+                host
+            );
         }
     }
 }
