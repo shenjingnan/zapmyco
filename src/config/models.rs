@@ -269,6 +269,38 @@ pub fn get_built_in_model_names() -> Vec<&'static str> {
     BUILT_IN_MODELS.iter().map(|(key, _)| *key).collect()
 }
 
+/// 格式化模型帮助信息（用于 Tab 补全的描述）
+pub fn format_model_help(name: &str) -> String {
+    let Some(info) = get_model_info(name) else {
+        return String::new();
+    };
+    let ctx = info.context_window.map_or(String::new(), |n| {
+        if n >= 1_000_000 {
+            format!("{}M", n / 1_000_000)
+        } else {
+            format!("{}K", n / 1000)
+        }
+    });
+    let out = info.max_output_tokens.map_or(String::new(), |n| {
+        if n >= 1_000 {
+            format!("{}K", n / 1000)
+        } else {
+            n.to_string()
+        }
+    });
+    let caps = info
+        .capabilities
+        .iter()
+        .map(|c| match c {
+            ModelCapability::Text => "文本",
+            ModelCapability::Vision => "视觉",
+        })
+        .collect::<Vec<_>>()
+        .join("、");
+
+    format!("{ctx}上下文 · {out}输出 · {caps}")
+}
+
 /// 获取所有内置模型的唯一 base URL 列表（排序后去重）
 pub fn get_built_in_base_urls() -> Vec<&'static str> {
     let mut urls: Vec<&'static str> = BUILT_IN_MODELS
@@ -388,6 +420,35 @@ mod tests {
             &[ModelCapability::Text, ModelCapability::Vision]
         );
         assert_eq!(info.context_window, Some(256_000));
+    }
+
+    #[test]
+    fn test_format_model_help_text_only() {
+        let help = format_model_help("deepseek-v4-flash");
+        assert_eq!(help, "1M上下文 · 384K输出 · 文本");
+    }
+
+    #[test]
+    fn test_format_model_help_vision() {
+        let help = format_model_help("glm-5v-turbo");
+        assert_eq!(help, "200K上下文 · 128K输出 · 文本、视觉");
+    }
+
+    #[test]
+    fn test_format_model_help_unknown() {
+        let help = format_model_help("unknown-model");
+        assert_eq!(help, "");
+    }
+
+    #[test]
+    fn test_format_model_help_all_models() {
+        for name in get_built_in_model_names() {
+            let help = format_model_help(name);
+            assert!(!help.is_empty(), "模型 {} 的 help 为空", name);
+            assert!(help.contains("上下文"), "模型 {} 缺少「上下文」", name);
+            assert!(help.contains("输出"), "模型 {} 缺少「输出」", name);
+            assert!(help.contains("文本"), "模型 {} 缺少能力", name);
+        }
     }
 
     #[test]

@@ -3,7 +3,9 @@ use clap::builder::{PossibleValue, TypedValueParser};
 use clap::{CommandFactory, Parser, Subcommand};
 use std::io::IsTerminal;
 
-use crate::config::models::{get_built_in_base_urls, get_built_in_model_names, get_model_info};
+use crate::config::models::{
+    format_model_help, get_built_in_base_urls, get_built_in_model_names, get_model_info,
+};
 use crate::config::settings;
 use crate::config::settings::{LlmSettings, ProviderConfig, Settings};
 use std::collections::HashMap;
@@ -66,8 +68,9 @@ impl TypedValueParser for ModelValueParser {
         Some(Box::new(get_built_in_model_names().into_iter().map(
             |name| {
                 let mut pv = PossibleValue::new(name);
-                if let Some(info) = get_model_info(name) {
-                    pv = pv.help(info.provider);
+                let help = format_model_help(name);
+                if !help.is_empty() {
+                    pv = pv.help(help);
                 }
                 pv
             },
