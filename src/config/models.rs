@@ -698,4 +698,129 @@ mod tests {
             assert!(urls.contains(url), "应包含 base URL: {}", url);
         }
     }
+
+    // ────── get_built_in_base_host_info 测试 ──────
+
+    #[test]
+    fn test_get_built_in_base_host_info_count() {
+        let info = get_built_in_base_host_info();
+        assert_eq!(
+            info.len(),
+            12,
+            "应有 12 条 base host 信息（8 国内 + 4 海外）"
+        );
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_no_https_prefix() {
+        for (host, _, _) in get_built_in_base_host_info() {
+            assert!(
+                !host.starts_with("https://"),
+                "host '{}' 不应包含 https:// 前缀",
+                host
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_contains_domestic() {
+        let info = get_built_in_base_host_info();
+        assert!(info.contains(&("api.deepseek.com/anthropic", "deepseek", "通用")));
+        assert!(info.contains(&("open.bigmodel.cn/api/anthropic", "glm", "国内")));
+        assert!(info.contains(&("api.anthropic.com", "anthropic", "通用")));
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_contains_overseas() {
+        let info = get_built_in_base_host_info();
+        assert!(info.contains(&("api.z.ai/api/anthropic", "glm", "海外")));
+        assert!(info.contains(&("api.minimax.io/anthropic", "minimax", "海外")));
+        assert!(info.contains(&("api.moonshot.ai/anthropic", "kimi", "海外")));
+        assert!(info.contains(&("dashscope-us.aliyuncs.com/apps/anthropic", "qwen", "海外")));
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_order() {
+        let info = get_built_in_base_host_info();
+        assert_eq!(info[0].1, "deepseek", "deepseek 应在最前面");
+        assert!(info[0].1 < info[1].1, "deepseek 应在 glm 之前");
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_domestic_before_overseas() {
+        let info = get_built_in_base_host_info();
+        // glm: 国内在前、海外在后
+        let glm_domestic = info
+            .iter()
+            .position(|(_, p, r)| *p == "glm" && *r == "国内");
+        let glm_overseas = info
+            .iter()
+            .position(|(_, p, r)| *p == "glm" && *r == "海外");
+        assert!(
+            glm_domestic.unwrap() < glm_overseas.unwrap(),
+            "glm 国内应在海外之前"
+        );
+        // minimax: 国内在前、海外在后
+        let mm_domestic = info
+            .iter()
+            .position(|(_, p, r)| *p == "minimax" && *r == "国内");
+        let mm_overseas = info
+            .iter()
+            .position(|(_, p, r)| *p == "minimax" && *r == "海外");
+        assert!(
+            mm_domestic.unwrap() < mm_overseas.unwrap(),
+            "minimax 国内应在海外之前"
+        );
+    }
+
+    #[test]
+    fn test_get_built_in_base_host_info_no_duplicates() {
+        let info = get_built_in_base_host_info();
+        let mut hosts: Vec<&str> = info.iter().map(|(h, _, _)| *h).collect();
+        let original_len = hosts.len();
+        hosts.sort_unstable();
+        hosts.dedup();
+        assert_eq!(hosts.len(), original_len, "base host 列表不应包含重复项");
+    }
+
+    #[test]
+    fn test_base_url_region_covers_all_hostnames() {
+        let mut hostnames = std::collections::HashSet::new();
+        for (_, m) in BUILT_IN_MODELS {
+            if let Some(rest) = m.base_url.strip_prefix("https://") {
+                let hostname = rest.split('/').next().unwrap_or(rest);
+                hostnames.insert(hostname);
+            }
+        }
+        for (host, _, _) in OVERSEAS_BASE_URLS {
+            let hostname = host.split('/').next().unwrap_or(host);
+            hostnames.insert(hostname);
+        }
+        for hostname in &hostnames {
+            let has_region = BASE_URL_REGION.iter().any(|(h, _)| *h == *hostname);
+            assert!(has_region, "hostname '{}' 缺少地域映射", hostname);
+        }
+    }
+
+    #[test]
+    fn test_overseas_base_urls_count() {
+        assert_eq!(OVERSEAS_BASE_URLS.len(), 4, "应有 4 个海外 base URL");
+    }
+
+    #[test]
+    fn test_overseas_base_urls_format() {
+        for (host, provider, region) in OVERSEAS_BASE_URLS {
+            assert!(
+                !host.starts_with("https://"),
+                "海外 host '{}' 不应包含 https:// 前缀",
+                host
+            );
+            assert_eq!(*region, "海外", "海外 URL '{}' 地域应为「海外」", host);
+            assert!(
+                !provider.is_empty(),
+                "海外 URL '{}' 的 provider 不能为空",
+                host
+            );
+        }
+    }
 }
