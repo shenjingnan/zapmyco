@@ -1,8 +1,9 @@
 /// CLI 入口 — 基于 clap 的命令行界面
+use clap::builder::{PossibleValue, TypedValueParser};
 use clap::{CommandFactory, Parser, Subcommand};
 use std::io::IsTerminal;
 
-use crate::config::models::{get_built_in_model_names, get_model_info};
+use crate::config::models::{get_built_in_base_urls, get_built_in_model_names, get_model_info};
 use crate::config::settings;
 use crate::config::settings::{LlmSettings, ProviderConfig, Settings};
 use std::collections::HashMap;
@@ -38,6 +39,86 @@ pub enum PermissionMode {
     ReadOnly,
 }
 
+/// 自定义 value parser：Tab 补全内置模型名，但接受任意字符串（不校验）
+#[derive(Clone)]
+struct ModelValueParser;
+
+impl TypedValueParser for ModelValueParser {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let s = value.to_string_lossy().into_owned();
+        if s.is_empty() {
+            return Err(clap::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "--model 不能为空",
+            ));
+        }
+        Ok(s)
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
+        Some(Box::new(get_built_in_model_names().into_iter().map(
+            |name| {
+                let mut pv = PossibleValue::new(name);
+                if let Some(info) = get_model_info(name) {
+                    pv = pv.help(info.provider);
+                }
+                pv
+            },
+        )))
+    }
+}
+
+/// 自定义 value parser：Tab 补全内置 base URL，但接受任意字符串（不校验）
+#[derive(Clone)]
+struct BaseUrlValueParser;
+
+impl TypedValueParser for BaseUrlValueParser {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let s = value.to_string_lossy().into_owned();
+        if s.is_empty() {
+            return Err(clap::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "--base-url 不能为空",
+            ));
+        }
+        match url::Url::parse(&s) {
+            Ok(parsed)
+                if parsed.has_host()
+                    && (parsed.scheme() == "http" || parsed.scheme() == "https") =>
+            {
+                Ok(s)
+            }
+            _ => Err(clap::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                format!(
+                    "无效的 URL: '{}'，--base-url 必须是有效的 http/https 地址",
+                    s
+                ),
+            )),
+        }
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
+        Some(Box::new(
+            get_built_in_base_urls().into_iter().map(PossibleValue::new),
+        ))
+    }
+}
+
 #[derive(Subcommand)]
 #[non_exhaustive]
 pub enum Commands {
@@ -65,6 +146,15 @@ pub enum Commands {
         /// 复用指定会话的任务列表（不传则创建新会话）
         #[arg(long = "task-id")]
         task_id: Option<String>,
+        /// 指定 AI 模型名称（Tab 可补全内置模型名）
+        #[arg(long, value_parser = ModelValueParser)]
+        model: Option<String>,
+        /// 指定 API Key（覆盖 settings.toml 和环境变量）
+        #[arg(long = "api-key")]
+        api_key: Option<String>,
+        /// 指定 API 基础地址（Tab 可补全内置供应商地址）
+        #[arg(long = "base-url", value_parser = BaseUrlValueParser)]
+        base_url: Option<String>,
     },
     /// 快速记录笔记 — 灵感、待办、想法
     Note {
@@ -399,6 +489,9 @@ async fn cmd_run(
     profile: Option<&str>,
     permission_mode: PermissionMode,
     task_id: Option<&str>,
+    model: Option<&str>,
+    api_key: Option<&str>,
+    base_url: Option<&str>,
 ) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
@@ -419,7 +512,7 @@ async fn cmd_run(
         return Err("任务描述不能为空".to_string());
     }
 
-    let options = build_run_options(profile);
+    let options = build_run_options(profile, model, api_key, base_url);
 
     let mut agent = crate::agent::chat::AiAgent::new(options)?;
 
@@ -560,9 +653,17 @@ async fn cmd_run(
 }
 
 /// 构建 run 命令的 AiAgentOptions
-fn build_run_options(profile: Option<&str>) -> crate::agent::chat::AiAgentOptions {
+fn build_run_options(
+    profile: Option<&str>,
+    model: Option<&str>,
+    api_key: Option<&str>,
+    base_url: Option<&str>,
+) -> crate::agent::chat::AiAgentOptions {
     crate::agent::chat::AiAgentOptions {
         model_profile: profile.map(|s| s.to_string()),
+        model: model.map(|s| s.to_string()),
+        api_key: api_key.map(|s| s.to_string()),
+        base_url: base_url.map(|s| s.to_string()),
         ..Default::default()
     }
 }
@@ -931,12 +1032,18 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             profile,
             permission_mode,
             task_id,
+            model,
+            api_key,
+            base_url,
         }) => {
             cmd_run(
                 &content,
                 profile.as_deref(),
                 permission_mode,
                 task_id.as_deref(),
+                model.as_deref(),
+                api_key.as_deref(),
+                base_url.as_deref(),
             )
             .await
         }
@@ -997,7 +1104,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_empty_content() {
-        let result = cmd_run("", None, PermissionMode::Full, None).await;
+        let result = cmd_run("", None, PermissionMode::Full, None, None, None, None).await;
         assert!(result.is_err());
     }
 
@@ -1010,7 +1117,7 @@ mod tests {
             std::env::set_var("HOME", dir.path());
         }
 
-        let result = cmd_run("hello", None, PermissionMode::Full, None).await;
+        let result = cmd_run("hello", None, PermissionMode::Full, None, None, None, None).await;
         assert!(result.is_err());
 
         if let Some(h) = orig_home {
@@ -1022,14 +1129,57 @@ mod tests {
 
     #[test]
     fn test_build_run_options_no_profile() {
-        let options = build_run_options(None);
+        let options = build_run_options(None, None, None, None);
         assert!(options.model_profile.is_none());
+        assert!(options.model.is_none());
+        assert!(options.api_key.is_none());
+        assert!(options.base_url.is_none());
     }
 
     #[test]
     fn test_build_run_options_with_profile() {
-        let options = build_run_options(Some("advanced"));
+        let options = build_run_options(Some("advanced"), None, None, None);
         assert_eq!(options.model_profile.unwrap(), "advanced");
+        assert!(options.model.is_none());
+        assert!(options.api_key.is_none());
+        assert!(options.base_url.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_model() {
+        let options = build_run_options(None, Some("deepseek-v4-flash"), None, None);
+        assert_eq!(options.model.unwrap(), "deepseek-v4-flash");
+        assert!(options.model_profile.is_none());
+        assert!(options.api_key.is_none());
+        assert!(options.base_url.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_api_key() {
+        let options = build_run_options(None, None, Some("sk-test-123"), None);
+        assert_eq!(options.api_key.unwrap(), "sk-test-123");
+        assert!(options.model.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_base_url() {
+        let options = build_run_options(None, None, None, Some("https://custom.example.com"));
+        assert_eq!(options.base_url.unwrap(), "https://custom.example.com");
+        assert!(options.model.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_all_flags() {
+        let options = build_run_options(
+            Some("my-profile"),
+            Some("claude-opus-4-7"),
+            Some("sk-claude-key"),
+            Some("https://api.anthropic.com"),
+        );
+        assert_eq!(options.model_profile.unwrap(), "my-profile");
+        assert_eq!(options.model.unwrap(), "claude-opus-4-7");
+        assert_eq!(options.api_key.unwrap(), "sk-claude-key");
+        assert_eq!(options.base_url.unwrap(), "https://api.anthropic.com");
     }
 
     #[test]
@@ -2124,6 +2274,179 @@ mod tests {
         } else {
             panic!("Expected Run command");
         }
+    }
+
+    #[test]
+    fn test_model_flag() {
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--model",
+            "deepseek-v4-flash",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { model, .. } = cli.command.unwrap() {
+            assert_eq!(model.unwrap(), "deepseek-v4-flash");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_api_key_flag() {
+        let cli =
+            Cli::try_parse_from(vec!["zapmyco", "run", "--api-key", "sk-test", "hello"]).unwrap();
+        if let Commands::Run { api_key, .. } = cli.command.unwrap() {
+            assert_eq!(api_key.unwrap(), "sk-test");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_flag() {
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "https://custom.example.com",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "https://custom.example.com");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_model_flag_accepts_custom_name() {
+        // TypedValueParser 应接受非内置模型名
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--model",
+            "my-custom-model",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { model, .. } = cli.command.unwrap() {
+            assert_eq!(model.unwrap(), "my-custom-model");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_model_default_none() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "hello"]).unwrap();
+        if let Commands::Run {
+            model,
+            api_key,
+            base_url,
+            ..
+        } = cli.command.unwrap()
+        {
+            assert!(model.is_none());
+            assert!(api_key.is_none());
+            assert!(base_url.is_none());
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_accepts_http() {
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "http://localhost:8080",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "http://localhost:8080");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_rejects_invalid() {
+        let result =
+            Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "not-a-url", "hello"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_base_url_rejects_empty() {
+        let result = Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "", "hello"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_base_url_accepts_with_path() {
+        // 最常见的真实使用场景：base URL 包含路径
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "https://api.deepseek.com/anthropic",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "https://api.deepseek.com/anthropic");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_accepts_ip_address() {
+        // 本地开发常用 IP + 端口
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "http://127.0.0.1:11434",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "http://127.0.0.1:11434");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_rejects_ftp() {
+        // 非 http/https 协议应拒绝
+        let result = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "ftp://example.com",
+            "hello",
+        ]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_base_url_rejects_scheme_only() {
+        // 只有协议没有 host 应拒绝
+        let result = Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "https://", "hello"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_model_flag_rejects_empty() {
+        let result = Cli::try_parse_from(vec!["zapmyco", "run", "--model", "", "hello"]);
+        assert!(result.is_err());
     }
 
     // —————— map_short_v_flag 测试 ——————

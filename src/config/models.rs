@@ -690,6 +690,17 @@ pub fn get_built_in_model_names() -> Vec<&'static str> {
     BUILT_IN_MODELS.iter().map(|(key, _)| *key).collect()
 }
 
+/// 获取所有内置模型的唯一 base URL 列表（排序后去重）
+pub fn get_built_in_base_urls() -> Vec<&'static str> {
+    let mut urls: Vec<&'static str> = BUILT_IN_MODELS
+        .iter()
+        .map(|(_, info)| info.base_url)
+        .collect();
+    urls.sort_unstable();
+    urls.dedup();
+    urls
+}
+
 /// 已知的模型名前缀 -> 供应商映射（用于识别已移除模型的归属）
 const MODEL_PREFIX_PROVIDER: &[(&str, &str)] = &[
     ("deepseek-", "deepseek"),
@@ -929,5 +940,44 @@ mod tests {
         // 模型名刚好等于前缀
         assert_eq!(guess_provider_from_model_name("qwen"), Some("qwen"));
         assert_eq!(guess_provider_from_model_name("kimi-"), Some("kimi"));
+    }
+
+    #[test]
+    fn test_get_built_in_base_urls_contains_deepseek() {
+        let urls = get_built_in_base_urls();
+        assert!(urls.contains(&"https://api.deepseek.com/anthropic"));
+    }
+
+    #[test]
+    fn test_get_built_in_base_urls_contains_anthropic() {
+        let urls = get_built_in_base_urls();
+        assert!(urls.contains(&"https://api.anthropic.com"));
+    }
+
+    #[test]
+    fn test_get_built_in_base_urls_no_duplicates() {
+        let urls = get_built_in_base_urls();
+        let mut deduped = urls.clone();
+        deduped.sort_unstable();
+        deduped.dedup();
+        assert_eq!(urls.len(), deduped.len(), "base URL 列表不应包含重复项");
+    }
+
+    #[test]
+    fn test_get_built_in_base_urls_all_providers() {
+        let urls = get_built_in_base_urls();
+        let expected: [&str; 8] = [
+            "https://api.deepseek.com/anthropic",
+            "https://open.bigmodel.cn/api/anthropic",
+            "https://api.anthropic.com",
+            "https://api.minimaxi.com/anthropic",
+            "https://api.moonshot.cn/anthropic",
+            "https://ark.cn-beijing.volces.com/api/compatible",
+            "https://dashscope.aliyuncs.com/apps/anthropic",
+            "https://api.xiaomimimo.com/anthropic",
+        ];
+        for url in &expected {
+            assert!(urls.contains(url), "应包含 base URL: {}", url);
+        }
     }
 }

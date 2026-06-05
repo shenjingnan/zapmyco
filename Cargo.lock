@@ -3199,6 +3199,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "url",
  "wiremock",
  "zapmyco-anthropic-ai-sdk",
  "zapmyco-grep",
