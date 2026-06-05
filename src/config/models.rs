@@ -335,12 +335,27 @@ const BASE_URL_REGION: &[(&str, &str)] = &[
     ("ark.cn-beijing.volces.com", "国内"),
     ("dashscope.aliyuncs.com", "国内"),
     ("api.xiaomimimo.com", "国内"),
+    // 海外端点
+    ("api.minimax.io", "海外"),
+    ("api.z.ai", "海外"),
+    ("api.moonshot.ai", "海外"),
+    ("dashscope-us.aliyuncs.com", "海外"),
+];
+
+/// 海外 base URL 列表
+const OVERSEAS_BASE_URLS: &[(&str, &str, &str)] = &[
+    // (host 不含 https://, provider, region)
+    ("api.minimax.io/anthropic", "minimax", "海外"),
+    ("api.z.ai/api/anthropic", "glm", "海外"),
+    ("api.moonshot.ai/anthropic", "kimi", "海外"),
+    ("dashscope-us.aliyuncs.com/apps/anthropic", "qwen", "海外"),
 ];
 
 /// 获取内置 base host 的厂商和地域信息（用于 Tab 补全的描述）
 pub fn get_built_in_base_host_info() -> Vec<(&'static str, &'static str, &'static str)> {
     let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();
+    // 国内/默认端点
     for (_, info) in BUILT_IN_MODELS {
         if let Some(host) = info.base_url.strip_prefix("https://")
             && seen.insert(host)
@@ -354,7 +369,24 @@ pub fn get_built_in_base_host_info() -> Vec<(&'static str, &'static str, &'stati
             result.push((host, info.provider, region));
         }
     }
-    result.sort_by(|a, b| a.0.cmp(b.0));
+    // 海外端点
+    for &(host, provider, region) in OVERSEAS_BASE_URLS {
+        if seen.insert(host) {
+            result.push((host, provider, region));
+        }
+    }
+    // 按 BUILT_IN_MODELS 的厂商顺序排序
+    result.sort_by(|a, b| {
+        let a_idx = BUILT_IN_MODELS
+            .iter()
+            .position(|(_, info)| info.provider == a.1)
+            .unwrap_or(usize::MAX);
+        let b_idx = BUILT_IN_MODELS
+            .iter()
+            .position(|(_, info)| info.provider == b.1)
+            .unwrap_or(usize::MAX);
+        a_idx.cmp(&b_idx)
+    });
     result
 }
 
