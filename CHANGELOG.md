@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.36.3](https://github.com/shenjingnan/zapmyco/compare/v0.36.2...v0.36.3) - 2026-06-05
+
+### Added
+
+- *(completion)* 移除位置参数补全使 Tab 始终显示选项列表 ([#401](https://github.com/shenjingnan/zapmyco/pull/401))
+- *(completion)* 在 --model Tab 补全中显示供应商前缀 ([#400](https://github.com/shenjingnan/zapmyco/pull/400))
+
+### Other
+
+- 将 built-in 文档目录迁移到 guide 同级 ([#402](https://github.com/shenjingnan/zapmyco/pull/402))
+
 ## [0.36.2](https://github.com/shenjingnan/zapmyco/compare/v0.36.1...v0.36.2) - 2026-06-05
 
 ### Added
