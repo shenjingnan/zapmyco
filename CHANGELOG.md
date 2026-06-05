@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.36.0](https://github.com/shenjingnan/zapmyco/compare/v0.35.0...v0.36.0) - 2026-06-05
+
+### Added
+
+- *(run)* 支持 --model/--api-key/--base-url 参数及 Tab 补全 ([#393](https://github.com/shenjingnan/zapmyco/pull/393))
+- *(config)* 新增内建模型下线后的用户配置兼容方案 ([#391](https://github.com/shenjingnan/zapmyco/pull/391))
+
+### Other
+
+- *(config)* 移除过时内置模型并优化文档 ([#394](https://github.com/shenjingnan/zapmyco/pull/394))
+
 ## [0.35.0](https://github.com/shenjingnan/zapmyco/compare/v0.34.0...v0.35.0) - 2026-06-04
 
 ### Added
