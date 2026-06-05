@@ -50,26 +50,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
         },
     ),
     (
-        "glm-4-flash",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(128_000),
-            max_output_tokens: Some(16_384),
-        },
-    ),
-    (
-        "glm-4v",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(16_384),
-        },
-    ),
-    (
         "glm-5v-turbo",
         BuiltInModel {
             provider: "glm",
@@ -89,29 +69,8 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(128_000),
         },
     ),
-    // --- GLM 新增模型 ---
-    (
-        "glm-5",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
     (
         "glm-5-turbo",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "glm-4.7",
         BuiltInModel {
             provider: "glm",
             base_url: "https://open.bigmodel.cn/api/anthropic",
@@ -128,66 +87,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             capabilities: &[ModelCapability::Text],
             context_window: Some(200_000),
             max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "glm-4.6",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "glm-4.5-airx",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(128_000),
-            max_output_tokens: Some(96_000),
-        },
-    ),
-    (
-        "glm-4-long",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(4_096),
-        },
-    ),
-    (
-        "glm-4.6v",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(32_768),
-        },
-    ),
-    (
-        "glm-4.5-air",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(96_000),
-        },
-    ),
-    (
-        "glm-4.5v",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(16_384),
         },
     ),
     // --- Anthropic 官方 ---
@@ -316,26 +215,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
     ),
     (
         "doubao-seed-2-0-lite",
-        BuiltInModel {
-            provider: "doubao",
-            base_url: "https://ark.cn-beijing.volces.com/api/compatible",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(256_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "doubao-seed-2-0-mini",
-        BuiltInModel {
-            provider: "doubao",
-            base_url: "https://ark.cn-beijing.volces.com/api/compatible",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(256_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "doubao-seed-2-0-code-preview",
         BuiltInModel {
             provider: "doubao",
             base_url: "https://ark.cn-beijing.volces.com/api/compatible",
@@ -686,7 +565,7 @@ mod tests {
 
     #[test]
     fn test_get_model_info_vision_model() {
-        let info = get_model_info("glm-4v").unwrap();
+        let info = get_model_info("glm-5v-turbo").unwrap();
         assert_eq!(info.provider, "glm");
         assert_eq!(
             info.capabilities,
@@ -703,13 +582,13 @@ mod tests {
     fn test_get_built_in_model_names() {
         let names = get_built_in_model_names();
         assert!(names.contains(&"deepseek-v4-flash"));
-        assert!(names.contains(&"glm-4v"));
+        assert!(names.contains(&"glm-5v-turbo"));
         // 新 provider 模型
         assert!(names.contains(&"claude-opus-4-7"));
         assert!(names.contains(&"MiniMax-M3"));
         assert!(names.contains(&"kimi-for-coding"));
         assert!(names.contains(&"doubao-seed-code"));
-        assert_eq!(names.len(), 59);
+        assert_eq!(names.len(), 47);
     }
 
     #[test]
@@ -830,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_guess_provider_glm() {
-        assert_eq!(guess_provider_from_model_name("glm-4-flash"), Some("glm"));
+        assert_eq!(guess_provider_from_model_name("glm-5v-turbo"), Some("glm"));
     }
 
     #[test]

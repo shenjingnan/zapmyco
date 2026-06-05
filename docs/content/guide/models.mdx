@@ -2,7 +2,7 @@
 title: 内置模型
 ---
 
-ZapMyCo 内置了 8 个供应商共 64 个模型，全部支持通过 Anthropic Messages API 格式调用。
+ZapMyCo 内置了 8 个供应商共 47 个模型，全部支持通过 Anthropic Messages API 格式调用。
 
 在 `settings.toml` 的 `[llm.models]` 中直接引用模型名称即可使用。你可以组合不同供应商的模型，以达到最佳效果。**注意：每个模型所属的供应商都需要配置对应的 API Key。**
 
@@ -70,29 +70,22 @@ advanced = "claude-sonnet-4-6"
 
 | 模型名称 | 上下文窗口 | 最大输出 | 能力 |
 |----------|:----------:|:--------:|:----:|
-| `glm-4-flash` | 128,000 | 16,384 | 文本 |
-| `glm-4v` | 128,000 | 16,384 | 文本、视觉 |
 | `glm-5v-turbo` | 200,000 | 128,000 | 文本、视觉 |
 | `glm-5.1` | 200,000 | 128,000 | 文本 |
-| `glm-5` | 200,000 | 128,000 | 文本 |
 | `glm-5-turbo` | 200,000 | 128,000 | 文本 |
-| `glm-4.7` | 200,000 | 128,000 | 文本 |
 | `glm-4.7-flash` | 200,000 | 128,000 | 文本 |
-| `glm-4.6` | 200,000 | 128,000 | 文本 |
-| `glm-4.5-airx` | 128,000 | 96,000 | 文本 |
-| `glm-4-long` | 1,000,000 | 4,096 | 文本 |
-| `glm-4.6v` | 128,000 | 32,768 | 文本、视觉 |
-| `glm-4.5-air` | 200,000 | 96,000 | 文本 |
-| `glm-4.5v` | 128,000 | 16,384 | 文本、视觉 |
 
 > 需要切换至海外端点？在 `settings.toml` 中为 `glm` 供应商配置 `baseUrl = "https://api.z.ai/api/anthropic"` 即可。更多信息请参考 [智谱海外官方文档](https://docs.z.ai/guides/overview/overview)。
 
 ## Kimi（月之暗面）
 
-更多信息请参考 [Kimi 官方模型列表](https://platform.kimi.ai/docs/models)。
+**国内文档:** [Kimi 官方模型列表](https://platform.kimi.com/docs/models)
 
-- **Base URL（国内，默认）:** `https://api.moonshot.cn/anthropic`
-- **Base URL（海外）:** `https://api.moonshot.ai/anthropic`
+**海外文档:** [Kimi Official Models](https://platform.kimi.ai/docs/models)
+
+**Base URL（国内，默认）:** `https://api.moonshot.cn/anthropic`
+
+**Base URL（海外）:** `https://api.moonshot.ai/anthropic`
 
 | 模型名称 | 上下文窗口 | 最大输出 | 能力 |
 |----------|:----------:|:--------:|:----:|
@@ -113,8 +106,6 @@ advanced = "claude-sonnet-4-6"
 | `doubao-seed-code` | 256,000 | 32,768 | 文本、视觉 |
 | `doubao-seed-2-0-pro` | 256,000 | 128,000 | 文本、视觉 |
 | `doubao-seed-2-0-lite` | 256,000 | 128,000 | 文本、视觉 |
-| `doubao-seed-2-0-mini` | 256,000 | 128,000 | 文本、视觉 |
-| `doubao-seed-2-0-code-preview` | 256,000 | 128,000 | 文本、视觉 |
 
 ## Qwen（通义千问）
 

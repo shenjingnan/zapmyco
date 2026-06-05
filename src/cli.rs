@@ -1223,22 +1223,15 @@ mod tests {
     #[test]
     fn test_filter_models_by_provider_glm() {
         let models = filter_models_by_provider("glm");
-        assert!(models.contains(&"glm-4-flash"));
-        assert!(models.contains(&"glm-4v"));
         assert!(models.contains(&"glm-5v-turbo"));
         assert!(models.contains(&"glm-5.1"));
-        assert!(models.contains(&"glm-4.7"));
-        assert!(models.contains(&"glm-4.6"));
-        assert!(models.contains(&"glm-4.6v"));
-        assert!(models.contains(&"glm-4.5-air"));
-        assert!(models.contains(&"glm-4.5v"));
-        assert_eq!(models.len(), 14);
+        assert_eq!(models.len(), 4);
     }
 
     #[test]
     fn test_filter_models_by_provider_custom() {
         let models = filter_models_by_provider("custom");
-        assert_eq!(models.len(), 59);
+        assert_eq!(models.len(), 47);
     }
 
     #[test]
@@ -1270,7 +1263,7 @@ mod tests {
     fn test_write_settings_creates_file() {
         run_with_temp_home(|home| {
             let file_path = home.join("custom_settings.toml");
-            let settings = build_settings("glm", "test-key", "glm-4v");
+            let settings = build_settings("glm", "test-key", "glm-5v-turbo");
             let result = write_settings(&file_path, &settings);
             assert!(result.is_ok());
             assert!(result.unwrap().contains("custom_settings.toml"));
@@ -1278,7 +1271,7 @@ mod tests {
 
             // 验证文件内容包含正确的 TOML 结构
             let content = std::fs::read_to_string(&file_path).unwrap();
-            assert!(content.contains("glm-4v"), "应该包含模型名称");
+            assert!(content.contains("glm-5v-turbo"), "应该包含模型名称");
             assert!(content.contains("test-key"), "应该包含 API Key");
         });
     }
@@ -1289,9 +1282,9 @@ mod tests {
         assert!(label.contains("deepseek-v4-flash"));
         assert!(label.contains("1M"));
 
-        let label = format_model_label("glm-4v");
-        assert!(label.contains("glm-4v"));
-        assert!(label.contains("128K"));
+        let label = format_model_label("glm-5v-turbo");
+        assert!(label.contains("glm-5v-turbo"));
+        assert!(label.contains("200K"));
     }
 
     #[test]
@@ -1584,9 +1577,9 @@ mod tests {
 
     #[test]
     fn test_format_model_label_glm() {
-        let label = format_model_label("glm-4v");
-        assert!(label.contains("glm-4v"));
-        assert!(label.contains("128K"));
+        let label = format_model_label("glm-5v-turbo");
+        assert!(label.contains("glm-5v-turbo"));
+        assert!(label.contains("200K"));
     }
 
     #[test]
