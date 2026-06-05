@@ -15,8 +15,8 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg" alt="License: MIT"></a>
 </p>
 
-基于 Rust 的多供应商 AI 命令行工具，内置 60+ 模型，支持 Anthropic API 兼容的云端与本地推理框架。
-<br>A Rust-based multi-vendor AI CLI tool with 60+ built-in models, supporting Anthropic API-compatible cloud and local inference frameworks.
+基于 Rust 的多供应商 AI 命令行工具，内置 22 个模型，支持 Anthropic API 兼容的云端与本地推理框架。
+<br>A Rust-based multi-vendor AI CLI tool with 22 built-in models, supporting Anthropic API-compatible cloud and local inference frameworks.
 
 ## 安装方式
 
@@ -94,7 +94,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 ## 特性
 
 - **Rust 实现**: 单二进制文件（~5-10MB），零运行时依赖，毫秒级启动，无需 Node.js 或 Python 运行时
-- **多供应商 64+ 模型**: 内置 DeepSeek、Anthropic、Qwen、MiniMax、GLM、Kimi、Doubao、MIMO 等主流供应商，覆盖旗舰、开源、视觉模型
+- **8 供应商 22 个模型**: 内置 DeepSeek、Anthropic、Qwen、MiniMax、GLM、Kimi、Doubao、MIMO 等主流供应商，覆盖旗舰、开源、视觉模型
 - **本地模型支持**: 通过自定义 `baseUrl` 接入 Ollama、llama.cpp、LM Studio、vLLM 等推理框架
 - **聚合平台支持**: 兼容 OpenRouter（400+ 模型）、SiliconFlow（200+ 模型）
 - **灵活的自定义配置**: 任何 Anthropic API 兼容的服务均可通过 `settings.toml` 配置，支持 `${env.VAR}` 语法引用环境变量
@@ -136,22 +136,28 @@ zapmyco completion powershell | Out-String | Invoke-Expression
 
 ## 内置模型
 
-ZapMyCo 内置了 **8 个供应商共 64 个模型**，以下是各供应商的旗舰模型，完整列表请参阅 [内置模型文档](https://docs.zapmyco.com/guide/models)：
+ZapMyCo 内置了 **8 个供应商共 22 个模型**，完整列表如下，也可参阅 [内置模型文档](https://docs.zapmyco.com/guide/models)：
 
 | 模型 | 供应商 | 上下文窗口 |
 |------|--------|-----------|
 | deepseek-v4-flash (推荐) | DeepSeek | 1M tokens |
 | deepseek-v4-pro | DeepSeek | 1M tokens |
 | claude-opus-4-8 | Anthropic | 1M tokens |
+| claude-opus-4-7 | Anthropic | 1M tokens |
 | claude-sonnet-4-6 | Anthropic | 1M tokens |
+| claude-haiku-4-5 | Anthropic | 200K tokens |
 | qwen3.7-max | Qwen（通义千问） | 1M tokens |
 | qwen3.7-plus | Qwen（通义千问） | 1M tokens（支持视觉） |
+| qwen3.6-flash | Qwen（通义千问） | 1M tokens |
 | MiniMax-M3 | MiniMax | 1M tokens（支持视觉） |
 | MiniMax-M2.7 | MiniMax | 204.8K tokens |
-| glm-5.1 | GLM（智谱） | 200K tokens |
+| MiniMax-M2.7-highspeed | MiniMax | 204.8K tokens |
 | glm-5v-turbo | GLM（智谱） | 200K tokens（支持视觉） |
-| kimi-for-coding | Kimi（月之暗面） | 256K tokens（支持视觉） |
+| glm-5.1 | GLM（智谱） | 200K tokens |
+| glm-5-turbo | GLM（智谱） | 200K tokens |
+| glm-4.7-flash | GLM（智谱） | 200K tokens |
 | kimi-k2.6 | Kimi（月之暗面） | 256K tokens（支持视觉） |
+| kimi-k2.5 | Kimi（月之暗面） | 256K tokens（支持视觉） |
 | doubao-seed-2-0-pro | Doubao（火山引擎） | 256K tokens（支持视觉） |
 | doubao-seed-2-0-lite | Doubao（火山引擎） | 256K tokens（支持视觉） |
 | mimo-v2.5-pro | MIMO（小米） | 1M tokens |
