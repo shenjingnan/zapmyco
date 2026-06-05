@@ -1897,7 +1897,7 @@ mod tests {
             "powershell 补全应包含模型名称"
         );
         assert!(
-            output.contains("1M上下文 · 384K输出 · 文本"),
+            output.contains("1M ctx · 384K out · txt · deepseek-v4-flash"),
             "powershell 补全应包含模型描述"
         );
         // --base-url 值补全
