@@ -31,6 +31,14 @@ pub(crate) fn tool_icon(name: &str) -> &'static str {
     }
 }
 
+/// 安全截断字符串到指定字符数（避免在 UTF-8 字符中间截断）
+fn truncate_str(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((boundary, _)) => &s[..boundary],
+        None => s,
+    }
+}
+
 /// 生成工具参数的紧凑单行描述
 pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String {
     match name {
@@ -77,10 +85,13 @@ pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String
                 .unwrap_or("");
             let old = input.get("old_string").and_then(|v| v.as_str());
             if let Some(old) = old {
-                let truncated = if old.len() > 40 {
-                    format!("{}...", &old[..40])
-                } else {
-                    old.to_string()
+                let truncated = {
+                    let t = crate::agent::executor::truncate_str(old, 40);
+                    if t.len() < old.len() {
+                        format!("{}...", t)
+                    } else {
+                        old.to_string()
+                    }
                 };
                 format!("{}  查找: \"{}\"", fp, truncated)
             } else {
@@ -91,8 +102,9 @@ pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String
             .get("command")
             .and_then(|v| v.as_str())
             .map(|s| {
-                if s.len() > 60 {
-                    format!("{}...", &s[..60])
+                let truncated = crate::agent::executor::truncate_str(s, 60);
+                if truncated.len() < s.len() {
+                    format!("{}...", truncated)
                 } else {
                     s.to_string()
                 }
@@ -102,8 +114,9 @@ pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String
             .get("query")
             .and_then(|v| v.as_str())
             .map(|s| {
-                if s.len() > 60 {
-                    format!("\"{}...\"", &s[..60])
+                let truncated = crate::agent::executor::truncate_str(s, 60);
+                if truncated.len() < s.len() {
+                    format!("\"{}...\"", truncated)
                 } else {
                     format!("\"{}\"", s)
                 }
@@ -118,8 +131,9 @@ pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String
             .get("question")
             .and_then(|v| v.as_str())
             .map(|s| {
-                if s.len() > 60 {
-                    format!("{}...", &s[..60])
+                let truncated = crate::agent::executor::truncate_str(s, 60);
+                if truncated.len() < s.len() {
+                    format!("{}...", truncated)
                 } else {
                     s.to_string()
                 }
@@ -129,8 +143,9 @@ pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String
             .get("subject")
             .and_then(|v| v.as_str())
             .map(|s| {
-                if s.len() > 60 {
-                    format!("{}...", &s[..60])
+                let truncated = crate::agent::executor::truncate_str(s, 60);
+                if truncated.len() < s.len() {
+                    format!("{}...", truncated)
                 } else {
                     s.to_string()
                 }
