@@ -805,8 +805,92 @@ fn execute_uninstall(
 
 /// completion 命令 — 生成 shell 补全脚本
 fn cmd_completion<W: std::io::Write>(shell: clap_complete::Shell, writer: &mut W) {
+    if matches!(shell, clap_complete::Shell::PowerShell) {
+        generate_powershell_completion(writer);
+        return;
+    }
     let mut cmd = Cli::command();
     clap_complete::generate(shell, &mut cmd, "zapmyco", writer);
+}
+
+/// 生成 PowerShell 补全脚本（在 clap_complete 基础上增加值补全）
+fn generate_powershell_completion(writer: &mut impl std::io::Write) {
+    use clap::ValueEnum;
+
+    let mut buf = Vec::new();
+    let mut cmd = Cli::command();
+    clap_complete::generate(
+        clap_complete::Shell::PowerShell,
+        &mut cmd,
+        "zapmyco",
+        &mut buf,
+    );
+    let mut script = String::from_utf8(buf).unwrap_or_default();
+
+    // 在 'zapmyco;run' { 分支中插入值补全逻辑
+    let marker = "'zapmyco;run' {";
+    if let Some(pos) = script.find(marker) {
+        let insert_pos = pos + marker.len();
+        let mut extra = String::new();
+
+        // — $prev 检测 —
+        extra.push_str(
+            "\n    $prevParam = ''\n\
+             if ($commandElements.Count -ge 2) {\n        \
+               $prevEl = $commandElements[$commandElements.Count - 2].Value\n        \
+               if ($prevEl.Contains('=')) {\n            \
+                 $prevParam = $prevEl.Substring(0, $prevEl.IndexOf('='))\n        \
+               } elseif ($prevEl.StartsWith('-')) {\n            \
+                 $prevParam = $prevEl\n        \
+               }\n    }\n",
+        );
+
+        // — --model 值补全 —
+        extra.push_str("    if ($prevParam -eq '--model') {\n");
+        for name in get_built_in_model_names() {
+            let help = format_model_help(name);
+            extra.push_str(&format!(
+                "        [CompletionResult]::new('{}', '{}', [CompletionResultType]::ParameterValue, '{}')\n",
+                name.replace('\'', "''"),
+                name.replace('\'', "''"),
+                help.replace('\'', "''"),
+            ));
+        }
+        extra.push_str("        break\n    }\n");
+
+        // — --base-url 值补全 —
+        extra.push_str("    if ($prevParam -eq '--base-url') {\n");
+        for (host, provider, region) in get_built_in_base_host_info() {
+            let tip = format!("{} · {}", provider, region);
+            extra.push_str(&format!(
+                "        [CompletionResult]::new('{}', '{}', [CompletionResultType]::ParameterValue, '{}')\n",
+                host.replace('\'', "''"),
+                host.replace('\'', "''"),
+                tip.replace('\'', "''"),
+            ));
+        }
+        extra.push_str("        break\n    }\n");
+
+        // — --permission-mode 值补全 —
+        extra.push_str("    if ($prevParam -eq '--permission-mode') {\n");
+        for variant in PermissionMode::value_variants() {
+            if let Some(pv) = variant.to_possible_value() {
+                let name = pv.get_name();
+                let desc = pv.get_help().map(|s| s.to_string()).unwrap_or_default();
+                extra.push_str(&format!(
+                    "        [CompletionResult]::new('{}', '{}', [CompletionResultType]::ParameterValue, '{}')\n",
+                    name.replace('\'', "''"),
+                    name.replace('\'', "''"),
+                    desc.replace('\'', "''"),
+                ));
+            }
+        }
+        extra.push_str("        break\n    }\n");
+
+        script.insert_str(insert_pos, &extra);
+    }
+
+    let _ = write!(writer, "{script}");
 }
 
 /// 检测当前 shell（从 $SHELL 环境变量解析）
@@ -1689,6 +1773,49 @@ mod tests {
         ] {
             assert!(output.contains(sub), "powershell 补全应包含子命令 {}", sub);
         }
+        // --model 值补全
+        assert!(
+            output.contains("prevParam -eq '--model'"),
+            "powershell 补全应包含 --model 值补全"
+        );
+        assert!(
+            output.contains("deepseek-v4-flash"),
+            "powershell 补全应包含模型名称"
+        );
+        assert!(
+            output.contains("1M上下文 · 384K输出 · 文本"),
+            "powershell 补全应包含模型描述"
+        );
+        // --base-url 值补全
+        assert!(
+            output.contains("prevParam -eq '--base-url'"),
+            "powershell 补全应包含 --base-url 值补全"
+        );
+        assert!(
+            output.contains("api.deepseek.com/anthropic"),
+            "powershell 补全应包含 base URL"
+        );
+        assert!(
+            output.contains("deepseek · 通用"),
+            "powershell 补全应包含 base URL 描述"
+        );
+        // --permission-mode 值补全
+        assert!(
+            output.contains("prevParam -eq '--permission-mode'"),
+            "powershell 补全应包含 --permission-mode 值补全"
+        );
+        for mode in &["full", "read-write", "read-only"] {
+            assert!(
+                output.contains(mode),
+                "powershell 补全应包含权限模式 {}",
+                mode
+            );
+        }
+        // 原有参数名补全依然保留
+        assert!(
+            output.contains("ParameterName"),
+            "powershell 补全应保留参数名补全"
+        );
     }
 
     #[test]
