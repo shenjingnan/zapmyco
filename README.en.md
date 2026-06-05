@@ -15,7 +15,7 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg" alt="License: MIT"></a>
 </p>
 
-A Rust-based multi-vendor AI command-line tool with 60+ built-in models, supporting cloud and local inference frameworks compatible with the Anthropic API.
+A Rust-based multi-vendor AI command-line tool with 22 built-in models, supporting cloud and local inference frameworks compatible with the Anthropic API.
 
 ## Installation
 
@@ -93,7 +93,7 @@ export DEEPSEEK_API_KEY=sk-your-key-here
 ## Features
 
 - **Rust-Powered**: Single binary (~5-10MB), zero runtime dependencies, millisecond startup — no Node.js or Python required
-- **64+ Models from 8 Vendors**: Built-in support for DeepSeek, Anthropic, Qwen, MiniMax, GLM, Kimi, Doubao, MIMO, and more — covering flagship, open-source, and vision models
+- **22 Models from 8 Vendors**: Built-in support for DeepSeek, Anthropic, Qwen, MiniMax, GLM, Kimi, Doubao, MIMO, and more — covering flagship, open-source, and vision models
 - **Local Model Support**: Connect to Ollama, llama.cpp, LM Studio, vLLM, and other inference frameworks via custom `baseUrl`
 - **Aggregator Platform Support**: Compatible with OpenRouter (400+ models), SiliconFlow (200+ models)
 - **Flexible Custom Configuration**: Any Anthropic API-compatible service can be configured via `settings.toml`, with `${env.VAR}` syntax for environment variable references
@@ -135,22 +135,28 @@ Once enabled, type `zapmyco` and press Tab to see all available subcommands.
 
 ## Built-in Models
 
-ZapMyCo ships with **64 models from 8 vendors**. Below are the flagship models from each provider. For the full list, see the [built-in models documentation](https://docs.zapmyco.com/guide/models):
+ZapMyCo ships with **22 models from 8 vendors**. Below are the flagship models from each provider. For the full list, see the [built-in models documentation](https://docs.zapmyco.com/guide/models):
 
 | Model | Vendor | Context Window |
 |-------|--------|----------------|
 | deepseek-v4-flash (Recommended) | DeepSeek | 1M tokens |
 | deepseek-v4-pro | DeepSeek | 1M tokens |
 | claude-opus-4-8 | Anthropic | 1M tokens |
+| claude-opus-4-7 | Anthropic | 1M tokens |
 | claude-sonnet-4-6 | Anthropic | 1M tokens |
+| claude-haiku-4-5 | Anthropic | 200K tokens |
 | qwen3.7-max | Qwen | 1M tokens |
 | qwen3.7-plus | Qwen | 1M tokens (vision) |
+| qwen3.6-flash | Qwen | 1M tokens |
 | MiniMax-M3 | MiniMax | 1M tokens (vision) |
 | MiniMax-M2.7 | MiniMax | 204.8K tokens |
-| glm-5.1 | GLM (Zhipu AI) | 200K tokens |
+| MiniMax-M2.7-highspeed | MiniMax | 204.8K tokens |
 | glm-5v-turbo | GLM (Zhipu AI) | 200K tokens (vision) |
-| kimi-for-coding | Kimi (Moonshot AI) | 256K tokens (vision) |
+| glm-5.1 | GLM (Zhipu AI) | 200K tokens |
+| glm-5-turbo | GLM (Zhipu AI) | 200K tokens |
+| glm-4.7-flash | GLM (Zhipu AI) | 200K tokens |
 | kimi-k2.6 | Kimi (Moonshot AI) | 256K tokens (vision) |
+| kimi-k2.5 | Kimi (Moonshot AI) | 256K tokens (vision) |
 | doubao-seed-2-0-pro | Doubao (Volcengine) | 256K tokens (vision) |
 | doubao-seed-2-0-lite | Doubao (Volcengine) | 256K tokens (vision) |
 | mimo-v2.5-pro | MIMO (Xiaomi) | 1M tokens |
