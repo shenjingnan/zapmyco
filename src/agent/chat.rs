@@ -4291,7 +4291,7 @@ mod tests {
     #[test]
     fn test_get_alternative_models_none_provider() {
         let models = get_alternative_models(None);
-        assert_eq!(models.len(), 64); // 全部模型
+        assert_eq!(models.len(), 59); // 全部模型
     }
 
     #[test]

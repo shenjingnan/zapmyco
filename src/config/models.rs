@@ -212,16 +212,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
         },
     ),
     (
-        "claude-opus-4-6",
-        BuiltInModel {
-            provider: "anthropic",
-            base_url: "https://api.anthropic.com",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
         "claude-sonnet-4-6",
         BuiltInModel {
             provider: "anthropic",
@@ -239,16 +229,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             capabilities: &[ModelCapability::Text],
             context_window: Some(200_000),
             max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "claude-opus-4-1",
-        BuiltInModel {
-            provider: "anthropic",
-            base_url: "https://api.anthropic.com",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(32_768),
         },
     ),
     // --- MiniMax ---
@@ -274,36 +254,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
     ),
     (
         "MiniMax-M2.7-highspeed",
-        BuiltInModel {
-            provider: "minimax",
-            base_url: "https://api.minimaxi.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(204_800),
-            max_output_tokens: Some(131_072),
-        },
-    ),
-    (
-        "MiniMax-M2.5",
-        BuiltInModel {
-            provider: "minimax",
-            base_url: "https://api.minimaxi.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(204_800),
-            max_output_tokens: Some(131_072),
-        },
-    ),
-    (
-        "MiniMax-M2.1",
-        BuiltInModel {
-            provider: "minimax",
-            base_url: "https://api.minimaxi.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(204_800),
-            max_output_tokens: Some(131_072),
-        },
-    ),
-    (
-        "MiniMax-M2",
         BuiltInModel {
             provider: "minimax",
             base_url: "https://api.minimaxi.com/anthropic",
@@ -759,7 +709,7 @@ mod tests {
         assert!(names.contains(&"MiniMax-M3"));
         assert!(names.contains(&"kimi-for-coding"));
         assert!(names.contains(&"doubao-seed-code"));
-        assert_eq!(names.len(), 64);
+        assert_eq!(names.len(), 59);
     }
 
     #[test]
@@ -861,7 +811,7 @@ mod tests {
             Some("anthropic")
         );
         assert_eq!(
-            guess_provider_from_model_name("claude-opus-4-6"),
+            guess_provider_from_model_name("claude-sonnet-4-6"),
             Some("anthropic")
         );
     }
