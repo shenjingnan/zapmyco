@@ -292,13 +292,13 @@ pub fn format_model_help(name: &str) -> String {
         .capabilities
         .iter()
         .map(|c| match c {
-            ModelCapability::Text => "文本",
-            ModelCapability::Vision => "视觉",
+            ModelCapability::Text => "txt",
+            ModelCapability::Vision => "vis",
         })
         .collect::<Vec<_>>()
-        .join("、");
+        .join(",");
 
-    format!("{ctx}上下文 · {out}输出 · {caps}")
+    format!("{ctx} ctx · {out} out · {caps} · {name}")
 }
 
 /// 获取所有内置模型的唯一 base URL 列表（排序后去重）
@@ -503,13 +503,13 @@ mod tests {
     #[test]
     fn test_format_model_help_text_only() {
         let help = format_model_help("deepseek-v4-flash");
-        assert_eq!(help, "1M上下文 · 384K输出 · 文本");
+        assert_eq!(help, "1M ctx · 384K out · txt · deepseek-v4-flash");
     }
 
     #[test]
     fn test_format_model_help_vision() {
         let help = format_model_help("glm-5v-turbo");
-        assert_eq!(help, "200K上下文 · 128K输出 · 文本、视觉");
+        assert_eq!(help, "200K ctx · 128K out · txt,vis · glm-5v-turbo");
     }
 
     #[test]
@@ -523,9 +523,9 @@ mod tests {
         for name in get_built_in_model_names() {
             let help = format_model_help(name);
             assert!(!help.is_empty(), "模型 {} 的 help 为空", name);
-            assert!(help.contains("上下文"), "模型 {} 缺少「上下文」", name);
-            assert!(help.contains("输出"), "模型 {} 缺少「输出」", name);
-            assert!(help.contains("文本"), "模型 {} 缺少能力", name);
+            assert!(help.contains("ctx"), "模型 {} 缺少 ctx", name);
+            assert!(help.contains("out"), "模型 {} 缺少 out", name);
+            assert!(help.contains("txt"), "模型 {} 缺少 txt", name);
         }
     }
 
