@@ -923,6 +923,20 @@ fn generate_zsh_completion(writer: &mut impl std::io::Write) {
         "_zapmyco_permission_mode_values",
     );
 
+    // 移除所有必需位置参数 (`':xxx -- desc:_default' \`) 的补全行，
+    // 保持所有子命令行为一致：按 Tab 时显示选项而非文件列表。
+    // 跳过可选参数 (`'::`) 和剩余参数 (`'*::`)。
+    script = script
+        .lines()
+        .filter(|line| {
+            !line.starts_with("':")
+                || line.starts_with("'::")
+                || line.starts_with("'*::")
+                || !line.trim_end().ends_with(":_default' \\")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
     // 追加自定义补全函数
     script.push_str("\n\n# 自定义补全函数（zapmyco 内置）\n");
     script.push_str("_zapmyco_model_values() {\n");
