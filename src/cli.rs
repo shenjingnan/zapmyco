@@ -61,13 +61,28 @@ impl TypedValueParser for ModelValueParser {
                 "--model 不能为空",
             ));
         }
-        Ok(s)
+        // 如果包含供应商前缀（如 "deepseek/deepseek-v4-flash"），剥离前缀
+        let model_name = if let Some(idx) = s.find('/') {
+            s[idx + 1..].to_string()
+        } else {
+            s
+        };
+        if model_name.is_empty() {
+            return Err(clap::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "--model 不能为空",
+            ));
+        }
+        Ok(model_name)
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
         Some(Box::new(get_built_in_model_names().into_iter().map(
             |name| {
-                let mut pv = PossibleValue::new(name);
+                let display_name: &'static str = get_model_info(name)
+                    .map(|info| -> &'static str { format!("{}/{}", info.provider, name).leak() })
+                    .unwrap_or(name);
+                let mut pv = PossibleValue::new(display_name);
                 let help = format_model_help(name);
                 if !help.is_empty() {
                     pv = pv.help(help);
@@ -852,11 +867,14 @@ fn generate_powershell_completion(writer: &mut impl std::io::Write) {
         // — --model 值补全 —
         extra.push_str("    if ($prevParam -eq '--model') {\n");
         for name in get_built_in_model_names() {
+            let display_name = get_model_info(name)
+                .map(|info| format!("{}/{}", info.provider, name))
+                .unwrap_or_else(|| name.to_string());
             let help = format_model_help(name);
             extra.push_str(&format!(
                 "        [CompletionResult]::new('{}', '{}', [CompletionResultType]::ParameterValue, '{}')\n",
-                name.replace('\'', "''"),
-                name.replace('\'', "''"),
+                display_name.replace('\'', "''"),
+                display_name.replace('\'', "''"),
                 help.replace('\'', "''"),
             ));
         }
@@ -929,10 +947,13 @@ fn generate_zsh_completion(writer: &mut impl std::io::Write) {
     script.push_str("    local -a _zapmyco_models\n");
     script.push_str("    _zapmyco_models=(\n");
     for name in get_built_in_model_names() {
+        let display_name = get_model_info(name)
+            .map(|info| format!("{}/{}", info.provider, name))
+            .unwrap_or_else(|| name.to_string());
         let help = format_model_help(name);
         script.push_str(&format!(
             "        '{}:{}'\n",
-            name.replace('\'', "''"),
+            display_name.replace('\'', "''"),
             help.replace('\'', "''"),
         ));
     }
