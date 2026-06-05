@@ -50,26 +50,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
         },
     ),
     (
-        "glm-4-flash",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(128_000),
-            max_output_tokens: Some(16_384),
-        },
-    ),
-    (
-        "glm-4v",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(16_384),
-        },
-    ),
-    (
         "glm-5v-turbo",
         BuiltInModel {
             provider: "glm",
@@ -89,29 +69,8 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(128_000),
         },
     ),
-    // --- GLM 新增模型 ---
-    (
-        "glm-5",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
     (
         "glm-5-turbo",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "glm-4.7",
         BuiltInModel {
             provider: "glm",
             base_url: "https://open.bigmodel.cn/api/anthropic",
@@ -130,66 +89,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(128_000),
         },
     ),
-    (
-        "glm-4.6",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "glm-4.5-airx",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(128_000),
-            max_output_tokens: Some(96_000),
-        },
-    ),
-    (
-        "glm-4-long",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(4_096),
-        },
-    ),
-    (
-        "glm-4.6v",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(32_768),
-        },
-    ),
-    (
-        "glm-4.5-air",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(96_000),
-        },
-    ),
-    (
-        "glm-4.5v",
-        BuiltInModel {
-            provider: "glm",
-            base_url: "https://open.bigmodel.cn/api/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(16_384),
-        },
-    ),
     // --- Anthropic 官方 ---
     (
         "claude-opus-4-8",
@@ -203,16 +102,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
     ),
     (
         "claude-opus-4-7",
-        BuiltInModel {
-            provider: "anthropic",
-            base_url: "https://api.anthropic.com",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "claude-opus-4-6",
         BuiltInModel {
             provider: "anthropic",
             base_url: "https://api.anthropic.com",
@@ -239,16 +128,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             capabilities: &[ModelCapability::Text],
             context_window: Some(200_000),
             max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "claude-opus-4-1",
-        BuiltInModel {
-            provider: "anthropic",
-            base_url: "https://api.anthropic.com",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(200_000),
-            max_output_tokens: Some(32_768),
         },
     ),
     // --- MiniMax ---
@@ -282,47 +161,7 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(131_072),
         },
     ),
-    (
-        "MiniMax-M2.5",
-        BuiltInModel {
-            provider: "minimax",
-            base_url: "https://api.minimaxi.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(204_800),
-            max_output_tokens: Some(131_072),
-        },
-    ),
-    (
-        "MiniMax-M2.1",
-        BuiltInModel {
-            provider: "minimax",
-            base_url: "https://api.minimaxi.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(204_800),
-            max_output_tokens: Some(131_072),
-        },
-    ),
-    (
-        "MiniMax-M2",
-        BuiltInModel {
-            provider: "minimax",
-            base_url: "https://api.minimaxi.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(204_800),
-            max_output_tokens: Some(131_072),
-        },
-    ),
     // --- Kimi 月之暗面 ---
-    (
-        "kimi-for-coding",
-        BuiltInModel {
-            provider: "kimi",
-            base_url: "https://api.moonshot.cn/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(256_000),
-            max_output_tokens: Some(32_768),
-        },
-    ),
     (
         "kimi-k2.6",
         BuiltInModel {
@@ -345,16 +184,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
     ),
     // --- Doubao 火山引擎 ---
     (
-        "doubao-seed-code",
-        BuiltInModel {
-            provider: "doubao",
-            base_url: "https://ark.cn-beijing.volces.com/api/compatible",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(256_000),
-            max_output_tokens: Some(32_768),
-        },
-    ),
-    (
         "doubao-seed-2-0-pro",
         BuiltInModel {
             provider: "doubao",
@@ -366,26 +195,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
     ),
     (
         "doubao-seed-2-0-lite",
-        BuiltInModel {
-            provider: "doubao",
-            base_url: "https://ark.cn-beijing.volces.com/api/compatible",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(256_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "doubao-seed-2-0-mini",
-        BuiltInModel {
-            provider: "doubao",
-            base_url: "https://ark.cn-beijing.volces.com/api/compatible",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(256_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "doubao-seed-2-0-code-preview",
         BuiltInModel {
             provider: "doubao",
             base_url: "https://ark.cn-beijing.volces.com/api/compatible",
@@ -406,26 +215,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
         },
     ),
     (
-        "qwen3.6-max-preview",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "qwen3-max",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
         "qwen3.7-plus",
         BuiltInModel {
             provider: "qwen",
@@ -433,36 +222,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             capabilities: &[ModelCapability::Text, ModelCapability::Vision],
             context_window: Some(1_000_000),
             max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3.6-plus",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3.5-plus",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen-plus",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(128_000),
-            max_output_tokens: Some(8_192),
         },
     ),
     (
@@ -475,169 +234,9 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             max_output_tokens: Some(64_000),
         },
     ),
-    (
-        "qwen3.5-flash",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen-flash",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(128_000),
-            max_output_tokens: Some(8_192),
-        },
-    ),
-    (
-        "qwen-turbo",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(128_000),
-            max_output_tokens: Some(8_192),
-        },
-    ),
-    (
-        "qwen3-coder-next",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3-coder-plus",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3-coder-flash",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3-vl-plus",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3-vl-flash",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen-vl-max",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(8_192),
-        },
-    ),
-    (
-        "qwen-vl-plus",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(128_000),
-            max_output_tokens: Some(8_192),
-        },
-    ),
-    (
-        "qwen3.6-27b",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(256_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3.5-397b-a17b",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(256_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3.5-122b-a10b",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(256_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3.5-27b",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(256_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
-    (
-        "qwen3.5-35b-a3b",
-        BuiltInModel {
-            provider: "qwen",
-            base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(256_000),
-            max_output_tokens: Some(64_000),
-        },
-    ),
     // --- MIMO 小米 ---
     (
         "mimo-v2.5-pro",
-        BuiltInModel {
-            provider: "mimo",
-            base_url: "https://api.xiaomimimo.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(1_000_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "mimo-v2-pro",
         BuiltInModel {
             provider: "mimo",
             base_url: "https://api.xiaomimimo.com/anthropic",
@@ -654,26 +253,6 @@ const BUILT_IN_MODELS: &[(&str, BuiltInModel)] = &[
             capabilities: &[ModelCapability::Text, ModelCapability::Vision],
             context_window: Some(1_000_000),
             max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "mimo-v2-omni",
-        BuiltInModel {
-            provider: "mimo",
-            base_url: "https://api.xiaomimimo.com/anthropic",
-            capabilities: &[ModelCapability::Text, ModelCapability::Vision],
-            context_window: Some(256_000),
-            max_output_tokens: Some(128_000),
-        },
-    ),
-    (
-        "mimo-v2-flash",
-        BuiltInModel {
-            provider: "mimo",
-            base_url: "https://api.xiaomimimo.com/anthropic",
-            capabilities: &[ModelCapability::Text],
-            context_window: Some(256_000),
-            max_output_tokens: Some(64_000),
         },
     ),
 ];
@@ -736,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_get_model_info_vision_model() {
-        let info = get_model_info("glm-4v").unwrap();
+        let info = get_model_info("glm-5v-turbo").unwrap();
         assert_eq!(info.provider, "glm");
         assert_eq!(
             info.capabilities,
@@ -753,13 +332,13 @@ mod tests {
     fn test_get_built_in_model_names() {
         let names = get_built_in_model_names();
         assert!(names.contains(&"deepseek-v4-flash"));
-        assert!(names.contains(&"glm-4v"));
+        assert!(names.contains(&"glm-5v-turbo"));
         // 新 provider 模型
         assert!(names.contains(&"claude-opus-4-7"));
         assert!(names.contains(&"MiniMax-M3"));
-        assert!(names.contains(&"kimi-for-coding"));
-        assert!(names.contains(&"doubao-seed-code"));
-        assert_eq!(names.len(), 64);
+        assert!(names.contains(&"kimi-k2.6"));
+        assert!(names.contains(&"doubao-seed-2-0-pro"));
+        assert_eq!(names.len(), 22);
     }
 
     #[test]
@@ -786,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_get_model_info_kimi() {
-        let info = get_model_info("kimi-for-coding").unwrap();
+        let info = get_model_info("kimi-k2.6").unwrap();
         assert_eq!(info.provider, "kimi");
         assert_eq!(info.base_url, "https://api.moonshot.cn/anthropic");
         assert_eq!(
@@ -798,7 +377,7 @@ mod tests {
 
     #[test]
     fn test_get_model_info_doubao() {
-        let info = get_model_info("doubao-seed-code").unwrap();
+        let info = get_model_info("doubao-seed-2-0-pro").unwrap();
         assert_eq!(info.provider, "doubao");
         assert_eq!(
             info.base_url,
@@ -861,7 +440,7 @@ mod tests {
             Some("anthropic")
         );
         assert_eq!(
-            guess_provider_from_model_name("claude-opus-4-6"),
+            guess_provider_from_model_name("claude-sonnet-4-6"),
             Some("anthropic")
         );
     }
@@ -869,7 +448,7 @@ mod tests {
     #[test]
     fn test_guess_provider_qwen() {
         assert_eq!(guess_provider_from_model_name("qwen3.7-max"), Some("qwen"));
-        assert_eq!(guess_provider_from_model_name("qwen-plus"), Some("qwen"));
+        assert_eq!(guess_provider_from_model_name("qwen3.7-max"), Some("qwen"));
     }
 
     #[test]
@@ -880,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_guess_provider_glm() {
-        assert_eq!(guess_provider_from_model_name("glm-4-flash"), Some("glm"));
+        assert_eq!(guess_provider_from_model_name("glm-5v-turbo"), Some("glm"));
     }
 
     #[test]
@@ -899,7 +478,7 @@ mod tests {
     #[test]
     fn test_guess_provider_doubao() {
         assert_eq!(
-            guess_provider_from_model_name("doubao-seed-code"),
+            guess_provider_from_model_name("doubao-seed-2-0-pro"),
             Some("doubao")
         );
     }

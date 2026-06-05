@@ -4291,7 +4291,7 @@ mod tests {
     #[test]
     fn test_get_alternative_models_none_provider() {
         let models = get_alternative_models(None);
-        assert_eq!(models.len(), 64); // 全部模型
+        assert_eq!(models.len(), 22); // 全部模型
     }
 
     #[test]
@@ -4317,10 +4317,10 @@ mod tests {
 
     #[test]
     fn test_format_model_label_known_model_vision() {
-        let label = format_model_label("glm-4v");
-        // glm-4v 有 context_window 和 max_output_tokens
-        assert!(label.contains("glm-4v"));
-        assert!(label.contains("128K"));
+        let label = format_model_label("glm-5v-turbo");
+        // glm-5v-turbo 有 context_window 和 max_output_tokens
+        assert!(label.contains("glm-5v-turbo"));
+        assert!(label.contains("200K"));
     }
 
     #[test]
