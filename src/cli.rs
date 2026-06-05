@@ -618,11 +618,11 @@ async fn cmd_run(
         })
         .await?;
 
-    // ---- 第二阶段：任务执行循环 ----
-    let max_exec_rounds = 5;
-    for round in 0..max_exec_rounds {
-        use crate::tools::task_manager::TaskStatus;
+    // ---- 第二阶段：任务执行循环（支持 Ctrl+C 中断纠偏） ----
+    use crate::tools::task_manager::TaskStatus;
+    let mut task_completed = false;
 
+    loop {
         let tasks = task_manager.list().await.map_err(|e| e.to_string())?;
         let pending_count = tasks
             .iter()
@@ -630,7 +630,7 @@ async fn cmd_run(
             .count();
 
         if pending_count == 0 {
-            if round > 0 {
+            if task_completed {
                 println!("\n✅ 全部任务已完成！");
             }
             break;
@@ -644,19 +644,36 @@ async fn cmd_run(
             pending_count,
         );
 
-        eprintln!(
-            "\n[任务执行] 第 {} 轮 — {} 个任务待完成",
-            round + 1,
-            pending_count
-        );
+        eprintln!("\n[任务执行] {} 个任务待完成", pending_count,);
 
-        let _response = agent
-            .chat_with_tools(&continuation, |chunk| {
+        let result = tokio::select! {
+            result = agent.chat_with_tools(&continuation, |chunk| {
                 print!("{}", chunk);
                 use std::io::Write;
                 std::io::stdout().flush().ok();
-            })
-            .await?;
+            }) => Some(result),
+            _ = tokio::signal::ctrl_c() => None,
+        };
+
+        match result {
+            Some(Ok(_)) => {
+                task_completed = true;
+            }
+            Some(Err(e)) => return Err(e),
+            None => {
+                // 用户按 Ctrl+C 打断执行，弹出输入框供用户纠偏
+                println!();
+                let user_input =
+                    inquire::Text::new("🛑 已中断 LLM 执行。请输入补充说明以纠正执行方向：")
+                        .prompt()
+                        .map_err(|e| e.to_string())?;
+                agent.add_user_message(&format!(
+                    "[用户干预] {}\n\n请根据上述指引调整执行方向。",
+                    user_input,
+                ));
+                task_completed = true;
+            }
+        }
     }
 
     println!();

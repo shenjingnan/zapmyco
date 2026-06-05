@@ -620,6 +620,15 @@ impl AiAgent {
         &self.messages
     }
 
+    /// 向对话历史追加一条用户消息（用于在外部注入用户干预/纠偏信息）
+    pub fn add_user_message(&mut self, content: &str) {
+        self.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: content.to_string(),
+            blocks: None,
+        });
+    }
+
     /// 带工具调用的对话 - 自动处理 ToolUse 循环
     ///
     /// 使用统一流式请求，在工具调用阶段实时输出 LLM 推理文本，
