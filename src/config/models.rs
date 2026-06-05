@@ -312,6 +312,52 @@ pub fn get_built_in_base_urls() -> Vec<&'static str> {
     urls
 }
 
+/// 获取所有内置模型的 base host（去除 https:// 前缀，用于 Tab 补全避免冒号导致 zsh 解析错误）
+pub fn get_built_in_base_hosts() -> Vec<&'static str> {
+    let mut hosts: Vec<&'static str> = BUILT_IN_MODELS
+        .iter()
+        .map(|(_, info)| info.base_url)
+        .filter(|url| url.starts_with("https://"))
+        .map(|url| &url["https://".len()..])
+        .collect();
+    hosts.sort_unstable();
+    hosts.dedup();
+    hosts
+}
+
+/// base URL hostname 到地域的映射
+const BASE_URL_REGION: &[(&str, &str)] = &[
+    ("api.deepseek.com", "通用"),
+    ("api.anthropic.com", "通用"),
+    ("open.bigmodel.cn", "国内"),
+    ("api.minimaxi.com", "国内"),
+    ("api.moonshot.cn", "国内"),
+    ("ark.cn-beijing.volces.com", "国内"),
+    ("dashscope.aliyuncs.com", "国内"),
+    ("api.xiaomimimo.com", "国内"),
+];
+
+/// 获取内置 base host 的厂商和地域信息（用于 Tab 补全的描述）
+pub fn get_built_in_base_host_info() -> Vec<(&'static str, &'static str, &'static str)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for (_, info) in BUILT_IN_MODELS {
+        if let Some(host) = info.base_url.strip_prefix("https://")
+            && seen.insert(host)
+        {
+            let hostname = host.split('/').next().unwrap_or(host);
+            let region = BASE_URL_REGION
+                .iter()
+                .find(|(h, _)| *h == hostname)
+                .map(|(_, r)| *r)
+                .unwrap_or("");
+            result.push((host, info.provider, region));
+        }
+    }
+    result.sort_by(|a, b| a.0.cmp(b.0));
+    result
+}
+
 /// 已知的模型名前缀 -> 供应商映射（用于识别已移除模型的归属）
 const MODEL_PREFIX_PROVIDER: &[(&str, &str)] = &[
     ("deepseek-", "deepseek"),

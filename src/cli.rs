@@ -4,7 +4,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use std::io::IsTerminal;
 
 use crate::config::models::{
-    format_model_help, get_built_in_base_urls, get_built_in_model_names, get_model_info,
+    format_model_help, get_built_in_base_host_info, get_built_in_model_names, get_model_info,
 };
 use crate::config::settings;
 use crate::config::settings::{LlmSettings, ProviderConfig, Settings};
@@ -98,27 +98,35 @@ impl TypedValueParser for BaseUrlValueParser {
                 "--base-url 不能为空",
             ));
         }
-        match url::Url::parse(&s) {
+        // 如果没有 scheme（如 http://、https://），自动补上 https://
+        let normalized = if s.contains("://") {
+            s
+        } else {
+            format!("https://{}", s)
+        };
+        match url::Url::parse(&normalized) {
             Ok(parsed)
                 if parsed.has_host()
                     && (parsed.scheme() == "http" || parsed.scheme() == "https") =>
             {
-                Ok(s)
+                Ok(normalized)
             }
             _ => Err(clap::Error::raw(
                 clap::error::ErrorKind::ValueValidation,
                 format!(
                     "无效的 URL: '{}'，--base-url 必须是有效的 http/https 地址",
-                    s
+                    normalized
                 ),
             )),
         }
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
-        Some(Box::new(
-            get_built_in_base_urls().into_iter().map(PossibleValue::new),
-        ))
+        Some(Box::new(get_built_in_base_host_info().into_iter().map(
+            |(host, provider, region)| {
+                PossibleValue::new(host).help(format!("{} · {}", provider, region))
+            },
+        )))
     }
 }
 
@@ -2354,6 +2362,35 @@ mod tests {
     }
 
     #[test]
+    fn test_base_url_auto_prepend_https() {
+        let cli = Cli::try_parse_from(vec![
+            "zapmyco",
+            "run",
+            "--base-url",
+            "api.deepseek.com/anthropic",
+            "hello",
+        ])
+        .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "https://api.deepseek.com/anthropic");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_base_url_auto_prepend_https_not_a_url() {
+        // 不含 scheme 时自动补 https://，not-a-url 变成合法主机名
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "not-a-url", "hello"])
+            .unwrap();
+        if let Commands::Run { base_url, .. } = cli.command.unwrap() {
+            assert_eq!(base_url.unwrap(), "https://not-a-url");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
     fn test_base_url_accepts_http() {
         let cli = Cli::try_parse_from(vec![
             "zapmyco",
@@ -2372,8 +2409,8 @@ mod tests {
 
     #[test]
     fn test_base_url_rejects_invalid() {
-        let result =
-            Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "not-a-url", "hello"]);
+        // 即使自动补上 https://，也不是合法 URL
+        let result = Cli::try_parse_from(vec!["zapmyco", "run", "--base-url", "://", "hello"]);
         assert!(result.is_err());
     }
 
