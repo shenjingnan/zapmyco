@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.36.2](https://github.com/shenjingnan/zapmyco/compare/v0.36.1...v0.36.2) - 2026-06-05
+
+### Added
+
+- *(completion)* 为 zsh 生成自定义补全脚本，修复 --model 补全描述显示问题 ([#398](https://github.com/shenjingnan/zapmyco/pull/398))
+
 ## [0.36.1](https://github.com/shenjingnan/zapmyco/compare/v0.36.0...v0.36.1) - 2026-06-05
 
 ### Added
