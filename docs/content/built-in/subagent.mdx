@@ -1,0 +1,148 @@
+---
+title: subagent — 子代理管理
+description: 创建独立子进程并发执行任务，支持 spawn / poll / list / kill 四种操作
+---
+
+创建独立子进程来并发执行子任务。子进程通过 `zapmyco run --subagent <task>` 启动，拥有独立的 LLM 会话和工具集。
+
+**适用场景**：将大任务拆分为独立的子任务并发执行、多视角分析同一代码库、需要并行加速的独立工作。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `action` | string | 是 | 操作类型：`spawn`、`poll`、`list`、`kill` |
+| `cli` | string | 否 | CLI Agent 类型（目前仅支持 `zapmyco`） |
+| `task` | string | spawn 时 | 子代理需要执行的具体任务描述 |
+| `subagent_ids` | array[string] | poll/kill 时 | 要查询或终止的子代理 ID 列表 |
+| `wait_secs` | number | 否 | poll 时额外等待秒数（范围 1-30，默认 0）。工具已内置首次 5 秒等待 |
+
+## 操作说明
+
+### `spawn` — 创建子代理
+
+创建子代理并立即返回 `subagent_id`。子进程作为独立 OS 进程在后台运行，不阻塞主 Agent。
+
+```json
+{
+  "action": "spawn",
+  "cli": "zapmyco",
+  "task": "分析 src/login.rs 的安全漏洞"
+}
+```
+
+返回格式：
+
+```
+[SubAgent] sa_20260606_a1b2c3d4: running
+CLI: zapmyco
+Task: 分析 src/login.rs 的安全漏洞
+Created: 2026-06-06T15:30:00.123456
+```
+
+### `poll` — 查询结果
+
+查询一个或多个子代理的执行结果。支持批量查询和内部等待重试。
+
+```json
+{
+  "action": "poll",
+  "subagent_ids": ["sa_20260606_a1b2c3d4", "sa_20260606_e5f6g7h8"],
+  "wait_secs": 10
+}
+```
+
+**等待机制**：无论 `wait_secs` 参数如何，工具都会先等待 5 秒（给短任务一个完成窗口）。`wait_secs` 在此基础上额外增加等待时间。等待期间每 500ms 检查一次完成状态，不消耗 LLM 轮次。
+
+**输出折叠**：当 stdout 超过 2KB 时，自动折叠为头尾各 2KB 的摘要；超过 1MB 时截断并标注 `OUTPUT TRUNCATED`。
+
+**全部 running 时折叠**：当所有查询的子代理都未完成时，返回单行摘要：
+```
+[SubAgent] 2/2 仍在运行 (已等待 23s)
+  任务: 分析 auth 模块 / 测试 api 模块
+```
+
+### `list` — 列出子代理
+
+列出当前会话中所有子代理及其状态。
+
+```json
+{
+  "action": "list"
+}
+```
+
+返回格式：
+
+```
+[SubAgent] 当前共 2 个子代理
+
+sa_20260606_a1b2c3d4: running (已运行 23s)
+  CLI: zapmyco
+  Task: 分析 auth 模块
+
+sa_20260606_e5f6g7h8: completed (耗时 45s, exit 0)
+  CLI: zapmyco
+  Task: 测试 api 模块
+```
+
+**会话隔离**：list 只显示当前 Agent 会话创建的子代理，其他终端创建的不可见。
+
+### `kill` — 终止子代理
+
+终止正在运行的子代理。
+
+```json
+{
+  "action": "kill",
+  "subagent_ids": ["sa_20260606_a1b2c3d4"]
+}
+```
+
+返回格式：
+
+```
+[SubAgent] 已终止 1 个子代理:
+  sa_20260606_a1b2c3d4: cancelled (SIGTERM → PID 12345)
+```
+
+## 约束与限制
+
+| 限制项 | 值 |
+|--------|:----:|
+| 子进程超时 | 300 秒（超时自动 kill） |
+| 输出截断 | 1 MB（超出截断并标注） |
+| 输出折叠阈值 | 2 KB（自动摘要为头尾） |
+| 最大并发 | 不限（受系统资源限制） |
+| poll 最大额外等待 | 30 秒 |
+| 子进程数量 | 不限（递归阻断，子 Agent 不可再 spawn） |
+| 子进程工作目录 | 继承主 Agent 的当前目录 |
+
+## 错误场景
+
+| 错误类型 | 说明 |
+|----------|------|
+| `action` 缺失 | 返回错误提示可选值 |
+| `task` 为空（spawn） | 同步返回错误，不创建子代理 |
+| `subagent_ids` 为空（poll/kill） | 返回错误提示 |
+| CLI 不支持 | 同步返回错误（目前仅支持 `zapmyco`） |
+| 子进程超时 | 自动 kill 并标记为 timeout |
+| 子进程外部死亡 | 死进程检测（kill -0）自动标记为 lost |
+| 输出超过 1MB | 截断，首行标注 `OUTPUT TRUNCATED` |
+| subagent_id 不存在（poll） | 该 ID 返回"ID 不存在"，不影响其他 ID |
+| 磁盘空间不足 | spawn 阶段返回创建目录失败 |
+
+## 使用示例
+
+```bash
+# 让 LLM 使用 subagent 并发分析多个模块
+zapmyco run "同时创建 3 个 subagent 分别分析 src/auth、src/api、src/web 模块"
+
+# 创建子代理后轮询结果
+zapmyco run "创建 subagent 分析项目依赖，然后轮询直到获取结果"
+```
+
+## 相关文档
+
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [AI 代理功能](/guide/ai-agent) — AI Agent 工作模式
