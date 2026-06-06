@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.37.0](https://github.com/shenjingnan/zapmyco/compare/v0.36.4...v0.37.0) - 2026-06-06
+
+### Added
+
+- *(subagent)* 实现 SubAgent 多 CLI 并发子代理工具 ([#408](https://github.com/shenjingnan/zapmyco/pull/408))
+
+### Other
+
+- *(conversation)* 补充 --conversation 功能的单元测试 ([#406](https://github.com/shenjingnan/zapmyco/pull/406))
+
 ## [0.36.4](https://github.com/shenjingnan/zapmyco/compare/v0.36.3...v0.36.4) - 2026-06-05
 
 ### Added
