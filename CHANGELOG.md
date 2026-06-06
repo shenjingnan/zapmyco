@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.36.4](https://github.com/shenjingnan/zapmyco/compare/v0.36.3...v0.36.4) - 2026-06-05
+
+### Added
+
+- *(run)* 移除任务执行5轮限制并添加 Ctrl+C 中断纠偏功能 ([#404](https://github.com/shenjingnan/zapmyco/pull/404))
+
 ## [0.36.3](https://github.com/shenjingnan/zapmyco/compare/v0.36.2...v0.36.3) - 2026-06-05
 
 ### Added
