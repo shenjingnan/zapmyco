@@ -130,6 +130,58 @@ impl TypedValueParser for BaseUrlValueParser {
     }
 }
 
+/// 自定义 value parser：Tab 补全历史会话 ID，按时间降序排列
+#[derive(Clone)]
+struct ConversationIdValueParser;
+
+impl TypedValueParser for ConversationIdValueParser {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        // 接受任意字符串（包括空字符串用于无值交互模式）
+        Ok(value.to_string_lossy().into_owned())
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
+        use crate::agent::conversation_loader;
+        let list = conversation_loader::list_conversations().ok()?;
+        let values: Vec<PossibleValue> = list
+            .into_iter()
+            .map(|c| {
+                // 先解构，避免借用 + move 冲突
+                let session_id = c.session_id;
+                let preview = c.preview;
+                let msg_count = c.message_count;
+                let first_time = c.first_message_time;
+
+                let date = if first_time.len() >= 19 {
+                    // ISO 8601: 2026-06-05T22:43:45+08:00 → 2026-06-05 22:43:45
+                    let mut s = first_time[..19].to_string();
+                    s.replace_range(10..11, " ");
+                    s
+                } else if first_time.len() >= 16 {
+                    // ISO 8601: 2026-06-05T22:43:45+08:00 → 2026-06-05 22:43
+                    let mut s = first_time[..16].to_string();
+                    s.replace_range(10..11, " ");
+                    s
+                } else if first_time.len() >= 10 {
+                    first_time[..10].to_string()
+                } else {
+                    first_time
+                };
+                let help = format!("{}  {} ({}条)", date, preview, msg_count);
+                PossibleValue::new(session_id).help(help)
+            })
+            .collect();
+        Some(Box::new(values.into_iter()))
+    }
+}
+
 #[derive(Subcommand)]
 #[non_exhaustive]
 pub enum Commands {
@@ -166,6 +218,9 @@ pub enum Commands {
         /// 指定 API 基础地址（Tab 可补全内置供应商地址）
         #[arg(long = "base-url", value_parser = BaseUrlValueParser)]
         base_url: Option<String>,
+        /// 复用指定会话的上下文历史（Tab 可补全可用会话）
+        #[arg(long, value_parser = ConversationIdValueParser)]
+        conversation: Option<String>,
     },
     /// 快速记录笔记 — 灵感、待办、想法
     Note {
@@ -495,11 +550,13 @@ fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
 }
 
 /// run 命令 - 一次性执行 AI 任务（带工具支持）
+#[allow(clippy::too_many_arguments)]
 async fn cmd_run(
     content: &str,
     profile: Option<&str>,
     permission_mode: PermissionMode,
     task_id: Option<&str>,
+    conversation: Option<&str>,
     model: Option<&str>,
     api_key: Option<&str>,
     base_url: Option<&str>,
@@ -607,6 +664,18 @@ async fn cmd_run(
             permission_mode, deny_tools
         );
         agent.remove_tools(deny_tools);
+    }
+
+    // ★ 如果指定了 --conversation，加载历史会话消息
+    if let Some(session_id) = conversation {
+        let session_id = session_id.to_string();
+        let history = crate::agent::conversation_loader::load_conversation(&session_id)?;
+        let msg_count = history.len();
+        eprintln!(
+            "[会话] 已加载历史会话 {} ({} 条消息)",
+            session_id, msg_count
+        );
+        agent.inject_history(history);
     }
 
     // ---- 第一阶段：执行用户原始输入 ----
@@ -1272,6 +1341,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             profile,
             permission_mode,
             task_id,
+            conversation,
             model,
             api_key,
             base_url,
@@ -1281,6 +1351,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 profile.as_deref(),
                 permission_mode,
                 task_id.as_deref(),
+                conversation.as_deref(),
                 model.as_deref(),
                 api_key.as_deref(),
                 base_url.as_deref(),
@@ -1344,7 +1415,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_empty_content() {
-        let result = cmd_run("", None, PermissionMode::Full, None, None, None, None).await;
+        let result = cmd_run("", None, PermissionMode::Full, None, None, None, None, None).await;
         assert!(result.is_err());
     }
 
@@ -1357,7 +1428,17 @@ mod tests {
             std::env::set_var("HOME", dir.path());
         }
 
-        let result = cmd_run("hello", None, PermissionMode::Full, None, None, None, None).await;
+        let result = cmd_run(
+            "hello",
+            None,
+            PermissionMode::Full,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
         assert!(result.is_err());
 
         if let Some(h) = orig_home {

@@ -15,7 +15,7 @@ license = "MIT"
 repository = "https://github.com/shenjingnan/zapmyco"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "string"] }
 clap_complete = "4"
 zapmyco-anthropic-ai-sdk = { version = "0.3.2", path = "vendor/zapmyco-anthropic-ai-sdk" }
 zapmyco-grep = { version = "0.1.0", path = "vendor/zapmyco-grep" }

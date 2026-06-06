@@ -629,6 +629,15 @@ impl AiAgent {
         });
     }
 
+    /// 注入历史消息（用于 --conversation 恢复上下文）
+    ///
+    /// 将之前会话的消息历史注入当前 agent，同时设置 `context_injected = true`
+    /// 防止 `chat_with_tools` 重复注入 context_reminder。
+    pub fn inject_history(&mut self, history: Vec<ConversationMessage>) {
+        self.messages = history;
+        self.context_injected = true;
+    }
+
     /// 带工具调用的对话 - 自动处理 ToolUse 循环
     ///
     /// 使用统一流式请求，在工具调用阶段实时输出 LLM 推理文本，
