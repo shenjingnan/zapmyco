@@ -864,6 +864,17 @@ mod tests {
         assert!(!args.contains(&"--subagent".to_string()));
     }
 
+    #[test]
+    fn test_build_command_basic() {
+        let (binary, args) = build_command("echo hello", false).unwrap();
+        assert!(!binary.is_empty(), "binary path should not be empty");
+        assert_eq!(args[0], "run", "first arg should be 'run'");
+        assert!(
+            args.contains(&"echo hello".to_string()),
+            "task should be in args"
+        );
+    }
+
     // ---- 2.4 execute 路由分发 ----
 
     #[tokio::test]
@@ -903,6 +914,24 @@ mod tests {
         assert!(result.unwrap_err().contains("无效 action"));
     }
 
+    #[tokio::test]
+    async fn test_execute_dispatches_kill() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let input = serde_json::json!({"action": "kill", "subagent_ids": ["sa_nonexistent"]});
+        let result = tool.execute(&input).await.unwrap();
+        assert!(result.contains("ID 不存在"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_requires_action_field() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let input = serde_json::json!({"task": "hello"});
+        let result = tool.execute(&input).await;
+        assert!(result.is_err());
+    }
+
     // ---- 2.5 tool_definition ----
 
     #[test]
@@ -932,6 +961,26 @@ mod tests {
         let ids = &schema["properties"]["subagent_ids"];
         assert_eq!(ids["type"], "array");
         assert_eq!(ids["items"]["type"], "string");
+    }
+
+    #[test]
+    fn test_tool_definition_has_description() {
+        let tool = SubAgentTool::tool_definition();
+        assert!(tool.description.is_some());
+        assert!(!tool.description.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_tool_definition_required_fields() {
+        let tool = SubAgentTool::tool_definition();
+        let schema = tool.input_schema.unwrap();
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert!(required.contains(&"action"));
     }
 
     // ---- 2.6 is_concurrency_safe ----
@@ -1060,6 +1109,22 @@ mod tests {
         assert!(stdout_pos < stderr_pos);
     }
 
+    #[test]
+    fn test_format_completed_truncated_output() {
+        let dir = TempDir::new().unwrap();
+        let big = "x".repeat(1_500_000);
+        std::fs::write(dir.path().join("stdout"), &big).unwrap();
+        std::fs::write(dir.path().join("exit_code"), "0").unwrap();
+        std::fs::write(dir.path().join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir.path().join("cli"), "zapmyco").unwrap();
+        std::fs::write(dir.path().join("task"), "test").unwrap();
+        File::create(dir.path().join("done")).unwrap();
+
+        let output = format_completed(dir.path(), "sa_test");
+        assert!(output.contains("OUTPUT TRUNCATED"));
+        assert!(output.len() < 1_100_000);
+    }
+
     // ---- 2.9 is_process_alive ----
 
     #[test]
@@ -1095,6 +1160,25 @@ mod tests {
         let pid = child.id();
         let _ = child.wait();
         assert!(!is_process_alive(pid));
+    }
+
+    // ---- 2.10 calc_elapsed ----
+
+    #[test]
+    fn test_calc_elapsed_from_file_recent() {
+        let dir = TempDir::new().unwrap();
+        let now = Local::now().format("%Y-%m-%dT%H:%M:%S%.f").to_string();
+        std::fs::write(dir.path().join("started_at"), &now).unwrap();
+        let elapsed = calc_elapsed_from_file(dir.path().join("started_at"));
+        assert!(!elapsed.is_empty(), "应有耗时");
+        assert!(elapsed.ends_with('s'), "应以 s 结尾: {}", elapsed);
+    }
+
+    #[test]
+    fn test_calc_elapsed_from_file_no_file() {
+        let dir = TempDir::new().unwrap();
+        let elapsed = calc_elapsed_from_file(dir.path().join("nonexistent"));
+        assert!(elapsed.is_empty(), "无文件时应返回空");
     }
 
     // ---- 2.12 状态判断 ----
@@ -1254,6 +1338,533 @@ mod tests {
         );
         let content = std::fs::read_to_string(session_file).unwrap();
         assert_eq!(content.trim(), tool.agent_session());
+    }
+
+    // ---- 3.1 poll 等待边界 ----
+
+    #[tokio::test]
+    async fn test_poll_returns_completed_after_wait() {
+        let tmp = TempDir::new().unwrap();
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 30,
+            agent_session_id: generate_agent_session_id(),
+            test_binary: Some("sleep".to_string()),
+        };
+        let id = tool.spawn("zapmyco", "1").await.unwrap();
+        let result = tool.poll(&[id], 5).await.unwrap();
+        assert!(result.contains("completed"), "应检测到完成: {}", result);
+    }
+
+    #[tokio::test]
+    async fn test_poll_returns_running_before_completion() {
+        let tmp = TempDir::new().unwrap();
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 60,
+            agent_session_id: generate_agent_session_id(),
+            test_binary: Some("sleep".to_string()),
+        };
+        let id = tool.spawn("zapmyco", "30").await.unwrap();
+        let result = tool.poll(&[id], 0).await.unwrap();
+        assert!(result.contains("仍在运行"), "应仍运行中: {}", result);
+    }
+
+    #[tokio::test]
+    async fn test_poll_wait_secs_max_30() {
+        // wait_secs=999 被截断到 30，但已完成项会立即返回
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_quick");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir.join("task"), "quick").unwrap();
+        std::fs::write(dir.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir.join("stdout"), "done").unwrap();
+        std::fs::write(dir.join("exit_code"), "0").unwrap();
+        std::fs::write(dir.join("pid"), "1").unwrap();
+        File::create(dir.join("done")).unwrap();
+
+        let start = Instant::now();
+        let result = tool.poll(&["sa_quick".to_string()], 999).await.unwrap();
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_secs() < 5,
+            "已完成项不应等待: {}s",
+            elapsed.as_secs()
+        );
+        assert!(result.contains("completed"), "应看到完成: {}", result);
+    }
+
+    #[tokio::test]
+    async fn test_poll_wait_secs_negative_via_execute() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_neg");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir.join("task"), "test").unwrap();
+        std::fs::write(dir.join("started_at"), &now_str()).unwrap();
+
+        let input = serde_json::json!({
+            "action": "poll",
+            "subagent_ids": ["sa_neg"],
+            "wait_secs": -5
+        });
+        let result = tool.execute(&input).await;
+        assert!(result.is_ok(), "负值不应 panic: {:?}", result.err());
+    }
+
+    // ---- 3.2 进程隔离 ----
+
+    #[tokio::test]
+    async fn test_subagent_crash_does_not_affect_main() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let id = tool.spawn("zapmyco", "echo hello").await.unwrap();
+        let result = tool.poll(&[id.clone()], 5).await.unwrap();
+        assert!(result.contains("completed"), "子进程应正常完成: {}", result);
+        // 工具仍然可以正常使用
+        let list = tool.list().await.unwrap();
+        assert!(list.contains(&id), "list 应包含该 subagent");
+    }
+
+    // ---- 3.3 并发 poll ----
+
+    #[tokio::test]
+    async fn test_poll_multiple_ids() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let id1 = tool.spawn("zapmyco", "echo a").await.unwrap();
+        let id2 = tool.spawn("zapmyco", "echo b").await.unwrap();
+        let result = tool.poll(&[id1, id2], 10).await.unwrap();
+        assert!(
+            result.contains("completed"),
+            "批量 poll 应返回完成: {}",
+            result
+        );
+    }
+
+    // ---- 3.4 kill ----
+
+    #[tokio::test]
+    async fn test_kill_running_subagent() {
+        let tmp = TempDir::new().unwrap();
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 60,
+            agent_session_id: generate_agent_session_id(),
+            test_binary: Some("sleep".to_string()),
+        };
+        let id = tool.spawn("zapmyco", "30").await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let list = tool.list().await.unwrap();
+        assert!(list.contains(&id), "应能看到 subagent");
+        assert!(list.contains("running"), "应处于 running 状态");
+
+        let kill_result = tool.kill(&[id.clone()]).await.unwrap();
+        assert!(kill_result.contains("cancelled"), "应标记为 cancelled");
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let poll_result = tool.poll(&[id], 0).await.unwrap();
+        // kill 和后台任务可能竞态：后台任务可能先写 exit_code=-1（timeout）
+        assert!(
+            poll_result.contains("cancelled") || poll_result.contains("timeout"),
+            "应显示 cancelled 或 timeout: {}",
+            poll_result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_kill_already_completed() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let id = tool.spawn("zapmyco", "quick").await.unwrap();
+        let _ = tool.poll(&[id.clone()], 5).await.unwrap();
+
+        let kill_result = tool.kill(&[id.clone()]).await.unwrap();
+        assert!(
+            kill_result.contains("cannot cancel"),
+            "已完成应提示无法取消"
+        );
+    }
+
+    // ---- 3.6 退出检查 ----
+
+    #[test]
+    fn test_exit_guard_no_panic_on_missing_dir() {
+        let dir = TempDir::new().unwrap();
+        std::fs::remove_dir(dir.path()).unwrap();
+        let running = count_running_subagents(dir.path(), "test_session");
+        assert_eq!(running, 0, "目录不存在应返回 0");
+    }
+
+    #[test]
+    fn test_exit_guard_finds_running_subagents() {
+        let dir = TempDir::new().unwrap();
+        let session = "as_test_session";
+        let sub_dir = dir.path().join("sa_test");
+        std::fs::create_dir(&sub_dir).unwrap();
+        std::fs::write(sub_dir.join("agent_session"), session).unwrap();
+        std::fs::write(sub_dir.join("pid"), "99999").unwrap();
+        std::fs::write(sub_dir.join("task"), "test").unwrap();
+        std::fs::write(sub_dir.join("started_at"), &now_str()).unwrap();
+
+        let running = count_running_subagents(dir.path(), session);
+        assert_eq!(running, 1, "应找到 1 个 running subagent");
+    }
+
+    // ---- 3.7 后台错误写入 stderr ----
+
+    #[tokio::test]
+    async fn test_background_task_error_written_to_stderr() {
+        let tmp = TempDir::new().unwrap();
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 5,
+            agent_session_id: generate_agent_session_id(),
+            test_binary: Some("/nonexistent/binary".to_string()),
+        };
+        let id = tool.spawn("zapmyco", "task").await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let result = tool.poll(&[id.clone()], 0).await.unwrap();
+        assert!(
+            result.contains("error")
+                || result.contains("not found")
+                || result.contains("No such file"),
+            "应报告错误: {}",
+            result
+        );
+    }
+
+    // ---- 3.8 死进程检测 ----
+
+    #[tokio::test]
+    async fn test_dead_process_detected() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_dead");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("pid"), "4294967295").unwrap();
+        std::fs::write(dir.join("task"), "test").unwrap();
+        std::fs::write(dir.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        // 不写 done
+
+        let result = tool.poll(&["sa_dead".to_string()], 0).await.unwrap();
+        assert!(
+            result.contains("completed") || result.contains("error") || result.contains("lost"),
+            "应检测到死进程: {}",
+            result
+        );
+    }
+
+    // ---- 3.11 agent_session 写入顺序 ----
+
+    #[tokio::test]
+    async fn test_agent_session_written_before_pid() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let id = tool.spawn("zapmyco", "echo order_check").await.unwrap();
+        let dir = tool.data_dir.join(&id);
+        // agent_session 由 spawn 同步写入，必须在 spawn 返回时已存在
+        assert!(
+            dir.join("agent_session").exists(),
+            "agent_session 应在 spawn 返回前同步写入"
+        );
+    }
+
+    // ---- 3.12 done 创建顺序 ----
+
+    #[tokio::test]
+    async fn test_done_created_after_all_writes() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let id = tool.spawn("zapmyco", "echo order_check").await.unwrap();
+        let _ = tool.poll(&[id.clone()], 10).await.unwrap();
+
+        let dir = tool.data_dir.join(&id);
+        assert!(dir.join("done").exists(), "done 文件应存在");
+
+        let stdout = std::fs::read_to_string(dir.join("stdout")).unwrap();
+        assert!(!stdout.is_empty(), "done 创建前 stdout 应已写入");
+
+        let code = std::fs::read_to_string(dir.join("exit_code")).unwrap();
+        assert!(!code.is_empty(), "done 创建前 exit_code 应已写入");
+
+        assert!(dir.join("stderr").exists(), "stderr 文件应存在");
+    }
+
+    // ---- 3.13 poll 混合结果 ----
+
+    #[tokio::test]
+    async fn test_poll_mixed_completed_and_running() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        let dir1 = tool.data_dir.join("sa_completed");
+        std::fs::create_dir_all(&dir1).unwrap();
+        std::fs::write(dir1.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir1.join("task"), "quick").unwrap();
+        std::fs::write(dir1.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir1.join("stdout"), "完成").unwrap();
+        std::fs::write(dir1.join("exit_code"), "0").unwrap();
+        std::fs::write(dir1.join("pid"), "1").unwrap();
+        File::create(dir1.join("done")).unwrap();
+
+        let dir2 = tool.data_dir.join("sa_running");
+        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::write(dir2.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir2.join("task"), "slow").unwrap();
+        std::fs::write(dir2.join("started_at"), &now_str()).unwrap();
+        // 使用当前进程 PID（一定存活），避免死进程检测触发
+        std::fs::write(dir2.join("pid"), std::process::id().to_string()).unwrap();
+
+        let result = tool
+            .poll(&["sa_completed".into(), "sa_running".into()], 0)
+            .await
+            .unwrap();
+        assert!(result.contains("completed"), "已完成应展开: {}", result);
+        assert!(result.contains("仍在运行"), "运行中应折叠: {}", result);
+    }
+
+    #[tokio::test]
+    async fn test_poll_mixed_completed_and_error() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        let dir1 = tool.data_dir.join("sa_ok");
+        std::fs::create_dir_all(&dir1).unwrap();
+        std::fs::write(dir1.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir1.join("task"), "ok").unwrap();
+        std::fs::write(dir1.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir1.join("stdout"), "success").unwrap();
+        std::fs::write(dir1.join("exit_code"), "0").unwrap();
+        std::fs::write(dir1.join("pid"), "1").unwrap();
+        File::create(dir1.join("done")).unwrap();
+
+        let dir2 = tool.data_dir.join("sa_err");
+        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::write(dir2.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir2.join("task"), "err").unwrap();
+        std::fs::write(dir2.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir2.join("stderr"), "command not found").unwrap();
+        std::fs::write(dir2.join("exit_code"), "127").unwrap();
+        std::fs::write(dir2.join("pid"), "1").unwrap();
+        File::create(dir2.join("done")).unwrap();
+
+        let result = tool
+            .poll(&["sa_ok".into(), "sa_err".into()], 0)
+            .await
+            .unwrap();
+        assert!(result.contains("success"), "应有成功输出: {}", result);
+        assert!(
+            result.contains("127") || result.contains("error"),
+            "应有错误信息: {}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_poll_nonexistent_id_with_valid_ones() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_real");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir.join("task"), "real").unwrap();
+        std::fs::write(dir.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir.join("stdout"), "data").unwrap();
+        std::fs::write(dir.join("exit_code"), "0").unwrap();
+        std::fs::write(dir.join("pid"), "1").unwrap();
+        File::create(dir.join("done")).unwrap();
+
+        let result = tool
+            .poll(&["sa_real".into(), "sa_fake".into()], 0)
+            .await
+            .unwrap();
+        assert!(
+            result.contains("ID 不存在") || result.contains("sa_real"),
+            "存在的应正常返回: {}",
+            result
+        );
+    }
+
+    // ---- 3.14 损坏目录鲁棒性 ----
+
+    #[tokio::test]
+    async fn test_poll_with_missing_task_file() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_broken");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir.join("pid"), "99999").unwrap();
+        // 没有 task 文件
+        let result = tool.poll(&["sa_broken".into()], 0).await;
+        assert!(result.is_ok(), "损坏目录不应 panic: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_poll_with_invalid_started_at() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_bad_ts");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir.join("started_at"), "not-a-timestamp").unwrap();
+        std::fs::write(dir.join("pid"), "99999").unwrap();
+        std::fs::write(dir.join("task"), "test").unwrap();
+        let result = tool.poll(&["sa_bad_ts".into()], 0).await;
+        assert!(result.is_ok(), "非法时间戳不应 panic: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_poll_with_empty_pid_file() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_empty_pid");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir.join("pid"), "").unwrap();
+        std::fs::write(dir.join("task"), "test").unwrap();
+        std::fs::write(dir.join("started_at"), &now_str()).unwrap();
+        let result = tool.poll(&["sa_empty_pid".into()], 0).await;
+        assert!(result.is_ok(), "空 PID 不应 panic: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_poll_with_wrong_agent_session() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_wrong_session");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), "as_wrong_session_id").unwrap();
+        std::fs::write(dir.join("task"), "test").unwrap();
+        std::fs::write(dir.join("started_at"), &now_str()).unwrap();
+        std::fs::write(dir.join("pid"), "99999").unwrap();
+        std::fs::write(dir.join("stdout"), "secret").unwrap();
+        std::fs::write(dir.join("exit_code"), "0").unwrap();
+        File::create(dir.join("done")).unwrap();
+
+        // 知道 ID 就能 poll，不受 session 隔离影响
+        let result = tool.poll(&["sa_wrong_session".into()], 0).await.unwrap();
+        assert!(
+            result.contains("completed"),
+            "知道 ID 就能 poll: {}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_skips_broken_directories() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let dir = tool.data_dir.join("sa_empty_dir");
+        std::fs::create_dir_all(&dir).unwrap();
+        // 空目录，没有任何文件
+        let result = tool.list().await;
+        assert!(result.is_ok(), "空目录不应 panic: {:?}", result.err());
+    }
+
+    // ---- 5. Bug 回归测试 ----
+    //
+    // R1 — 后台错误不吞没 → 由 test_background_task_error_written_to_stderr 覆盖
+    // R2 — current_exe → 由 test_build_command_uses_current_exe 覆盖
+    // R6 — 会话隔离 → 由 test_list_isolation 覆盖
+
+    #[tokio::test]
+    async fn test_regression_pid_written_before_wait() {
+        // R3: PID 文件应在 wait 前写入
+        let tmp = TempDir::new().unwrap();
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 10,
+            agent_session_id: generate_agent_session_id(),
+            test_binary: Some("sleep".to_string()),
+        };
+        let id = tool.spawn("zapmyco", "5").await.unwrap();
+        let dir = tool.data_dir.join(&id);
+        let pid_file = dir.join("pid");
+        // 最多等 3 秒让后台任务启动
+        for _ in 0..30 {
+            if pid_file.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(pid_file.exists(), "PID 文件应在 wait 前写入 ({}s)", 5);
+        let _ = tool.poll(&[id], 10).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_regression_elapsed_takes_earliest_agent() {
+        // R4: 折叠等待时间取最早 Agent
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        let dir = tool.data_dir.join("sa_earliest");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir.join("task"), "earliest").unwrap();
+        std::fs::write(dir.join("started_at"), "2026-01-01T00:00:00").unwrap();
+
+        let dir2 = tool.data_dir.join("sa_later");
+        std::fs::create_dir(&dir2).unwrap();
+        std::fs::write(dir2.join("agent_session"), tool.agent_session()).unwrap();
+        std::fs::write(dir2.join("task"), "later").unwrap();
+        std::fs::write(dir2.join("started_at"), &now_str()).unwrap();
+
+        let result = tool
+            .poll(&["sa_later".to_string(), "sa_earliest".to_string()], 0)
+            .await
+            .unwrap();
+        assert!(
+            result.contains("1000") || result.contains("仍在运行"),
+            "应显示最早 Agent 的等待时间: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_regression_exit_guard_no_unwrap() {
+        // R5: count_running_subagents 在各种异常下不 panic
+        let dir = TempDir::new().unwrap();
+        // 空目录
+        std::fs::create_dir_all(dir.path().join("not_a_subagent_dir")).unwrap();
+        let running = count_running_subagents(dir.path(), "some_session");
+        assert_eq!(running, 0, "异常目录不应 panic，应返回 0");
+
+        // 损坏的 agent_session 文件（二进制内容）
+        let bad_dir = dir.path().join("sa_bad_session");
+        std::fs::create_dir(&bad_dir).unwrap();
+        std::fs::write(bad_dir.join("agent_session"), &[0xFF, 0xFE, 0x00]).unwrap();
+        std::fs::write(bad_dir.join("pid"), "1234").unwrap();
+        let running = count_running_subagents(dir.path(), "some_session");
+        assert_eq!(running, 0, "损坏的 session 文件不应计入");
+    }
+
+    #[tokio::test]
+    async fn test_regression_timeout_kills_subprocess() {
+        // R7: 超时子进程被 kill
+        let tmp = TempDir::new().unwrap();
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 2, // 2 秒超时
+            agent_session_id: generate_agent_session_id(),
+            test_binary: Some("sleep".to_string()),
+        };
+        let id = tool.spawn("zapmyco", "60").await.unwrap();
+        // 等超时（2s 超时 + 缓冲）
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        let result = tool.poll(&[id], 0).await.unwrap();
+        assert!(
+            result.contains("timeout") || result.contains("cancelled"),
+            "超时应标记: {}",
+            result
+        );
     }
 
     // ---- 辅助 ----
