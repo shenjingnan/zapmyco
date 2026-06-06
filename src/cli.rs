@@ -756,6 +756,47 @@ async fn cmd_run(
         }
     }
 
+    // ---- 退出前检查未完成的子 Agent（仅主 Agent） ----
+    if !subagent && let Ok(subagent_dir) = crate::tools::subagent::get_subagent_data_dir() {
+        match crate::tools::subagent::SubAgentTool::new() {
+            Ok(tool) => {
+                let session = tool.agent_session().to_string();
+                let running =
+                    crate::tools::subagent::count_running_subagents(&subagent_dir, &session);
+                if running > 0 {
+                    eprintln!(
+                        "
+[SubAgent] 仍有 {} 个子代理在后台运行:",
+                        running
+                    );
+                    if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
+                        for entry in entries.flatten() {
+                            let dir = entry.path();
+                            if !dir.join("done").exists()
+                                && dir.join("pid").exists()
+                                && std::fs::read_to_string(dir.join("agent_session"))
+                                    .map(|s| s.trim() == session)
+                                    .unwrap_or(false)
+                            {
+                                let id = dir
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy())
+                                    .unwrap_or_default();
+                                let task =
+                                    std::fs::read_to_string(dir.join("task")).unwrap_or_default();
+                                eprintln!("  ├ {} — {}", id, task.lines().next().unwrap_or(""));
+                            }
+                        }
+                    }
+                    eprintln!("  └ 结果保留在: {}", subagent_dir.display());
+                }
+            }
+            Err(e) => {
+                eprintln!("[SubAgent] 检查子代理失败: {}", e);
+            }
+        }
+    }
+
     println!();
     Ok(())
 }
