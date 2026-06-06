@@ -1546,7 +1546,21 @@ mod tests {
         let tool = test_tool(&tmp);
         let dir = tool.data_dir.join("sa_dead");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("pid"), "4294967295").unwrap();
+
+        // 使用一个已退出的真实进程的 PID（避免 4294967295 在 Linux 上被解释为 -1）
+        #[cfg(unix)]
+        let mut child = std::process::Command::new("true")
+            .spawn()
+            .expect("failed to spawn true");
+        #[cfg(windows)]
+        let mut child = std::process::Command::new("cmd")
+            .args(["/c", "exit", "0"])
+            .spawn()
+            .expect("failed to spawn cmd");
+        let pid = child.id();
+        let _ = child.wait(); // 等待退出，此时 PID 不再存在
+
+        std::fs::write(dir.join("pid"), pid.to_string()).unwrap();
         std::fs::write(dir.join("task"), "test").unwrap();
         std::fs::write(dir.join("started_at"), &now_str()).unwrap();
         std::fs::write(dir.join("agent_session"), tool.agent_session()).unwrap();
