@@ -355,4 +355,97 @@ mod tests {
         let result = json_to_conversation_message(&json);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_load_conversation_multiple_records_uses_last() {
+        run_with_temp_home(|home| {
+            let dir = home.join(".zapmyco/conversations");
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("multi-record.jsonl");
+
+            // 写入 3 条记录，每条消息数递增
+            let rec1 = serde_json::json!({
+                "session_id": "multi-record",
+                "order": 0,
+                "ts": "2026-06-05T12:00:00Z",
+                "duration_ms": 100,
+                "request": {
+                    "model": "test",
+                    "messages": [
+                        {"role": "user", "content": "msg from record 1"}
+                    ],
+                    "max_tokens": 100
+                },
+                "response": {"content": "ok"}
+            });
+            let rec2 = serde_json::json!({
+                "session_id": "multi-record",
+                "order": 1,
+                "ts": "2026-06-05T12:00:01Z",
+                "duration_ms": 100,
+                "request": {
+                    "model": "test",
+                    "messages": [
+                        {"role": "user", "content": "msg from record 2"}
+                    ],
+                    "max_tokens": 100
+                },
+                "response": {"content": "ok"}
+            });
+            let rec3 = serde_json::json!({
+                "session_id": "multi-record",
+                "order": 2,
+                "ts": "2026-06-05T12:00:02Z",
+                "duration_ms": 100,
+                "request": {
+                    "model": "test",
+                    "messages": [
+                        {"role": "user", "content": "from last"},
+                        {"role": "assistant", "content": "last reply"}
+                    ],
+                    "max_tokens": 100
+                },
+                "response": {"content": "ok"}
+            });
+
+            let content = format!(
+                "{}\n{}\n{}\n",
+                serde_json::to_string(&rec1).unwrap(),
+                serde_json::to_string(&rec2).unwrap(),
+                serde_json::to_string(&rec3).unwrap()
+            );
+            std::fs::write(&path, &content).unwrap();
+
+            let messages = load_conversation("multi-record").unwrap();
+            assert_eq!(messages.len(), 2, "应使用最后一条记录的 2 条消息");
+            assert_eq!(messages[0].content, "from last");
+            assert_eq!(messages[1].content, "last reply");
+        });
+    }
+
+    #[test]
+    fn test_json_to_conversation_preserves_context_reminder() {
+        // 构造一个包含 context_reminder 的模拟消息
+        let reminder = crate::agent::system_prompt::build_context_reminder(None);
+        let full_text = format!("{}{}", reminder, "actual task");
+
+        let json = serde_json::json!({
+            "role": "user",
+            "content": full_text
+        });
+
+        let msg = json_to_conversation_message(&json).unwrap();
+        assert_eq!(msg.role, "user");
+        assert!(
+            msg.content.contains("<system-reminder>"),
+            "应包含 system-reminder 标签"
+        );
+        assert!(msg.content.contains("</system-reminder>"), "应包含闭合标签");
+        assert!(msg.content.contains("actual task"), "应包含原始任务文本");
+        assert!(
+            msg.content.contains("当前工作目录："),
+            "应包含 context_reminder 内容"
+        );
+        assert!(msg.blocks.is_none(), "纯字符串内容不应有 blocks");
+    }
 }
