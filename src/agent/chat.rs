@@ -629,6 +629,15 @@ impl AiAgent {
         });
     }
 
+    /// 注入历史消息（用于 --conversation 恢复上下文）
+    ///
+    /// 将之前会话的消息历史注入当前 agent，同时设置 `context_injected = true`
+    /// 防止 `chat_with_tools` 重复注入 context_reminder。
+    pub fn inject_history(&mut self, history: Vec<ConversationMessage>) {
+        self.messages = history;
+        self.context_injected = true;
+    }
+
     /// 带工具调用的对话 - 自动处理 ToolUse 循环
     ///
     /// 使用统一流式请求，在工具调用阶段实时输出 LLM 推理文本，
@@ -4392,6 +4401,320 @@ mod tests {
             assert!(result.is_ok());
             let agent = result.unwrap();
             assert_eq!(agent.model, "deepseek-v4-flash");
+        });
+    }
+
+    // ===== inject_history 单元测试 =====
+
+    #[test]
+    fn test_inject_history_replaces_messages() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // 先添加一些初始消息
+            agent.messages.push(ConversationMessage {
+                role: "user".to_string(),
+                content: "old message".to_string(),
+                blocks: None,
+            });
+
+            let history = vec![
+                ConversationMessage {
+                    role: "user".to_string(),
+                    content: "new message 1".to_string(),
+                    blocks: None,
+                },
+                ConversationMessage {
+                    role: "assistant".to_string(),
+                    content: "new message 2".to_string(),
+                    blocks: None,
+                },
+            ];
+
+            agent.inject_history(history);
+
+            // messages 应被替换为新的历史（2 条），而非追加（原有 1 条 → 3 条）
+            assert_eq!(agent.messages.len(), 2, "messages 应被替换而非追加");
+            assert_eq!(agent.messages[0].content, "new message 1");
+            assert_eq!(agent.messages[1].content, "new message 2");
+        });
+    }
+
+    #[test]
+    fn test_inject_history_sets_context_injected() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // 初始状态
+            assert!(!agent.context_injected, "初始 context_injected 应为 false");
+
+            agent.inject_history(vec![ConversationMessage {
+                role: "user".to_string(),
+                content: "test".to_string(),
+                blocks: None,
+            }]);
+
+            assert!(
+                agent.context_injected,
+                "inject_history 后 context_injected 应为 true"
+            );
+        });
+    }
+
+    #[test]
+    fn test_inject_history_empty_clears_messages() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            agent.messages.push(ConversationMessage {
+                role: "user".to_string(),
+                content: "existing".to_string(),
+                blocks: None,
+            });
+
+            agent.inject_history(vec![]);
+
+            assert!(agent.messages.is_empty(), "注入空历史后 messages 应被清空");
+            assert!(
+                agent.context_injected,
+                "注入空历史后 context_injected 应为 true"
+            );
+        });
+    }
+
+    #[test]
+    fn test_inject_history_build_params_preserves_content() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // 注入含 text + tool_use blocks 的历史
+            let history = vec![
+                ConversationMessage {
+                    role: "user".to_string(),
+                    content: "find files".to_string(),
+                    blocks: None,
+                },
+                ConversationMessage {
+                    role: "assistant".to_string(),
+                    content: String::new(),
+                    blocks: Some(vec![ContentBlock::ToolUse {
+                        id: "tu1".to_string(),
+                        name: "file_find".to_string(),
+                        input: serde_json::json!({"pattern": "*.rs"}),
+                    }]),
+                },
+            ];
+
+            agent.inject_history(history);
+            let params = agent.build_params(false).unwrap();
+
+            assert_eq!(params.messages.len(), 2, "build_params 应包含 2 条消息");
+
+            // 第一条应为 Text 变体
+            assert!(
+                matches!(
+                    params.messages[0].content,
+                    zapmyco_anthropic_ai_sdk::types::message::MessageContent::Text { .. }
+                ),
+                "纯文本消息应有 Text 变体"
+            );
+
+            // 第二条应为 Blocks 变体
+            assert!(
+                matches!(
+                    params.messages[1].content,
+                    zapmyco_anthropic_ai_sdk::types::message::MessageContent::Blocks { .. }
+                ),
+                "tool_use 消息应有 Blocks 变体"
+            );
+        });
+    }
+
+    #[test]
+    fn test_inject_history_then_new_message_no_context_reminder() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // 用 simulate_first_turn 构造含 context_reminder 的历史
+            simulate_first_turn(&mut agent, "original task");
+            simulate_turn(&mut agent, "follow up", Some("previous response"));
+
+            let history = agent.messages.clone();
+            let history_count = history.len();
+
+            // 创建新 agent 模拟 --conversation 场景
+            let mut new_agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            new_agent.inject_history(history);
+
+            // 验证 context_injected 已被设置
+            assert!(
+                new_agent.context_injected,
+                "inject_history 应设置 context_injected = true"
+            );
+            assert_eq!(
+                new_agent.messages.len(),
+                history_count,
+                "messages 应与注入的历史条数一致"
+            );
+
+            // 历史消息的第一条应包含 context_reminder
+            assert!(
+                new_agent.messages[0].content.contains("<system-reminder>"),
+                "历史消息应包含 context_reminder"
+            );
+
+            // 模拟 chat_with_tools 在 context_injected = true 时的行为
+            let new_input = "new task";
+            let full_input = new_input.to_string();
+            new_agent.messages.push(ConversationMessage {
+                role: "user".to_string(),
+                content: full_input,
+                blocks: None,
+            });
+
+            // 新消息不应含 context_reminder
+            assert!(
+                !new_agent
+                    .messages
+                    .last()
+                    .unwrap()
+                    .content
+                    .contains("<system-reminder>"),
+                "inject_history 后的新消息不应含 context_reminder"
+            );
+            assert_eq!(
+                new_agent.messages.last().unwrap().content,
+                "new task",
+                "新消息内容应为原始输入"
+            );
+
+            // build_params 验证总消息数正确
+            let params = new_agent.build_params(false).unwrap();
+            assert_eq!(
+                params.messages.len(),
+                history_count + 1,
+                "总消息数 = 历史消息数 + 1 条新消息"
+            );
+        });
+    }
+
+    // ===== 对话日志回环测试 =====
+
+    #[test]
+    fn test_conversation_log_round_trip_content_preserved() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+
+            // 构建含 context_reminder 的多轮对话
+            let mut agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            simulate_first_turn(&mut agent, "search files");
+            simulate_turn(
+                &mut agent,
+                "find .rs files",
+                Some("I found these: main.rs, lib.rs"),
+            );
+            simulate_turn(
+                &mut agent,
+                "show me main.rs",
+                Some("Here's the content of main.rs"),
+            );
+
+            let original_messages = agent.messages.clone();
+
+            // 从 agent 构建 API 参数
+            let params = agent.build_params(true).unwrap();
+
+            // 创建 logger 并写入日志
+            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
+            let result = crate::agent::stream::RoundResult {
+                full_text: "Here's the content of main.rs".to_string(),
+                tool_uses: vec![],
+                blocks: vec![ContentBlock::Text {
+                    text: "Here's the content of main.rs".to_string(),
+                    citations: None,
+                }],
+                input_tokens: 80,
+                output_tokens: 20,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                duration_ms: 200,
+                model: "test-model".to_string(),
+            };
+            crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 200);
+
+            // 从 JSONL 加载回消息
+            let loaded =
+                crate::agent::conversation_loader::load_conversation(logger.session_id()).unwrap();
+
+            // 验证消息条数一致
+            assert_eq!(
+                loaded.len(),
+                original_messages.len(),
+                "回环后的消息数应与原始一致"
+            );
+
+            // 逐条验证 role + content 完全一致
+            for (i, (orig, ld)) in original_messages.iter().zip(loaded.iter()).enumerate() {
+                assert_eq!(
+                    orig.role, ld.role,
+                    "[{}] role 不一致: original={:?}, loaded={:?}",
+                    i, orig.role, ld.role
+                );
+                assert_eq!(
+                    orig.content, ld.content,
+                    "[{}] content 不一致:\n  original: {:?}\n  loaded:   {:?}",
+                    i, orig.content, ld.content
+                );
+            }
+
+            // 验证 context_reminder 被完整保留
+            assert!(
+                loaded[0].content.contains("<system-reminder>"),
+                "回环后 context_reminder 应被保留"
+            );
+            assert!(
+                loaded[0].content.contains("search files"),
+                "回环后用户输入应被保留"
+            );
+            assert!(
+                loaded[0].blocks.is_none(),
+                "纯文本消息经过回环后 blocks 应为 None"
+            );
         });
     }
 }

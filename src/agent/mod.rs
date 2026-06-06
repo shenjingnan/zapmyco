@@ -1,5 +1,6 @@
 pub mod agents_md;
 pub mod chat;
+pub mod conversation_loader;
 pub mod conversation_logger;
 pub mod env_info;
 pub mod executor;

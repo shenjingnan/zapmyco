@@ -94,7 +94,7 @@ impl ConversationLogger {
 }
 
 /// 获取日志目录路径: ~/.zapmyco/conversations/
-fn get_log_dir() -> Result<PathBuf, String> {
+pub(crate) fn get_log_dir() -> Result<PathBuf, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| "无法获取用户 HOME 目录".to_string())?;
