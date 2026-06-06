@@ -1,9 +1,8 @@
 //! 历史会话加载器 — 从 ~/.zapmyco/conversations/*.jsonl 重建消息历史
 //!
-//! 提供三个公共函数：
+//! 提供两个公共函数：
 //! - `list_conversations()` — 列出所有可用会话
 //! - `load_conversation(session_id)` — 加载指定会话的消息
-//! - `select_conversation_interactively()` — 交互式选择会话
 
 use std::path::PathBuf;
 
@@ -123,43 +122,6 @@ pub fn load_conversation(session_id: &str) -> Result<Vec<ConversationMessage>, S
         .ok_or_else(|| "会话文件中未找到消息记录".to_string())?;
 
     messages.iter().map(json_to_conversation_message).collect()
-}
-
-/// 交互式选择会话（使用 inquire::Select）
-pub fn select_conversation_interactively() -> Result<String, String> {
-    let conversations = list_conversations()?;
-
-    if conversations.is_empty() {
-        return Err("~/.zapmyco/conversations/ 中没有找到历史会话。\
-                     \n请先执行 `zapmyco run <任务>` 产生会话后再使用 --conversation。"
-            .to_string());
-    }
-
-    let options: Vec<String> = conversations
-        .iter()
-        .map(|c| {
-            let date = if c.first_message_time.len() >= 10 {
-                &c.first_message_time[..10]
-            } else {
-                &c.first_message_time
-            };
-            format!("{} | {} 条消息 | {}", date, c.message_count, c.preview)
-        })
-        .collect();
-
-    let selection = inquire::Select::new("选择要恢复的会话:", options.clone())
-        .prompt()
-        .map_err(|e| match e {
-            inquire::InquireError::OperationCanceled => "已取消选择".to_string(),
-            _ => format!("选择会话失败: {}", e),
-        })?;
-
-    let idx = options
-        .iter()
-        .position(|o| o == &selection)
-        .expect("选中的项应存在于列表中");
-
-    Ok(conversations[idx].session_id.clone())
 }
 
 // ---- 内部辅助函数 ----
