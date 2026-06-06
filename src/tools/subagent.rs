@@ -266,7 +266,10 @@ impl SubAgentTool {
 
                 write_file(&dir_clone.join("stdout"), &stdout)?;
                 write_file(&dir_clone.join("stderr"), &stderr)?;
-                write_file(&dir_clone.join("exit_code"), &exit_code)?;
+                // kill() 可能已先写入，不覆盖其 exit_code（竞态保护）
+                if !dir_clone.join("done").exists() {
+                    write_file(&dir_clone.join("exit_code"), &exit_code)?;
+                }
                 Ok::<_, String>(())
             }
             .await;
@@ -463,6 +466,8 @@ impl SubAgentTool {
                     let _ = std::fs::write(dir.join("exit_code"), "-15");
                     let _ = std::fs::write(dir.join("stdout"), "(cancelled by user)");
                     let _ = std::fs::File::create(dir.join("done"));
+                    // 再次写入确保不被后台任务覆盖（竞态保护）
+                    let _ = std::fs::write(dir.join("exit_code"), "-15");
                     results.push(format!("{}: cancelled (SIGTERM → PID {})", id, pid));
                 } else {
                     results.push(format!("{}: 无效的 PID", id));
