@@ -1067,8 +1067,33 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_is_process_alive_nonexistent_pid() {
-        assert!(!is_process_alive(4294967295));
+        // 创建一个立即退出的进程，获取其 PID 后等待退出
+        // 退出后的 PID 保证不再存在（PID 重用竞争概率极低）
+        let mut child = std::process::Command::new("true")
+            .spawn()
+            .expect("failed to spawn true");
+        let pid = child.id();
+        let _ = child.wait(); // 等待退出
+        assert!(
+            !is_process_alive(pid),
+            "PID {} 不应再存在（进程已退出）",
+            pid
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_is_process_alive_nonexistent_pid() {
+        // Windows 上使用 cmd /c exit 0
+        let mut child = std::process::Command::new("cmd")
+            .args(&["/c", "exit", "0"])
+            .spawn()
+            .expect("failed to spawn cmd");
+        let pid = child.id();
+        let _ = child.wait();
+        assert!(!is_process_alive(pid));
     }
 
     // ---- 2.12 状态判断 ----
