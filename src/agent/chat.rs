@@ -677,6 +677,9 @@ impl AiAgent {
 
             let result = self.stream_one_round(&mut on_chunk).await?;
 
+            // 流式文本与后续日志之间换行
+            eprintln!();
+
             // 输出 token 用量
             crate::agent::executor::print_usage_line(
                 Some(round),

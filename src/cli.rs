@@ -692,9 +692,9 @@ async fn cmd_run(
     // ---- 第一阶段：执行用户原始输入 ----
     let _response = agent
         .chat_with_tools(content, |chunk| {
-            print!("{}", chunk);
+            eprint!("{}", chunk);
             use std::io::Write;
-            std::io::stdout().flush().ok();
+            std::io::stderr().flush().ok();
         })
         .await?;
 
@@ -728,9 +728,9 @@ async fn cmd_run(
 
         let result = tokio::select! {
             result = agent.chat_with_tools(&continuation, |chunk| {
-                print!("{}", chunk);
+                eprint!("{}", chunk);
                 use std::io::Write;
-                std::io::stdout().flush().ok();
+                std::io::stderr().flush().ok();
             }) => Some(result),
             _ = tokio::signal::ctrl_c() => None,
         };

@@ -228,6 +228,7 @@ impl SubAgentTool {
 
                 let mut child = Command::new(&binary)
                     .args(&args)
+                    .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
