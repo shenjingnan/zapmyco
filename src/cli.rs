@@ -221,6 +221,9 @@ pub enum Commands {
         /// 复用指定会话的上下文历史（Tab 可补全可用会话）
         #[arg(long, value_parser = ConversationIdValueParser)]
         conversation: Option<String>,
+        /// 标记此进程为子 Agent（隐藏，由 SubAgent 工具自动传入）
+        #[arg(long, hide = true)]
+        subagent: bool,
     },
     /// 快速记录笔记 — 灵感、待办、想法
     Note {
@@ -560,6 +563,7 @@ async fn cmd_run(
     model: Option<&str>,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    subagent: bool,
 ) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
@@ -652,6 +656,13 @@ async fn cmd_run(
         task_manager.clone(),
     ));
 
+    // ---- 注册 SubAgent 工具（子进程模式跳过） ----
+    if !subagent {
+        let subagent_tool = crate::tools::subagent::SubAgentTool::new()
+            .map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
+        agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
+    }
+
     // ---- 根据权限模式过滤工具 ----
     if permission_mode != PermissionMode::Full {
         let deny_tools: &[&str] = match permission_mode {
@@ -681,9 +692,9 @@ async fn cmd_run(
     // ---- 第一阶段：执行用户原始输入 ----
     let _response = agent
         .chat_with_tools(content, |chunk| {
-            print!("{}", chunk);
+            eprint!("{}", chunk);
             use std::io::Write;
-            std::io::stdout().flush().ok();
+            std::io::stderr().flush().ok();
         })
         .await?;
 
@@ -717,9 +728,9 @@ async fn cmd_run(
 
         let result = tokio::select! {
             result = agent.chat_with_tools(&continuation, |chunk| {
-                print!("{}", chunk);
+                eprint!("{}", chunk);
                 use std::io::Write;
-                std::io::stdout().flush().ok();
+                std::io::stderr().flush().ok();
             }) => Some(result),
             _ = tokio::signal::ctrl_c() => None,
         };
@@ -741,6 +752,47 @@ async fn cmd_run(
                     user_input,
                 ));
                 task_completed = true;
+            }
+        }
+    }
+
+    // ---- 退出前检查未完成的子 Agent（仅主 Agent） ----
+    if !subagent && let Ok(subagent_dir) = crate::tools::subagent::get_subagent_data_dir() {
+        match crate::tools::subagent::SubAgentTool::new() {
+            Ok(tool) => {
+                let session = tool.agent_session().to_string();
+                let running =
+                    crate::tools::subagent::count_running_subagents(&subagent_dir, &session);
+                if running > 0 {
+                    eprintln!(
+                        "
+[SubAgent] 仍有 {} 个子代理在后台运行:",
+                        running
+                    );
+                    if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
+                        for entry in entries.flatten() {
+                            let dir = entry.path();
+                            if !dir.join("done").exists()
+                                && dir.join("pid").exists()
+                                && std::fs::read_to_string(dir.join("agent_session"))
+                                    .map(|s| s.trim() == session)
+                                    .unwrap_or(false)
+                            {
+                                let id = dir
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy())
+                                    .unwrap_or_default();
+                                let task =
+                                    std::fs::read_to_string(dir.join("task")).unwrap_or_default();
+                                eprintln!("  ├ {} — {}", id, task.lines().next().unwrap_or(""));
+                            }
+                        }
+                    }
+                    eprintln!("  └ 结果保留在: {}", subagent_dir.display());
+                }
+            }
+            Err(e) => {
+                eprintln!("[SubAgent] 检查子代理失败: {}", e);
             }
         }
     }
@@ -1345,6 +1397,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             model,
             api_key,
             base_url,
+            subagent,
         }) => {
             cmd_run(
                 &content,
@@ -1355,6 +1408,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 model.as_deref(),
                 api_key.as_deref(),
                 base_url.as_deref(),
+                subagent,
             )
             .await
         }
@@ -1415,7 +1469,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_empty_content() {
-        let result = cmd_run("", None, PermissionMode::Full, None, None, None, None, None).await;
+        let result = cmd_run(
+            "",
+            None,
+            PermissionMode::Full,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -1437,6 +1502,7 @@ mod tests {
             None,
             None,
             None,
+            false,
         )
         .await;
         assert!(result.is_err());
@@ -2862,4 +2928,47 @@ mod tests {
         let result = map_short_v_flag(&args);
         assert!(result.is_empty());
     }
+
+    // ---- 4. SubAgent 条件注册 ----
+
+    #[test]
+    fn test_run_args_subagent_default_false() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "task"]).unwrap();
+        if let Commands::Run { subagent, .. } = cli.command.unwrap() {
+            assert!(!subagent, "默认 --subagent 应为 false");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_run_args_subagent_flag() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "--subagent", "task"]).unwrap();
+        if let Commands::Run { subagent, .. } = cli.command.unwrap() {
+            assert!(subagent, "--subagent 应被解析为 true");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_run_args_subagent_is_hidden() {
+        // --subagent 是隐藏参数，不会出现在 help 中
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let run_cmd = cmd
+            .get_subcommands()
+            .find(|c| c.get_name() == "run")
+            .expect("run subcommand should exist");
+        let help = run_cmd.clone().render_help().to_string();
+        assert!(!help.contains("--subagent"), "隐藏参数不应出现在 help 中");
+    }
+
+    // test_cmd_run_skips_subagent_tool_when_subagent_flag:
+    // 验证 --subagent 时跳过 SubAgent 工具注册
+    // 需要创建 settings.toml + mock LLM，属于端到端集成测试
+    //
+    // test_cmd_run_registers_subagent_tool_by_default:
+    // 验证没有 --subagent 时 SubAgent 工具已注册
+    // 同上，需要完整 LLM 环境
 }

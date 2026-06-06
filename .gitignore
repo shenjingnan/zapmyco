@@ -22,6 +22,9 @@ settings.local.json
 # Claude Code
 .claude/
 
+# Agent plans
+.agents/plans/
+
 # Git worktrees
 .worktrees/
 

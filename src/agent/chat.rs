@@ -71,6 +71,8 @@ pub enum ToolHandler {
     TaskGet(std::sync::Arc<crate::tools::task_manager::TaskManager>),
     TaskList(std::sync::Arc<crate::tools::task_manager::TaskManager>),
     TaskUpdate(std::sync::Arc<crate::tools::task_manager::TaskManager>),
+    /// SubAgent 子代理工具 — 通过子进程执行独立任务
+    SubAgent(crate::tools::subagent::SubAgentTool),
 }
 
 impl ToolHandler {
@@ -91,6 +93,7 @@ impl ToolHandler {
             ToolHandler::TaskUpdate(_) => {
                 crate::tools::task_update::TaskUpdateTool::tool_definition()
             }
+            ToolHandler::SubAgent(_) => crate::tools::subagent::SubAgentTool::tool_definition(),
         }
     }
 
@@ -146,6 +149,7 @@ impl ToolHandler {
                 };
                 tool.execute(input).await
             }
+            ToolHandler::SubAgent(s) => s.execute(input).await,
         }
     }
 
@@ -199,6 +203,8 @@ impl ToolHandler {
                     false
                 }
             }
+            // SubAgent — 所有 action 均为并发安全（input 由内部判断）
+            ToolHandler::SubAgent(s) => s.is_concurrency_safe(input),
             // 写操作、交互操作 —— 不安全
             ToolHandler::FileEdit(_)
             | ToolHandler::FileWrite(_)
@@ -670,6 +676,9 @@ impl AiAgent {
             eprintln!("\n[LLM] 🤔 思考中...");
 
             let result = self.stream_one_round(&mut on_chunk).await?;
+
+            // 流式文本与后续日志之间换行
+            eprintln!();
 
             // 输出 token 用量
             crate::agent::executor::print_usage_line(

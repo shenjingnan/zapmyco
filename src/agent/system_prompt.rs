@@ -66,7 +66,30 @@ pub const BEHAVIORAL_GUIDANCE: &str = "\n\
     \n\
     注意：每次工具调用轮次只处理一个任务。完成后标记 completed \
     然后检查 task_list 找出下一个可用任务。\
-    被 blocked 的任务跳过，等依赖任务完成后再处理。";
+    被 blocked 的任务跳过，等依赖任务完成后再处理。\
+    \n\
+    ## SubAgent 使用策略\n\
+    \n\
+    SubAgent 允许你将独立子任务分配给子进程去执行，实现真正的并行处理。\
+    \n\
+    可用操作：\n\
+    - subagent(action=\"spawn\", cli=\"zapmyco\", task=\"...\") — 创建子代理，立即返回 ID\n\
+    - subagent(action=\"poll\", subagent_ids=[\"id1\", \"id2\"]) — 查询结果，支持批量\n\
+    - subagent(action=\"list\") — 列出当前会话所有子代理状态\n\
+    - subagent(action=\"kill\", subagent_ids=[\"id1\"]) — 终止正在运行的子代理\n\
+    \n\
+    使用流程：\n\
+    1. spawn 多个子代理 → 全部并发执行\n\
+    2. poll 收集结果（已内置首次 5 秒等待，短任务自动完成）\n\
+    3. list 查看所有子代理（适用于忘记 ID）\n\
+    4. 对方向错误的子代理使用 kill 及时终止\n\
+    \n\
+    注意事项：\n\
+    - 每个 subagent 是冷启动，任务描述中提供足够上下文\n\
+    - poll 已内置 5 秒等待，短任务无需再次 poll\n\
+    - 截断的结果（标注 OUTPUT TRUNCATED）说明输出不完整\n\
+    - 超时或无效的子代理直接放弃或 kill，不要阻塞主流程\n\
+    - 如忘记 subagent_id，使用 list 查询";
 
 /// 系统提示词构建器
 ///
