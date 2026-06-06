@@ -26,8 +26,9 @@ pub(crate) fn tool_icon(name: &str) -> &'static str {
         "web_search" => "\u{1f310}",                      // 🌐
         "web_fetch" => "\u{1f4e1}",                       // 📡
         "ask_user" => "\u{1f4ac}",                        // 💬
-        "task_create" | "task_get" | "task_list" | "task_update" => "\u{1f4cb}", // 📋
-        _ => "\u{1f527}",                                 // 🔧
+        "task_create" | "task_get" | "task_list" | "task_update" => "\u{1f4cb}",
+        "subagent" => "\u{1f916}", // 📋
+        _ => "\u{1f527}",          // 🔧
     }
 }
 
@@ -166,6 +167,11 @@ pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String
             .map(|s| format!("#{}", s))
             .unwrap_or_default(),
         "task_list" => String::new(),
+        "subagent" => input
+            .get("task")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate_str(s, 60).to_string())
+            .unwrap_or_default(),
         _ => String::new(),
     }
 }

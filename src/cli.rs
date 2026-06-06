@@ -221,6 +221,9 @@ pub enum Commands {
         /// 复用指定会话的上下文历史（Tab 可补全可用会话）
         #[arg(long, value_parser = ConversationIdValueParser)]
         conversation: Option<String>,
+        /// 标记此进程为子 Agent（隐藏，由 SubAgent 工具自动传入）
+        #[arg(long, hide = true)]
+        subagent: bool,
     },
     /// 快速记录笔记 — 灵感、待办、想法
     Note {
@@ -560,6 +563,7 @@ async fn cmd_run(
     model: Option<&str>,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    subagent: bool,
 ) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
@@ -651,6 +655,13 @@ async fn cmd_run(
     agent.register_tool(crate::agent::chat::ToolHandler::TaskUpdate(
         task_manager.clone(),
     ));
+
+    // ---- 注册 SubAgent 工具（子进程模式跳过） ----
+    if !subagent {
+        let subagent_tool = crate::tools::subagent::SubAgentTool::new()
+            .map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
+        agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
+    }
 
     // ---- 根据权限模式过滤工具 ----
     if permission_mode != PermissionMode::Full {
@@ -1345,6 +1356,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             model,
             api_key,
             base_url,
+            subagent,
         }) => {
             cmd_run(
                 &content,
@@ -1355,6 +1367,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 model.as_deref(),
                 api_key.as_deref(),
                 base_url.as_deref(),
+                subagent,
             )
             .await
         }
@@ -1415,7 +1428,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_empty_content() {
-        let result = cmd_run("", None, PermissionMode::Full, None, None, None, None, None).await;
+        let result = cmd_run(
+            "",
+            None,
+            PermissionMode::Full,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -1437,6 +1461,7 @@ mod tests {
             None,
             None,
             None,
+            false,
         )
         .await;
         assert!(result.is_err());
