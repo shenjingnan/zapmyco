@@ -1,0 +1,93 @@
+---
+title: skill — Skill 管理
+description: 管理 Skill 工作流模板，支持 list / load 两种操作
+---
+
+管理 Skill 工作流模板。Skill 是预定义的工作流模板，包含详细的执行规则和步骤，以 `SKILL.md` 文件存储。
+
+**适用场景**：查看可用 Skill、运行时动态加载某个 Skill、查看 Skill 的详细指令。
+
+## 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `action` | string | 是 | 操作类型：`list`、`load` |
+| `name` | string | load 时 | 要加载的 Skill 名称 |
+
+## 操作说明
+
+### `list` — 列出可用 Skill
+
+列出所有可用 Skill 的名称、描述和来源层级（项目/通用/用户）。
+
+```json
+{"action": "list"}
+```
+
+返回格式：
+
+```
+- **code-review**: 审查代码变更（项目）
+- **check**: 运行完整的代码质量检查（项目(.agents)）
+- **build**: 构建 npm 包或编译二进制文件（项目(.agents)）
+使用 action=load 加载某个 skill 来使用。
+```
+
+### `load` — 加载 Skill
+
+加载指定 Skill 的完整指令内容。调用后 AI 应仔细阅读并遵循 Skill 中的规则。
+
+```json
+{
+  "action": "load",
+  "name": "code-review"
+}
+```
+
+返回格式：
+
+```
+## Skill: code-review
+
+# Code Review Skill
+...
+```
+
+## 约束与限制
+
+| 限制项 | 值 |
+|--------|:----:|
+| action 类型 | 仅支持 `list` 和 `load` |
+| Skill 名称 | 不能包含 `/`、`\`、`..`（路径遍历防护） |
+| 目录名与 name 匹配 | 必须一致，否则报错 |
+| 并发安全 | 是（所有 action 均为只读） |
+
+## 错误场景
+
+| 错误类型 | 说明 |
+|----------|------|
+| `action` 缺失 | 返回错误提示可选值 |
+| action 不支持 | 返回 `不支持的 action: 'xxx'（支持: list, load）` |
+| `name` 缺失（load 时） | 返回 `action 为 load 时缺少 name 参数` |
+| Skill 未找到 | 返回 `Skill 'xxx' 未找到` 并列出可用 Skill |
+| 目录名与 name 不匹配 | 返回 `目录名与 frontmatter name 'xxx' 不匹配` |
+| name 含路径遍历 | 返回 `无效的 skill 名称` |
+
+## 使用示例
+
+```bash
+# 让 LLM 列出可用 skill
+zapmyco run "列出当前可用的所有 skill"
+
+# 让 LLM 加载 code-review skill
+zapmyco run "加载 code-review skill 并按照其规则审查代码"
+
+# 使用 --skill 在启动时加载（更高效）
+zapmyco run --skill code-review
+```
+
+## 相关文档
+
+- [Skill 系统指南](/skill/overview) — Skill 系统完整指南
+- [内置工具目录](/guide/built-in-tools) — 查看所有工具
+- [CLI 使用指南](/guide/cli-usage) — `--skill` 参数详细用法

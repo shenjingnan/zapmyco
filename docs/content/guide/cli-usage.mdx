@@ -141,6 +141,7 @@ zapmyco run --base-url http://localhost:11434 '本地测试'
 | `--model <name>` | 否 | 指定 AI 模型名称，Tab 可补全内置模型名 |
 | `--api-key <key>` | 否 | 指定 API Key，覆盖 settings.toml 和环境变量 |
 | `--base-url <url>` | 否 | 指定 API 基础地址，Tab 可补全内置供应商地址 |
+| `--skill <name>` | 否 | 引用外部 Skill（对应 SKILL.md 文件），当使用 `--skill` 时 `<content>` 可省略 |
 
 **前置条件**：必须先通过 `zapmyco init` 完成初始化配置。
 
@@ -149,9 +150,9 @@ zapmyco run --base-url http://localhost:11434 '本地测试'
 - 未找到配置文件时提示运行 `zapmyco init`
 - 任务描述为空时返回错误：`任务描述不能为空`
 
-**行为说明**：AI 响应以**流式输出**方式逐字显示，完成后自动退出。
+**行为说明**：AI 响应以**流式输出**方式逐字显示，完成后自动退出。通过 `--skill` 参数可在启动时预加载 Skill 工作流模板；如果 Skill 定义了 `allowed-tools`，AI Agent 可用的工具集将自动被限制在白名单内。
 
-**工具支持**：`run` 命令内置了 3 个 AI Agent 工具，AI Agent 会自动判断何时使用它们：
+**工具支持**：`run` 命令内置了多个 AI Agent 工具，AI Agent 会自动判断何时使用它们：
 
 | 工具 | 功能 |
 |------|------|
@@ -261,6 +262,10 @@ zapmyco note ls
 
 # 一次性 AI 任务
 zapmyco run 帮我查一下今天的日期
+
+# 使用 Skill 系统
+zapmyco run --skill code-review
+zapmyco run --skill check '检查并修复代码质量问题'
 
 # 交互式 AI 对话
 zapmyco

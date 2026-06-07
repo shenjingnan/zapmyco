@@ -1,0 +1,61 @@
+---
+title: 快速上手
+description: Skill 系统让 AI Agent 加载预定义的工作流模板，实现结构化、可复用的任务执行
+---
+
+Skill 是预定义的工作流模板，以 `SKILL.md` 文件存储，包含详细的执行规则和步骤。AI Agent 在执行任务前通过 `--skill` CLI 参数加载 Skill，或在运行中通过 `skill` 工具动态加载。
+
+Skill 将团队的开发规范、CI/CD 流程、审查标准等沉淀为可复用的指令文件，让 AI Agent 按照统一的标准执行任务。
+
+## 三层发现机制
+
+Skill 文件通过三层目录发现，从通用到特定，同名 skill 按优先级覆盖：
+
+| 层级 | 路径 | 优先级 |
+|------|------|:------:|
+| 项目级 | `<project>/.zapmyco/skills/<name>/SKILL.md` | **最高** |
+| 通用级 | `<project>/.agents/skills/<name>/SKILL.md` | 中 |
+| 用户级 | `~/.zapmyco/skills/<name>/SKILL.md` | 最低 |
+
+发现机制只扫描一级子目录，不递归嵌套。高优先级的同名 skill 会取代低优先级的定义。
+
+例如，用户级定义了 `check` skill 用于通用代码检查，项目级又定义了同名的 `check` skill 包含项目特有的检查规则。此时项目级的 `check` 会取代用户级的定义，AI Agent 加载到的将是项目级版本。
+
+## 使用方式
+
+Skill 有三种使用方式，根据是否需要固定加载某个 Skill 来选择：
+
+### 方式一：自动按需使用
+
+```bash
+zapmyco run '审查当前分支的代码变更'
+```
+
+不指定 `--skill` 时，Agent 的上下文提示中会列出所有可用 Skill。Agent 会自行判断是否需要使用 `skill` 工具加载某个 Skill 来完成当前任务。
+
+### 方式二：固定 Skill（无额外指令）
+
+```bash
+zapmyco run --skill code-review
+```
+
+加载指定 Skill 并自动填充默认启动指令："请根据已加载的 Skill 'xxx' 指令开始工作..."。适合将常用工作流作为快捷键使用。
+
+### 方式三：固定 Skill + 具体指令
+
+```bash
+zapmyco run --skill code-review '重点检查安全漏洞和性能问题'
+```
+
+加载指定 Skill 的同时，向 Agent 传达本次任务的具体要求。Skill 负责流程框架，content 负责本次关注点，两者互补。
+
+---
+
+方式二和方式三使用 `--skill` 参数时，Skill 在 Agent 启动阶段即被加载到系统提示词中；方式一则依靠运行时由 Agent 通过 `skill` 工具动态加载。
+
+## 相关文档
+
+- [编写 Skill](/skill/writing) — SKILL.md 格式规范和编写指南
+- [Skill 加载机制](/skill/loading) — Skill 如何注入 Agent 提示词上下文
+- [skill 工具参考](/built-in/skill) — `skill` 内置工具的详细参数和用法
+- [CLI 使用指南](/guide/cli-usage) — `run` 命令详细用法
