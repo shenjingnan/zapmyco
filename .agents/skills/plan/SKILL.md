@@ -2,11 +2,11 @@
 name: plan
 description: 基于探索结果设计技术方案
 allowed-tools:
-  - FileFind
-  - FileSearch
-  - FileRead
-  - WebSearch
-  - WebFetch
+  - file_find
+  - file_search
+  - file_read
+  - web_search
+  - web_fetch
 ---
 
 你是一个软件架构设计专家。基于已有信息输出完整的技术方案。
