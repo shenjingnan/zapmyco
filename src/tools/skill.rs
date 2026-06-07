@@ -170,6 +170,13 @@ mod tests {
         assert_eq!(schema["required"][0], "action");
     }
 
+    #[test]
+    fn test_tool_def_schema_has_name_property() {
+        let def = SkillTool::tool_definition();
+        let schema = def.input_schema.unwrap();
+        assert!(schema["properties"]["name"].is_object());
+    }
+
     // ── is_concurrency_safe ──
 
     #[test]
@@ -212,6 +219,33 @@ mod tests {
         assert!(result.unwrap().contains("cr"));
     }
 
+    #[test]
+    fn test_execute_list_has_prompt() {
+        let home = TempDir::new().unwrap();
+        let _guard = crate::test_util::acquire_home_lock();
+        unsafe {
+            std::env::set_var("HOME", home.path());
+        }
+        let (tool, _) = make_skill(&home);
+        let input = serde_json::json!({"action": "list"});
+        let result = block_on(tool.execute(&input)).unwrap();
+        assert!(result.contains("使用 action=load"));
+    }
+
+    #[test]
+    fn test_execute_list_no_skills() {
+        let home = TempDir::new().unwrap();
+        let _guard = crate::test_util::acquire_home_lock();
+        unsafe {
+            std::env::set_var("HOME", home.path());
+        }
+        // 空目录，没有任何 skill
+        let tool = SkillTool::with_cwd(home.path().join("empty"));
+        let input = serde_json::json!({"action": "list"});
+        let result = block_on(tool.execute(&input)).unwrap();
+        assert!(result.contains("当前没有任何可用 skill"));
+    }
+
     // ── execute: action=load ──
 
     #[test]
@@ -238,6 +272,43 @@ mod tests {
         let (tool, _) = make_skill(&home);
         let input = serde_json::json!({"action": "load", "name": "nonexistent"});
         assert!(block_on(tool.execute(&input)).is_err());
+    }
+
+    #[test]
+    fn test_execute_load_name_mismatch() {
+        let home = TempDir::new().unwrap();
+        let hp = home.path().to_path_buf();
+        let proj = hp.join("project");
+        fs::create_dir_all(proj.join(".zapmyco/skills/cr")).unwrap();
+        // frontmatter name 为 "review" 而非 "cr"
+        fs::write(
+            proj.join(".zapmyco/skills/cr/SKILL.md"),
+            "---\nname: review\ndescription: code review\n---\nbody",
+        )
+        .unwrap();
+        let tool = SkillTool::with_cwd(proj);
+        let input = serde_json::json!({"action": "load", "name": "cr"});
+        let result = block_on(tool.execute(&input));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("不匹配"));
+    }
+
+    #[test]
+    fn test_execute_load_missing_name_param() {
+        let tool = SkillTool::with_cwd(PathBuf::from("/"));
+        // action=load 但缺少 name
+        let input = serde_json::json!({"action": "load"});
+        let result = block_on(tool.execute(&input));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("缺少 name"));
+    }
+
+    #[test]
+    fn test_execute_load_with_slash() {
+        let tool = SkillTool::with_cwd(PathBuf::from("/"));
+        let input = serde_json::json!({"action": "load", "name": "a/b"});
+        let result = block_on(tool.execute(&input));
+        assert!(result.is_err());
     }
 
     #[test]

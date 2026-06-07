@@ -282,6 +282,100 @@ mod tests {
         });
     }
 
+    // ── list_available_skills extra ──
+
+    #[test]
+    fn test_list_skills_three_layer_override() {
+        with_skills_env(|hp, cwd| {
+            let u = hp.join(".zapmyco/skills");
+            let a = cwd.join(".agents/skills");
+            let p = cwd.join(".zapmyco/skills");
+            skill(&u, "x", "user", "b");
+            skill(&a, "x", "agents", "b");
+            skill(&p, "x", "project", "b");
+            let skills = list_available_skills(cwd);
+            let s = skills.iter().find(|s| s.name == "x").unwrap();
+            assert_eq!(s.description, "project");
+        });
+    }
+
+    #[test]
+    fn test_list_skills_user_level_missing() {
+        with_skills_env(|hp, cwd| {
+            // 只清理 user dir 但保留 project
+            let user_dir = hp.join(".zapmyco/skills");
+            fs::remove_dir_all(&user_dir).ok();
+            skill(&cwd.join(".zapmyco/skills"), "s", "project", "b");
+            let skills = list_available_skills(cwd);
+            assert_eq!(skills.len(), 1);
+            assert_eq!(skills[0].source, SkillSource::Project);
+        });
+    }
+
+    #[test]
+    fn test_list_skills_all_levels_empty() {
+        with_skills_env(|hp, cwd| {
+            fs::remove_dir_all(hp.join(".zapmyco/skills")).ok();
+            fs::remove_dir_all(cwd.join(".zapmyco/skills")).ok();
+            fs::remove_dir_all(cwd.join(".agents/skills")).ok();
+            assert!(list_available_skills(cwd).is_empty());
+        });
+    }
+
+    #[test]
+    fn test_list_skills_skip_files_in_base() {
+        with_skills_env(|hp, cwd| {
+            // 在 skill 目录中放一个文件而非目录
+            fs::write(hp.join(".zapmyco/skills/not_a_dir"), "not a dir").unwrap();
+            skill(&hp.join(".zapmyco/skills"), "real", "real", "b");
+            let skills = list_available_skills(cwd);
+            assert!(skills.iter().any(|s| s.name == "real"));
+            // 文件名不会被当作 skill 目录
+        });
+    }
+
+    #[test]
+    fn test_list_skills_no_nested_recurse() {
+        with_skills_env(|hp, cwd| {
+            let user = hp.join(".zapmyco/skills");
+            // 在 user/skill-a 下放一个嵌套 skill
+            skill(&user, "outer", "outer", "b");
+            let nested = user.join("outer").join("inner");
+            fs::create_dir_all(&nested).unwrap();
+            fs::write(
+                nested.join("SKILL.md"),
+                "---\nname: inner\ndescription: inner\n---\nb",
+            )
+            .unwrap();
+            let skills = list_available_skills(cwd);
+            // inner 不会被扫描到（只扫一级）
+            assert!(!skills.iter().any(|s| s.name == "inner"));
+        });
+    }
+
+    // ── resolve_skill extra ──
+
+    #[test]
+    fn test_resolve_skill_agents_fallback() {
+        with_skills_env(|_hp, cwd| {
+            skill(&cwd.join(".agents/skills"), "s", "agents", "b");
+            let s = resolve_skill("s", cwd).unwrap();
+            assert_eq!(s.description, "agents");
+        });
+    }
+
+    #[test]
+    fn test_resolve_skill_three_layer() {
+        with_skills_env(|hp, cwd| {
+            skill(&hp.join(".zapmyco/skills"), "x", "user", "b");
+            skill(&cwd.join(".agents/skills"), "x", "agents", "b");
+            skill(&cwd.join(".zapmyco/skills"), "x", "project", "b");
+            let s = resolve_skill("x", cwd).unwrap();
+            // 应返回 project（最高优先级）
+            assert_eq!(s.description, "project");
+        });
+    }
+
     #[test]
     fn test_resolve_skill_lowercase_file() {
         with_skills_env(|_hp, cwd| {

@@ -182,6 +182,58 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_parse_code_block_body() {
+        let input = "---\nname: test\ndescription: desc\n---\n```rust\nfn main() {}\n```";
+        let result = parse_skill_file(input).unwrap();
+        assert!(result.body.contains("```rust"));
+        assert!(result.body.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_parse_leading_blank_lines() {
+        let input = "---\nname: test\ndescription: desc\n---\n\n\nBody";
+        let result = parse_skill_file(input).unwrap();
+        assert_eq!(result.body, "Body");
+    }
+
+    #[test]
+    fn test_parse_frontmatter_extra_spaces() {
+        let input = "---\nname:   test  \ndescription:   desc  \n---\nbody";
+        let result = parse_skill_file(input).unwrap();
+        assert_eq!(result.name, "test");
+        assert_eq!(result.description, "desc");
+    }
+
+    #[test]
+    fn test_parse_bom() {
+        // BOM 字符不被 trim，starts_with("---") 为 false
+        let input = "\u{FEFF}---\nname: test\ndescription: desc\n---\nbody";
+        let result = parse_skill_file(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("必须以 YAML frontmatter"));
+    }
+
+    #[test]
+    fn test_parse_yaml_syntax_error() {
+        let input = "---\nname: [invalid\n---\nbody";
+        let result = parse_skill_file(input);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("解析 SKILL.md frontmatter 失败")
+        );
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_wrong_type() {
+        let input = "---\nname: test\ndescription: desc\nallowed-tools: 123\n---\nbody";
+        let result = parse_skill_file(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("类型错误"));
+    }
+
     // ── build_skill_list_text ──
 
     #[test]
@@ -201,6 +253,19 @@ mod tests {
         assert!(text.contains("**cr**"));
         assert!(text.contains("review"));
         assert!(text.contains("项目"));
+    }
+
+    #[test]
+    fn test_build_list_special_chars() {
+        let skills = vec![SkillDescriptor {
+            name: "test".to_string(),
+            description: "审查 **代码** 与 _风格_".to_string(),
+            source: SkillSource::Project,
+        }];
+        let text = build_skill_list_text(&skills);
+        assert!(text.contains("审查 **代码**"));
+        // 特殊字符原样输出，不转义
+        assert!(text.contains("**") && text.contains("_风格_"));
     }
 
     #[test]
@@ -252,5 +317,112 @@ mod tests {
         let current: Vec<String> = vec![];
         let allowed = vec!["a".to_string()];
         assert!(compute_denied_tools(&current, &allowed).is_empty());
+    }
+
+    #[test]
+    fn test_deny_nonexistent_allowed() {
+        // allowed_tools 中包含不存在的工具，忽略
+        let current = vec!["a".to_string(), "b".to_string()];
+        let allowed = vec!["a".to_string(), "z".to_string()];
+        let denied = compute_denied_tools(&current, &allowed);
+        assert_eq!(denied, vec!["b"]);
+    }
+
+    #[test]
+    fn test_deny_case_sensitive() {
+        // 大小写敏感：File_Read != file_read
+        let current = vec!["file_read".to_string()];
+        let allowed = vec!["File_Read".to_string()];
+        let denied = compute_denied_tools(&current, &allowed);
+        assert_eq!(denied, vec!["file_read"]);
+    }
+
+    // ── 2.4 组合过滤（模拟 Step 7 → Step 8） ──
+
+    fn simulate_filtering(
+        registered: &[&str],
+        allowed_tools: &[&str],
+        deny_by_permission: &[&str],
+    ) -> Vec<String> {
+        let all: Vec<String> = registered.iter().map(|s| s.to_string()).collect();
+        let allowed: Vec<String> = allowed_tools.iter().map(|s| s.to_string()).collect();
+
+        // Step 7: allowed-tools 过滤
+        let after_step7 = if allowed.is_empty() {
+            all.clone()
+        } else {
+            all.into_iter().filter(|t| allowed.contains(t)).collect()
+        };
+
+        // Step 8: PermissionMode 过滤
+        after_step7
+            .into_iter()
+            .filter(|t| !deny_by_permission.contains(&t.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn test_combined_only_allowed_tools() {
+        let result = simulate_filtering(
+            &["file_read", "file_search", "file_find"],
+            &["file_read", "file_search"],
+            &[], // Full
+        );
+        assert_eq!(result, vec!["file_read", "file_search"]);
+    }
+
+    #[test]
+    fn test_combined_only_permission() {
+        let result = simulate_filtering(
+            &["file_read", "file_search", "file_find"],
+            &[],                                        // 无限制
+            &["file_write", "file_edit", "shell_exec"], // ReadOnly
+        );
+        assert_eq!(result, vec!["file_read", "file_search", "file_find"]);
+    }
+
+    #[test]
+    fn test_combined_both() {
+        // allowed-tools 是白名单，tools NOT in list are removed
+        let result = simulate_filtering(
+            &["file_read", "file_search", "file_find", "shell_exec"],
+            &["file_read", "file_search", "shell_exec"],
+            &["shell_exec"], // ReadWrite
+        );
+        // Step 7: file_find removed (not in whitelist)
+        // Step 8: shell_exec removed (ReadWrite denies shell_exec)
+        assert_eq!(result, vec!["file_read", "file_search"]);
+    }
+
+    #[test]
+    fn test_combined_empty_intersection() {
+        // allowed-tools 是白名单，shell_exec 是唯一允许的工具
+        // 但 PermissionMode 又禁止 shell_exec → 交集为空
+        let result = simulate_filtering(
+            &["file_read", "shell_exec"],
+            &["shell_exec"], // 白名单：只允许 shell_exec
+            &["shell_exec"], // ReadWrite
+        );
+        assert_eq!(result, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_combined_no_restriction() {
+        let result = simulate_filtering(
+            &["file_read", "file_write", "shell_exec"],
+            &[], // 无限制
+            &[], // Full
+        );
+        assert_eq!(result, vec!["file_read", "file_write", "shell_exec"]);
+    }
+
+    #[test]
+    fn test_combined_allowed_only_permission() {
+        let result = simulate_filtering(
+            &["file_read", "file_write", "shell_exec"],
+            &[],                           // 无限制
+            &["file_write", "shell_exec"], // ReadOnly
+        );
+        assert_eq!(result, vec!["file_read"]);
     }
 }

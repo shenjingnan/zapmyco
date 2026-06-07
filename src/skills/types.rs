@@ -84,6 +84,8 @@ pub struct SkillDescriptor {
 mod tests {
     use super::*;
 
+    // ── 1.1 SkillFrontmatter 反序列化 ──
+
     #[test]
     fn test_frontmatter_normal() {
         let yaml = "name: test\ndescription: 测试 skill";
@@ -136,5 +138,58 @@ mod tests {
         let yaml = "name: test\ndescription: x\nallowed-tools: 123";
         let result: Result<SkillFrontmatter, _> = yaml_serde::from_str(yaml);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_frontmatter_allowed_tools_empty_list() {
+        // allowed-tools: [] → 空序列 → 自定义 deserialize 返回错误
+        let yaml = "name: test\ndescription: x\nallowed-tools: []";
+        let result: Result<SkillFrontmatter, _> = yaml_serde::from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_frontmatter_extra_standard_fields() {
+        // license、compatibility 等标准字段不影响解析
+        let yaml = "name: test\ndescription: x\nlicense: MIT\ncompatibility: rust";
+        let fm: SkillFrontmatter = yaml_serde::from_str(yaml).unwrap();
+        assert_eq!(fm.name, "test");
+        assert!(fm.allowed_tools.is_none());
+    }
+
+    // ── 1.2 SkillFile 构造 ──
+
+    #[test]
+    fn test_skillfile_construction() {
+        let sf = SkillFile {
+            name: "test".to_string(),
+            description: "desc".to_string(),
+            allowed_tools: vec!["file_read".to_string()],
+            body: "# Body".to_string(),
+        };
+        assert_eq!(sf.name, "test");
+        assert_eq!(sf.description, "desc");
+        assert_eq!(sf.allowed_tools, vec!["file_read"]);
+        assert_eq!(sf.body, "# Body");
+    }
+
+    #[test]
+    fn test_skillfile_allowed_tools_empty() {
+        let sf = SkillFile {
+            name: "t".to_string(),
+            description: "d".to_string(),
+            allowed_tools: vec![],
+            body: "b".to_string(),
+        };
+        assert!(sf.allowed_tools.is_empty());
+    }
+
+    // ── 1.3 SkillSource ──
+
+    #[test]
+    fn test_skillsource_equality() {
+        assert_eq!(SkillSource::Project, SkillSource::Project);
+        assert_ne!(SkillSource::Project, SkillSource::User);
+        assert_ne!(SkillSource::ProjectAgents, SkillSource::Project);
     }
 }
