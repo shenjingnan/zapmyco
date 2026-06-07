@@ -16,6 +16,8 @@ pub mod prompt;
 #[doc(hidden)]
 pub mod shell_exec;
 #[doc(hidden)]
+pub mod skill;
+#[doc(hidden)]
 pub mod subagent;
 #[doc(hidden)]
 pub mod task_create;

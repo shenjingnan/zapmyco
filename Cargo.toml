@@ -37,6 +37,7 @@ crossterm = "0.29"
 ignore = "0.4"
 globset = "0.4"
 fs4 = { version = "0.13", features = ["tokio"] }
+yaml_serde = "0.10.4"
 
 [dev-dependencies]
 tempfile = "3"
