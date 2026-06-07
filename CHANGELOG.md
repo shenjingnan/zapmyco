@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.38.0](https://github.com/shenjingnan/zapmyco/compare/v0.37.0...v0.38.0) - 2026-06-07
+
+### Added
+
+- *(subagent)* 新增 skill 参数支持，实现 Plan Mode 编排能力 ([#412](https://github.com/shenjingnan/zapmyco/pull/412))
+- *(skills)* 实现 Skill 系统 — SKILL.md 解析、发现、工具和 CLI 集成 ([#409](https://github.com/shenjingnan/zapmyco/pull/409))
+
+### Other
+
+- 添加 Skill 系统文档和内置工具文档 ([#411](https://github.com/shenjingnan/zapmyco/pull/411))
+
 ## [0.37.0](https://github.com/shenjingnan/zapmyco/compare/v0.36.4...v0.37.0) - 2026-06-06
 
 ### Added
