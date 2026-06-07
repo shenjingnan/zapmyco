@@ -96,6 +96,12 @@ impl SubAgentTool {
                         "items": { "type": "string" },
                         "description": "要查询或终止的子代理 ID 列表（poll 和 kill 时必填）"
                     },
+                    "skill": {
+                        "type": "string",
+                        "description": "子进程加载的 skill 名称（对应 SKILL.md 中的 name）。\
+                        子进程将以该 skill 定义的角色执行任务。\
+                        可选值由 SkillTool(list) 动态获取，内置包括: explore, plan, plan-mode。"
+                    },
                     "wait_secs": {
                         "type": "number",
                         "description": "poll 时可选。工具已内置首次 5 秒内部等待（无论此参数如何），\
@@ -135,12 +141,18 @@ impl SubAgentTool {
                     .get("task")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "spawn 时 task 必填".to_string())?;
-                let id = self.spawn(cli, task).await?;
+                let skill = input
+                    .get("skill")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty());
+                let skill_info = skill.map(|s| format!("\nSkill: {}", s)).unwrap_or_default();
+                let id = self.spawn(cli, task, skill).await?;
                 Ok(format!(
-                    "[SubAgent] {}: running\nCLI: {}\nTask: {}\nCreated: {}",
+                    "[SubAgent] {}: running\nCLI: {}\nTask: {}{}\nCreated: {}",
                     id,
                     cli,
                     task,
+                    skill_info,
                     chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.f")
                 ))
             }
@@ -184,7 +196,7 @@ impl SubAgentTool {
     // -----------------------------------------------------------------------
 
     /// 创建并启动子代理（始终异步，立即返回 subagent_id）
-    async fn spawn(&self, cli: &str, task: &str) -> Result<String, String> {
+    async fn spawn(&self, cli: &str, task: &str, skill: Option<&str>) -> Result<String, String> {
         // 前置校验
         if task.trim().is_empty() {
             return Err("spawn 时 task 不能为空".to_string());
@@ -201,6 +213,9 @@ impl SubAgentTool {
         write_file(&dir.join("agent_session"), &self.agent_session_id)?;
         write_file(&dir.join("task"), task)?;
         write_file(&dir.join("cli"), cli)?;
+        if let Some(skill_name) = skill {
+            write_file(&dir.join("skill"), skill_name)?;
+        }
         write_file(
             &dir.join("started_at"),
             &Local::now().format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
@@ -210,6 +225,7 @@ impl SubAgentTool {
         let dir_clone = dir.clone();
         let timeout = self.timeout_secs;
         let task_owned = task.to_string();
+        let skill_owned = skill.map(|s| s.to_string());
 
         #[cfg(test)]
         let test_bin = self.test_binary.clone();
@@ -221,10 +237,10 @@ impl SubAgentTool {
                 let (binary, args) = if let Some(ref tb) = test_bin {
                     (tb.clone(), vec![task_owned.clone()])
                 } else {
-                    build_command(&task_owned, true)?
+                    build_command(&task_owned, true, skill_owned.as_deref())?
                 };
                 #[cfg(not(test))]
-                let (binary, args) = build_command(&task_owned, true)?;
+                let (binary, args) = build_command(&task_owned, true, skill_owned.as_deref())?;
 
                 let mut child = Command::new(&binary)
                     .args(&args)
@@ -521,11 +537,19 @@ fn generate_agent_session_id() -> String {
 }
 
 /// 构建 spawn 子进程的命令
-fn build_command(task: &str, is_subagent: bool) -> Result<(String, Vec<String>), String> {
+fn build_command(
+    task: &str,
+    is_subagent: bool,
+    skill: Option<&str>,
+) -> Result<(String, Vec<String>), String> {
     let binary = std::env::current_exe().map_err(|e| format!("无法获取当前二进制路径: {}", e))?;
     let mut args = vec!["run".to_string()];
     if is_subagent {
         args.push("--subagent".to_string());
+    }
+    if let Some(skill_name) = skill {
+        args.push("--skill".to_string());
+        args.push(skill_name.to_string());
     }
     args.push(task.to_string());
     Ok((binary.to_string_lossy().to_string(), args))
@@ -853,31 +877,52 @@ mod tests {
     #[test]
     fn test_build_command_uses_current_exe() {
         let current = std::env::current_exe().unwrap();
-        let (binary, _) = build_command("task", false).unwrap();
+        let (binary, _) = build_command("task", false, None).unwrap();
         assert_eq!(binary, current.to_string_lossy());
     }
 
     #[test]
     fn test_build_command_with_subagent_flag() {
-        let (_, args) = build_command("task", true).unwrap();
+        let (_, args) = build_command("task", true, None).unwrap();
         assert!(args.contains(&"--subagent".to_string()));
     }
 
     #[test]
     fn test_build_command_without_subagent_flag() {
-        let (_, args) = build_command("task", false).unwrap();
+        let (_, args) = build_command("task", false, None).unwrap();
         assert!(!args.contains(&"--subagent".to_string()));
     }
 
     #[test]
     fn test_build_command_basic() {
-        let (binary, args) = build_command("echo hello", false).unwrap();
+        let (binary, args) = build_command("echo hello", false, None).unwrap();
         assert!(!binary.is_empty(), "binary path should not be empty");
         assert_eq!(args[0], "run", "first arg should be 'run'");
         assert!(
             args.contains(&"echo hello".to_string()),
             "task should be in args"
         );
+    }
+
+    #[test]
+    fn test_build_command_with_skill() {
+        let (_, args) = build_command("task", true, Some("explore")).unwrap();
+        assert!(args.contains(&"--skill".to_string()));
+        assert!(args.contains(&"explore".to_string()));
+    }
+
+    #[test]
+    fn test_build_command_without_skill() {
+        let (_, args) = build_command("task", true, None).unwrap();
+        assert!(!args.contains(&"--skill".to_string()));
+    }
+
+    #[test]
+    fn test_build_command_skill_not_subagent() {
+        let (_, args) = build_command("task", false, Some("plan")).unwrap();
+        assert!(!args.contains(&"--subagent".to_string()));
+        assert!(args.contains(&"--skill".to_string()));
+        assert!(args.contains(&"plan".to_string()));
     }
 
     // ---- 2.4 execute 路由分发 ----
@@ -1250,9 +1295,9 @@ mod tests {
     async fn test_concurrent_spawns() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let id1 = tool.spawn("zapmyco", "task1").await.unwrap();
-        let id2 = tool.spawn("zapmyco", "task2").await.unwrap();
-        let id3 = tool.spawn("zapmyco", "task3").await.unwrap();
+        let id1 = tool.spawn("zapmyco", "task1", None).await.unwrap();
+        let id2 = tool.spawn("zapmyco", "task2", None).await.unwrap();
+        let id3 = tool.spawn("zapmyco", "task3", None).await.unwrap();
         let ids = vec![id1, id2, id3];
         let unique: std::collections::HashSet<_> = ids.iter().collect();
         assert_eq!(unique.len(), 3);
@@ -1276,7 +1321,7 @@ mod tests {
             test_binary: Some("echo".to_string()),
         };
 
-        let id1 = tool1.spawn("zapmyco", "secret_task").await.unwrap();
+        let id1 = tool1.spawn("zapmyco", "secret_task", None).await.unwrap();
 
         // tool2 list 不应看到 tool1 的
         let list2 = tool2.list().await.unwrap();
@@ -1297,7 +1342,7 @@ mod tests {
     async fn test_spawn_empty_task_rejected() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let result = tool.spawn("zapmyco", "").await;
+        let result = tool.spawn("zapmyco", "", None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("不能为空"));
     }
@@ -1306,7 +1351,7 @@ mod tests {
     async fn test_spawn_invalid_cli_rejected() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let result = tool.spawn("gemini", "task").await;
+        let result = tool.spawn("gemini", "task", None).await;
         assert!(result.is_err());
     }
 
@@ -1327,7 +1372,7 @@ mod tests {
     async fn test_spawn_writes_agent_session() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let id = tool.spawn("zapmyco", "echo test").await.unwrap();
+        let id = tool.spawn("zapmyco", "echo test", None).await.unwrap();
         eprintln!("id={} data_dir={}", id, tool.data_dir.display());
         let session_file = tool.data_dir.join(&id).join("agent_session");
         let dir_exists = tool.data_dir.join(&id).exists();
@@ -1356,7 +1401,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             test_binary: Some("sleep".to_string()),
         };
-        let id = tool.spawn("zapmyco", "1").await.unwrap();
+        let id = tool.spawn("zapmyco", "1", None).await.unwrap();
         let result = tool.poll(&[id], 5).await.unwrap();
         assert!(result.contains("completed"), "应检测到完成: {}", result);
     }
@@ -1370,7 +1415,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             test_binary: Some("sleep".to_string()),
         };
-        let id = tool.spawn("zapmyco", "30").await.unwrap();
+        let id = tool.spawn("zapmyco", "30", None).await.unwrap();
         let result = tool.poll(&[id], 0).await.unwrap();
         assert!(result.contains("仍在运行"), "应仍运行中: {}", result);
     }
@@ -1426,7 +1471,7 @@ mod tests {
     async fn test_subagent_crash_does_not_affect_main() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let id = tool.spawn("zapmyco", "echo hello").await.unwrap();
+        let id = tool.spawn("zapmyco", "echo hello", None).await.unwrap();
         let result = tool.poll(&[id.clone()], 5).await.unwrap();
         assert!(result.contains("completed"), "子进程应正常完成: {}", result);
         // 工具仍然可以正常使用
@@ -1440,8 +1485,8 @@ mod tests {
     async fn test_poll_multiple_ids() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let id1 = tool.spawn("zapmyco", "echo a").await.unwrap();
-        let id2 = tool.spawn("zapmyco", "echo b").await.unwrap();
+        let id1 = tool.spawn("zapmyco", "echo a", None).await.unwrap();
+        let id2 = tool.spawn("zapmyco", "echo b", None).await.unwrap();
         let result = tool.poll(&[id1, id2], 10).await.unwrap();
         assert!(
             result.contains("completed"),
@@ -1461,7 +1506,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             test_binary: Some("sleep".to_string()),
         };
-        let id = tool.spawn("zapmyco", "30").await.unwrap();
+        let id = tool.spawn("zapmyco", "30", None).await.unwrap();
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         let list = tool.list().await.unwrap();
@@ -1485,7 +1530,7 @@ mod tests {
     async fn test_kill_already_completed() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let id = tool.spawn("zapmyco", "quick").await.unwrap();
+        let id = tool.spawn("zapmyco", "quick", None).await.unwrap();
         let _ = tool.poll(&[id.clone()], 5).await.unwrap();
 
         let kill_result = tool.kill(&[id.clone()]).await.unwrap();
@@ -1531,7 +1576,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             test_binary: Some("/nonexistent/binary".to_string()),
         };
-        let id = tool.spawn("zapmyco", "task").await.unwrap();
+        let id = tool.spawn("zapmyco", "task", None).await.unwrap();
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         let result = tool.poll(&[id.clone()], 0).await.unwrap();
         assert!(
@@ -1585,7 +1630,10 @@ mod tests {
     async fn test_agent_session_written_before_pid() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let id = tool.spawn("zapmyco", "echo order_check").await.unwrap();
+        let id = tool
+            .spawn("zapmyco", "echo order_check", None)
+            .await
+            .unwrap();
         let dir = tool.data_dir.join(&id);
         // agent_session 由 spawn 同步写入，必须在 spawn 返回时已存在
         assert!(
@@ -1600,7 +1648,10 @@ mod tests {
     async fn test_done_created_after_all_writes() {
         let tmp = TempDir::new().unwrap();
         let tool = test_tool(&tmp);
-        let id = tool.spawn("zapmyco", "echo order_check").await.unwrap();
+        let id = tool
+            .spawn("zapmyco", "echo order_check", None)
+            .await
+            .unwrap();
         let _ = tool.poll(&[id.clone()], 10).await.unwrap();
 
         let dir = tool.data_dir.join(&id);
@@ -1804,7 +1855,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             test_binary: Some("sleep".to_string()),
         };
-        let id = tool.spawn("zapmyco", "5").await.unwrap();
+        let id = tool.spawn("zapmyco", "5", None).await.unwrap();
         let dir = tool.data_dir.join(&id);
         let pid_file = dir.join("pid");
         // 最多等 3 秒让后台任务启动
@@ -1875,7 +1926,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             test_binary: Some("sleep".to_string()),
         };
-        let id = tool.spawn("zapmyco", "60").await.unwrap();
+        let id = tool.spawn("zapmyco", "60", None).await.unwrap();
         // 等超时（2s 超时 + 缓冲）
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         let result = tool.poll(&[id], 0).await.unwrap();
