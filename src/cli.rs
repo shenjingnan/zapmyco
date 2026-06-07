@@ -198,8 +198,11 @@ pub enum Commands {
     Uninstall,
     /// 一次性执行 AI 任务，完成后退出
     Run {
-        /// 任务描述
-        content: String,
+        /// 任务描述（当使用 --skill 时可省略）
+        content: Option<String>,
+        /// 引用外部 skill（对应 SKILL.md 文件）
+        #[arg(long)]
+        skill: Option<String>,
         /// 指定模型配置档
         #[arg(long)]
         profile: Option<String>,
@@ -555,7 +558,8 @@ fn cmd_settings(subcommand: Option<&str>) -> Result<String, String> {
 /// run 命令 - 一次性执行 AI 任务（带工具支持）
 #[allow(clippy::too_many_arguments)]
 async fn cmd_run(
-    content: &str,
+    content: Option<&str>,
+    skill_name: Option<&str>,
     profile: Option<&str>,
     permission_mode: PermissionMode,
     task_id: Option<&str>,
@@ -567,9 +571,22 @@ async fn cmd_run(
 ) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
+    // ── Step 1: 解析 content / skill_name ──
+    let content = match (content, skill_name) {
+        (Some(c), _) => c.to_string(),
+        (None, Some(skill_name)) => format!("请根据已加载的 Skill '{}' 指令开始工作。无需等待用户进一步指示，直接开始执行。", skill_name),
+        (None, None) => {
+            return Err(
+                "任务描述不能为空。\n使用: zapmyco run \"任务描述\"\n或: zapmyco run --skill <skill名称>"
+                    .to_string(),
+            )
+        }
+    };
+
     tracing::info!(
         input_len = content.len(),
         profile = profile.unwrap_or("default"),
+        skill = skill_name.unwrap_or(""),
         "开始执行 AI 任务"
     );
 
@@ -580,11 +597,62 @@ async fn cmd_run(
         ));
     }
 
-    if content.is_empty() {
-        return Err("任务描述不能为空".to_string());
+    // ── Step 2: 扫描所有可用 skill（轻量 frontmatter） ──
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let all_skills = crate::skills::discovery::list_available_skills(&cwd);
+
+    // ── Step 3: 如果指定了 --skill，完整加载 ──
+    let active_skill: Option<crate::skills::types::SkillFile> = if let Some(skill_name) = skill_name
+    {
+        match crate::skills::discovery::resolve_skill(skill_name, &cwd) {
+            Some(skill) => {
+                if skill.name != skill_name {
+                    return Err(format!(
+                        "Skill 目录名 '{}' 与 frontmatter name '{}' 不匹配",
+                        skill_name, skill.name
+                    ));
+                }
+                eprintln!("[Skill] 已加载: {} — {}", skill.name, skill.description);
+                Some(skill)
+            }
+            None => {
+                let mut msg = format!("Skill '{}' 未找到。\n", skill_name);
+                if !all_skills.is_empty() {
+                    msg.push_str("可用的 skill:\n");
+                    for s in &all_skills {
+                        msg.push_str(&format!("  - {}: {}\n", s.name, s.description));
+                    }
+                } else {
+                    msg.push_str("当前没有任何可用 skill。\n");
+                    msg.push_str("请在以下位置创建 SKILL.md：\n");
+                    msg.push_str("  ~/.zapmyco/skills/<name>/SKILL.md\n");
+                    msg.push_str("  <project>/.zapmyco/skills/<name>/SKILL.md\n");
+                    msg.push_str("  <project>/.agents/skills/<name>/SKILL.md\n");
+                }
+                return Err(msg);
+            }
+        }
+    } else {
+        None
+    };
+
+    // ── Step 4: 组装完整 system prompt ──
+    let mut full_prompt = format!(
+        "{}{}",
+        crate::agent::system_prompt::DEFAULT_SYSTEM_PROMPT,
+        crate::agent::system_prompt::BEHAVIORAL_GUIDANCE,
+    );
+    if let Some(ref skill) = active_skill {
+        full_prompt.push_str(&format!("\n\n## Skill: {}\n\n{}", skill.name, skill.body));
     }
 
-    let options = build_run_options(profile, model, api_key, base_url);
+    // ── Step 5: 构建 AiAgentOptions ──
+    let mut options = build_run_options(profile, model, api_key, base_url);
+    options.system_prompt = Some(full_prompt);
+    options.skill_list_text = {
+        let list = crate::skills::loader::build_skill_list_text(&all_skills);
+        if list.is_empty() { None } else { Some(list) }
+    };
 
     let mut agent = crate::agent::chat::AiAgent::new(options)?;
 
@@ -663,6 +731,25 @@ async fn cmd_run(
         agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
     }
 
+    // ---- 注册 Skill 工具（LLM 可在对话中动态加载 skill） ----
+    if let Ok(skill_tool) = crate::tools::skill::SkillTool::new() {
+        agent.register_tool(crate::agent::chat::ToolHandler::Skill(skill_tool));
+    }
+
+    // ---- 如果 skill 指定了 allowed-tools，过滤工具 ----
+    if let Some(ref skill) = active_skill
+        && !skill.allowed_tools.is_empty()
+    {
+        let tool_names = agent.tool_names();
+        let to_remove =
+            crate::skills::loader::compute_denied_tools(&tool_names, &skill.allowed_tools);
+        if !to_remove.is_empty() {
+            eprintln!("[Skill] 工具过滤: 仅允许 {:?}", skill.allowed_tools);
+            let refs: Vec<&str> = to_remove.iter().map(|s| s.as_str()).collect();
+            agent.remove_tools(&refs);
+        }
+    }
+
     // ---- 根据权限模式过滤工具 ----
     if permission_mode != PermissionMode::Full {
         let deny_tools: &[&str] = match permission_mode {
@@ -691,7 +778,7 @@ async fn cmd_run(
 
     // ---- 第一阶段：执行用户原始输入 ----
     let _response = agent
-        .chat_with_tools(content, |chunk| {
+        .chat_with_tools(&content, |chunk| {
             eprint!("{}", chunk);
             use std::io::Write;
             std::io::stderr().flush().ok();
@@ -1390,6 +1477,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
         Some(Commands::Note { command }) => cmd_note(command),
         Some(Commands::Run {
             content,
+            skill,
             profile,
             permission_mode,
             task_id,
@@ -1400,7 +1488,8 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             subagent,
         }) => {
             cmd_run(
-                &content,
+                content.as_deref(),
+                skill.as_deref(),
                 profile.as_deref(),
                 permission_mode,
                 task_id.as_deref(),
@@ -1470,15 +1559,16 @@ mod tests {
     #[tokio::test]
     async fn test_run_empty_content() {
         let result = cmd_run(
-            "",
-            None,
+            None, // content
+            None, // skill
+            None, // profile
             PermissionMode::Full,
             None,
             None,
             None,
             None,
-            None,
-            false,
+            None,  // task_id..base_url
+            false, // subagent
         )
         .await;
         assert!(result.is_err());
@@ -1494,15 +1584,16 @@ mod tests {
         }
 
         let result = cmd_run(
-            "hello",
-            None,
+            Some("hello"), // content
+            None,          // skill
+            None,          // profile
             PermissionMode::Full,
             None,
             None,
             None,
             None,
-            None,
-            false,
+            None,  // task_id..base_url
+            false, // subagent
         )
         .await;
         assert!(result.is_err());

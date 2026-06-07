@@ -36,6 +36,8 @@ pub struct AiAgentOptions {
     pub max_tokens: Option<u32>,
     /// 系统提示词
     pub system_prompt: Option<String>,
+    /// 可用 skill 列表文本（注入到 context_reminder）
+    pub skill_list_text: Option<String>,
 }
 
 const DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic";
@@ -73,6 +75,8 @@ pub enum ToolHandler {
     TaskUpdate(std::sync::Arc<crate::tools::task_manager::TaskManager>),
     /// SubAgent 子代理工具 — 通过子进程执行独立任务
     SubAgent(crate::tools::subagent::SubAgentTool),
+    /// Skill 工具 — 加载/列出 skill
+    Skill(crate::tools::skill::SkillTool),
 }
 
 impl ToolHandler {
@@ -94,6 +98,7 @@ impl ToolHandler {
                 crate::tools::task_update::TaskUpdateTool::tool_definition()
             }
             ToolHandler::SubAgent(_) => crate::tools::subagent::SubAgentTool::tool_definition(),
+            ToolHandler::Skill(_) => crate::tools::skill::SkillTool::tool_definition(),
         }
     }
 
@@ -150,6 +155,7 @@ impl ToolHandler {
                 tool.execute(input).await
             }
             ToolHandler::SubAgent(s) => s.execute(input).await,
+            ToolHandler::Skill(tool) => tool.execute(input).await,
         }
     }
 
@@ -205,6 +211,8 @@ impl ToolHandler {
             }
             // SubAgent — 所有 action 均为并发安全（input 由内部判断）
             ToolHandler::SubAgent(s) => s.is_concurrency_safe(input),
+            // Skill — 只读，安全
+            ToolHandler::Skill(_) => true,
             // 写操作、交互操作 —— 不安全
             ToolHandler::FileEdit(_)
             | ToolHandler::FileWrite(_)
@@ -239,6 +247,8 @@ pub struct AiAgent {
     context_injected: bool,
     /// AGENTS.md 内容（启动时加载，缓存复用）
     agents_md_content: Option<String>,
+    /// 可用 skill 列表文本（注入到 context_reminder）
+    skill_list_text: Option<String>,
 }
 
 impl AiAgent {
@@ -383,6 +393,7 @@ impl AiAgent {
             task_display: None,
             context_injected: false,
             agents_md_content,
+            skill_list_text: options.skill_list_text,
         })
     }
 
@@ -572,6 +583,14 @@ impl AiAgent {
         self.tools.push(handler);
     }
 
+    /// 获取所有已注册工具的名称
+    pub fn tool_names(&self) -> Vec<String> {
+        self.tools
+            .iter()
+            .map(|t| t.tool_definition().name.clone())
+            .collect()
+    }
+
     /// 根据名称批量移除已注册的工具
     pub fn remove_tools(&mut self, names: &[&str]) {
         self.tools
@@ -655,13 +674,16 @@ impl AiAgent {
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
-            format!(
-                "{}{}",
-                crate::agent::system_prompt::build_context_reminder(
-                    self.agents_md_content.as_deref()
-                ),
-                input
-            )
+            let mut reminder = crate::agent::system_prompt::build_context_reminder(
+                self.agents_md_content.as_deref(),
+            );
+            if let Some(ref list) = self.skill_list_text
+                && !list.is_empty()
+                && let Some(pos) = reminder.rfind("</system-reminder>")
+            {
+                reminder.insert_str(pos, list);
+            }
+            format!("{}{}", reminder, input)
         } else {
             input.to_string()
         };
