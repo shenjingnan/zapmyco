@@ -100,7 +100,7 @@ impl SubAgentTool {
                         "type": "string",
                         "description": "子进程加载的 skill 名称（对应 SKILL.md 中的 name）。\
                         子进程将以该 skill 定义的角色执行任务。\
-                        可选值由 SkillTool(list) 动态获取，内置包括: explore, plan, plan-mode。"
+                        可选值由 SkillTool(list) 动态获取，内置包括: explore, plan-mode。"
                     },
                     "wait_secs": {
                         "type": "number",

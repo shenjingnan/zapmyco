@@ -28,9 +28,12 @@ subagent(action="spawn", skill="explore", task="研究数据模型定义")
 subagent(action="poll", subagent_ids=["id1", "id2"])
 
 ### 阶段 3：方案设计
-汇总所有探索结果，使用 subagent 启动 plan 子代理进行方案设计：
-subagent(action="spawn", skill="plan", task="基于探索结果设计方案")
-subagent(action="poll", subagent_ids=["id3"])
+汇总所有探索结果，基于已有信息直接设计技术方案。
 
 ### 阶段 4：输出计划
-综合所有信息，输出完整的最终方案。
+输出完整的最终方案，应包含：
+1. **背景和现状** — 当前面临的问题和现状
+2. **技术方案** — 具体的实施方案
+3. **关键文件** — 涉及的文件路径
+4. **实施步骤** — 分阶段的实施计划
+5. **验证方式** — 如何验证方案的正确性

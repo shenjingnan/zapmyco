@@ -74,7 +74,7 @@ pub const BEHAVIORAL_GUIDANCE: &str = "\n\
     \n\
     可用操作：\n\
     - subagent(action=\"spawn\", cli=\"zapmyco\", skill=\"explore\", task=\"...\") \
-    — 创建子代理，立即返回 ID。skill 可选，指定子进程加载的 SKILL.md 名称（如 explore、plan）\n\
+    — 创建子代理，立即返回 ID。skill 可选，指定子进程加载的 SKILL.md 名称（如 explore）\n\
     - subagent(action=\"poll\", subagent_ids=[\"id1\", \"id2\"]) — 查询结果，支持批量\n\
     - subagent(action=\"list\") — 列出当前会话所有子代理状态\n\
     - subagent(action=\"kill\", subagent_ids=[\"id1\"]) — 终止正在运行的子代理\n\
