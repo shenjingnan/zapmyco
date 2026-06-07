@@ -574,7 +574,7 @@ async fn cmd_run(
     // ── Step 1: 解析 content / skill_name ──
     let content = match (content, skill_name) {
         (Some(c), _) => c.to_string(),
-        (None, Some(_)) => String::new(),
+        (None, Some(skill_name)) => format!("请根据已加载的 Skill '{}' 指令开始工作。无需等待用户进一步指示，直接开始执行。", skill_name),
         (None, None) => {
             return Err(
                 "任务描述不能为空。\n使用: zapmyco run \"任务描述\"\n或: zapmyco run --skill <skill名称>"
