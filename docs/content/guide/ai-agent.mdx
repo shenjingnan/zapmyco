@@ -54,6 +54,16 @@ zapmyco run 帮我写一个 hello world 程序
 
 一次性模式额外提供了 3 个内置工具：`web_fetch`（获取网页）、`web_search`（搜索网络）、`shell_exec`（执行命令）。交互模式下**不启用**这些工具。详细说明请参见[内置工具](/guide/built-in-tools)。
 
+### Skill 系统集成
+
+一次性执行模式支持加载 Skill 工作流模板，通过预定义的指令让 AI Agent 按统一标准执行任务：
+
+- 通过 `--skill` 参数预加载 Skill：`zapmyco run --skill check`
+- Skill 文件（SKILL.md）定义执行规则、步骤和工具权限（allowed-tools）
+- AI Agent 加载 Skill 后自动按指令文件中的工作流执行
+
+详细说明请参见 [Skill 系统指南](/skill/overview)。
+
 ## 实现原理
 
 AI Agent 模块（`src/agent.rs`）基于 Rust/tokio 异步运行时实现：

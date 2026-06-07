@@ -104,6 +104,10 @@ Shell：zsh                          ← 稳定，几乎不变
 以下是指令文件内容，模型必须严格遵守：
 ...
 
+## 可用 Skill                       ← 半动态
+- **code-review**: 审查代码变更（项目）
+- **check**: 运行完整的代码质量检查（项目(.agents)）
+
 # Git 状态                           ← 最易变，最后
 ## main...origin/main
  M src/agent/chat.rs
@@ -119,6 +123,7 @@ Shell：zsh                          ← 稳定，几乎不变
 | 当前工作目录 | 运行时的 `CWD` | 每会话 | 中间 |
 | 当前日期 | 系统时钟（仅天级精度） | **每天一次** | 中间 |
 | AGENTS.md 内容 | 文件系统三层加载 | 偶尔变化 | 靠后 |
+| Skill 列表 | 文件系统扫描 skill 目录 | 文件变更时 | 靠后（`</system-reminder>` 前） |
 | Git 状态 | `git status --branch --short` | **随时变化** | **最后** |
 
 ### 优化要点
@@ -127,6 +132,10 @@ Shell：zsh                          ← 稳定，几乎不变
 2. **日期精度从 `YYYY-MM-DD HH:MM` 降为 `YYYY-MM-DD`**：从每分钟变化降为每天变化一次，同一天内任意调用共享缓存
 3. **Git 状态移到最后**：即使变化也只影响最后一个缓存块
 4. **仅注入一次**：`context_injected` 布尔值确保后续轮次不重复注入
+
+### Skill 列表注入机制
+
+当项目有可用 Skill 时，`build_skill_list_text()` 会生成一个 `## 可用 Skill` 章节。该章节通过 `rfind("</system-reminder>")` 定位，在关闭标签之前被插入 context_reminder。这一设计将最易变的 Skill 列表置于 `</system-reminder>` 之前、相对末尾的位置，使其影响的缓存块最小。
 
 ## KV Cache 优化策略
 

@@ -1,0 +1,83 @@
+---
+title: 编写 Skill
+description: SKILL.md 格式规范、allowed-tools 白名单和工具名称参考
+---
+
+Skill 文件使用 Markdown 格式，以 YAML frontmatter 开头。Skill 格式遵循 [agentskills.io](https://agentskills.io/) 标准：
+
+```markdown
+---
+name: code-review
+description: 审查代码变更，检查风格、正确性和安全性
+allowed-tools: file_read file_search file_find shell_exec
+---
+
+# Code Review Skill
+
+## Workflow
+1. 获取当前分支相对于主分支的全部变更
+2. 逐行审查每处修改...
+```
+
+## 字段说明
+
+### 必需字段
+
+| 字段 | 说明 |
+|------|------|
+| `name` | Skill 名称，必须与所在目录名一致 |
+| `description` | Skill 描述，在列表和提示中显示 |
+
+### 可选字段
+
+| 字段 | 说明 |
+|------|------|
+| `allowed-tools` | 工具白名单，限制 AI Agent 可用的工具集合 |
+
+## `allowed-tools` 白名单
+
+当指定 `allowed-tools` 时，不在白名单中的工具会被从 Agent 注册列表中移除。支持两种格式：
+
+```yaml
+# 空格分隔字符串
+allowed-tools: file_read file_search file_find shell_exec
+
+# 或 YAML 列表
+allowed-tools:
+  - file_read
+  - file_search
+  - file_find
+  - shell_exec
+```
+
+白名单的过滤在权限模式（PermissionMode）之前生效：先按白名单过滤工具，再按权限模式二次过滤。不填写此字段表示不做限制。
+
+### 可用工具名称
+
+`allowed-tools` 支持填写以下内置工具名称：
+
+| 工具名称 | 功能类别 | 说明 |
+|---------|---------|------|
+| `web_fetch` | 网络 | 获取网页内容 |
+| `web_search` | 网络 | 搜索网络 |
+| `shell_exec` | 命令 | 执行 shell 命令 |
+| `file_read` | 文件 | 读取文件 |
+| `file_search` | 文件 | 搜索文件内容 |
+| `file_find` | 文件 | 查找文件 |
+| `file_edit` | 文件 | 编辑文件 |
+| `file_write` | 文件 | 写入文件 |
+| `ask_user` | 交互 | 询问用户 |
+| `task_create` | 任务 | 创建任务 |
+| `task_get` | 任务 | 查看任务 |
+| `task_list` | 任务 | 列出任务 |
+| `task_update` | 任务 | 更新任务 |
+| `subagent` | 子代理 | 子代理管理 |
+| `skill` | Skill | Skill 管理 |
+
+各工具详细介绍请参见[内置工具目录](/guide/built-in-tools)。
+
+## 命名规则
+
+- SKILL.md 文件必须放在以 skill 名称命名的目录中
+- 目录名必须与 frontmatter 中的 `name` 字段一致（否则加载时会报错）
+- 名称不能包含 `/`、`\`、`..`（路径遍历防护）
