@@ -759,4 +759,140 @@ advanced = "deepseek-v4-flash"
             assert!(result.err().unwrap().contains("不存在"));
         });
     }
+
+    // ── ShellExecSettings 序列化/反序列化测试 ──
+
+    #[test]
+    fn test_shell_exec_settings_deserialize_empty_allow() {
+        let toml_str = r#"
+[shell_exec]
+allow = []
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        let shell_exec = settings.shell_exec.unwrap();
+        assert!(shell_exec.allow.is_empty());
+    }
+
+    #[test]
+    fn test_shell_exec_settings_deserialize_with_items() {
+        let toml_str = r#"
+[shell_exec]
+allow = ["git status", "cargo check"]
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        let shell_exec = settings.shell_exec.unwrap();
+        assert_eq!(shell_exec.allow.len(), 2);
+        assert_eq!(shell_exec.allow[0], "git status");
+    }
+
+    #[test]
+    fn test_shell_exec_settings_backward_compatible() {
+        let toml_str = r#"
+[llm]
+[llm.models]
+default = "deepseek-v4-flash"
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        assert!(settings.shell_exec.is_none());
+    }
+
+    #[test]
+    fn test_serialize_settings_without_shell_exec() {
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+            shell_exec: None,
+        };
+        let toml_str = toml::to_string(&settings).unwrap();
+        assert!(
+            !toml_str.contains("shell_exec"),
+            "shell_exec=None 不应出现在序列化输出中"
+        );
+    }
+
+    #[test]
+    fn test_serialize_settings_with_shell_exec() {
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+            shell_exec: Some(ShellExecSettings {
+                allow: vec!["git status".to_string()],
+            }),
+        };
+        let toml_str = toml::to_string(&settings).unwrap();
+        assert!(toml_str.contains("allow"));
+        assert!(toml_str.contains("git status"));
+    }
+
+    #[test]
+    fn test_load_settings_with_shell_exec() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                r#"
+[shell_exec]
+allow = ["git diff", "cargo check"]
+"#,
+            )
+            .unwrap();
+
+            let settings = load_settings().unwrap().unwrap();
+            let shell_exec = settings.shell_exec.unwrap();
+            assert_eq!(shell_exec.allow.len(), 2);
+        });
+    }
+
+    #[test]
+    fn test_load_settings_invalid_toml_with_new_field() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[shell_exec]\nallow = invalid\n",
+            )
+            .unwrap();
+            let result = load_settings();
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    fn test_load_settings_shell_exec_wrong_type() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[shell_exec]\nallow = \"not an array\"\n",
+            )
+            .unwrap();
+            let result = load_settings();
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    fn test_shell_exec_settings_with_full_config() {
+        let toml_str = r#"
+[llm]
+[llm.providers.deepseek]
+apiKey = "test-key"
+
+[llm.models]
+default = "deepseek-v4-flash"
+
+[shell_exec]
+allow = ["git status"]
+
+[conversation_log]
+enabled = true
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        assert!(settings.llm.is_some());
+        assert!(settings.shell_exec.is_some());
+        assert!(settings.conversation_log.unwrap().enabled);
+    }
 }

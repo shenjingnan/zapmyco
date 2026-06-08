@@ -193,6 +193,15 @@ impl ShellExec {
         Self { options }
     }
 
+    /// 判断命令是否应跳过用户确认
+    ///
+    /// - `skip_confirm=true`（测试模式）→ 跳过
+    /// - 命令匹配安全列表 → 跳过
+    /// - 否则 → 需要确认
+    pub fn should_skip_confirm(&self, command: &str) -> bool {
+        self.options.skip_confirm || is_safe_command(command, &self.options.allowed_commands)
+    }
+
     /// 返回 Anthropic Tool 定义
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
@@ -680,6 +689,15 @@ mod safe_command_tests {
     }
 
     #[test]
+    fn test_control_multiple_compound() {
+        // 复合运算符：一个命令中包含多个控制运算符
+        assert!(contains_shell_control("echo a > file && cat file"));
+        assert!(contains_shell_control("ls | grep foo; echo done"));
+        assert!(contains_shell_control("echo $(date) > /tmp/log"));
+        assert!(contains_shell_control("echo a; echo b | wc"));
+    }
+
+    #[test]
     fn test_builtin_pwd() {
         assert!(is_safe_command("pwd", &[]));
         assert!(is_safe_command("pwd -L", &[]));
@@ -731,47 +749,261 @@ mod safe_command_tests {
     }
 
     #[test]
+    fn test_date_s_is_technically_allowed() {
+        // design.md 已知风险: "date -s" 需要 root 权限，agent 极少生成此命令
+        // 如对此有顾虑，可在 settings.toml 中将 "date" 加入 deny 列表
+        assert!(is_safe_command("date -s '2024-01-01'", &[]));
+    }
+
+    #[test]
     fn test_safe_command_rejected_with_control_ops() {
         assert!(!is_safe_command("echo hello > /tmp/x", &[]));
+        assert!(!is_safe_command("ls > files.txt", &[]));
+        assert!(!is_safe_command("pwd > /tmp/pwd.txt", &[]));
+        assert!(!is_safe_command("echo hello | wc", &[]));
         assert!(!is_safe_command("ls | grep foo", &[]));
+        assert!(!is_safe_command("echo hello; rm -rf /", &[]));
         assert!(!is_safe_command("echo a && echo b", &[]));
+        assert!(!is_safe_command("echo a || echo b", &[]));
+        assert!(!is_safe_command("pwd; whoami", &[]));
+        assert!(!is_safe_command("echo hello || true", &[]));
+        assert!(!is_safe_command("echo `whoami`", &[]));
         assert!(!is_safe_command("echo $(hostname)", &[]));
+        assert!(!is_safe_command("echo $SHELL", &[]));
     }
 
     #[test]
     fn test_user_allowed() {
-        let user = vec!["git status".to_string()];
+        let user = vec!["git status".to_string(), "cargo check".to_string()];
         assert!(is_safe_command("git status", &user));
         assert!(is_safe_command("git status -s", &user));
         assert!(!is_safe_command("git commit", &user));
+        assert!(!is_safe_command("cargo build", &user));
     }
 
     #[test]
     fn test_edge_empty_whitespace() {
         assert!(!is_safe_command("", &[]));
         assert!(!is_safe_command("   ", &[]));
+        assert!(!is_safe_command("\t", &[]));
+        assert!(!is_safe_command("\n", &[]));
     }
 
     #[test]
     fn test_edge_leading_trailing_whitespace() {
         assert!(is_safe_command("  pwd", &[]));
+        assert!(is_safe_command("  whoami", &[]));
         assert!(is_safe_command("pwd  ", &[]));
+        assert!(is_safe_command("ls   ", &[]));
+        assert!(is_safe_command("  echo hello  ", &[]));
     }
 
     #[test]
     fn test_edge_not_in_builtin() {
         assert!(!is_safe_command("who", &[]));
+        assert!(!is_safe_command("who -a", &[]));
+        assert!(!is_safe_command("whoami_extra", &[]));
         assert!(!is_safe_command("rm -rf /", &[]));
         assert!(!is_safe_command("pwdconfig", &[]));
         assert!(!is_safe_command("idone", &[]));
+        assert!(!is_safe_command("uname2", &[]));
+        assert!(!is_safe_command("caliber", &[]));
     }
 
     #[test]
     #[cfg(target_os = "windows")]
     fn test_builtin_windows_commands() {
         assert!(is_safe_command("ver", &[]));
+        assert!(is_safe_command("systeminfo", &[]));
         assert!(is_safe_command("dir", &[]));
+        assert!(is_safe_command("dir /w", &[]));
+        assert!(is_safe_command("date /t", &[]));
+        assert!(is_safe_command("time /t", &[]));
+        assert!(is_safe_command("vol", &[]));
         assert!(!is_safe_command("directory", &[]));
+    }
+
+    #[test]
+    fn test_builtin_hostname_uptime_arch() {
+        assert!(is_safe_command("hostname", &[]));
+        assert!(is_safe_command("hostname -s", &[]));
+        assert!(is_safe_command("uptime", &[]));
+        assert!(is_safe_command("arch", &[]));
+    }
+
+    #[test]
+    fn test_builtin_which() {
+        assert!(is_safe_command("which python3", &[]));
+        assert!(!is_safe_command("which", &[]));
+    }
+
+    #[test]
+    fn test_builtin_id_logname_tty() {
+        assert!(is_safe_command("id", &[]));
+        assert!(is_safe_command("id -u", &[]));
+        assert!(!is_safe_command("idone", &[]));
+        assert!(is_safe_command("logname", &[]));
+        assert!(is_safe_command("tty", &[]));
+    }
+
+    #[test]
+    fn test_builtin_cal_seq() {
+        assert!(is_safe_command("cal", &[]));
+        assert!(is_safe_command("cal 2024", &[]));
+        assert!(is_safe_command("seq 1 10", &[]));
+        assert!(!is_safe_command("seq", &[]));
+    }
+
+    #[test]
+    fn test_builtin_getconf_pathchk() {
+        assert!(is_safe_command("getconf PAGE_SIZE", &[]));
+        assert!(!is_safe_command("getconf", &[]));
+        assert!(is_safe_command("pathchk /tmp", &[]));
+        assert!(!is_safe_command("pathchk", &[]));
+    }
+
+    #[test]
+    fn test_builtin_path_ops() {
+        assert!(is_safe_command("basename /path/to/file", &[]));
+        assert!(!is_safe_command("basename", &[]));
+        assert!(is_safe_command("dirname /path/to/file", &[]));
+        assert!(!is_safe_command("dirname", &[]));
+        assert!(is_safe_command("realpath /tmp", &[]));
+        assert!(!is_safe_command("realpath", &[]));
+    }
+
+    #[test]
+    fn test_builtin_list_not_empty() {
+        assert!(!BUILTIN_SAFE_COMMANDS.is_empty());
+    }
+
+    // ── 用户自定义列表扩展测试 ──
+
+    #[test]
+    fn test_user_allowed_prefix() {
+        let user = vec!["git status".to_string()];
+        assert!(is_safe_command("git status -s", &user));
+        assert!(is_safe_command("git status --short", &user));
+    }
+
+    #[test]
+    fn test_user_allowed_multi() {
+        let user = vec![
+            "git status".to_string(),
+            "cargo check".to_string(),
+            "cargo clippy".to_string(),
+        ];
+        assert!(is_safe_command("git status", &user));
+        assert!(is_safe_command("cargo check", &user));
+        assert!(is_safe_command("cargo check --offline", &user));
+        assert!(is_safe_command("cargo clippy", &user));
+    }
+
+    #[test]
+    fn test_user_allowed_still_blocked_by_control_ops() {
+        let user = vec!["git status".to_string()];
+        assert!(!is_safe_command("git status | grep foo", &user));
+        assert!(!is_safe_command("git status > file", &user));
+    }
+
+    #[test]
+    fn test_user_allowed_with_trailing_space() {
+        let user = vec!["cargo ".to_string()];
+        assert!(is_safe_command("cargo check", &user));
+        assert!(is_safe_command("cargo clippy", &user));
+        assert!(!is_safe_command("cargo", &user));
+    }
+
+    // ── 边界场景扩展测试 ──
+
+    #[test]
+    fn test_word_boundary_with_special_chars() {
+        assert!(!is_safe_command("pwd-config", &[]));
+        assert!(!is_safe_command("pwd_config", &[]));
+        assert!(!is_safe_command("pwd.config", &[]));
+    }
+
+    #[test]
+    fn test_normal_paths_not_blocked() {
+        assert!(!contains_shell_control("ls /path/to/dir"));
+        assert!(!contains_shell_control("ls ./src/main.rs"));
+        assert!(!contains_shell_control("ls ../parent/child"));
+        assert!(!contains_shell_control("ls ~/Documents"));
+    }
+
+    // ── should_skip_confirm 测试 ──
+
+    #[test]
+    fn test_should_skip_confirm_when_skip_confirm_true() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: true,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+        assert!(executor.should_skip_confirm("rm -rf /"));
+        assert!(executor.should_skip_confirm("pwd"));
+        assert!(executor.should_skip_confirm(""));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_safe_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+        assert!(executor.should_skip_confirm("pwd"));
+        assert!(executor.should_skip_confirm("echo hello"));
+        assert!(!executor.should_skip_confirm("git commit"));
+        assert!(!executor.should_skip_confirm("rm -rf /"));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_user_allowed() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: vec!["git status".to_string()],
+            ..Default::default()
+        });
+        assert!(executor.should_skip_confirm("git status"));
+        assert!(executor.should_skip_confirm("git status -s"));
+        assert!(!executor.should_skip_confirm("git commit"));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_unsafe_control_ops() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: vec!["git status".to_string()],
+            ..Default::default()
+        });
+        assert!(!executor.should_skip_confirm("git status | grep foo"));
+        assert!(!executor.should_skip_confirm("git status > file"));
+    }
+
+    // ── 性能测试 ──
+
+    #[test]
+    fn test_large_user_list_performance() {
+        let large_list: Vec<String> = (0..10_000).map(|i| format!("cmd_{}", i)).collect();
+        let start = std::time::Instant::now();
+        assert!(is_safe_command("cmd_5000 arg", &large_list));
+        assert!(!is_safe_command("unknown_cmd", &large_list));
+        assert!(!is_safe_command("cmd_0 | dangerous", &large_list));
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_millis() < 10,
+            "Large list scan too slow: {}ms",
+            elapsed.as_millis()
+        );
+    }
+
+    #[test]
+    fn test_edge_unicode_long() {
+        assert!(is_safe_command("echo 你好世界", &[]));
+        assert!(is_safe_command("echo café", &[]));
+        let long_path = "/".to_string() + &"a".repeat(1000);
+        assert!(is_safe_command(&format!("ls {}", long_path), &[]));
     }
 
     #[test]
@@ -779,5 +1011,177 @@ mod safe_command_tests {
         let empty: &[String] = &[];
         assert!(is_safe_command("pwd", empty));
         assert!(!is_safe_command("git status", empty));
+    }
+
+    #[test]
+    fn test_empty_user_list_performance() {
+        let start = std::time::Instant::now();
+        assert!(is_safe_command("pwd", &[] as &[String]));
+        assert!(!is_safe_command("git status", &[] as &[String]));
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_millis() < 1,
+            "Empty list should be instant: {}ms",
+            elapsed.as_millis()
+        );
+    }
+
+    // ── 回归测试 ──
+
+    #[test]
+    fn test_existing_functionality_preserved() {
+        // 验证 ShellExec 仍然可以使用 Default::default() 正常创建
+        let executor = ShellExec::new(Default::default());
+        assert!(!executor.options.skip_confirm);
+        assert!(executor.options.allowed_commands.is_empty());
+        // 验证内置安全命令仍可识别
+        assert!(is_safe_command("pwd", &executor.options.allowed_commands));
+        assert!(!is_safe_command(
+            "rm -rf /",
+            &executor.options.allowed_commands
+        ));
+    }
+
+    #[test]
+    fn test_default_backward_compatible() {
+        let default = ShellExecOptions::default();
+        assert!(default.allowed_commands.is_empty());
+        assert!(!default.skip_confirm);
+        assert_eq!(default.timeout_secs, 30);
+        assert_eq!(default.output_max_chars, 100_000);
+    }
+
+    // ── Unix 平台特定测试（仅非 Windows 运行）──
+
+    #[cfg(not(target_os = "windows"))]
+    mod unix_specific_tests {
+        use super::*;
+
+        #[test]
+        fn test_unix_builtin_commands() {
+            assert!(is_safe_command("uname", &[]));
+            assert!(is_safe_command("uptime", &[]));
+            assert!(is_safe_command("arch", &[]));
+            assert!(is_safe_command("cal", &[]));
+            assert!(is_safe_command("tty", &[]));
+            assert!(is_safe_command("logname", &[]));
+        }
+
+        #[test]
+        fn test_unix_path_commands() {
+            assert!(is_safe_command("basename /path/to/file", &[]));
+            assert!(is_safe_command("dirname /path/to/file", &[]));
+            assert!(is_safe_command("realpath /tmp", &[]));
+            assert!(is_safe_command("which bash", &[]));
+        }
+
+        #[test]
+        fn test_unix_getconf_pathchk() {
+            assert!(is_safe_command("getconf PAGE_SIZE", &[]));
+            assert!(is_safe_command("pathchk /tmp", &[]));
+        }
+    }
+
+    // ── CLI 集成测试 ──
+
+    #[test]
+    fn test_cli_settings_to_shell_exec_options() {
+        use crate::config::settings::{Settings, ShellExecSettings};
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+            shell_exec: Some(ShellExecSettings {
+                allow: vec!["git status".to_string(), "cargo check".to_string()],
+            }),
+        };
+        let allowed_commands = settings
+            .shell_exec
+            .as_ref()
+            .map(|se| se.allow.clone())
+            .unwrap_or_default();
+        assert_eq!(allowed_commands.len(), 2);
+        assert_eq!(allowed_commands[0], "git status");
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands,
+            ..Default::default()
+        });
+        assert_eq!(executor.options.allowed_commands.len(), 2);
+    }
+
+    #[test]
+    fn test_cli_settings_missing_shell_exec() {
+        use crate::config::settings::Settings;
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+            shell_exec: None,
+        };
+        let allowed_commands = settings
+            .shell_exec
+            .as_ref()
+            .map(|se| se.allow.clone())
+            .unwrap_or_default();
+        assert!(
+            allowed_commands.is_empty(),
+            "无 shell_exec 配置时应返回空列表"
+        );
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands,
+            ..Default::default()
+        });
+        assert!(is_safe_command("pwd", &executor.options.allowed_commands));
+    }
+
+    #[test]
+    fn test_cli_settings_empty_allow() {
+        use crate::config::settings::{Settings, ShellExecSettings};
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+            shell_exec: Some(ShellExecSettings { allow: vec![] }),
+        };
+        let allowed_commands = settings
+            .shell_exec
+            .as_ref()
+            .map(|se| se.allow.clone())
+            .unwrap_or_default();
+        assert!(allowed_commands.is_empty());
+    }
+
+    #[test]
+    fn test_full_chain_from_toml_to_executor() {
+        use crate::config::settings::load_settings;
+        use crate::test_util::run_with_temp_home;
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                r#"
+[shell_exec]
+allow = ["git status", "cargo check"]
+"#,
+            )
+            .unwrap();
+            let loaded = load_settings().unwrap().unwrap();
+            let allowed_commands = loaded
+                .shell_exec
+                .as_ref()
+                .map(|se| se.allow.clone())
+                .unwrap_or_default();
+            assert_eq!(allowed_commands, vec!["git status", "cargo check"]);
+            let executor = ShellExec::new(ShellExecOptions {
+                allowed_commands,
+                ..Default::default()
+            });
+            assert!(is_safe_command(
+                "git status",
+                &executor.options.allowed_commands
+            ));
+            assert!(!is_safe_command(
+                "git commit",
+                &executor.options.allowed_commands
+            ));
+        });
     }
 }
