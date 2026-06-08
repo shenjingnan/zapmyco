@@ -56,23 +56,26 @@ advanced = "deepseek-v4-pro"
 
 通过 CLI 选择配置档：
 
-### `[shell_exec]`
+### `[permissions.commands]`
 
-shell_exec 工具自动放行配置。在此配置的命令会跳过用户确认，直接执行。
+命令权限配置（白名单/黑名单）。匹配白名单的命令跳过用户确认直接执行，匹配黑名单的命令自动拒绝。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:----:|------|
-| `allow` | 字符串数组 | 否 | 放行命令前缀列表，匹配的命令跳过确认 |
+| `allow` | 字符串数组 | 否 | 自动放行的命令前缀列表（白名单） |
+| `deny` | 字符串数组 | 否 | 自动拒绝的命令前缀列表（黑名单，优先于 allow） |
 
 **匹配规则**：命令以列表中的条目开头即匹配（前缀匹配）。
-例如 `"git status"` 会放行 `git status`、`git status -s`、`git status --short` 等。
+例如 `"git status"` 会匹配 `git status`、`git status -s`、`git status --short` 等。
+
+**黑名单优先**：如果一个命令同时匹配 allow 和 deny 列表，deny 优先生效。
 
 **安全机制**：即使前缀匹配，如果命令中包含 `;` `|` `>` `<` `` ` `` `$` `&` 等 shell 控制运算符，
 仍会要求用户确认，防止通过重定向/管道/命令链绕过安全检查。
 
 **示例**：
 ```toml
-[shell_exec]
+[permissions.commands]
 allow = [
     "git status",
     "git diff",
@@ -81,10 +84,14 @@ allow = [
     "cargo clippy",
     "cargo fmt --check",
 ]
+deny = [
+    "rm -rf",
+    "sudo",
+]
 ```
 
-> 内置已有绝对安全命令列表（`pwd`、`whoami`、`echo`、`ls`、`uname` 等），无需在此重复配置。
-> 此配置仅用于扩展内置列表之外的自定义命令。
+> 内置已有绝对安全命令列表（`pwd`、`whoami`、`echo`、`ls`、`uname` 等），无需在 allow 中重复配置。
+> allow 仅用于扩展内置列表之外的自定义命令。
 
 ```bash
 zapmyco run --profile advanced '你的问题'

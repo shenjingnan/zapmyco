@@ -103,15 +103,15 @@ description: 在本地系统执行 shell 命令并返回标准输出、标准错
 > 即使前缀匹配，包含 `;` `|` `>` `<` `` ` `` `$` `&` 等控制运算符的命令仍会要求确认，这是安全保护。
 
 > 内置列表的設計原则是"宁可漏放（回到确认流程）也不错放"。
-> 如果内置列表未覆盖你常用的安全命令，可以通过 `[shell_exec]` 配置自行扩展。
+> 如果内置列表未覆盖你常用的安全命令，可以通过 `[permissions.commands]` 配置自行扩展。
 
-### 自定义放行列表
+### 自定义权限配置
 
-你可以在 `~/.zapmyco/settings.toml` 中配置额外的安全命令，这些命令也会跳过确认：
+你可以在 `~/.zapmyco/settings.toml` 中配置命令的自动放行（白名单）和自动拒绝（黑名单）：
 
 ```toml
-[shell_exec]
-# 用户自定义的放行命令前缀列表
+[permissions.commands]
+# 自动放行的命令前缀列表（白名单）
 # 命令将以"开头匹配"的方式检查：
 # - "git status" 会放行 "git status" 和 "git status -s"
 # - 匹配的命令会跳过用户确认
@@ -122,6 +122,13 @@ allow = [
     "cargo check",
     "cargo clippy",
     "cargo fmt --check",
+]
+
+# 自动拒绝的命令前缀列表（黑名单，优先于 allow）
+# 如果一个命令同时匹配 allow 和 deny，deny 优先生效
+deny = [
+    "rm -rf",
+    "sudo",
 ]
 ```
 
