@@ -56,6 +56,36 @@ advanced = "deepseek-v4-pro"
 
 通过 CLI 选择配置档：
 
+### `[shell_exec]`
+
+shell_exec 工具自动放行配置。在此配置的命令会跳过用户确认，直接执行。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `allow` | 字符串数组 | 否 | 放行命令前缀列表，匹配的命令跳过确认 |
+
+**匹配规则**：命令以列表中的条目开头即匹配（前缀匹配）。
+例如 `"git status"` 会放行 `git status`、`git status -s`、`git status --short` 等。
+
+**安全机制**：即使前缀匹配，如果命令中包含 `;` `|` `>` `<` `` ` `` `$` `&` 等 shell 控制运算符，
+仍会要求用户确认，防止通过重定向/管道/命令链绕过安全检查。
+
+**示例**：
+```toml
+[shell_exec]
+allow = [
+    "git status",
+    "git diff",
+    "git log",
+    "cargo check",
+    "cargo clippy",
+    "cargo fmt --check",
+]
+```
+
+> 内置已有绝对安全命令列表（`pwd`、`whoami`、`echo`、`ls`、`uname` 等），无需在此重复配置。
+> 此配置仅用于扩展内置列表之外的自定义命令。
+
 ```bash
 zapmyco run --profile advanced '你的问题'
 ```
