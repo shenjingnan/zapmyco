@@ -49,6 +49,16 @@ fn default_enabled() -> bool {
     true
 }
 
+/// shell_exec 工具配置
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellExecSettings {
+    /// 用户自定义的放行命令前缀列表
+    /// 匹配内置列表或此列表的命令将跳过用户确认
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
 /// 顶层配置
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
@@ -57,6 +67,9 @@ pub struct Settings {
     /// 对话日志配置
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_log: Option<ConversationLogSettings>,
+    /// shell_exec 工具配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell_exec: Option<ShellExecSettings>,
 }
 
 /// 检查对话日志是否启用（默认启用）
@@ -160,6 +173,7 @@ impl Settings {
         Settings {
             llm,
             conversation_log: self.conversation_log.clone(),
+            shell_exec: self.shell_exec.clone(),
         }
     }
 }
@@ -555,6 +569,7 @@ advanced = "deepseek-v4-flash"
                 )])),
             }),
             conversation_log: None,
+            shell_exec: None,
         };
         let masked = settings.masked();
         assert_eq!(
@@ -585,6 +600,7 @@ advanced = "deepseek-v4-flash"
                 models: None,
             }),
             conversation_log: None,
+            shell_exec: None,
         };
         let masked = settings.masked();
         assert_eq!(
@@ -607,6 +623,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: None,
+            shell_exec: None,
         };
         let masked = settings.masked();
         assert!(masked.llm.is_none());
@@ -617,6 +634,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: None,
+            shell_exec: None,
         };
         assert!(is_conversation_log_enabled(&settings));
     }
@@ -626,6 +644,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: Some(ConversationLogSettings { enabled: true }),
+            shell_exec: None,
         };
         assert!(is_conversation_log_enabled(&settings));
     }
@@ -635,6 +654,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: Some(ConversationLogSettings { enabled: false }),
+            shell_exec: None,
         };
         assert!(!is_conversation_log_enabled(&settings));
     }

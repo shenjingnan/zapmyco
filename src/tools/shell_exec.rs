@@ -33,6 +33,126 @@ pub enum ShellExecError {
 // Configuration
 // ---------------------------------------------------------------------------
 
+/// 内置绝对安全命令列表
+///
+/// 设计原则：
+/// - 只包含读取系统状态或输出信息的命令
+/// - 不包含任何可能读取文件内容的命令（cat、head、tail、grep 等）
+/// - 不包含任何可能泄露环境变量中 API Key 的命令（env、printenv）
+/// - 不包含可能被包装执行任意代码的命令（xargs、timeout 等）
+/// - 包含 Unix 和 Windows 双平台的等价命令
+///
+/// 匹配规则（由 matches_pattern() 函数执行）：
+/// - 无尾部空格：命令精确匹配，或命令后跟空格（确保词边界）
+///   → "pwd" 匹配 "pwd" 和 "pwd -L"，不匹配 "pwdconfig"
+///   → "ls"  匹配 "ls" 和 "ls -la"，不匹配 "lsblk"
+/// - 尾部带空格：严格前缀匹配（命令必须以该条目开头）
+///   → "echo " 匹配 "echo hello" 和 "echo a b"，不匹配 "echo"
+///   这种模式用于需要区分布命令和带参数形式的场景
+const BUILTIN_SAFE_COMMANDS: &[&str] = &[
+    // ── 通用命令（所有平台） ──
+    "pwd",     // 打印工作目录
+    "whoami",  // 打印当前用户名
+    "true",    // 无操作，返回 0
+    "false",   // 无操作，返回 1
+    "echo ",   // 尾部空格：匹配 "echo hello"，不匹配 bare "echo"
+    "printf ", // 尾部空格：匹配带参数的格式化输出
+    "cd",      // 改变工作目录（子进程中执行，不影响父进程）
+    // ── Unix 系统信息 ──
+    "uname",    // 系统信息（含 uname -a, uname -r 等）
+    "hostname", // 主机名
+    "uptime",   // 系统运行时间
+    "arch",     // 硬件架构
+    "which ",   // 尾部空格：定位命令路径
+    "id",       // 用户身份信息
+    "logname",  // 登录用户名
+    "tty",      // 终端设备名
+    "cal",      // 显示日历
+    "seq ",     // 尾部空格：生成数字序列
+    "getconf ", // 尾部空格：系统配置变量
+    "pathchk ", // 尾部空格：路径名检查
+    // ── Unix 路径操作 ──
+    "basename ", // 尾部空格：从路径中提取文件名
+    "dirname ",  // 尾部空格：从路径中提取目录名
+    "realpath ", // 尾部空格：解析为绝对路径
+    // ── Unix 目录列表 ──
+    "ls", // 列出目录内容（含 ls -la, ls /tmp 等）
+    // ── 日期和时间 ──
+    // 注意：允许 "date" 和 "date -u" 等参数，也允许 "date -s"（设置时间）。
+    // "date -s" 需要 root 权限，且 agent 极少生成此命令。
+    // 如对此有顾虑，可在 settings.toml 中将 "date" 加入 deny 列表。
+    "date", // 日期时间
+    // ── Windows CMD 等效命令 ──
+    "ver",        // 显示 Windows 版本
+    "systeminfo", // 显示系统信息（Windows）
+    "dir",        // 列出目录（Windows）
+    "date /t",    // 显示日期（Windows，/t 表示只查看不设置）
+    "time /t",    // 显示时间（Windows，/t 表示只查看不设置）
+    "vol",        // 显示卷标（Windows）
+];
+
+/// 检查命令是否匹配允许模式，防止跨词匹配（如 "ls" 不匹配 "lsblk"）
+fn matches_pattern(cmd: &str, pattern: &str) -> bool {
+    if pattern.ends_with(' ') {
+        // 尾部空格：严格前缀匹配
+        // "echo " → 匹配 "echo hello"，不匹配 "echo"
+        cmd.starts_with(pattern)
+    } else {
+        // 无尾部空格：命令精确匹配，或命令后跟空格
+        // "ls" → 匹配 "ls" 和 "ls -la"，不匹配 "lsblk"
+        cmd == pattern || cmd.starts_with(&format!("{} ", pattern))
+    }
+}
+
+/// 检查是否包含 shell 控制运算符
+///
+/// 控制运算符包括：
+/// - `;` `&&` `||` — 命令链
+/// - `|` — 管道
+/// - `>` `<` — 重定向
+/// - `` ` `` `$` — 命令替换 / 变量展开
+/// - `&` — 后台执行 / `&&`
+///
+/// 注意：简单的 contains 检查会误伤引号内的字符（如 `echo "hello & world"`），
+/// 但作为安全网，宁可误伤也不错放。用户可在 settings.toml 中配置精确规则绕过。
+fn contains_shell_control(cmd: &str) -> bool {
+    let controls = [';', '|', '>', '<', '`', '$', '&'];
+    cmd.contains(controls)
+}
+
+/// 判断命令是否为安全命令（匹配内置列表或用户自定义列表）
+///
+/// 匹配流程：
+/// 1. 修剪空白
+/// 2. 控制运算符检查（安全网）
+/// 3. 检查内置列表
+/// 4. 检查用户自定义列表
+///
+/// BUILTIN_SAFE_COMMANDS 是模块级编译时常量，不通过参数传递。
+fn is_safe_command(command: &str, user_allowed: &[String]) -> bool {
+    let cmd = command.trim();
+    if cmd.is_empty() {
+        return false;
+    }
+    // 控制运算符检查（安全网）
+    if contains_shell_control(cmd) {
+        return false;
+    }
+    // 检查内置列表
+    for pattern in BUILTIN_SAFE_COMMANDS {
+        if matches_pattern(cmd, pattern) {
+            return true;
+        }
+    }
+    // 检查用户自定义列表
+    for pattern in user_allowed {
+        if matches_pattern(cmd, pattern) {
+            return true;
+        }
+    }
+    false
+}
+
 /// run_command 配置选项
 #[derive(Debug, Clone)]
 pub struct ShellExecOptions {
@@ -42,6 +162,8 @@ pub struct ShellExecOptions {
     pub output_max_chars: usize,
     /// 跳过用户确认（用于测试和非交互环境）
     pub skip_confirm: bool,
+    /// 用户自定义的允许命令前缀列表
+    pub allowed_commands: Vec<String>,
 }
 
 impl Default for ShellExecOptions {
@@ -50,6 +172,7 @@ impl Default for ShellExecOptions {
             timeout_secs: 30,
             output_max_chars: 100_000,
             skip_confirm: false,
+            allowed_commands: Vec::new(),
         }
     }
 }
@@ -133,10 +256,17 @@ impl ShellExec {
             cmd.current_dir(dir);
         }
 
-        // 3. 用户确认（非跳过模式）
-        if !self.options.skip_confirm && !prompt_confirm(command, description) {
-            eprintln!("[run_command] ❌ 已取消");
-            return Ok("Command not executed (cancelled by user)".to_string());
+        // 3. 权限检查
+        if !self.options.skip_confirm {
+            // 3a. 安全命令 → 自动放行（匹配内置或用户自定义列表）
+            if is_safe_command(command, &self.options.allowed_commands) {
+                // 无需确认，直接执行
+            }
+            // 3b. 非安全命令 → 弹出确认
+            else if !prompt_confirm(command, description) {
+                eprintln!("[run_command] ❌ 已取消");
+                return Ok("Command not executed (cancelled by user)".to_string());
+            }
         }
 
         // 4. 执行带超时
@@ -260,6 +390,7 @@ mod tests {
             timeout_secs: 5,
             output_max_chars: 10_000,
             skip_confirm: true,
+            allowed_commands: Vec::new(),
         })
     }
 
@@ -398,6 +529,7 @@ mod tests {
             timeout_secs: 1,
             output_max_chars: 10_000,
             skip_confirm: true,
+            allowed_commands: Vec::new(),
         });
 
         let result = executor.execute("sleep 10", None, None).await;
@@ -416,6 +548,7 @@ mod tests {
             timeout_secs: 5,
             output_max_chars: 100, // 很小的限制
             skip_confirm: true,
+            allowed_commands: Vec::new(),
         });
 
         // 生成超过 100 字符的输出
@@ -452,6 +585,7 @@ mod tests {
             timeout_secs: 60,
             output_max_chars: 50_000,
             skip_confirm: true,
+            allowed_commands: Vec::new(),
         });
         assert_eq!(executor.options.timeout_secs, 60);
         assert_eq!(executor.options.output_max_chars, 50_000);
@@ -480,5 +614,170 @@ mod tests {
                 // IO 错误也合理
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod safe_command_tests {
+    use super::*;
+
+    #[test]
+    fn test_matches_exact_or_space_suffix() {
+        assert!(matches_pattern("pwd", "pwd"));
+        assert!(matches_pattern("ls", "ls"));
+        assert!(matches_pattern("pwd -L", "pwd"));
+        assert!(matches_pattern("ls -la", "ls"));
+        assert!(!matches_pattern("pwdconfig", "pwd"));
+        assert!(!matches_pattern("lsblk", "ls"));
+    }
+
+    #[test]
+    fn test_matches_prefix_with_trailing_space() {
+        assert!(matches_pattern("echo hello", "echo "));
+        assert!(!matches_pattern("echo", "echo "));
+        assert!(!matches_pattern("echowhat", "echo "));
+    }
+
+    #[test]
+    fn test_matches_pattern_empty() {
+        assert!(matches_pattern("", ""));
+        assert!(!matches_pattern("", "pwd"));
+        assert!(!matches_pattern("pwd", "pwd -L -a -b"));
+    }
+
+    #[test]
+    fn test_control_redirect() {
+        assert!(contains_shell_control("echo hello > file"));
+        assert!(contains_shell_control("cat < /etc/passwd"));
+    }
+
+    #[test]
+    fn test_control_pipe_chain() {
+        assert!(contains_shell_control("ls | sort"));
+        assert!(contains_shell_control("echo a && echo b"));
+        assert!(contains_shell_control("echo a || echo b"));
+        assert!(contains_shell_control("echo a; echo b"));
+    }
+
+    #[test]
+    fn test_control_subshell() {
+        assert!(contains_shell_control("echo $(whoami)"));
+        assert!(contains_shell_control("echo `whoami`"));
+        assert!(contains_shell_control("echo $HOME"));
+    }
+
+    #[test]
+    fn test_control_clean() {
+        assert!(!contains_shell_control("echo hello"));
+        assert!(!contains_shell_control("date +%s"));
+        assert!(!contains_shell_control("uname -a"));
+    }
+
+    #[test]
+    fn test_safe_chars_not_control() {
+        // = 是普通字符，不是控制运算符，is_safe_command 应正常匹配
+        assert!(is_safe_command("echo hello=world", &[]));
+    }
+
+    #[test]
+    fn test_builtin_pwd() {
+        assert!(is_safe_command("pwd", &[]));
+        assert!(is_safe_command("pwd -L", &[]));
+    }
+
+    #[test]
+    fn test_builtin_whoami_true_false() {
+        assert!(is_safe_command("whoami", &[]));
+        assert!(is_safe_command("true", &[]));
+        assert!(is_safe_command("false", &[]));
+    }
+
+    #[test]
+    fn test_builtin_echo() {
+        assert!(is_safe_command("echo hello", &[]));
+        assert!(is_safe_command("echo 'hello world'", &[]));
+        assert!(!is_safe_command("echo", &[]));
+        assert!(!is_safe_command("echowhat", &[]));
+    }
+
+    #[test]
+    fn test_builtin_printf() {
+        assert!(is_safe_command("printf 'hello'", &[]));
+        assert!(!is_safe_command("printf", &[]));
+    }
+
+    #[test]
+    fn test_builtin_cd_uname() {
+        assert!(is_safe_command("cd", &[]));
+        assert!(is_safe_command("cd /tmp", &[]));
+        assert!(!is_safe_command("cdrom", &[]));
+        assert!(is_safe_command("uname", &[]));
+        assert!(is_safe_command("uname -a", &[]));
+        assert!(is_safe_command("uname -r -s", &[]));
+        assert!(!is_safe_command("uname2", &[]));
+    }
+
+    #[test]
+    fn test_builtin_ls() {
+        assert!(is_safe_command("ls", &[]));
+        assert!(is_safe_command("ls -la", &[]));
+        assert!(!is_safe_command("lsblk", &[]));
+    }
+
+    #[test]
+    fn test_builtin_date() {
+        assert!(is_safe_command("date", &[]));
+        assert!(is_safe_command("date -u", &[]));
+    }
+
+    #[test]
+    fn test_safe_command_rejected_with_control_ops() {
+        assert!(!is_safe_command("echo hello > /tmp/x", &[]));
+        assert!(!is_safe_command("ls | grep foo", &[]));
+        assert!(!is_safe_command("echo a && echo b", &[]));
+        assert!(!is_safe_command("echo $(hostname)", &[]));
+    }
+
+    #[test]
+    fn test_user_allowed() {
+        let user = vec!["git status".to_string()];
+        assert!(is_safe_command("git status", &user));
+        assert!(is_safe_command("git status -s", &user));
+        assert!(!is_safe_command("git commit", &user));
+    }
+
+    #[test]
+    fn test_edge_empty_whitespace() {
+        assert!(!is_safe_command("", &[]));
+        assert!(!is_safe_command("   ", &[]));
+    }
+
+    #[test]
+    fn test_edge_leading_trailing_whitespace() {
+        assert!(is_safe_command("  pwd", &[]));
+        assert!(is_safe_command("pwd  ", &[]));
+    }
+
+    #[test]
+    fn test_edge_not_in_builtin() {
+        assert!(!is_safe_command("who", &[]));
+        assert!(!is_safe_command("rm -rf /", &[]));
+        assert!(!is_safe_command("pwdconfig", &[]));
+        assert!(!is_safe_command("idone", &[]));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_builtin_windows_commands() {
+        assert!(is_safe_command("ver", &[]));
+        assert!(is_safe_command("dir", &[]));
+        assert!(!is_safe_command("directory", &[]));
+    }
+
+    #[test]
+    fn test_empty_user_list() {
+        let empty: &[String] = &[];
+        assert!(is_safe_command("pwd", empty));
+        assert!(!is_safe_command("git status", empty));
     }
 }

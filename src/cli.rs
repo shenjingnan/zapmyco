@@ -515,6 +515,7 @@ fn build_settings(provider: &str, api_key: &str, default_model: &str) -> Setting
             }),
         }),
         conversation_log: None,
+        shell_exec: None,
     }
 }
 
@@ -666,7 +667,17 @@ async fn cmd_run(
     agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(web_fetch));
 
     // 注册命令执行工具
-    let shell_exec = crate::tools::shell_exec::ShellExec::new(Default::default());
+    let allowed_commands = settings::load_settings()
+        .ok()
+        .flatten()
+        .and_then(|s| s.shell_exec)
+        .map(|se| se.allow)
+        .unwrap_or_default();
+    let shell_exec =
+        crate::tools::shell_exec::ShellExec::new(crate::tools::shell_exec::ShellExecOptions {
+            allowed_commands,
+            ..Default::default()
+        });
     agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
 
     // 注册 Web 搜索工具（利用 API 服务端 web_search_20250305）
