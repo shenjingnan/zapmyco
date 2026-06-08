@@ -1,5 +1,5 @@
 ---
-name: plan-mode
+name: plan
 description: 结构化计划模式，为复杂任务输出技术方案
 ---
 
