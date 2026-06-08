@@ -49,6 +49,30 @@ fn default_enabled() -> bool {
     true
 }
 
+/// 权限配置
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Permissions {
+    /// 命令权限（白名单/黑名单）
+    #[serde(default)]
+    pub commands: CommandPermissions,
+    // 未来扩展：
+    // pub domains: DomainPermissions,
+    // pub paths: PathPermissions,
+}
+
+/// 命令权限：白名单（allow）和黑名单（deny）
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandPermissions {
+    /// 自动放行的命令前缀列表
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// 自动拒绝的命令前缀列表（优先于 allow）
+    #[serde(default)]
+    pub deny: Vec<String>,
+}
+
 /// 顶层配置
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
@@ -57,6 +81,9 @@ pub struct Settings {
     /// 对话日志配置
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_log: Option<ConversationLogSettings>,
+    /// 权限配置（白名单/黑名单）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<Permissions>,
 }
 
 /// 检查对话日志是否启用（默认启用）
@@ -160,6 +187,7 @@ impl Settings {
         Settings {
             llm,
             conversation_log: self.conversation_log.clone(),
+            permissions: self.permissions.clone(),
         }
     }
 }
@@ -555,6 +583,7 @@ advanced = "deepseek-v4-flash"
                 )])),
             }),
             conversation_log: None,
+            permissions: None,
         };
         let masked = settings.masked();
         assert_eq!(
@@ -585,6 +614,7 @@ advanced = "deepseek-v4-flash"
                 models: None,
             }),
             conversation_log: None,
+            permissions: None,
         };
         let masked = settings.masked();
         assert_eq!(
@@ -607,6 +637,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: None,
+            permissions: None,
         };
         let masked = settings.masked();
         assert!(masked.llm.is_none());
@@ -617,6 +648,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: None,
+            permissions: None,
         };
         assert!(is_conversation_log_enabled(&settings));
     }
@@ -626,6 +658,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: Some(ConversationLogSettings { enabled: true }),
+            permissions: None,
         };
         assert!(is_conversation_log_enabled(&settings));
     }
@@ -635,6 +668,7 @@ advanced = "deepseek-v4-flash"
         let settings = Settings {
             llm: None,
             conversation_log: Some(ConversationLogSettings { enabled: false }),
+            permissions: None,
         };
         assert!(!is_conversation_log_enabled(&settings));
     }
@@ -738,5 +772,191 @@ advanced = "deepseek-v4-flash"
             assert!(result.is_err());
             assert!(result.err().unwrap().contains("不存在"));
         });
+    }
+
+    // ── Permissions 序列化/反序列化测试 ──
+
+    #[test]
+    fn test_permissions_commands_deserialize_empty() {
+        let toml_str = r#"
+[permissions.commands]
+allow = []
+deny = []
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        let cmds = settings.permissions.unwrap().commands;
+        assert!(cmds.allow.is_empty());
+        assert!(cmds.deny.is_empty());
+    }
+
+    #[test]
+    fn test_permissions_commands_deserialize_with_items() {
+        let toml_str = r#"
+[permissions.commands]
+allow = ["git status", "cargo check"]
+deny = ["rm -rf"]
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        let cmds = settings.permissions.unwrap().commands;
+        assert_eq!(cmds.allow.len(), 2);
+        assert_eq!(cmds.allow[0], "git status");
+        assert_eq!(cmds.deny.len(), 1);
+        assert_eq!(cmds.deny[0], "rm -rf");
+    }
+
+    #[test]
+    fn test_permissions_commands_default_empty() {
+        let toml_str = r#"
+[permissions]
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        let cmds = settings.permissions.unwrap().commands;
+        assert!(cmds.allow.is_empty());
+        assert!(cmds.deny.is_empty());
+    }
+
+    #[test]
+    fn test_permissions_not_configured() {
+        let toml_str = r#"
+[llm]
+[llm.models]
+default = "deepseek-v4-flash"
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        assert!(settings.permissions.is_none());
+    }
+
+    #[test]
+    fn test_serialize_settings_without_permissions() {
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+            permissions: None,
+        };
+        let toml_str = toml::to_string(&settings).unwrap();
+        assert!(
+            !toml_str.contains("permissions"),
+            "permissions=None 不应出现在序列化输出中"
+        );
+    }
+
+    #[test]
+    fn test_serialize_settings_with_permissions() {
+        let settings = Settings {
+            llm: None,
+            conversation_log: None,
+            permissions: Some(Permissions {
+                commands: CommandPermissions {
+                    allow: vec!["git status".to_string()],
+                    deny: vec![],
+                },
+            }),
+        };
+        let toml_str = toml::to_string(&settings).unwrap();
+        assert!(toml_str.contains("allow"));
+        assert!(toml_str.contains("git status"));
+        assert!(toml_str.contains("deny"));
+    }
+
+    #[test]
+    fn test_load_settings_with_permissions() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                r#"
+[permissions.commands]
+allow = ["git diff", "cargo check"]
+deny = ["sudo"]
+"#,
+            )
+            .unwrap();
+
+            let settings = load_settings().unwrap().unwrap();
+            let cmds = settings.permissions.unwrap().commands;
+            assert_eq!(cmds.allow.len(), 2);
+            assert_eq!(cmds.deny.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_load_settings_invalid_permissions_toml() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[permissions.commands]\nallow = invalid\n",
+            )
+            .unwrap();
+            let result = load_settings();
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    fn test_load_settings_permissions_wrong_type() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[permissions.commands]\nallow = \"not an array\"\n",
+            )
+            .unwrap();
+            let result = load_settings();
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    fn test_permissions_with_full_config() {
+        let toml_str = r#"
+[llm]
+[llm.providers.deepseek]
+apiKey = "test-key"
+
+[llm.models]
+default = "deepseek-v4-flash"
+
+[permissions.commands]
+allow = ["git status"]
+deny = ["rm -rf"]
+
+[conversation_log]
+enabled = true
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        assert!(settings.llm.is_some());
+        assert!(settings.permissions.is_some());
+        assert!(settings.conversation_log.unwrap().enabled);
+    }
+
+    #[test]
+    fn test_permissions_deny_only() {
+        // 只有 deny 没有 allow 的场景
+        let toml_str = r#"
+[permissions.commands]
+deny = ["sudo", "rm -rf"]
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        let cmds = settings.permissions.unwrap().commands;
+        assert!(cmds.allow.is_empty());
+        assert_eq!(cmds.deny.len(), 2);
+        assert_eq!(cmds.deny[0], "sudo");
+    }
+
+    #[test]
+    fn test_permissions_allow_only() {
+        // 只有 allow 没有 deny 的场景（向后兼容）
+        let toml_str = r#"
+[permissions.commands]
+allow = ["git status"]
+"#;
+        let settings: Settings = toml::from_str(toml_str).unwrap();
+        let cmds = settings.permissions.unwrap().commands;
+        assert_eq!(cmds.allow.len(), 1);
+        assert!(cmds.deny.is_empty());
     }
 }
