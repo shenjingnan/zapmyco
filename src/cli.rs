@@ -896,6 +896,30 @@ async fn cmd_run(
         }
     }
 
+    // ---- 第四阶段：交互式继续循环（非子Agent模式） ----
+    // 允许 LLM 完成工作后，用户在同一会话上下文中继续输入新指令
+    if !subagent {
+        loop {
+            println!();
+            let user_input = inquire::Text::new("继续输入指令（留空或输入 /exit 退出）：\n")
+                .prompt()
+                .map_err(|e| e.to_string())?;
+
+            let trimmed = user_input.trim();
+            if trimmed.is_empty() || trimmed == "/exit" || trimmed == "/quit" {
+                break;
+            }
+
+            agent
+                .chat_with_tools(trimmed, |chunk| {
+                    eprint!("{}", chunk);
+                    use std::io::Write;
+                    std::io::stderr().flush().ok();
+                })
+                .await?;
+        }
+    }
+
     println!();
     Ok(())
 }
