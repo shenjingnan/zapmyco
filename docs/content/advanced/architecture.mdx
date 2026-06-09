@@ -12,6 +12,7 @@ graph TB
         lib["lib.rs<br/>库入口"]
         cli["cli.rs<br/>CLI 定义 & 路由"]
         agent["agent.rs<br/>AI Agent"]
+        output["output/<br/>输出总线"]
         models["models.rs<br/>模型注册表"]
         settings["settings.rs<br/>配置管理"]
     end
@@ -30,8 +31,11 @@ graph TB
 
     main --> cli
     cli --> agent
+    agent --> output
     agent --> models
     agent --> settings
+    output --> main
+    output --> cli
     Source --> Quality
     Quality --> Release
     Release --> gh_release
@@ -52,7 +56,11 @@ zapmyco/
 │   ├── lib.rs              # 库入口
 │   ├── cli.rs              # clap CLI 定义
 │   ├── agent.rs            # AiAgent（Anthropic API 封装）
-│   ├── models.rs           # 7 个内置模型注册表
+│   ├── output/             # 统一输出总线（Message、Router、Target）
+│   │   ├── mod.rs          # 核心类型 + Router + 全局单例
+│   │   ├── terminal.rs     # TerminalTarget（终端渲染）
+│   │   └── log.rs          # LogTarget（日志持久化 + ANSI 剥离）
+│   ├── models.rs           # 10 个内置模型注册表
 │   └── settings.rs         # ~/.zapmyco/settings.toml 管理
 ├── tests/
 │   └── integration_test.rs # 集成测试 (wiremock)
@@ -99,7 +107,11 @@ AI 对话核心模块，封装 `anthropic-ai-sdk`：
 
 ### 模型注册表（`src/models.rs`）
 
-内置 7 个模型，含供应商、baseURL、上下文窗口、max tokens 信息。
+内置 10 个模型，含供应商、baseURL、上下文窗口、max tokens 信息。
+
+### 输出系统 / Output Bus（`src/output/`）
+
+基于 **发布-订阅模式** 的统一输出基础设施，管理所有终端渲染和日志持久化。详见[输出系统详解](/advanced/output-system)。
 
 ## 构建与发布
 
