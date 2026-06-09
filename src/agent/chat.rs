@@ -627,8 +627,8 @@ impl AiAgent {
         let tasks = match tm.list().await {
             Ok(t) => t,
             Err(e) => {
-                output::send(&output::Message::info(format!(
-                    "[Task] 获取任务列表失败: {}",
+                output::send(&output::Message::warning(format!(
+                    "获取任务列表失败: {}",
                     e
                 )));
                 return;
@@ -1035,7 +1035,7 @@ impl AiAgent {
             let Some(handler) = handler else {
                 // 未知工具直接生成错误结果，不创建 future
                 let line = format!("[工具] ❌ {}  Unknown tool (0s, 0 字符)", name);
-                output::send(&output::Message::info(line.clone()));
+                output::send(&output::Message::tool_output(line.clone()));
                 results[idx] = Some(format!("[Tool error: Unknown tool: {}]", name));
                 result_ids[idx] = Some(tool_use_id.clone());
                 log_lines[idx] = Some(line);
@@ -1168,7 +1168,7 @@ impl AiAgent {
 
         // 按原始顺序统一输出，避免并发 output::send 交错
         for line in log_lines.iter().flatten() {
-            output::send(&output::Message::info(line.clone()));
+            output::send(&output::Message::tool_output(line.clone()));
         }
 
         // 按原始顺序构建 ToolResult blocks
