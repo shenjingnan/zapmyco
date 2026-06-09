@@ -11,6 +11,7 @@ use crate::config::settings::{LlmSettings, ProviderConfig, Settings};
 use std::collections::HashMap;
 
 use crate::datetime;
+use crate::output::{self, Message};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -656,7 +657,10 @@ async fn cmd_run(
                         skill_name, skill.name
                     ));
                 }
-                eprintln!("[Skill] 已加载: {} — {}", skill.name, skill.description);
+                output::send(&Message::info(format!(
+                    "[Skill] 已加载: {} — {}",
+                    skill.name, skill.description
+                )));
                 Some(skill)
             }
             None => {
@@ -761,9 +765,12 @@ async fn cmd_run(
     let task_manager = std::sync::Arc::new(crate::tools::task_manager::TaskManager::with_list_id(
         &list_id,
     ));
-    eprintln!("[会话] 任务列表 ID: {}", list_id);
+    output::send(&Message::info(format!("[会话] 任务列表 ID: {}", list_id)));
     if task_id.is_none() {
-        eprintln!("[提示] 使用 --task-id {} 可恢复此会话的任务列表", list_id);
+        output::send(&Message::info(format!(
+            "[提示] 使用 --task-id {} 可恢复此会话的任务列表",
+            list_id
+        )));
     }
     agent.set_task_manager(task_manager.clone());
     agent.register_tool(crate::agent::chat::ToolHandler::TaskCreate(
@@ -799,7 +806,10 @@ async fn cmd_run(
         let to_remove =
             crate::skills::loader::compute_denied_tools(&tool_names, &skill.allowed_tools);
         if !to_remove.is_empty() {
-            eprintln!("[Skill] 工具过滤: 仅允许 {:?}", skill.allowed_tools);
+            output::send(&Message::info(format!(
+                "[Skill] 工具过滤: 仅允许 {:?}",
+                skill.allowed_tools
+            )));
             let refs: Vec<&str> = to_remove.iter().map(|s| s.as_str()).collect();
             agent.remove_tools(&refs);
         }
@@ -812,10 +822,10 @@ async fn cmd_run(
             PermissionMode::ReadWrite => &["shell_exec"],
             PermissionMode::Full => &[], // unreachable
         };
-        eprintln!(
+        output::send(&Message::info(format!(
             "[权限模式] {:?} — 已禁止工具: {:?}",
             permission_mode, deny_tools
-        );
+        )));
         agent.remove_tools(deny_tools);
     }
 
@@ -824,19 +834,17 @@ async fn cmd_run(
         let session_id = session_id.to_string();
         let history = crate::agent::conversation_loader::load_conversation(&session_id)?;
         let msg_count = history.len();
-        eprintln!(
+        output::send(&Message::info(format!(
             "[会话] 已加载历史会话 {} ({} 条消息)",
             session_id, msg_count
-        );
+        )));
         agent.inject_history(history);
     }
 
     // ---- 第一阶段：执行用户原始输入 ----
     let _response = agent
         .chat_with_tools(&content, |chunk| {
-            eprint!("{}", chunk);
-            use std::io::Write;
-            std::io::stderr().flush().ok();
+            output::send(&Message::llm_chunk(chunk));
         })
         .await?;
 
@@ -853,7 +861,7 @@ async fn cmd_run(
 
         if pending_count == 0 {
             if task_completed {
-                println!("\n✅ 全部任务已完成！");
+                output::send(&Message::result("\n✅ 全部任务已完成！".to_string()));
             }
             break;
         }
@@ -866,13 +874,14 @@ async fn cmd_run(
             pending_count,
         );
 
-        eprintln!("\n[任务执行] {} 个任务待完成", pending_count,);
+        output::send(&Message::info(format!(
+            "\n[任务执行] {} 个任务待完成",
+            pending_count,
+        )));
 
         let result = tokio::select! {
             result = agent.chat_with_tools(&continuation, |chunk| {
-                eprint!("{}", chunk);
-                use std::io::Write;
-                std::io::stderr().flush().ok();
+                output::send(&Message::llm_chunk(chunk));
             }) => Some(result),
             _ = tokio::signal::ctrl_c() => None,
         };
@@ -884,7 +893,7 @@ async fn cmd_run(
             Some(Err(e)) => return Err(e),
             None => {
                 // 用户按 Ctrl+C 打断执行，弹出输入框供用户纠偏
-                println!();
+                output::send(&Message::result(String::new()));
                 let user_input =
                     inquire::Text::new("🛑 已中断 LLM 执行。请输入补充说明以纠正执行方向：")
                         .prompt()
@@ -906,11 +915,10 @@ async fn cmd_run(
                 let running =
                     crate::tools::subagent::count_running_subagents(&subagent_dir, &session);
                 if running > 0 {
-                    eprintln!(
-                        "
-[SubAgent] 仍有 {} 个子代理在后台运行:",
+                    output::send(&Message::info(format!(
+                        "\n[SubAgent] 仍有 {} 个子代理在后台运行:",
                         running
-                    );
+                    )));
                     if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
                         for entry in entries.flatten() {
                             let dir = entry.path();
@@ -926,15 +934,22 @@ async fn cmd_run(
                                     .unwrap_or_default();
                                 let task =
                                     std::fs::read_to_string(dir.join("task")).unwrap_or_default();
-                                eprintln!("  ├ {} — {}", id, task.lines().next().unwrap_or(""));
+                                output::send(&Message::info(format!(
+                                    "  ├ {} — {}",
+                                    id,
+                                    task.lines().next().unwrap_or("")
+                                )));
                             }
                         }
                     }
-                    eprintln!("  └ 结果保留在: {}", subagent_dir.display());
+                    output::send(&Message::info(format!(
+                        "  └ 结果保留在: {}",
+                        subagent_dir.display()
+                    )));
                 }
             }
             Err(e) => {
-                eprintln!("[SubAgent] 检查子代理失败: {}", e);
+                output::send(&Message::info(format!("[SubAgent] 检查子代理失败: {}", e)));
             }
         }
     }
@@ -943,7 +958,7 @@ async fn cmd_run(
     // 允许 LLM 完成工作后，用户在同一会话上下文中继续输入新指令
     if !subagent {
         loop {
-            println!();
+            output::send(&Message::result(String::new()));
             let user_input = inquire::Text::new("继续输入指令（留空或输入 /exit 退出）：\n")
                 .prompt()
                 .map_err(|e| e.to_string())?;
@@ -955,15 +970,13 @@ async fn cmd_run(
 
             agent
                 .chat_with_tools(trimmed, |chunk| {
-                    eprint!("{}", chunk);
-                    use std::io::Write;
-                    std::io::stderr().flush().ok();
+                    output::send(&Message::llm_chunk(chunk));
                 })
                 .await?;
         }
     }
 
-    println!();
+    output::send(&Message::result(String::new()));
     Ok(())
 }
 
@@ -1020,8 +1033,8 @@ fn cmd_uninstall() -> Result<(), String> {
         {
             Ok(val) => val,
             Err(_) => {
-                println!();
-                println!("谢，不删之恩~ 🥹");
+                output::send(&Message::result(String::new()));
+                output::send(&Message::result("谢，不删之恩~ 🥹".to_string()));
                 return Ok(());
             } // Ctrl+C，安全终止
         }
@@ -1038,15 +1051,15 @@ fn cmd_uninstall() -> Result<(), String> {
     {
         Ok(val) => val,
         Err(_) => {
-            println!();
-            println!("谢，不删之恩~ 🥹");
+            output::send(&Message::result(String::new()));
+            output::send(&Message::result("谢，不删之恩~ 🥹".to_string()));
             return Ok(());
         } // Ctrl+C / 非 TTY，安全终止
     };
 
     if !confirmed {
-        println!();
-        println!("谢，不删之恩~ 🥹");
+        output::send(&Message::result(String::new()));
+        output::send(&Message::result("谢，不删之恩~ 🥹".to_string()));
         return Ok(());
     }
 
@@ -1080,12 +1093,19 @@ fn execute_uninstall(
 
     // 安装收据（自动清理）
     if has_receipt && let Err(e) = std::fs::remove_dir_all(receipt_dir) {
-        eprintln!("  {RED}✗{RESET} 删除安装收据失败: {}", e);
+        output::send(&Message::info(format!(
+            "  {RED}✗{RESET} 删除安装收据失败: {}",
+            e
+        )));
     }
 
     // ~/.zapmyco/（用户已确认）
     if !want_keep_zapmyco && let Err(e) = std::fs::remove_dir_all(zapmyco_dir) {
-        eprintln!("  {RED}✗{RESET} 删除 {} 失败: {}", zapmyco_dir.display(), e);
+        output::send(&Message::info(format!(
+            "  {RED}✗{RESET} 删除 {} 失败: {}",
+            zapmyco_dir.display(),
+            e
+        )));
     }
 
     // 二进制文件（自动删除，Windows 不支持自删运行中的进程）
@@ -1093,16 +1113,22 @@ fn execute_uninstall(
     if let Some(path) = exe_path
         && let Err(e) = std::fs::remove_file(path)
     {
-        eprintln!("  {RED}✗{RESET} 删除二进制文件失败: {}", e);
+        output::send(&Message::info(format!(
+            "  {RED}✗{RESET} 删除二进制文件失败: {}",
+            e
+        )));
     }
 
     #[cfg(windows)]
     if let Some(path) = exe_path {
-        println!("请手动删除二进制文件: {}", path.display());
+        output::send(&Message::result(format!(
+            "请手动删除二进制文件: {}",
+            path.display()
+        )));
     }
 
-    println!();
-    println!("有缘再见~ 👋");
+    output::send(&Message::result(String::new()));
+    output::send(&Message::result("有缘再见~ 👋".to_string()));
 
     Ok(())
 }
@@ -1483,11 +1509,19 @@ fn cmd_note(command: NoteCommands) -> Result<(), String> {
         NoteCommands::Add { content } => {
             if content.is_empty() {
                 let id = notes.create_interactive()?;
-                println!("📝 已创建笔记: {}", id);
+                output::send(&Message {
+                    kind: output::MessageKind::NoteInfo,
+                    text: format!("📝 已创建笔记: {}", id),
+                    data: None,
+                });
             } else {
                 let content = content.join(" ");
                 let id = notes.create(&content)?;
-                println!("📝 已创建笔记: {}", id);
+                output::send(&Message {
+                    kind: output::MessageKind::NoteInfo,
+                    text: format!("📝 已创建笔记: {}", id),
+                    data: None,
+                });
             }
             Ok(())
         }
@@ -1495,11 +1529,14 @@ fn cmd_note(command: NoteCommands) -> Result<(), String> {
             let limit = limit.unwrap_or(20);
             let entries = notes.list(limit, all)?;
             if entries.is_empty() {
-                println!("暂无笔记");
+                output::send(&Message::result("暂无笔记".to_string()));
                 return Ok(());
             }
             for entry in &entries {
-                println!("{}  {}  {}", entry.id, entry.created, entry.preview);
+                output::send(&Message::result(format!(
+                    "{}  {}  {}",
+                    entry.id, entry.created, entry.preview
+                )));
             }
             Ok(())
         }
@@ -1507,26 +1544,29 @@ fn cmd_note(command: NoteCommands) -> Result<(), String> {
             let content = notes.show(&id)?;
             // 只显示正文（跳过 frontmatter）
             if let Some(body) = content.split("\n---\n").nth(1) {
-                println!("{}", body.trim());
+                output::send(&Message::result_block(body.trim().to_string()));
             } else {
-                println!("{}", content.trim());
+                output::send(&Message::result_block(content.trim().to_string()));
             }
             Ok(())
         }
         NoteCommands::Grep { keyword } => {
             let entries = notes.grep(&keyword)?;
             if entries.is_empty() {
-                println!("未找到包含「{}」的笔记", keyword);
+                output::send(&Message::result(format!("未找到包含「{}」的笔记", keyword)));
                 return Ok(());
             }
             for entry in &entries {
-                println!("{}  {}  {}", entry.id, entry.created, entry.preview);
+                output::send(&Message::result(format!(
+                    "{}  {}  {}",
+                    entry.id, entry.created, entry.preview
+                )));
             }
             Ok(())
         }
         NoteCommands::Rm { id } => {
             notes.remove(&id)?;
-            println!("已删除笔记: {}", id);
+            output::send(&Message::result(format!("已删除笔记: {}", id)));
             Ok(())
         }
     }
@@ -1537,19 +1577,19 @@ pub async fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Some(Commands::Config) => {
             let output = cmd_config()?;
-            println!("{}", output);
+            output::send(&Message::result_block(output));
             Ok(())
         }
         Some(Commands::Init) => {
             let output = cmd_init()?;
             if !output.is_empty() {
-                println!("{}", output);
+                output::send(&Message::result_block(output));
             }
             Ok(())
         }
         Some(Commands::Settings { subcommand }) => {
             let output = cmd_settings(subcommand.as_deref())?;
-            println!("{}", output);
+            output::send(&Message::result_block(output));
             Ok(())
         }
         Some(Commands::Uninstall) => cmd_uninstall(),

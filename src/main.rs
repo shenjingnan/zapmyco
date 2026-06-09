@@ -16,7 +16,7 @@ async fn main() {
     let result = cli::run(cli).await;
 
     if let Err(err) = result {
-        eprintln!("{}", err);
+        output::send(&output::Message::error(err.to_string()));
         std::process::exit(1);
     }
 }

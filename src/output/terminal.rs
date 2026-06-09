@@ -54,7 +54,7 @@ impl Target for TerminalTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::output::{Channel, LogTarget, Message, MessageKind};
+    use crate::output::{Channel, LogTarget, Message, MessageKind, Router};
     use tempfile::TempDir;
 
     // -- 通道路由 --
@@ -182,5 +182,179 @@ mod tests {
             MessageKind::RawStdout,
             MessageKind::RawStderr,
         ]
+    }
+
+    // ============================================================================
+    // Phase 2: Router + TerminalTarget 输出一致性
+    // ============================================================================
+
+    /// 收集消息的测试 target
+    struct CollectTarget {
+        messages: std::sync::Mutex<Vec<Message>>,
+    }
+
+    impl CollectTarget {
+        fn new() -> Self {
+            CollectTarget {
+                messages: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+        fn received(&self) -> Vec<Message> {
+            self.messages.lock().unwrap().clone()
+        }
+    }
+
+    impl Target for CollectTarget {
+        fn name(&self) -> &'static str {
+            "phase2_collector"
+        }
+        fn on_message(&self, msg: &Message) {
+            self.messages.lock().unwrap().push(msg.clone());
+        }
+    }
+
+    impl Target for std::sync::Arc<CollectTarget> {
+        fn name(&self) -> &'static str {
+            (**self).name()
+        }
+        fn on_message(&self, msg: &Message) {
+            (**self).on_message(msg)
+        }
+    }
+
+    #[test]
+    fn test_terminal_output_consistency_after_migration() {
+        // 验证所有迁移用到的消息类型通过 Router 分发给 TerminalTarget 后，
+        // 消息内容与工厂方法定义的格式一致。
+        // 使用 CollectTarget 收集消息来验证 Router 正确分发，
+        // TerminalTarget 的通道映射由 channel_for 测试覆盖。
+
+        let router = Router::new();
+        router.add_target(Box::new(TerminalTarget));
+        let collector = std::sync::Arc::new(CollectTarget::new());
+        router.add_target(Box::new(collector.clone()));
+
+        // Info
+        router.send(&Message::info("[Skill] 已加载: test — desc"));
+        let msgs = collector.received();
+        assert_eq!(msgs[0].kind, MessageKind::Info);
+        assert!(msgs[0].text.contains("[Skill] 已加载"));
+        assert_eq!(TerminalTarget::channel_for(msgs[0].kind), Channel::Stderr);
+        router.send(&Message::info("[会话] 任务列表 ID: run_001"));
+
+        // Result
+        router.send(&Message::result("✅ 全部任务已完成！"));
+
+        // tool_result
+        router.send(&Message::tool_result(
+            "🔧",
+            "read_file",
+            "src/main.rs",
+            1500,
+        ));
+
+        // tool_error
+        router.send(&Message::tool_error(
+            "🔧",
+            "write_file",
+            "permission denied",
+        ));
+
+        // tool_output
+        router.send(&Message::tool_output("tool output text"));
+
+        // llm_usage
+        router.send(&Message::llm_usage(100, 50, 0, 0, 2000, Some(3)));
+
+        // llm_chunk
+        router.send(&Message::llm_chunk("Hello "));
+        router.send(&Message::llm_chunk("World"));
+
+        // Warning
+        router.send(&Message::warning("自动更新 settings.toml 失败"));
+
+        // Error
+        router.send(&Message::error("something broke"));
+
+        // upgrade_done
+        router.send(&Message::upgrade_done("0.38", "0.39"));
+
+        // result_block
+        router.send(&Message::result_block("line1\nline2\nline3"));
+
+        // 验证 13 条消息全部送达
+        let msgs = collector.received();
+        assert_eq!(msgs.len(), 13);
+
+        // 验证每种消息的 kind 和 text 格式
+        assert_eq!(msgs[0].kind, MessageKind::Info);
+        assert_eq!(msgs[1].kind, MessageKind::Info);
+        assert_eq!(msgs[2].kind, MessageKind::ResultLine);
+        assert_eq!(msgs[3].kind, MessageKind::ToolResult);
+        assert_eq!(msgs[4].kind, MessageKind::ToolError);
+        assert_eq!(msgs[5].kind, MessageKind::ToolOutput);
+        assert_eq!(msgs[6].kind, MessageKind::LlmUsage);
+        assert_eq!(msgs[7].kind, MessageKind::LlmChunk);
+        assert_eq!(msgs[8].kind, MessageKind::LlmChunk);
+        assert_eq!(msgs[9].kind, MessageKind::Warning);
+        assert_eq!(msgs[10].kind, MessageKind::Error);
+        assert_eq!(msgs[11].kind, MessageKind::UpgradeDone);
+        assert_eq!(msgs[12].kind, MessageKind::ResultBlock);
+
+        // 验证各消息的终端通道映射正确
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::Info),
+            Channel::Stderr
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::ResultLine),
+            Channel::Stdout
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::ToolResult),
+            Channel::Stderr
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::ToolError),
+            Channel::Stderr
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::LlmUsage),
+            Channel::Stderr
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::LlmChunk),
+            Channel::Stream
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::Warning),
+            Channel::Stderr
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::Error),
+            Channel::Stderr
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::UpgradeDone),
+            Channel::Stdout
+        );
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::ResultBlock),
+            Channel::Stdout
+        );
+
+        // 验证结构化消息的 data 字段
+        let tool_result_data = msgs[3].data.as_ref().unwrap();
+        assert_eq!(tool_result_data["name"], "read_file");
+        assert_eq!(tool_result_data["duration_ms"], 1500);
+
+        let llm_usage_data = msgs[6].data.as_ref().unwrap();
+        assert_eq!(llm_usage_data["input_tokens"], 100);
+        assert_eq!(llm_usage_data["round"], 3);
+
+        // 验证 upgrade_done 包含结构化数据
+        let upgrade_data = msgs[11].data.as_ref().unwrap();
+        assert_eq!(upgrade_data["from"], "0.38");
+        assert_eq!(upgrade_data["to"], "0.39");
     }
 }

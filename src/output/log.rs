@@ -216,6 +216,7 @@ impl Drop for LogTarget {
 mod tests {
     use super::*;
     use crate::output::Message;
+    use crate::output::Router;
     use tempfile::TempDir;
 
     fn setup_log() -> (LogTarget, TempDir) {
@@ -734,5 +735,87 @@ mod tests {
         drop(target);
         let content = read_log(&dir);
         assert!(!content.is_empty());
+    }
+
+    // ============================================================================
+    // Phase 2: Router + LogTarget 真实场景日志验证
+    // ============================================================================
+
+    #[test]
+    fn test_log_real_world_conversation_scenario() {
+        let dir = TempDir::new().unwrap();
+        let log_path = dir.path().join("terminal.log");
+        let log = LogTarget::new(&log_path).unwrap();
+        let router = Router::new();
+        router.add_target(Box::new(log));
+
+        // 模拟一次真实对话的通信序列
+        // 1. 初始化阶段
+        router.send(&Message::info(
+            "[会话] 任务列表 ID: run_2025_001".to_string(),
+        ));
+        router.send(&Message::info(
+            "[Skill] 已加载: my-skill — test skill".to_string(),
+        ));
+
+        // 2. LLM 思考 + 流式输出
+        router.send(&Message::info("\n[LLM] 🤔 思考中...".to_string()));
+        router.send(&Message::llm_chunk("Let me "));
+        router.send(&Message::llm_chunk("search the web\n"));
+
+        // 3. 工具调用
+        router.send(&Message::info(
+            "[工具] 📋 本轮 2 个工具调用: 🔍 web_search, 📖 file_read".to_string(),
+        ));
+
+        // 4. 工具结果
+        router.send(&Message::tool_result(
+            "🔍",
+            "web_search",
+            "Rust tutorial",
+            2500,
+        ));
+        router.send(&Message::tool_result("📖", "file_read", "src/main.rs", 800));
+
+        // 5. 工具错误
+        router.send(&Message::tool_error(
+            "🔧",
+            "write_file",
+            "permission denied",
+        ));
+
+        // 6. Token 用量
+        router.send(&Message::llm_usage(1500, 200, 300, 0, 4500, Some(1)));
+
+        // 7. 任务完成
+        router.send(&Message::result("\n✅ 全部任务已完成！".to_string()));
+
+        drop(router);
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+
+        // 全部消息都录入了
+        assert!(content.contains("任务列表 ID"));
+        assert!(content.contains("[LLM]"));
+        assert!(content.contains("Let me search the web"));
+        assert!(content.contains("[工具] 📋"));
+        assert!(content.contains("web_search"));
+        assert!(content.contains("✅ 全部任务已完成！"));
+
+        // 通道标记正确
+        assert!(content.contains("[STDOUT]")); // result 消息
+        assert!(content.contains("[STDERR]")); // info/tool_result 消息
+
+        // 时间戳格式正确
+        let first_line = content.lines().next().unwrap();
+        assert!(first_line.starts_with('[')); // [2025-06-...
+
+        // 行顺序与发送顺序一致
+        let lines: Vec<&str> = content.lines().collect();
+        let task_idx = lines.iter().position(|l| l.contains("任务列表")).unwrap();
+        let search_idx = lines.iter().position(|l| l.contains("web_search")).unwrap();
+        let done_idx = lines.iter().position(|l| l.contains("全部任务")).unwrap();
+        assert!(task_idx < search_idx, "任务创建应在搜索之前");
+        assert!(search_idx < done_idx, "搜索应在任务完成之前");
     }
 }
