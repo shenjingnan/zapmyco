@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.39.1](https://github.com/shenjingnan/zapmyco/compare/v0.39.0...v0.39.1) - 2026-06-09
+
+### Added
+
+- *(output)* Phase 3 — 清理迁移桥接 RawStdout/RawStderr ([#427](https://github.com/shenjingnan/zapmyco/pull/427))
+- *(output)* Phase 2 — 迁移全部模块到统一输出总线 ([#426](https://github.com/shenjingnan/zapmyco/pull/426))
+- *(output)* 新增统一输出基础设施（Output Bus） ([#425](https://github.com/shenjingnan/zapmyco/pull/425))
+- *(cli)* --skill 参数支持 Tab 补全可用 skill 名 ([#423](https://github.com/shenjingnan/zapmyco/pull/423))
+
+### Other
+
+- 添加输出系统（Output Bus）设计文档 ([#428](https://github.com/shenjingnan/zapmyco/pull/428))
+
 ## [0.39.0](https://github.com/shenjingnan/zapmyco/compare/v0.38.0...v0.39.0) - 2026-06-09
 
 ### Added
