@@ -11,6 +11,7 @@ use crate::agent::chat::ToolHandler;
 use crate::agent::conversation_logger::ConversationLogger;
 use crate::agent::stream::RoundResult;
 use crate::datetime;
+use crate::output::{self, Message};
 
 // ---------------------------------------------------------------------------
 // 工具显示
@@ -240,11 +241,11 @@ pub(crate) fn merge_file_edits(
             });
             other.push((edits[0].0.clone(), "file_edit".to_string(), merged_input));
 
-            eprintln!(
+            output::send(&Message::info(format!(
                 "[工具] 🔗 合并 {} 个 file_edit 调用 (文件: {})",
                 edits.len(),
                 file_path,
-            );
+            )));
         }
     }
 
@@ -317,33 +318,17 @@ pub(crate) fn print_usage_line(
     cache_create: Option<u32>,
     duration_ms: u64,
 ) {
-    let round_str = match round {
-        Some(r) => format!(" 轮次 {r} |"),
-        None => String::new(),
-    };
-
     let cache_read_val = cache_read.unwrap_or(0);
     let cache_create_val = cache_create.unwrap_or(0);
-    let total = input_tokens + cache_read_val + cache_create_val;
-
-    let cache_part = if cache_read_val > 0 || cache_create_val > 0 {
-        let savings = if total > 0 {
-            (cache_read_val as f64 / total as f64 * 100.0) as u32
-        } else {
-            0
-        };
-        format!(
-            " | cache read: {}, create: {} | 节省 {}%",
-            cache_read_val, cache_create_val, savings
-        )
-    } else {
-        String::new()
-    };
-
-    eprintln!(
-        "[LLM]{round_str} in: {input_tokens}, out: {output_tokens}{cache_part} ({dur:.1}s)",
-        dur = duration_ms as f64 / 1000.0,
-    );
+    let total_input = input_tokens + cache_read_val + cache_create_val;
+    output::send(&Message::llm_usage(
+        total_input as u64,
+        output_tokens as u64,
+        cache_read_val as u64,
+        cache_create_val as u64,
+        duration_ms,
+        round,
+    ));
 }
 
 // ---------------------------------------------------------------------------

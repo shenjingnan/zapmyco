@@ -18,6 +18,7 @@ use crate::config::settings::{
     is_conversation_log_enabled, load_settings, resolve_env_ref, update_settings_model,
 };
 use crate::datetime;
+use crate::output;
 
 /// AiAgent 配置选项
 #[derive(Debug, Default)]
@@ -305,12 +306,15 @@ impl AiAgent {
                     Ok(Some(new_model)) => {
                         // 用户选择了替代模型，持久化到 settings.toml
                         if let Err(e) = update_settings_model(&new_model) {
-                            eprintln!("[警告] 自动更新 settings.toml 失败: {}", e);
+                            output::send(&output::Message::warning(format!(
+                                "自动更新 settings.toml 失败: {}",
+                                e
+                            )));
                         } else {
-                            eprintln!(
+                            output::send(&output::Message::info(format!(
                                 "✓ 已选择替代模型 '{}'，已自动更新 settings.toml。\n",
                                 new_model
-                            );
+                            )));
                         }
                         model_name = new_model;
                         model_info = get_model_info(&model_name);
@@ -366,7 +370,10 @@ impl AiAgent {
             match ConversationLogger::new() {
                 Ok(l) => Some(l),
                 Err(e) => {
-                    eprintln!("[警告] 初始化对话日志失败: {}", e);
+                    output::send(&output::Message::warning(format!(
+                        "初始化对话日志失败: {}",
+                        e
+                    )));
                     None
                 }
             }
@@ -620,7 +627,10 @@ impl AiAgent {
         let tasks = match tm.list().await {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("[Task] 获取任务列表失败: {}", e);
+                output::send(&output::Message::info(format!(
+                    "[Task] 获取任务列表失败: {}",
+                    e
+                )));
                 return;
             }
         };
@@ -628,10 +638,13 @@ impl AiAgent {
         let output = td.compute_output(&tasks);
 
         for event in &output.events {
-            eprintln!("{}", event);
+            let text = event.to_string();
+            if !text.is_empty() {
+                output::send(&output::Message::info(text));
+            }
         }
         if let Some(snapshot) = &output.snapshot {
-            eprintln!("\n{}\n", snapshot);
+            output::send(&output::Message::info(format!("\n{}\n", snapshot)));
         }
     }
 
@@ -695,12 +708,12 @@ impl AiAgent {
         });
 
         for round in 0..self.max_tool_rounds {
-            eprintln!("\n[LLM] 🤔 思考中...");
+            output::send(&output::Message::info("\n[LLM] 🤔 思考中...".to_string()));
 
             let result = self.stream_one_round(&mut on_chunk).await?;
 
             // 流式文本与后续日志之间换行
-            eprintln!();
+            output::send(&output::Message::info(String::new()));
 
             // 输出 token 用量
             crate::agent::executor::print_usage_line(
@@ -823,11 +836,11 @@ impl AiAgent {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            eprintln!(
+            output::send(&output::Message::info(format!(
                 "\n[工具] 📋 本轮 {} 个工具调用: {}",
                 tool_uses.len(),
                 count_summary
-            );
+            )));
         }
 
         let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
@@ -842,11 +855,11 @@ impl AiAgent {
 
             let Some(handler) = handler else {
                 let elapsed = tool_start.elapsed();
-                eprintln!(
+                output::send(&output::Message::info(format!(
                     "[工具] ❌ {}  Unknown tool ({:.1}s, 0 字符)",
                     name,
                     elapsed.as_secs_f64()
-                );
+                )));
                 tool_result_blocks.push(ContentBlock::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     content: format!("[Tool error: Unknown tool: {}]", name),
@@ -905,7 +918,11 @@ impl AiAgent {
 
             let result_text = if let Some(err_msg) = pre_read_error {
                 tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
-                eprintln!("[工具] ⚠️ {} {}  ❌ {}", icon, name, err_msg);
+                output::send(&output::Message::tool_error(
+                    icon,
+                    name.clone(),
+                    err_msg.clone(),
+                ));
                 format!("[Tool error: {}]", err_msg)
             } else {
                 match handler.execute(input).await {
@@ -931,19 +948,21 @@ impl AiAgent {
                             result_len = text.len(),
                             "工具执行成功"
                         );
-                        eprintln!(
-                            "[工具] {} {}  {}  ({:.1}s, {} 字符)",
+                        output::send(&output::Message::tool_result(
                             icon,
-                            name,
-                            param,
-                            elapsed.as_secs_f64(),
-                            text.len()
-                        );
+                            name.clone(),
+                            param.clone(),
+                            elapsed.as_millis() as u64,
+                        ));
                         text
                     }
                     Err(e) => {
                         tracing::warn!(tool = %name, error = %e, "工具执行失败");
-                        eprintln!("[工具] {} {}  {}  ❌ 失败: {}", icon, name, param, e);
+                        output::send(&output::Message::tool_error(
+                            icon,
+                            name.clone(),
+                            e.to_string(),
+                        ));
                         format!("[Tool error: {}]", e)
                     }
                 }
@@ -986,11 +1005,11 @@ impl AiAgent {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            eprintln!(
+            output::send(&output::Message::info(format!(
                 "\n[工具] 📋 本轮 {} 个工具调用（并行）: {}",
                 tool_uses.len(),
                 count_summary
-            );
+            )));
         }
 
         use futures_util::StreamExt as _;
@@ -1016,7 +1035,7 @@ impl AiAgent {
             let Some(handler) = handler else {
                 // 未知工具直接生成错误结果，不创建 future
                 let line = format!("[工具] ❌ {}  Unknown tool (0s, 0 字符)", name);
-                eprintln!("{}", line);
+                output::send(&output::Message::info(line.clone()));
                 results[idx] = Some(format!("[Tool error: Unknown tool: {}]", name));
                 result_ids[idx] = Some(tool_use_id.clone());
                 log_lines[idx] = Some(line);
@@ -1147,9 +1166,9 @@ impl AiAgent {
             }
         }
 
-        // 按原始顺序统一输出，避免并发 eprintln! 交错
+        // 按原始顺序统一输出，避免并发 output::send 交错
         for line in log_lines.iter().flatten() {
-            eprintln!("{}", line);
+            output::send(&output::Message::info(line.clone()));
         }
 
         // 按原始顺序构建 ToolResult blocks
@@ -1312,8 +1331,14 @@ fn prompt_model_replacement(
 
     // 非交互环境（CI、管道等）跳过 inquire，直接 Warning 降级
     if !std::io::stdin().is_terminal() {
-        eprintln!("[警告] 模型 '{}' 已不在支持列表中。", old_model);
-        eprintln!("       请运行 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。");
+        output::send(&output::Message::warning(format!(
+            "模型 '{}' 已不在支持列表中。",
+            old_model
+        )));
+        output::send(&output::Message::info(
+            "       请运行 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。"
+                .to_string(),
+        ));
         return Ok(None);
     }
 
@@ -1330,11 +1355,14 @@ fn prompt_model_replacement(
 
     let provider_hint = guessed_provider.unwrap_or("未知");
 
-    eprintln!("\n⚠️  模型 '{}' 已在最新版本中移除。", old_model);
-    eprintln!(
+    output::send(&output::Message::info(format!(
+        "\n⚠️  模型 '{}' 已在最新版本中移除。",
+        old_model
+    )));
+    output::send(&output::Message::info(format!(
         "发现您使用 {} 系列，以下是当前可用的模型：\n",
         provider_hint
-    );
+    )));
 
     let selection =
         inquire::Select::new("请选择替代模型（或选择最后一项跳过）", {
@@ -1349,17 +1377,22 @@ fn prompt_model_replacement(
         Ok(selected) => {
             if selected.starts_with("─") {
                 // 用户选择跳过
-                eprintln!(
+                output::send(&output::Message::info(format!(
                     "[提示] 请在 settings.toml 中为 [llm.providers.{}] 设置 baseUrl，",
                     provider_hint
-                );
-                eprintln!("       或在提供商处获取新的 API 地址。");
+                )));
+                output::send(&output::Message::info(
+                    "       或在提供商处获取新的 API 地址。".to_string(),
+                ));
                 Ok(None)
             } else {
                 // 用户选择了替代模型
                 if let Some(idx) = choices.iter().position(|(label, _)| label == selected) {
                     let new_model = choices[idx].1.to_string();
-                    eprintln!("✓ 已选择替代模型 '{}'。\n", new_model);
+                    output::send(&output::Message::info(format!(
+                        "✓ 已选择替代模型 '{}'。\n",
+                        new_model
+                    )));
                     Ok(Some(new_model))
                 } else {
                     Ok(None)
@@ -1368,8 +1401,14 @@ fn prompt_model_replacement(
         }
         Err(_) => {
             // 非 TTY 环境或用户取消
-            eprintln!("[警告] 模型 '{}' 已不在支持列表中。", old_model);
-            eprintln!("       请运行 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。");
+            output::send(&output::Message::warning(format!(
+                "模型 '{}' 已不在支持列表中。",
+                old_model
+            )));
+            output::send(&output::Message::info(
+                "       请运行 `zapmyco init` 重新配置，或在 settings.toml 中设置 baseUrl。"
+                    .to_string(),
+            ));
             Ok(None)
         }
     }

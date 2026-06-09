@@ -810,4 +810,31 @@ mod tests {
         assert!(content.contains("[STDOUT]"));
         assert!(content.contains("[STDERR]"));
     }
+
+    // -- Phase 2: print_usage_line 迁移后格式验证 --
+
+    #[test]
+    fn test_llm_usage_format_matches_original() {
+        // print_usage_line 迁移前输出格式:
+        // [LLM] in: {total}, out: {output} | cache read: {n}, create: {n} | 节省 {n}% ({dur:.1}s)
+        // Message::llm_usage 输出格式:
+        // [LLM] in: {input}, out: {output} | cache read: {}, create: {} | 节省 {}% ({dur:.1}s)
+
+        // 带 round
+        let msg = Message::llm_usage(1800, 200, 300, 0, 4500, Some(1));
+        assert!(msg.text.starts_with("[LLM]"));
+        assert!(msg.text.contains("in: 1800"));
+        assert!(msg.text.contains("out: 200"));
+        assert!(msg.text.contains("4.5s"));
+
+        // 无 round
+        let msg = Message::llm_usage(100, 50, 0, 0, 2000, None);
+        assert!(msg.text.starts_with("[LLM]"));
+        assert!(!msg.text.contains("round"));
+
+        // 带 cache 节省率
+        let msg = Message::llm_usage(200, 100, 50, 10, 1000, None);
+        assert!(msg.text.contains("cache read: 50"));
+        assert!(msg.text.contains("节省"));
+    }
 }

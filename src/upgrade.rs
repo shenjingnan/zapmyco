@@ -6,21 +6,26 @@ use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::output::{self, Message};
+
 /// 执行升级流程
 pub async fn cmd_upgrade() -> Result<(), String> {
     let current_version = env!("CARGO_PKG_VERSION");
     let latest_version = get_latest_version().await?;
 
     if !is_newer(&latest_version, current_version) {
-        println!("✅ 当前已是最新版本 (v{})", current_version);
+        output::send(&Message::result(format!(
+            "✅ 当前已是最新版本 (v{})",
+            current_version
+        )));
         return Ok(());
     }
 
-    println!(
+    output::send(&Message::result(format!(
         "⬇️  发现新版本 v{} (当前 v{})",
         latest_version, current_version
-    );
-    println!("正在下载...");
+    )));
+    output::send(&Message::result("正在下载...".to_string()));
 
     let target_triple = detect_target_triple()?;
 
@@ -50,7 +55,7 @@ async fn perform_upgrade(version: &str, triple: &str, tmp_dir: &Path) -> Result<
     download_file(&download_url, &archive_path).await?;
 
     // 2. 解压
-    println!("正在解压...");
+    output::send(&Message::result("正在解压...".to_string()));
     extract_archive(&archive_path, tmp_dir)?;
 
     // 3. 找到二进制文件
@@ -62,7 +67,7 @@ async fn perform_upgrade(version: &str, triple: &str, tmp_dir: &Path) -> Result<
     let extracted_binary = locate_binary(tmp_dir, triple, binary_name)?;
 
     // 4. 替换当前二进制
-    println!("正在更新...");
+    output::send(&Message::result("正在更新...".to_string()));
     let current_exe =
         std::env::current_exe().map_err(|e| format!("无法获取当前执行路径: {}", e))?;
     replace_binary(&extracted_binary, &current_exe)?;
@@ -74,8 +79,7 @@ async fn perform_upgrade(version: &str, triple: &str, tmp_dir: &Path) -> Result<
     let _ = upgrade_completion();
 
     let current_version = env!("CARGO_PKG_VERSION");
-    println!("✅ 已从 v{} 升级到 v{}", current_version, version);
-    println!("🔔 请运行: source ~/.zshrc (或新开终端 Tab) 刷新命令补全");
+    output::send(&Message::upgrade_done(current_version, version));
 
     Ok(())
 }
@@ -310,11 +314,11 @@ fn update_receipt(version: &str) -> Result<(), String> {
 fn upgrade_completion() -> Result<(), String> {
     match crate::cli::setup_shell_completion() {
         Ok(msg) => {
-            println!("\n{}", msg);
+            output::send(&Message::result_block(msg));
             Ok(())
         }
         Err(e) => {
-            eprintln!("\n{}", e);
+            output::send(&Message::error(e));
             Ok(()) // 补全配置失败不阻断升级
         }
     }

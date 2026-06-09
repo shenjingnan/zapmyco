@@ -1,5 +1,8 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::style::Stylize;
+
+use crate::output::{self, Message};
+
 /// 交互式选择提示组件
 ///
 /// 基于 crossterm 原始模式，提供支持 vim 快捷键（j/k）的终端选择器。
@@ -343,7 +346,7 @@ fn read_custom_input(question: &str) -> String {
     let _ = stderr.flush();
 
     // stdout 也需要换行，否则后续输出可能错位
-    println!();
+    output::send(&Message::result(String::new()));
 
     // 从 stdin 读取一行
     let mut input = String::new();

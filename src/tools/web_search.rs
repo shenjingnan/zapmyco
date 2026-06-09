@@ -122,13 +122,19 @@ impl WebSearch {
                 StreamEvent::ContentBlockStart { content_block, .. } => match &content_block {
                     ContentBlock::ServerToolUse { input, .. } => {
                         let q = input.get("query").and_then(|v| v.as_str()).unwrap_or("...");
-                        eprintln!("[工具] 🔍 正在搜索: {}", q);
+                        crate::output::send(&crate::output::Message::info(format!(
+                            "[工具] 🔍 正在搜索: {}",
+                            q
+                        )));
                     }
                     ContentBlock::WebSearchToolResult {
                         content: WebSearchToolResultContent::Results(results),
                         ..
                     } => {
-                        eprintln!("[工具] 📄 获得 {} 条搜索结果", results.len());
+                        crate::output::send(&crate::output::Message::info(format!(
+                            "[工具] 📄 获得 {} 条搜索结果",
+                            results.len()
+                        )));
                         for r in results {
                             result.push_str(&format!("- [{}]({})\n", r.title, r.url));
                         }
@@ -149,7 +155,10 @@ impl WebSearch {
                         }),
                     ..
                 } => {
-                    eprintln!("[工具] ✅ 搜索完成 ({} 次搜索)", su.web_search_requests);
+                    crate::output::send(&crate::output::Message::info(format!(
+                        "[工具] ✅ 搜索完成 ({} 次搜索)",
+                        su.web_search_requests
+                    )));
                 }
                 _ => {}
             }

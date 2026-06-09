@@ -1,6 +1,8 @@
 /// shell_exec 工具 - 在本地系统执行 shell 命令并返回输出
 use thiserror::Error;
 
+use crate::output::{self, Message};
+
 // ---------------------------------------------------------------------------
 // Error types
 // ---------------------------------------------------------------------------
@@ -291,7 +293,7 @@ impl ShellExec {
             }
             // 3b. 非安全命令 → 弹出确认
             else if !prompt_confirm(command, description) {
-                eprintln!("[run_command] ❌ 已取消");
+                output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
                 return Ok("Command not executed (cancelled by user)".to_string());
             }
         }
@@ -371,17 +373,17 @@ fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
         return false;
     }
 
-    eprintln!();
-    eprintln!("[工具] ⚠️  准备执行命令:");
+    output::send(&Message::info(String::new()));
+    output::send(&Message::info("[工具] ⚠️  准备执行命令:".to_string()));
     if let Some(desc) = description {
         let truncated = if desc.len() > 100 {
             format!("{}...", &desc[..100])
         } else {
             desc.to_string()
         };
-        eprintln!("  └ 描述: {}", truncated);
+        output::send(&Message::info(format!("  └ 描述: {}", truncated)));
     }
-    eprintln!("  └ 命令: {}", command);
+    output::send(&Message::info(format!("  └ 命令: {}", command)));
 
     let question = "是否确认执行？";
     let options = [
