@@ -18,8 +18,7 @@ impl TerminalTarget {
             | MessageKind::TaskDone
             | MessageKind::UpgradePhase
             | MessageKind::UpgradeDone
-            | MessageKind::NoteInfo
-            | MessageKind::RawStdout => Channel::Stdout,
+            | MessageKind::NoteInfo => Channel::Stdout,
             _ => Channel::Stderr,
         }
     }
@@ -85,10 +84,6 @@ mod tests {
             TerminalTarget::channel_for(MessageKind::NoteInfo),
             Channel::Stdout
         );
-        assert_eq!(
-            TerminalTarget::channel_for(MessageKind::RawStdout),
-            Channel::Stdout
-        );
     }
 
     #[test]
@@ -105,10 +100,6 @@ mod tests {
             TerminalTarget::channel_for(MessageKind::ToolCall),
             Channel::Stderr
         );
-        assert_eq!(
-            TerminalTarget::channel_for(MessageKind::RawStderr),
-            Channel::Stderr
-        );
     }
 
     #[test]
@@ -119,7 +110,7 @@ mod tests {
         );
     }
 
-    /// 所有 21 种 kind 都有通道映射
+    /// 所有 19 种 kind 都有通道映射
     #[test]
     fn test_all_kinds_have_channel() {
         for kind in all_message_kinds() {
@@ -131,7 +122,7 @@ mod tests {
     // -- 通道映射一致性（与 LogTarget） --
 
     #[test]
-    fn test_all_21_kinds_channel_consistency() {
+    fn test_all_kinds_channel_consistency() {
         for kind in all_message_kinds() {
             let channel = TerminalTarget::channel_for(kind);
             let dir = TempDir::new().unwrap();
@@ -179,8 +170,6 @@ mod tests {
             MessageKind::NoteInfo,
             MessageKind::SubAgentInfo,
             MessageKind::SkillLoaded,
-            MessageKind::RawStdout,
-            MessageKind::RawStderr,
         ]
     }
 

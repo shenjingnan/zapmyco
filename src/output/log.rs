@@ -172,23 +172,13 @@ impl Target for LogTarget {
             | MessageKind::TaskDone
             | MessageKind::UpgradePhase
             | MessageKind::UpgradeDone
-            | MessageKind::NoteInfo
-            | MessageKind::RawStdout => {
+            | MessageKind::NoteInfo => {
                 self.flush_buffer();
                 self.write_log("STDOUT", &self.strip_ansi(&msg.text));
             }
 
             // ToolOutput
             MessageKind::ToolOutput => {
-                self.flush_buffer();
-                let clean = self.strip_ansi(&msg.text);
-                if !clean.is_empty() {
-                    self.write_log("STDERR", &clean);
-                }
-            }
-
-            // 桥接
-            MessageKind::RawStderr => {
                 self.flush_buffer();
                 let clean = self.strip_ansi(&msg.text);
                 if !clean.is_empty() {
@@ -401,7 +391,7 @@ mod tests {
     #[test]
     fn test_log_ansi_only_message() {
         let (target, dir) = setup_log();
-        target.on_message(&Message::stderr("\x1b[31m\x1b[0m"));
+        target.on_message(&Message::llm_chunk("\x1b[31m\x1b[0m"));
         drop(target);
         let content = read_log(&dir);
         assert!(content.is_empty() || content == "\n");
@@ -727,7 +717,7 @@ mod tests {
                     target.on_message(&Message::tool_call("", "", vec![]));
                 }
                 4 => {
-                    target.on_message(&Message::stdout("raw"));
+                    target.on_message(&Message::result("raw"));
                 }
                 _ => unreachable!(),
             }

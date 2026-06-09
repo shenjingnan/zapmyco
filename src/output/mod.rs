@@ -32,7 +32,7 @@ pub enum MessageKind {
     // === LLM 交互 ===
     /// "🤔 Thinking..." 状态提示
     LlmThinking,
-    /// 流式文本片段（eprint! + flush）
+    /// LLM 流式文本片段（Stream 通道，不换行）
     LlmChunk,
     /// Token 用量
     LlmUsage,
@@ -78,10 +78,6 @@ pub enum MessageKind {
     SubAgentInfo,
     /// Skill 加载
     SkillLoaded,
-
-    // === 迁移桥接 ===
-    RawStdout,
-    RawStderr,
 }
 
 // ============================================================================
@@ -380,26 +376,6 @@ impl Message {
     pub fn tool_output(text: impl Into<String>) -> Self {
         Message {
             kind: MessageKind::ToolOutput,
-            text: text.into(),
-            data: None,
-        }
-    }
-
-    // ==================== 迁移桥接 ====================
-
-    /// 原始 stderr 文本（迁移期逃生舱）
-    pub fn stderr(text: impl Into<String>) -> Self {
-        Message {
-            kind: MessageKind::RawStderr,
-            text: text.into(),
-            data: None,
-        }
-    }
-
-    /// 原始 stdout 文本（迁移期逃生舱）
-    pub fn stdout(text: impl Into<String>) -> Self {
-        Message {
-            kind: MessageKind::RawStdout,
             text: text.into(),
             data: None,
         }
@@ -756,8 +732,6 @@ mod tests {
             MessageKind::NoteInfo,
             MessageKind::SubAgentInfo,
             MessageKind::SkillLoaded,
-            MessageKind::RawStdout,
-            MessageKind::RawStderr,
         ]
     }
 
