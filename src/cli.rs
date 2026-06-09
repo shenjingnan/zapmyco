@@ -130,6 +130,49 @@ impl TypedValueParser for BaseUrlValueParser {
     }
 }
 
+/// 自定义 value parser：Tab 补全可用 skill 名（运行时从文件系统扫描）
+#[derive(Clone)]
+struct SkillNameValueParser;
+
+impl TypedValueParser for SkillNameValueParser {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let s = value.to_string_lossy().into_owned();
+        if s.is_empty() {
+            return Err(clap::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "--skill 不能为空",
+            ));
+        }
+        Ok(s)
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
+        use crate::skills::discovery::list_available_skills;
+        use crate::skills::types::SkillSource;
+        let cwd = std::env::current_dir().ok()?;
+        let skills = list_available_skills(&cwd);
+        let values: Vec<PossibleValue> = skills
+            .into_iter()
+            .map(|s| {
+                let source_label = match s.source {
+                    SkillSource::Project => "项目",
+                    SkillSource::ProjectAgents => "项目(.agents)",
+                    SkillSource::User => "用户",
+                };
+                PossibleValue::new(s.name).help(format!("{} [{}]", s.description, source_label))
+            })
+            .collect();
+        Some(Box::new(values.into_iter()))
+    }
+}
+
 /// 自定义 value parser：Tab 补全历史会话 ID，按时间降序排列
 #[derive(Clone)]
 struct ConversationIdValueParser;
@@ -200,8 +243,8 @@ pub enum Commands {
     Run {
         /// 任务描述（当使用 --skill 时可省略）
         content: Option<String>,
-        /// 引用外部 skill（对应 SKILL.md 文件）
-        #[arg(long)]
+        /// 引用外部 skill（对应 SKILL.md 文件，Tab 可补全可用 skill 名）
+        #[arg(long, value_parser = SkillNameValueParser)]
         skill: Option<String>,
         /// 指定模型配置档
         #[arg(long)]
