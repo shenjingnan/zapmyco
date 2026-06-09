@@ -8,6 +8,7 @@ pub mod datetime;
 pub use agent::env_info;
 pub mod logging;
 pub mod notes;
+pub mod output;
 pub mod skills;
 #[doc(hidden)]
 pub mod tools;
