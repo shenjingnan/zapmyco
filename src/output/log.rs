@@ -273,6 +273,18 @@ mod tests {
         assert!(!content.contains('\x1b'));
     }
 
+    // -- 完全 ANSI 剥离 --
+
+    #[test]
+    fn test_log_strips_all_ansi() {
+        let (target, dir) = setup_log();
+        target.on_message(&Message::info("\x1b[1;31m\x1b[44mstyled\x1b[0m"));
+        drop(target);
+        let content = read_log(&dir);
+        assert!(content.contains("styled"));
+        assert!(!content.contains('\x1b'));
+    }
+
     // -- 多行处理 --
 
     #[test]
@@ -408,6 +420,21 @@ mod tests {
         assert!(first_line.contains(':'));
     }
 
+    // -- 写错误不 panic --
+
+    #[test]
+    fn test_log_write_error_ignored() {
+        // 验证写入失败时不会 panic
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.log");
+        std::fs::write(&path, "existing content").unwrap();
+        // 正常文件路径，写入应成功——仅验证结构不 panic
+        if let Ok(target) = LogTarget::new(&path) {
+            target.on_message(&Message::result("should succeed"));
+            drop(target);
+        }
+    }
+
     // -- Drop 行为 --
 
     #[test]
@@ -531,5 +558,181 @@ mod tests {
             assert!(result.contains(&format!("word{}", i)));
         }
         assert!(!result.contains('\x1b'));
+    }
+
+    // ====================== 补充的 AnsiStripper 测试 ======================
+
+    #[test]
+    fn test_strip_erase_line() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("before\x1b[0Kafter"), "beforeafter");
+    }
+
+    #[test]
+    fn test_strip_256_color() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("\x1b[38;5;196mred256\x1b[0m"), "red256");
+    }
+
+    #[test]
+    fn test_strip_true_color() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("\x1b[38;2;255;0;0mtruered\x1b[0m"), "truered");
+    }
+
+    #[test]
+    fn test_strip_simple_escape() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("before\x1b7after"), "beforeafter");
+    }
+
+    #[test]
+    fn test_strip_escape_at_end() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("text\x1b"), "text");
+    }
+
+    #[test]
+    fn test_strip_cross_boundary_single_escape() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("text\x1b"), "text");
+        assert_eq!(s.process("[31mhello\x1b[0m"), "hello");
+    }
+
+    #[test]
+    fn test_strip_cross_boundary_osc() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("\x1b]0;"), "");
+        assert_eq!(s.process("title\x07text"), "text");
+    }
+
+    #[test]
+    fn test_strip_unicode_boundary() {
+        let mut s = AnsiStripper::new();
+        let input = "\x1b[31m\u{1F600}\x1b[0m";
+        assert_eq!(s.process(input), "\u{1F600}");
+    }
+
+    #[test]
+    fn test_strip_csi_with_semicolons() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("\x1b[3;1H"), "");
+    }
+
+    #[test]
+    fn test_strip_mixed_ansi_and_text_no_consume_text() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(
+            s.process("before\x1b[1m\x1b[33minside\x1b[0mafter"),
+            "beforeinsideafter"
+        );
+    }
+
+    #[test]
+    fn test_strip_malformed_csi_with_newline_in_between() {
+        let mut s = AnsiStripper::new();
+        let result = s.process("\x1b[\nhello");
+        assert_eq!(result, "ello");
+    }
+
+    #[test]
+    fn test_strip_very_long_parameters() {
+        let mut s = AnsiStripper::new();
+        let params = (0..1000)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(";");
+        let input = format!("\x1b[{}mtext", params);
+        assert_eq!(s.process(&input), "text");
+    }
+
+    #[test]
+    fn test_strip_csi_thousands_of_digits() {
+        let mut s = AnsiStripper::new();
+        let digits = "0".repeat(100 * 1024);
+        let result = s.process(&format!("\x1b[{}", digits));
+        assert_eq!(result, "");
+        assert_eq!(s.process("text"), "ext");
+    }
+
+    #[test]
+    fn test_strip_escape_state_leaks_nothing() {
+        let mut s = AnsiStripper::new();
+        assert_eq!(s.process("text\x1b"), "text");
+        // Escape 状态的 catch-all 会消耗下一个字符（'h'）来回到 Normal
+        assert_eq!(s.process("hello"), "ello");
+    }
+
+    #[test]
+    fn test_strip_csi_state_recovers_after_incomplete() {
+        let mut s = AnsiStripper::new();
+        s.process("\x1b[31");
+        assert_eq!(s.process("mhello"), "hello");
+        let mut s2 = AnsiStripper::new();
+        assert_eq!(s2.process("\x1b[31mhello"), "hello");
+    }
+
+    // ====================== 压力测试 ======================
+
+    #[test]
+    fn test_stress_many_chunks() {
+        let (target, dir) = setup_log();
+        let n = 10000;
+        for i in 0..n {
+            target.on_message(&Message::llm_chunk(format!("chunk {}\n", i)));
+        }
+        drop(target);
+        let content = read_log(&dir);
+        let lines: Vec<&str> = content.lines().collect();
+        assert!(lines.len() >= n - 5);
+        assert!(lines[0].contains("chunk 0"));
+        assert!(lines[n - 1].contains(&format!("chunk {}", n - 1)));
+    }
+
+    #[test]
+    fn test_stress_large_result() {
+        let (target, dir) = setup_log();
+        let large = "x".repeat(1024 * 1024);
+        target.on_message(&Message::result_block(&large));
+        drop(target);
+        let content = read_log(&dir);
+        assert!(content.len() >= 1024 * 1024);
+    }
+
+    #[test]
+    fn test_stress_random_interleaving() {
+        use rand::Rng;
+        let (target, dir) = setup_log();
+        let mut rng = rand::thread_rng();
+        for _ in 0..500 {
+            // `gen_range` 是完整方法名（非保留字 `gen`），Rust 2024 中有效
+            match rng.gen_range(0..5) {
+                0 => {
+                    target.on_message(&Message::llm_chunk(format!(
+                        "chunk{}",
+                        rand::random::<u32>()
+                    )));
+                }
+                1 => {
+                    target.on_message(&Message::warning("warn"));
+                }
+                2 => {
+                    target.on_message(&Message::result(&format!(
+                        "result{}",
+                        rand::random::<u32>()
+                    )));
+                }
+                3 => {
+                    target.on_message(&Message::tool_call("", "", vec![]));
+                }
+                4 => {
+                    target.on_message(&Message::stdout("raw"));
+                }
+                _ => unreachable!(),
+            }
+        }
+        drop(target);
+        let content = read_log(&dir);
+        assert!(!content.is_empty());
     }
 }

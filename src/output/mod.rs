@@ -766,4 +766,48 @@ mod tests {
         // 全局 ROUTER 在首次访问时初始化
         send(&Message::info("test"));
     }
+
+    // -- 集成测试 --
+
+    #[test]
+    fn test_router_with_log() {
+        // 6.2 Router + LogTarget
+        let router = Router::new();
+        let dir = tempfile::TempDir::new().unwrap();
+        let log_path = dir.path().join("terminal.log");
+        let log = crate::output::LogTarget::new(&log_path).unwrap();
+        router.add_target(Box::new(log));
+
+        router.send(&Message::result("output"));
+        router.send(&Message::warning("warning!"));
+        drop(router);
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        assert!(content.contains("output"));
+        assert!(content.contains("warning!"));
+    }
+
+    #[test]
+    fn test_router_with_terminal_and_log() {
+        let router = Router::new();
+        router.add_target(Box::new(crate::output::TerminalTarget));
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let log_path = dir.path().join("terminal.log");
+        let log = crate::output::LogTarget::new(&log_path).unwrap();
+        router.add_target(Box::new(log));
+
+        router.send(&Message::result("to both stdout"));
+        router.send(&Message::warning("to both stderr"));
+        drop(router);
+
+        let content = match std::fs::read_to_string(&log_path) {
+            Ok(c) => c,
+            Err(e) => panic!("cannot read log file at {}: {}", log_path.display(), e),
+        };
+        assert!(content.contains("to both stdout"), "content: {:?}", content);
+        assert!(content.contains("to both stderr"));
+        assert!(content.contains("[STDOUT]"));
+        assert!(content.contains("[STDERR]"));
+    }
 }
