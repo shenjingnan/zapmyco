@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.39.0](https://github.com/shenjingnan/zapmyco/compare/v0.38.0...v0.39.0) - 2026-06-09
+
+### Added
+
+- *(cli)* LLM 执行完成后支持用户继续交互 ([#421](https://github.com/shenjingnan/zapmyco/pull/421))
+- *(shell-exec)* 内置绝对安全命令列表，自动放行无需用户确认 ([#415](https://github.com/shenjingnan/zapmyco/pull/415))
+
+### Other
+
+- *(deps)* bump codecov/codecov-action from 6 to 7 ([#416](https://github.com/shenjingnan/zapmyco/pull/416))
+- *(skills)* 将 plan-mode 技能迁移为 plan 技能 ([#413](https://github.com/shenjingnan/zapmyco/pull/413))
+
 ## [0.38.0](https://github.com/shenjingnan/zapmyco/compare/v0.37.0...v0.38.0) - 2026-06-07
 
 ### Added
