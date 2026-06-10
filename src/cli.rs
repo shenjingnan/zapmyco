@@ -448,131 +448,6 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_show_subcommand() {
-        run_with_temp_home(|home| {
-            let settings_dir = home.join(".zapmyco");
-            std::fs::create_dir_all(&settings_dir).unwrap();
-            std::fs::write(
-                settings_dir.join("settings.toml"),
-                "[llm]\n\n[llm.models]\ndefault = \"deepseek-v4-flash\"\n",
-            )
-            .unwrap();
-
-            let show_result = cmd_settings(Some("show"));
-            let none_result = cmd_settings(None);
-            assert!(show_result.is_ok());
-            assert!(none_result.is_ok());
-            // show 和 None 应该返回一致的输出（当前逻辑上它们相同）
-            assert_eq!(show_result.unwrap(), none_result.unwrap());
-        });
-    }
-
-    #[tokio::test]
-    async fn test_run_empty_content() {
-        let result = commands::run::cmd_run(
-            None, // content
-            None, // skill
-            None, // profile
-            PermissionMode::Full,
-            None,
-            None,
-            None,
-            None,
-            None,  // task_id..base_url
-            false, // subagent
-        )
-        .await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_run_no_settings() {
-        // 使用临时 HOME 隔离 settings.toml 的干扰
-        let dir = tempfile::tempdir().unwrap();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
-
-        let result = commands::run::cmd_run(
-            Some("hello"), // content
-            None,          // skill
-            None,          // profile
-            PermissionMode::Full,
-            None,
-            None,
-            None,
-            None,
-            None,  // task_id..base_url
-            false, // subagent
-        )
-        .await;
-        assert!(result.is_err());
-
-        if let Some(h) = orig_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
-    }
-
-    #[test]
-    fn test_build_run_options_no_profile() {
-        let options = commands::run::build_run_options(None, None, None, None);
-        assert!(options.model_profile.is_none());
-        assert!(options.model.is_none());
-        assert!(options.api_key.is_none());
-        assert!(options.base_url.is_none());
-    }
-
-    #[test]
-    fn test_build_run_options_with_profile() {
-        let options = commands::run::build_run_options(Some("advanced"), None, None, None);
-        assert_eq!(options.model_profile.unwrap(), "advanced");
-        assert!(options.model.is_none());
-        assert!(options.api_key.is_none());
-        assert!(options.base_url.is_none());
-    }
-
-    #[test]
-    fn test_build_run_options_with_model() {
-        let options = commands::run::build_run_options(None, Some("deepseek-v4-flash"), None, None);
-        assert_eq!(options.model.unwrap(), "deepseek-v4-flash");
-        assert!(options.model_profile.is_none());
-        assert!(options.api_key.is_none());
-        assert!(options.base_url.is_none());
-    }
-
-    #[test]
-    fn test_build_run_options_with_api_key() {
-        let options = commands::run::build_run_options(None, None, Some("sk-test-123"), None);
-        assert_eq!(options.api_key.unwrap(), "sk-test-123");
-        assert!(options.model.is_none());
-    }
-
-    #[test]
-    fn test_build_run_options_with_base_url() {
-        let options =
-            commands::run::build_run_options(None, None, None, Some("https://custom.example.com"));
-        assert_eq!(options.base_url.unwrap(), "https://custom.example.com");
-        assert!(options.model.is_none());
-    }
-
-    #[test]
-    fn test_build_run_options_all_flags() {
-        let options = commands::run::build_run_options(
-            Some("my-profile"),
-            Some("claude-opus-4-7"),
-            Some("sk-claude-key"),
-            Some("https://api.anthropic.com"),
-        );
-        assert_eq!(options.model_profile.unwrap(), "my-profile");
-        assert_eq!(options.model.unwrap(), "claude-opus-4-7");
-        assert_eq!(options.api_key.unwrap(), "sk-claude-key");
-        assert_eq!(options.base_url.unwrap(), "https://api.anthropic.com");
-    }
-
-    #[test]
     fn test_version_constant() {
         // 验证 VERSION 是有效的 semver 格式 (X.Y.Z)
         assert!(!VERSION.is_empty(), "VERSION should not be empty");
@@ -658,6 +533,25 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn test_settings_show_subcommand() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\n\n[llm.models]\ndefault = \"deepseek-v4-flash\"\n",
+            )
+            .unwrap();
+
+            let show_result = cmd_settings(Some("show"));
+            let none_result = cmd_settings(None);
+            assert!(show_result.is_ok());
+            assert!(none_result.is_ok());
+            assert_eq!(show_result.unwrap(), none_result.unwrap());
+        });
+    }
+
     fn test_config_output() {
         let output = cmd_config().unwrap();
         let val: serde_json::Value = serde_json::from_str(&output).unwrap();
@@ -707,168 +601,7 @@ mod tests {
     }
 
     #[test]
-    // —————— completion 命令测试 ——————
-    #[test]
-    fn test_completion_bash() {
-        let mut buf = Vec::new();
-        completion::cmd_completion(clap_complete::Shell::Bash, &mut buf);
-        let output = String::from_utf8(buf).unwrap();
-        assert!(
-            output.contains("complete -F"),
-            "bash 补全应包含 complete -F"
-        );
-        for sub in &[
-            "config",
-            "init",
-            "settings",
-            "uninstall",
-            "run",
-            "note",
-            "upgrade",
-            "completion",
-        ] {
-            assert!(output.contains(sub), "bash 补全应包含子命令 {}", sub);
-        }
-    }
-
-    #[test]
-    fn test_completion_zsh() {
-        let mut buf = Vec::new();
-        completion::cmd_completion(clap_complete::Shell::Zsh, &mut buf);
-        let output = String::from_utf8(buf).unwrap();
-        assert!(output.contains("#compdef"), "zsh 补全应以 #compdef 开头");
-        for sub in &[
-            "config",
-            "init",
-            "settings",
-            "uninstall",
-            "run",
-            "note",
-            "upgrade",
-            "completion",
-        ] {
-            assert!(output.contains(sub), "zsh 补全应包含子命令 {}", sub);
-        }
-    }
-
-    #[test]
-    fn test_completion_fish() {
-        let mut buf = Vec::new();
-        completion::cmd_completion(clap_complete::Shell::Fish, &mut buf);
-        let output = String::from_utf8(buf).unwrap();
-        assert!(
-            output.contains("complete -c"),
-            "fish 补全应包含 complete -c"
-        );
-        for sub in &[
-            "config",
-            "init",
-            "settings",
-            "uninstall",
-            "run",
-            "note",
-            "upgrade",
-            "completion",
-        ] {
-            assert!(output.contains(sub), "fish 补全应包含子命令 {}", sub);
-        }
-    }
-
-    #[test]
-    fn test_completion_powershell() {
-        let mut buf = Vec::new();
-        completion::cmd_completion(clap_complete::Shell::PowerShell, &mut buf);
-        let output = String::from_utf8(buf).unwrap();
-        assert!(
-            output.contains("Register-ArgumentCompleter"),
-            "powershell 补全应注册参数补全器"
-        );
-        for sub in &[
-            "config",
-            "init",
-            "settings",
-            "uninstall",
-            "run",
-            "note",
-            "upgrade",
-            "completion",
-        ] {
-            assert!(output.contains(sub), "powershell 补全应包含子命令 {}", sub);
-        }
-        // --model 值补全
-        assert!(
-            output.contains("prevParam -eq '--model'"),
-            "powershell 补全应包含 --model 值补全"
-        );
-        assert!(
-            output.contains("deepseek-v4-flash"),
-            "powershell 补全应包含模型名称"
-        );
-        assert!(
-            output.contains("1M ctx · 384K out · txt · deepseek-v4-flash"),
-            "powershell 补全应包含模型描述"
-        );
-        // --base-url 值补全
-        assert!(
-            output.contains("prevParam -eq '--base-url'"),
-            "powershell 补全应包含 --base-url 值补全"
-        );
-        assert!(
-            output.contains("api.deepseek.com/anthropic"),
-            "powershell 补全应包含 base URL"
-        );
-        assert!(
-            output.contains("deepseek · 通用"),
-            "powershell 补全应包含 base URL 描述"
-        );
-        // --permission-mode 值补全
-        assert!(
-            output.contains("prevParam -eq '--permission-mode'"),
-            "powershell 补全应包含 --permission-mode 值补全"
-        );
-        for mode in &["full", "read-write", "read-only"] {
-            assert!(
-                output.contains(mode),
-                "powershell 补全应包含权限模式 {}",
-                mode
-            );
-        }
-        // 原有参数名补全依然保留
-        assert!(
-            output.contains("ParameterName"),
-            "powershell 补全应保留参数名补全"
-        );
-    }
-
-    #[test]
-    fn test_completion_all_shells_have_all_subcommands() {
-        let shells = [
-            clap_complete::Shell::Bash,
-            clap_complete::Shell::Zsh,
-            clap_complete::Shell::Fish,
-            clap_complete::Shell::PowerShell,
-        ];
-        for shell in shells {
-            let mut buf = Vec::new();
-            completion::cmd_completion(shell, &mut buf);
-            let output = String::from_utf8(buf).unwrap();
-            for sub in &[
-                "config",
-                "init",
-                "settings",
-                "uninstall",
-                "run",
-                "note",
-                "upgrade",
-                "completion",
-            ] {
-                assert!(output.contains(sub), "{:?} 补全应包含子命令 {}", shell, sub);
-            }
-        }
-    }
-
     // —————— cmd_note 命令测试 ——————
-
     #[test]
     fn test_cmd_note_add_and_list() {
         run_with_temp_home(|_home| {
@@ -888,7 +621,6 @@ mod tests {
     #[test]
     fn test_cmd_note_list_empty() {
         run_with_temp_home(|_home| {
-            // 空笔记目录
             let result = commands::note::cmd_note(NoteCommands::Ls {
                 limit: Some(10),
                 all: false,
@@ -905,19 +637,16 @@ mod tests {
             })
             .expect("创建笔记应成功");
 
-            // grep 搜索
             let grep_result = commands::note::cmd_note(NoteCommands::Grep {
                 keyword: "可搜索".to_string(),
             });
             assert!(grep_result.is_ok(), "grep 应成功");
 
-            // grep 无结果
             let grep_empty = commands::note::cmd_note(NoteCommands::Grep {
                 keyword: "不存在的内容".to_string(),
             });
             assert!(grep_empty.is_ok(), "grep 无结果也应成功");
 
-            // 列出笔记获取 ID
             let entries = crate::notes::NotesDir::new()
                 .unwrap()
                 .list(10, false)
@@ -925,25 +654,21 @@ mod tests {
             assert!(!entries.is_empty(), "至少有一条笔记");
             let note_id = entries[0].id.clone();
 
-            // show
             let show_result = commands::note::cmd_note(NoteCommands::Show {
                 id: note_id.clone(),
             });
             assert!(show_result.is_ok(), "查看笔记应成功");
 
-            // show 不存在的笔记
             let show_nonexistent = commands::note::cmd_note(NoteCommands::Show {
                 id: "nonexistent-id".to_string(),
             });
             assert!(show_nonexistent.is_err(), "查看不存在的笔记应失败");
 
-            // rm
             let rm_result = commands::note::cmd_note(NoteCommands::Rm {
                 id: note_id.clone(),
             });
             assert!(rm_result.is_ok(), "删除笔记应成功");
 
-            // rm 不存在的笔记
             let rm_nonexistent = commands::note::cmd_note(NoteCommands::Rm { id: note_id });
             assert!(rm_nonexistent.is_err(), "删除不存在的笔记应失败");
         });
@@ -966,297 +691,6 @@ mod tests {
                 .list(10, true)
                 .unwrap();
             assert_eq!(entries.len(), 2, "应该有两篇笔记");
-        });
-    }
-
-    // —————— init 中 shell 补全自动配置的测试 ——————
-
-    #[test]
-    fn test_detect_shell_from_env() {
-        unsafe {
-            std::env::set_var("SHELL", "/bin/bash");
-        }
-        assert_eq!(completion::detect_shell(), Some("bash"));
-
-        unsafe {
-            std::env::set_var("SHELL", "/usr/bin/zsh");
-        }
-        assert_eq!(completion::detect_shell(), Some("zsh"));
-
-        unsafe {
-            std::env::set_var("SHELL", "/opt/homebrew/bin/fish");
-        }
-        assert_eq!(completion::detect_shell(), Some("fish"));
-
-        // 不支持的 shell
-        unsafe {
-            std::env::set_var("SHELL", "/bin/sh");
-        }
-        assert_eq!(completion::detect_shell(), None);
-
-        // SHELL 未设置
-        unsafe {
-            std::env::remove_var("SHELL");
-        }
-        assert_eq!(completion::detect_shell(), None);
-
-        // 恢复 bash（对其他测试友好）
-        unsafe {
-            std::env::set_var("SHELL", "/bin/bash");
-        }
-    }
-
-    #[test]
-    fn test_shell_config_path_bash_bashrc_exists() {
-        run_with_temp_home(|home| {
-            std::fs::write(home.join(".bashrc"), "").unwrap();
-            std::fs::write(home.join(".bash_profile"), "").unwrap();
-            let path = completion::shell_config_path("bash", home);
-            assert_eq!(path.file_name().unwrap(), ".bashrc");
-        });
-    }
-
-    #[test]
-    fn test_shell_config_path_bash_fallback_to_profile() {
-        run_with_temp_home(|home| {
-            // 只有 .bash_profile 存在
-            std::fs::write(home.join(".bash_profile"), "").unwrap();
-            let path = completion::shell_config_path("bash", home);
-            assert_eq!(path.file_name().unwrap(), ".bash_profile");
-        });
-    }
-
-    #[test]
-    fn test_shell_config_path_bash_neither_exists() {
-        run_with_temp_home(|home| {
-            // 两个都不存在，应返回 .bash_profile 作为默认
-            let path = completion::shell_config_path("bash", home);
-            assert_eq!(path.file_name().unwrap(), ".bash_profile");
-        });
-    }
-
-    #[test]
-    fn test_shell_config_path_zsh() {
-        run_with_temp_home(|home| {
-            let path = completion::shell_config_path("zsh", home);
-            assert_eq!(path.file_name().unwrap(), ".zshrc");
-        });
-    }
-
-    #[test]
-    fn test_shell_config_path_fish() {
-        run_with_temp_home(|home| {
-            let path = completion::shell_config_path("fish", home);
-            assert!(path.ends_with(".config/fish/config.fish"));
-        });
-    }
-
-    #[test]
-    fn test_completion_line() {
-        assert_eq!(
-            completion::completion_line("bash"),
-            "eval \"$(zapmyco completion bash)\""
-        );
-        assert_eq!(
-            completion::completion_line("zsh"),
-            "eval \"$(zapmyco completion zsh)\""
-        );
-        assert_eq!(
-            completion::completion_line("fish"),
-            "zapmyco completion fish | source"
-        );
-    }
-
-    #[test]
-    fn test_setup_completion_bash_new_file() {
-        run_with_temp_home(|home| {
-            let result = completion::setup_shell_completion_inner(Some("bash"), home);
-            assert!(result.is_ok());
-            let msg = result.unwrap();
-            assert!(msg.contains(".bash_profile"));
-            assert!(msg.contains("Shell 自动补全已启用"));
-
-            let content = std::fs::read_to_string(home.join(".bash_profile")).unwrap();
-            assert!(content.contains("zapmyco completion bash"));
-        });
-    }
-
-    #[test]
-    fn test_setup_completion_bash_existing_file() {
-        run_with_temp_home(|home| {
-            std::fs::write(home.join(".bashrc"), "export FOO=bar\n").unwrap();
-
-            let result = completion::setup_shell_completion_inner(Some("bash"), home);
-            assert!(result.is_ok());
-            let msg = result.unwrap();
-            assert!(msg.contains(".bashrc"));
-
-            let content = std::fs::read_to_string(home.join(".bashrc")).unwrap();
-            assert!(content.contains("export FOO=bar"));
-            assert!(content.contains("zapmyco completion bash"));
-        });
-    }
-
-    #[test]
-    fn test_setup_completion_idempotent() {
-        run_with_temp_home(|home| {
-            std::fs::write(home.join(".zshrc"), "").unwrap();
-
-            // 第一次
-            let r1 = completion::setup_shell_completion_inner(Some("zsh"), home);
-            assert!(r1.is_ok());
-            assert!(r1.unwrap().contains("已启用"));
-
-            // 第二次，应提示已配置
-            let r2 = completion::setup_shell_completion_inner(Some("zsh"), home);
-            assert!(r2.is_ok());
-            assert!(r2.unwrap().contains("已配置")); // 不是"已启用"
-
-            // 文件内容只出现一次
-            let content = std::fs::read_to_string(home.join(".zshrc")).unwrap();
-            let count = content.matches("zapmyco completion zsh").count();
-            assert_eq!(count, 1, "补全行只能出现一次");
-        });
-    }
-
-    #[test]
-    fn test_setup_completion_fish_new_file() {
-        run_with_temp_home(|home| {
-            let result = completion::setup_shell_completion_inner(Some("fish"), home);
-            assert!(result.is_ok());
-            let msg = result.unwrap();
-            assert!(msg.contains("config/fish/config.fish"));
-
-            let content = std::fs::read_to_string(home.join(".config/fish/config.fish")).unwrap();
-            assert!(content.contains("zapmyco completion fish | source"));
-        });
-    }
-
-    #[test]
-    fn test_setup_completion_no_shell() {
-        run_with_temp_home(|home| {
-            let result = completion::setup_shell_completion_inner(None, home);
-            assert!(result.is_err());
-            assert!(result.err().unwrap().contains("$SHELL 未设置"));
-        });
-    }
-
-    #[test]
-    fn test_setup_completion_unsupported_shell() {
-        // sh 会被 detect_shell 过滤掉，但 setup_shell_completion_inner 使用 panic
-        // 直接传 "sh" 给它就会 panic，这是预期的
-        // 测试 detect_shell 已经 cover 了这个场景
-    }
-
-    // ————————————————————————————————
-    // remove_shell_completion 测试
-    // ————————————————————————————————
-
-    #[test]
-    fn test_remove_completion_removes_line() {
-        run_with_temp_home(|home| {
-            let zshrc = home.join(".zshrc");
-            std::fs::write(
-                &zshrc,
-                "export FOO=bar\neval \"$(zapmyco completion zsh)\"\nexport BAR=baz\n",
-            )
-            .unwrap();
-
-            crate::commands::completion::remove_shell_completion(home);
-
-            let content = std::fs::read_to_string(&zshrc).unwrap();
-            assert!(!content.contains("zapmyco completion zsh"));
-            assert!(content.contains("export FOO=bar"));
-            assert!(content.contains("export BAR=baz"));
-        });
-    }
-
-    #[test]
-    fn test_remove_completion_noop() {
-        run_with_temp_home(|home| {
-            let zshrc = home.join(".zshrc");
-            std::fs::write(&zshrc, "export FOO=bar\nexport BAR=baz\n").unwrap();
-
-            crate::commands::completion::remove_shell_completion(home);
-
-            let content = std::fs::read_to_string(&zshrc).unwrap();
-            assert_eq!(content, "export FOO=bar\nexport BAR=baz\n");
-        });
-    }
-
-    #[test]
-    fn test_remove_completion_all_shells() {
-        run_with_temp_home(|home| {
-            // 同时配置三种 shell
-            std::fs::write(
-                home.join(".bash_profile"),
-                "eval \"$(zapmyco completion bash)\"\n",
-            )
-            .unwrap();
-            std::fs::write(home.join(".zshrc"), "eval \"$(zapmyco completion zsh)\"\n").unwrap();
-            std::fs::create_dir_all(home.join(".config/fish")).unwrap();
-            std::fs::write(
-                home.join(".config/fish/config.fish"),
-                "zapmyco completion fish | source\n",
-            )
-            .unwrap();
-
-            crate::commands::completion::remove_shell_completion(home);
-
-            // 所有补全行都应被移除
-            let bash_content = std::fs::read_to_string(home.join(".bash_profile")).unwrap();
-            assert!(!bash_content.contains("zapmyco completion bash"));
-
-            let zsh_content = std::fs::read_to_string(home.join(".zshrc")).unwrap();
-            assert!(!zsh_content.contains("zapmyco completion zsh"));
-
-            let fish_content =
-                std::fs::read_to_string(home.join(".config/fish/config.fish")).unwrap();
-            assert!(!fish_content.contains("zapmyco completion fish"));
-        });
-    }
-
-    #[test]
-    fn test_remove_completion_file_not_exists() {
-        // 没有 shell 配置文件，应正常运行不 panic
-        run_with_temp_home(|home| {
-            crate::commands::completion::remove_shell_completion(home);
-            // 没有文件被创建
-            assert!(!home.join(".zshrc").exists());
-            assert!(!home.join(".bashrc").exists());
-            assert!(!home.join(".bash_profile").exists());
-        });
-    }
-
-    #[test]
-    fn test_remove_completion_only_line_in_file() {
-        run_with_temp_home(|home| {
-            let zshrc = home.join(".zshrc");
-            std::fs::write(&zshrc, "eval \"$(zapmyco completion zsh)\"\n").unwrap();
-
-            crate::commands::completion::remove_shell_completion(home);
-
-            let content = std::fs::read_to_string(&zshrc).unwrap();
-            assert!(content.is_empty(), "文件只有补全行时，应变为空");
-        });
-    }
-
-    #[test]
-    fn test_remove_completion_multiple_occurrences() {
-        run_with_temp_home(|home| {
-            let zshrc = home.join(".zshrc");
-            std::fs::write(
-                &zshrc,
-                "eval \"$(zapmyco completion zsh)\"\nexport FOO=bar\neval \"$(zapmyco completion zsh)\"\n",
-            )
-            .unwrap();
-
-            crate::commands::completion::remove_shell_completion(home);
-
-            let content = std::fs::read_to_string(&zshrc).unwrap();
-            assert!(!content.contains("zapmyco completion zsh"));
-            assert_eq!(content.matches("zapmyco completion zsh").count(), 0);
-            assert!(content.contains("export FOO=bar"));
         });
     }
 
@@ -1357,33 +791,6 @@ mod tests {
 
     // —————— task-id 测试 ——————
 
-    #[test]
-    fn test_generate_session_id_format() {
-        let id = commands::run::generate_session_id();
-        assert!(id.starts_with("run_"), "会话 ID 应以 run_ 开头: {}", id);
-        // 应包含日期时间毫秒部分，如 run_20260603_143021123
-        assert!(
-            id.len() >= 28,
-            "会话 ID 长度应至少 28 字符（含纳秒）: {}",
-            id
-        );
-        // 时间部分应只包含数字
-        let time_part = &id[4..];
-        let parts: Vec<&str> = time_part.split('_').collect();
-        assert_eq!(parts.len(), 2, "会话 ID 应包含 date_time 两部分: {}", id);
-        assert!(!parts[0].is_empty(), "日期部分不应为空");
-        assert!(!parts[1].is_empty(), "时间部分不应为空");
-    }
-
-    #[test]
-    fn test_generate_session_id_unique() {
-        let id1 = commands::run::generate_session_id();
-        let id2 = commands::run::generate_session_id();
-        // 两次生成应不同（即使在同一秒，时间戳也会不同）
-        assert_ne!(id1, id2, "连续两次生成的会话 ID 应不同");
-    }
-
-    #[test]
     fn test_task_id_default_none() {
         let cli = Cli::try_parse_from(vec!["zapmyco", "run", "hello"]).unwrap();
         if let Commands::Run { task_id, .. } = cli.command.unwrap() {

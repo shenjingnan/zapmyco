@@ -179,7 +179,7 @@ fn prompt_model(provider: &str) -> Option<String> {
 }
 
 /// 根据供应商筛选可用模型列表
-pub(crate) fn filter_models_by_provider(provider: &str) -> Vec<&'static str> {
+fn filter_models_by_provider(provider: &str) -> Vec<&'static str> {
     let all_models = get_built_in_model_names();
     if provider == "custom" {
         all_models
@@ -192,7 +192,7 @@ pub(crate) fn filter_models_by_provider(provider: &str) -> Vec<&'static str> {
 }
 
 /// 构建 Settings 结构体
-pub(crate) fn build_settings(provider: &str, api_key: &str, default_model: &str) -> Settings {
+fn build_settings(provider: &str, api_key: &str, default_model: &str) -> Settings {
     Settings {
         llm: Some(LlmSettings {
             providers: Some({
@@ -236,7 +236,7 @@ pub(crate) fn write_settings(
 }
 
 /// 格式化模型标签（含上下文窗口信息）
-pub(crate) fn format_model_label(name: &str) -> String {
+fn format_model_label(name: &str) -> String {
     let info = get_model_info(name);
     match info.and_then(|i| i.context_window) {
         Some(cw) if cw >= 1_000_000 => format!("{} ({}M 上下文)", name, cw / 1_000_000),

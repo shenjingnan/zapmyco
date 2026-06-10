@@ -401,6 +401,142 @@ pub(crate) fn build_run_options(
 }
 
 /// 生成唯一的会话 ID（用于任务列表隔离）
-pub(crate) fn generate_session_id() -> String {
+fn generate_session_id() -> String {
     format!("run_{}", chrono::Local::now().format("%Y%m%d_%H%M%S%9f"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::PermissionMode;
+    use crate::test_util::run_with_temp_home;
+    #[tokio::test]
+    async fn test_run_empty_content() {
+        let result = cmd_run(
+            None, // content
+            None, // skill
+            None, // profile
+            PermissionMode::Full,
+            None,
+            None,
+            None,
+            None,
+            None,  // task_id..base_url
+            false, // subagent
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_run_no_settings() {
+        // 使用临时 HOME 隔离 settings.toml 的干扰
+        let dir = tempfile::tempdir().unwrap();
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = cmd_run(
+            Some("hello"), // content
+            None,          // skill
+            None,          // profile
+            PermissionMode::Full,
+            None,
+            None,
+            None,
+            None,
+            None,  // task_id..base_url
+            false, // subagent
+        )
+        .await;
+        assert!(result.is_err());
+
+        if let Some(h) = orig_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
+    }
+
+    #[test]
+    fn test_build_run_options_no_profile() {
+        let options = build_run_options(None, None, None, None);
+        assert!(options.model_profile.is_none());
+        assert!(options.model.is_none());
+        assert!(options.api_key.is_none());
+        assert!(options.base_url.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_profile() {
+        let options = build_run_options(Some("advanced"), None, None, None);
+        assert_eq!(options.model_profile.unwrap(), "advanced");
+        assert!(options.model.is_none());
+        assert!(options.api_key.is_none());
+        assert!(options.base_url.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_model() {
+        let options = build_run_options(None, Some("deepseek-v4-flash"), None, None);
+        assert_eq!(options.model.unwrap(), "deepseek-v4-flash");
+        assert!(options.model_profile.is_none());
+        assert!(options.api_key.is_none());
+        assert!(options.base_url.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_api_key() {
+        let options = build_run_options(None, None, Some("sk-test-123"), None);
+        assert_eq!(options.api_key.unwrap(), "sk-test-123");
+        assert!(options.model.is_none());
+    }
+
+    #[test]
+    fn test_build_run_options_with_base_url() {
+        let options = build_run_options(None, None, None, Some("https://custom.example.com"));
+        assert_eq!(options.base_url.unwrap(), "https://custom.example.com");
+        assert!(options.model.is_none());
+    }
+
+    #[test]
+    fn test_generate_session_id_format() {
+        let id = generate_session_id();
+        assert!(id.starts_with("run_"), "会话 ID 应以 run_ 开头: {}", id);
+        // 应包含日期时间毫秒部分，如 run_20260603_143021123
+        assert!(
+            id.len() >= 28,
+            "会话 ID 长度应至少 28 字符（含纳秒）: {}",
+            id
+        );
+        // 时间部分应只包含数字
+        let time_part = &id[4..];
+        let parts: Vec<&str> = time_part.split('_').collect();
+        assert_eq!(parts.len(), 2, "会话 ID 应包含 date_time 两部分: {}", id);
+        assert!(!parts[0].is_empty(), "日期部分不应为空");
+        assert!(!parts[1].is_empty(), "时间部分不应为空");
+    }
+
+    #[test]
+    fn test_generate_session_id_unique() {
+        let id1 = generate_session_id();
+        let id2 = generate_session_id();
+        // 两次生成应不同（即使在同一秒，时间戳也会不同）
+        assert_ne!(id1, id2, "连续两次生成的会话 ID 应不同");
+    }
+
+    #[test]
+    fn test_build_run_options_all_flags() {
+        let options = build_run_options(
+            Some("my-profile"),
+            Some("claude-opus-4-7"),
+            Some("sk-claude-key"),
+            Some("https://api.anthropic.com"),
+        );
+        assert_eq!(options.model_profile.unwrap(), "my-profile");
+        assert_eq!(options.model.unwrap(), "claude-opus-4-7");
+        assert_eq!(options.api_key.unwrap(), "sk-claude-key");
+        assert_eq!(options.base_url.unwrap(), "https://api.anthropic.com");
+    }
 }
