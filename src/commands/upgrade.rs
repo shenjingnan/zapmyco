@@ -312,7 +312,7 @@ fn update_receipt(version: &str) -> Result<(), String> {
 
 /// 重新配置 shell 补全
 fn upgrade_completion() -> Result<(), String> {
-    match crate::cli::setup_shell_completion() {
+    match crate::commands::completion::setup_shell_completion() {
         Ok(msg) => {
             output::send(&Message::result_block(msg));
             Ok(())
