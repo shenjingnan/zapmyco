@@ -219,6 +219,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "Windows 不会自动删除二进制文件")]
     fn test_execute_binary_successful_deletion() {
         run_with_temp_home(|home| {
             let binary = home.join("zapmyco");
