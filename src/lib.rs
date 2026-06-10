@@ -6,13 +6,13 @@ pub mod cli;
 pub mod config;
 pub mod datetime;
 pub use agent::env_info;
+pub mod commands;
 pub mod logging;
 pub mod notes;
 pub mod output;
 pub mod skills;
 #[doc(hidden)]
 pub mod tools;
-pub mod upgrade;
 
 #[cfg(test)]
 pub(crate) mod test_util {
