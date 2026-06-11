@@ -123,16 +123,15 @@ fn generate_zsh_completion(writer: &mut impl std::io::Write) {
         "_zapmyco_permission_mode_values",
     );
 
-    // 移除所有必需位置参数 (`':xxx -- desc:_default' \`) 的补全行，
+    // 移除所有位置参数的 `_default` 补全行（包括必需 `':` 和可选 `'::`），
     // 保持所有子命令行为一致：按 Tab 时显示选项而非文件列表。
-    // 跳过可选参数 (`'::`) 和剩余参数 (`'*::`)。
+    // 但保留剩余参数 (`'*::`)，如 note add 的内容需要文件补全。
     script = script
         .lines()
         .filter(|line| {
-            !line.starts_with("':")
-                || line.starts_with("'::")
-                || line.starts_with("'*::")
-                || !line.trim_end().ends_with(":_default' \\")
+            let is_default_positional = (line.starts_with("':") || line.starts_with("'::"))
+                && line.trim_end().ends_with(":_default' \\");
+            !is_default_positional
         })
         .collect::<Vec<_>>()
         .join("\n");
