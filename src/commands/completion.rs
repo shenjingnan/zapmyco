@@ -99,6 +99,16 @@ fn generate_powershell_completion(writer: &mut impl std::io::Write) {
     let _ = write!(writer, "{script}");
 }
 
+/// 判断 zsh 补全行是否应保留。
+///
+/// 过滤掉必需 (`':`) 和可选 (`'::`) 位置参数的 `_default` 补全行，
+/// 使 Tab 补全时显示选项而非文件名，同时保留剩余参数 (`'*::`) 的文件补全行为。
+fn should_keep_zsh_line(line: &str) -> bool {
+    let is_default_positional = (line.starts_with("':") || line.starts_with("'::"))
+        && line.trim_end().ends_with(":_default' \\");
+    !is_default_positional
+}
+
 /// 生成 zsh 补全脚本（在 clap_complete 基础上增加值补全，保证描述可见）
 fn generate_zsh_completion(writer: &mut impl std::io::Write) {
     let mut buf = Vec::new();
@@ -128,11 +138,7 @@ fn generate_zsh_completion(writer: &mut impl std::io::Write) {
     // 但保留剩余参数 (`'*::`)，如 note add 的内容需要文件补全。
     script = script
         .lines()
-        .filter(|line| {
-            let is_default_positional = (line.starts_with("':") || line.starts_with("'::"))
-                && line.trim_end().ends_with(":_default' \\");
-            !is_default_positional
-        })
+        .filter(|line| should_keep_zsh_line(line))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -510,6 +516,66 @@ mod tests {
                 assert!(output.contains(sub), "{:?} 补全应包含子命令 {}", shell, sub);
             }
         }
+    }
+
+    // —————— zsh 位置参数过滤测试 ——————
+    #[test]
+    fn test_should_keep_zsh_line_required_default_filtered() {
+        // 必需位置参数 + _default → 过滤
+        assert!(!should_keep_zsh_line("':arg -- 必需参数:_default' \\"));
+    }
+
+    #[test]
+    fn test_should_keep_zsh_line_optional_default_filtered() {
+        // 可选位置参数 + _default → 过滤（PR #434 修复的核心场景）
+        assert!(!should_keep_zsh_line("'::arg -- 可选参数:_default' \\"));
+    }
+
+    #[test]
+    fn test_should_keep_zsh_line_rest_default_kept() {
+        // 剩余位置参数 + _default → 保留（如 note add 的内容补全）
+        assert!(should_keep_zsh_line("'*::content -- 笔记内容:_default' \\"));
+    }
+
+    #[test]
+    fn test_should_keep_zsh_line_required_inline_action_kept() {
+        // 必需位置参数但使用内联列举动词 → 保留
+        assert!(should_keep_zsh_line(
+            "':shell -- Shell 类型:(bash zsh fish)' \\"
+        ));
+    }
+
+    #[test]
+    fn test_should_keep_zsh_line_option_arg_default_kept() {
+        // 选项参数 + _default → 保留（只有位置参数才过滤）
+        assert!(should_keep_zsh_line("'--profile=...:PROFILE:_default' \\"));
+    }
+
+    #[test]
+    fn test_should_keep_zsh_line_not_default_kept() {
+        // 不以 _default 结尾的行 → 保留
+        assert!(should_keep_zsh_line("':: :_zapmyco_commands' \\"));
+    }
+
+    #[test]
+    fn test_zsh_completion_no_optional_default_positional_lines() {
+        // 集成验证：生成的实际脚本中不应存在位置参数的 _default 行
+        let mut buf = Vec::new();
+        cmd_completion(clap_complete::Shell::Zsh, &mut buf);
+        let output = String::from_utf8(buf).unwrap();
+        for line in output.lines() {
+            let trimmed = line.trim_end();
+            if (trimmed.starts_with("':") || trimmed.starts_with("'::"))
+                && trimmed.ends_with(":_default' \\")
+            {
+                panic!("zsh 补全脚本中不应存在位置参数 _default 行: {}", line);
+            }
+        }
+        // 验证剩余参数的 _default 行被保留
+        assert!(
+            output.contains("*::content -- 笔记内容:_default"),
+            "剩余参数 _default 补全应保留"
+        );
     }
 
     // —————— init 中 shell 补全自动配置的测试 ——————
