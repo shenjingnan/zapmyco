@@ -1,0 +1,4 @@
+{
+  "title": "命令参考",
+  "pages": ["overview", "init", "run", "note", "settings", "config", "upgrade", "uninstall"]
+}

@@ -1,0 +1,54 @@
+---
+title: settings — 配置管理
+description: 显示或管理 LLM 运行时配置
+---
+
+显示或管理 LLM 运行时配置：
+
+```bash
+zapmyco settings          # 显示完整配置（API Key 自动脱敏）
+zapmyco settings path     # 显示配置文件路径
+```
+
+## 子命令一览
+
+| 子命令 | 行为 |
+|--------|------|
+| 无参数 或 `show` | 读取 `~/.zapmyco/settings.toml` 并显示 |
+| `path` | 仅输出配置文件路径 |
+
+## 子命令详解
+
+### 无参数 / `show` — 显示配置
+
+读取 `~/.zapmyco/settings.toml`，显示当前的 LLM 配置信息。API Key 会自动脱敏显示（如 `sk-***`、`sho***`），前 3 个字符保留用于识别。
+
+```bash
+zapmyco settings
+zapmyco settings show   # 效果同上
+```
+
+---
+
+### `path` — 显示路径
+
+仅输出配置文件路径，不显示配置内容。
+
+```bash
+zapmyco settings path
+# 输出示例：
+# /Users/xxx/.zapmyco/settings.toml
+```
+
+## 注意事项
+
+**脱敏规则**：API Key 显示前 3 个字符加 `***`（如 `sk-***`、`sho***`），避免敏感信息泄露。
+
+**错误场景**
+
+- 未知子命令会报错：`未知子命令: xxx\n可用命令: settings, settings path`
+- JSON 格式错误会给出中文提示
+
+**与 `config` 命令的区别**：
+- `settings` 显示的是**用户配置**（`~/.zapmyco/settings.toml`，存储 AI 供应商和模型设置）
+- `config` 显示的是**应用配置**（硬编码的调试标志、日志级别等）
