@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.40.0](https://github.com/shenjingnan/zapmyco/compare/v0.39.1...v0.40.0) - 2026-06-11
+
+### Other
+
+- *(completion)* 为 zsh 位置参数过滤逻辑添加单测覆盖 ([#434](https://github.com/shenjingnan/zapmyco/pull/434))
+- *(docs)* 重构文档目录结构，支持中英文 i18n 多语言 ([#433](https://github.com/shenjingnan/zapmyco/pull/433))
+- *(cli)* 补充 note 命令测试覆盖 frontmatter 剥离和输出验证 ([#432](https://github.com/shenjingnan/zapmyco/pull/432))
+- *(cli)* 将 CLI 命令参考拆分为独立 commands 目录 ([#431](https://github.com/shenjingnan/zapmyco/pull/431))
+- *(cli)* 将子命令拆分为独立的 commands 模块 ([#429](https://github.com/shenjingnan/zapmyco/pull/429))
+
 ## [0.39.1](https://github.com/shenjingnan/zapmyco/compare/v0.39.0...v0.39.1) - 2026-06-09
 
 ### Added
