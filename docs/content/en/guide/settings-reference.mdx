@@ -1,0 +1,160 @@
+---
+title: Configuration File Reference
+---
+
+`.zapmyco/settings.toml` is ZapMyCo's core configuration file. It **must exist** for AI-related commands to run.
+
+> - macOS/Linux: `~/.zapmyco/settings.toml`
+> - Windows: `%USERPROFILE%\.zapmyco\settings.toml`
+>
+> If the file does not exist, run `zapmyco init` first to generate it.
+
+## Complete Example
+
+```toml
+[llm]
+
+[llm.providers.deepseek]
+apiKey = "${env.DEEPSEEK_API_KEY}"
+
+[llm.providers.glm]
+apiKey = "${env.GLM_API_KEY}"
+
+[llm.models]
+default = "deepseek-v4-flash"
+advanced = "deepseek-v4-pro"
+```
+
+## Field Reference
+
+### `[llm]`
+
+LLM configuration root. All provider and model settings are defined under this section.
+
+| Field | Type | Required | Description |
+|-------|------|:--------:|-------------|
+| `providers` | Table | No | AI provider API key configuration |
+| `models` | Table | No | Mapping from profile names to built-in models |
+
+### `[llm.providers.<name>]`
+
+Provider configuration. `<name>` is user-defined, e.g., `deepseek`, `glm`.
+
+| Field | Type | Required | Description |
+|-------|------|:--------:|-------------|
+| `apiKey` | String | No | API key. Supports `${env.VAR}` syntax to reference environment variables |
+
+### `[llm.models]`
+
+Model profile mapping. **Keys** are user-defined profile names (e.g., `default`), **values** are built-in model names.
+
+```toml
+[llm.models]
+default = "deepseek-v4-flash"
+advanced = "deepseek-v4-pro"
+```
+
+Select a profile via CLI:
+
+### `[permissions.commands]`
+
+Command permission configuration (whitelist/blacklist). Commands matching the whitelist skip user confirmation and execute directly. Commands matching the blacklist are automatically rejected.
+
+| Field | Type | Required | Description |
+|-------|------|:--------:|-------------|
+| `allow` | String array | No | Command prefix list to auto-allow (whitelist) |
+| `deny` | String array | No | Command prefix list to auto-deny (blacklist, takes precedence over allow) |
+
+**Matching rule**: A command matches if it starts with an entry in the list (prefix matching).
+For example, `"git status"` matches `git status`, `git status -s`, `git status --short`, etc.
+
+**Blacklist precedence**: If a command matches both the allow and deny lists, deny takes effect first.
+
+**Safety mechanism**: Even if a prefix matches, if the command contains shell control operators like `;` `|` `>` `<` `` ` `` `$` `&`,
+the user will still be prompted to confirm, preventing bypass of security checks through redirection/pipes/command chaining.
+
+**Example**:
+```toml
+[permissions.commands]
+allow = [
+    "git status",
+    "git diff",
+    "git log",
+    "cargo check",
+    "cargo clippy",
+    "cargo fmt --check",
+]
+deny = [
+    "rm -rf",
+    "sudo",
+]
+```
+
+> Built-in commands that are absolutely safe (`pwd`, `whoami`, `echo`, `ls`, `uname`, etc.) are already included by default and do not need to be added to allow.
+> allow is only for extending custom commands beyond the built-in list.
+
+```bash
+zapmyco run --profile advanced 'Your question'
+```
+
+## `${env.VAR}` Syntax
+
+Configuration files can reference environment variables directly to avoid storing secrets in plaintext:
+
+```toml
+apiKey = "${env.DEEPSEEK_API_KEY}"
+```
+
+At runtime, ZapMyCo automatically replaces `${env.DEEPSEEK_API_KEY}` with the value of the `DEEPSEEK_API_KEY` environment variable.
+
+> When viewing configuration with `zapmyco settings`, environment variable references are displayed as-is (not redacted), while plaintext keys are redacted: `sk-***abcd`.
+
+## Built-in Model List
+
+ZapMyCo comes with 22 models from 8 providers, all supporting the Anthropic Messages API format:
+
+| Provider | Models | Representative Model |
+|----------|:------:|---------------------|
+| DeepSeek | 2 | `deepseek-v4-flash` (Recommended) |
+| Anthropic | 4 | `claude-sonnet-4-6` |
+| Qwen (Tongyi Qianwen) | 3 | `qwen3.7-max` |
+| MiniMax | 3 | `MiniMax-M3` (1M context, supports vision) |
+| GLM (Zhipu) | 4 | `glm-5.1` |
+| Kimi (Moonshot) | 2 | `kimi-k2.6` |
+| Doubao (Volcengine) | 2 | `doubao-seed-2-0-pro` |
+| MIMO (Xiaomi) | 2 | `mimo-v2.5-pro` |
+
+View the complete list and details: [Built-in Models](/guide/models)
+
+## Configuration Priority
+
+ZapMyCo determines the final effective configuration in the following order (higher priority overrides lower):
+
+1. **CLI explicit parameters** (e.g., `--profile`)
+2. **settings.toml** values
+3. **Environment variables** (e.g., `DEEPSEEK_API_KEY`)
+4. **Built-in defaults** (model `deepseek-v4-flash`)
+
+## Related Commands
+
+| Command | Description |
+|---------|-------------|
+| `zapmyco init` | Interactive initialization wizard, automatically generates settings.toml |
+| `zapmyco settings` | Displays current configuration (keys redacted) |
+| `zapmyco settings path` | Displays the path to the settings.toml file |
+
+## FAQ
+
+### Why TOML instead of JSON or YAML?
+
+ZapMyCo originally used JSON as its configuration format and migrated to TOML in v0.23.0, based on the following considerations:
+
+| Comparison | JSON | YAML | TOML |
+|------------|:----:|:----:|:----:|
+| Comment support | ❌ Not supported | ✅ Supported | ✅ Supported |
+| Key quoting | Must use `"` | Not required | Not required |
+| Indentation sensitive | ❌ | ✅ Yes (error-prone) | ❌ |
+| Type system | Limited | Rich but ambiguous | Clear and explicit |
+| Rust ecosystem integration | Requires serde_json | Requires serde_yaml | Native `toml` + serde |
+
+TOML maintains simplicity and readability while avoiding YAML's indentation pitfalls and filling JSON's lack of comments. Its integration with the Rust/serde ecosystem is also very mature.

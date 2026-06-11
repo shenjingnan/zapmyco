@@ -1,0 +1,179 @@
+---
+title: System Prompt Design
+description: ZapMyCo's layered system prompt architecture, static strategy, and KV Cache optimization
+---
+
+ZapMyCo's system prompt adopts a **fully static** design — identity definition, behavioral rules, and tool usage guidelines are all merged into a compile-time constant, ensuring that DeepSeek's prefix cache can be maximally reused across sessions.
+
+This article presents the complete content of the system prompt and introduces the KV Cache optimization strategy and AGENTS.md customization mechanism.
+
+## System Prompt Content
+
+### Layer 1: Identity Definition
+
+```text
+You are zapmyco, an AI-based command line tool that helps users complete specified tasks.
+Use tools to interact with users and follow user instructions to complete tasks.
+Output all thought processes so the user is aware of your progress.
+```
+
+This layer defines the AI's brand identity (zapmyco), role (command line tool), and behavior pattern (tool-driven, transparent output).
+
+### Layer 2: Behavioral Rules and Tool Usage Guidelines (Fully Static)
+
+Contains 17 behavioral rules + 5 tool usage guidelines + task execution strategy, all determined at compile time:
+
+```text
+## Execution Rules
+
+- Do not add features, refactor, or make unauthorized "improvements" beyond the scope of requirements.
+  A simple requirement does not need extra configuration options, comments, or documentation.
+- Do not add error handling, fallback logic, or validation for scenarios that cannot occur.
+  Only validate at system boundaries (user input, external APIs).
+- Do not create tools, utility classes, or abstractions for one-off operations.
+  Three similar code snippets are better than a premature abstraction.
+- Do not suggest modifications to content you have not read. Before operating, understand the current state via file_read.
+- Do not create unnecessary files. Prefer modifying existing files.
+- When encountering failures, first diagnose the root cause — read error messages, check assumptions, attempt targeted fixes.
+  Do not blindly retry the same operation, and do not give up a viable approach after a single failure.
+  Only ask the user when truly stuck.
+- Avoid introducing security vulnerabilities: command injection, path traversal, SQL injection, etc.
+  If you find yourself writing insecure code, fix it immediately.
+- Avoid backward-compatible hacks (such as renaming unused variables while keeping the old name).
+  When something is determined to be no longer needed, delete it directly, do not keep it.
+
+## Action Guidelines
+
+- Carefully evaluate the reversibility and impact scope of operations.
+  Reversible local operations (editing files, running commands) can be executed directly.
+- Irreversible or high-risk operations (deleting files/branches, force pushing, terminating processes) must first obtain user confirmation.
+- Do not take shortcuts with destructive operations. When encountering problems, analyze the root cause, do not bypass security checks to solve problems.
+- When encountering unfamiliar files, branches, or configurations, first investigate and understand, do not directly delete or overwrite.
+
+## Output Style
+
+- Responses should be brief and precise, not verbose.
+- Unless explicitly requested by the user, do not use emoji.
+- When referencing code or files, include the file_path:line_number format.
+- Provide the answer or action result first, then the reasoning process.
+- Do not add a colon before tool calls (e.g., do not say "Let me read the file:" then call the tool, just say "Let me read the file.").
+
+## Tool Usage Rules
+
+- Tasks with dedicated tools should use those dedicated tools, do not use shell_exec as a substitute.
+- File operations must first read the file content via file_read.
+- Pay attention to safety when using tools.
+
+## Task Execution Strategy
+
+When a task is created using task_create, follow these steps:
+1. Call task_list to view all task dependencies
+2. Select a task with an empty blocked_by and status of pending
+3. Call task_update to mark it as in_progress
+4. Use tools like shell_exec, file_edit to complete the task
+5. Call task_update to mark it as completed
+6. Repeat steps 1-5 until all tasks are completed
+
+Note: Only process one task per tool call round.
+After completion, mark as completed, then check task_list for the next available task.
+Skip blocked tasks and handle them after their dependency tasks are completed.
+```
+
+> **Static design note**: Tool usage rules are no longer dynamically generated based on registered tools but are pre-baked into the `BEHAVIORAL_GUIDANCE` constant. While this always includes all rules (including rules for unregistered tools), the extra token cost is only about 300 tokens, in exchange for a fully stable system prompt that allows DeepSeek's disk cache to be reused across all sessions.
+
+## Context Information Injection (KV Cache Optimized)
+
+In addition to the prompt in the system parameter, the first user message also automatically injects a block of runtime context. To maximize DeepSeek prefix cache hit rates, fields are arranged with **"stable content first, dynamic content last"**:
+
+```text
+<system-reminder>
+Operating System: macOS 15.5 (arm64)        ← Stable, almost never changes
+Shell: zsh                                  ← Stable, almost never changes
+Language/Region: zh_CN.UTF-8                ← Stable, almost never changes
+
+# Known command line tools                    ← Stable within process
+Package managers: brew, cargo, npm
+Runtimes: python3, node, rustc, go, java
+Containers: docker
+Editors: vim, code
+
+Current working directory: /Users/me/project ← Semi-dynamic, placed later
+Current date: 2026-06-04                    ← Day-level precision only, stable within the same day
+
+# AGENTS.md                                  ← Semi-stable
+Below is the instruction file content, which the model must strictly follow:
+...
+
+## Available Skills                      ← Semi-dynamic
+- **code-review**: Review code changes (project)
+- **check**: Run complete code quality checks (project(.agents))
+
+# Git Status                              ← Most volatile, last
+## main...origin/main
+ M src/agent/chat.rs
+</system-reminder>
+```
+
+| Information | Source | Change Frequency | Position (frontend prioritizes cache hit) |
+|-------------|--------|-----------------|------------------------------------------|
+| Operating System | `sw_vers` / `uname -r` / `ver` | Almost never changes | **Frontmost** |
+| Shell | `$SHELL` / `%ComSpec%` | Almost never changes | **Frontmost** |
+| Language/Region | `$LANG` / `$LC_ALL` | Almost never changes | **Frontmost** |
+| Known command line tools | `which` / `where.exe` detection | Unchanged within process | **Near front** |
+| Current working directory | Runtime `CWD` | Per session | Middle |
+| Current date | System clock (day-level precision only) | **Once per day** | Middle |
+| AGENTS.md content | Three-layer filesystem loading | Changes occasionally | Near end |
+| Skill list | Filesystem scan of skill directory | When files change | Near end (before `</system-reminder>`) |
+| Git status | `git status --branch --short` | **Changes frequently** | **Last** |
+
+### Optimization Highlights
+
+1. **Stable content (OS, Shell, locale, tool list) placed first**: Ensures the first 64-token block of the prefix cache aligns with stable content
+2. **Date precision reduced from `YYYY-MM-DD HH:MM` to `YYYY-MM-DD`**: From changing every minute to changing once per day, any call within the same day shares the cache
+3. **Git status moved to the end**: Even when it changes, it only affects the last cache block
+4. **Injected only once**: The `context_injected` boolean ensures subsequent turns do not re-inject
+
+### Skill List Injection Mechanism
+
+When a project has available Skills, `build_skill_list_text()` generates a `## Available Skills` section. This section is inserted into the context reminder before the closing tag, located via `rfind("</system-reminder>")`. This design places the most volatile Skill list at a relatively late position before `</system-reminder>`, minimizing the cache blocks it affects.
+
+## KV Cache Optimization Strategy
+
+### From Anthropic Block-level Cache to DeepSeek Prefix Cache
+
+| Feature | Anthropic | DeepSeek |
+|---------|-----------|----------|
+| Caching method | Block-level (`cache_control`) | Automatic prefix matching (64-token blocks) |
+| Cache scope | Marked blocks | Serialized prefix of the entire request |
+| Persistence | Session-level (ephemeral) | **Disk-persistent** (hours to days) |
+| Cross-session reuse | No | **Yes** |
+
+### Optimization Measures
+
+| Measure | Effect |
+|---------|--------|
+| Fully static system prompt | All sessions share the same prefix, disk cache can be reused |
+| Stable content first in Context Reminder | 64-token blocks aligned with stable content |
+| Date precision reduced to day-level | Cross-session hits within the same day |
+| Git status moved to last | Only affects the last cache block |
+
+### Estimated Cache Effectiveness
+
+For the same user's multiple CLI calls (same project, same day):
+
+| Request Part | Expected Cache Hit Rate |
+|-------------|------------------------|
+| System prompt | ~100% |
+| Tool definitions | ~100% |
+| Context Reminder stable prefix | ~100% |
+| Overall request | **60-80%** |
+
+## Customizing with AGENTS.md
+
+Users can customize the system prompt through AGENTS.md files. AGENTS.md uses a three-layer lookup strategy, stacking from general to specific:
+
+- **User-level** (`~/.zapmyco/AGENTS.md`) — Global instructions for all projects of the current user
+- **Project-level** (`AGENTS.md` in the project directory) — Project-wide instructions, can be committed to version control, shared by team members
+- **Local-level** (`AGENTS.local.md` in the project directory) — Project-private instructions, not committed to version control, suitable for personal workflows
+
+Content is concatenated from low to high priority. Later-loaded content is closer to the end of the message, receiving higher attention from the model. Files use plain text or Markdown format, with each instruction as a separate paragraph.

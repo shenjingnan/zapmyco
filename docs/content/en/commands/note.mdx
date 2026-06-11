@@ -1,0 +1,95 @@
+---
+title: note — Quick Notes
+description: A note-taking system for quickly capturing ideas, todos, and thoughts
+---
+
+Quickly capture ideas, todos, and thoughts. Each note is an independent Markdown file stored in the `~/.zapmyco/notes/` directory. No `init` required, ready to use out of the box.
+
+```bash
+# Quickly record a note
+zapmyco note add 'Fixed the login page styling issue'
+
+# List recent notes
+zapmyco note ls
+```
+
+## Subcommand Overview
+
+| Subcommand | Description |
+|------------|-------------|
+| `add [content]` | Create a note, leave blank for interactive editor input |
+| `ls [n]` | List the most recent n notes (default 20), `--all` shows all |
+| `show <id>` | View the full content of a specified note |
+| `grep <keyword>` | Search note contents |
+| `rm <id>` | Delete a specified note |
+
+## Subcommand Details
+
+### `add [content]` — Create a Note
+
+Saves the parameter content directly as a note file. If no content is provided, opens `$EDITOR` (or vi) for interactive editing.
+
+```bash
+# Quick record
+zapmyco note add 'Meeting at 3pm tomorrow'
+
+# Interactive editing (opens $EDITOR/vi)
+zapmyco note add
+```
+
+**Storage format**: Each note is an independent Markdown file, with the filename containing the creation time.
+
+```markdown
+---
+created: 2026-05-30T14:30:02+08:00
+---
+
+Fixed the login page styling issue
+```
+
+---
+
+### `ls [n]` — List Notes
+
+Lists recently created notes, defaulting to 20 entries.
+
+```bash
+# List the most recent 20
+zapmyco note ls
+
+# List the most recent 5
+zapmyco note ls 5
+
+# Show all notes
+zapmyco note ls --all
+```
+
+---
+
+### `show <id>` — View a Note
+
+View the full content of a specified note. The note ID can be obtained from the `ls` command output.
+
+```bash
+zapmyco note show 2026-05-30_143002_fixed-login-page-style
+```
+
+---
+
+### `grep <keyword>` — Search Notes
+
+Search for a keyword across all notes, returning a list of matching notes.
+
+```bash
+zapmyco note grep login
+```
+
+---
+
+### `rm <id>` — Delete a Note
+
+Delete a specified note. The note ID can be obtained from the `ls` command output. Deletion cannot be undone.
+
+```bash
+zapmyco note rm 2026-05-30_143002_fixed-login-page-style
+```

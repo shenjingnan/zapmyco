@@ -7,7 +7,7 @@
     "start": "npx -y serve dist -p 3000"
   },
   "dependencies": {
-    "openmanual": "^0.16.1"
+    "openmanual": "^0.17.0"
   },
   "devDependencies": {
     "typescript": "^6.0.0",

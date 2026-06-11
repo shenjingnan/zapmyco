@@ -1,0 +1,56 @@
+---
+title: file_edit — Edit File Content
+description: Provides five editing modes for precise and safe content modification to local files (quick reference)
+---
+
+`file_edit` provides five editing modes: line_range (recommended), append, insert_after, batch edit, and the legacy old_string/new_string mode.
+
+**Use cases**: Let AI fix bugs in code, refactor code, update configuration files, etc.
+
+## Parameter Overview
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `file_path` | string | Yes | Absolute path to the file to modify |
+| `mode` | string | No | Editing mode: `line_range` (default), `append` |
+| `start_line` | integer | No* | Starting line number to replace (line_range mode only) |
+| `end_line` | integer | No* | Ending line number to replace (line_range mode only) |
+| `expected` | string | No* | Expected current content, at least 3 non-empty code lines (line_range mode only) |
+| `new_content` | string | No* | New content after replacement (line_range mode only) |
+| `content` | string | No* | Content to append (append mode only) |
+| `old_string` | string | No* | (Legacy mode) Text to be replaced |
+| `new_string` | string | No* | (Legacy mode) Replacement text |
+| `replace_all` | boolean | No | (Legacy mode) Whether to replace all matches (default `false`) |
+
+\* Different modes require different parameter combinations. See the [dedicated design document](/guide/file-edit) for details.
+
+## Behavioral Characteristics
+
+- **Content verification** (line_range mode): Automatically verifies that the AI-described expected content matches the actual content, preventing line number miscounting
+- **Auto-merge**: Multiple line_range edits to the same file issued by AI in one turn are automatically merged, executed in descending order to resolve line number offsets, and written back in one batch only after all verifications pass
+- **Backward compatibility**: The legacy `old_string`/`new_string` mode is fully preserved
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Supported files | Plain text files only (UTF-8 encoded) |
+| Unsupported types | Binary files, Jupyter Notebook (`.ipynb`) |
+
+## Usage Examples
+
+```bash
+zapmyco run 'Fix the typo in src/main.rs, change "helo" to "hello"'
+zapmyco run 'Append a helper function to the end of src/lib.rs'
+zapmyco run 'Change the version in Cargo.toml to 0.2.0 and the edition to 2024'
+```
+
+## Detailed Documentation
+
+See the [file_edit standalone design document](/guide/file-edit) for complete implementation principles, security model, verification algorithms, edge cases, and design considerations.
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [file_edit Design Document](/guide/file-edit) — Deep dive into implementation principles and security model
+- [file_write](/built-in/file_write) — Create new files or overwrite existing files

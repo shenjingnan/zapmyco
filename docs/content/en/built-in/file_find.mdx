@@ -1,0 +1,67 @@
+---
+title: file_find — Find Files
+description: Find files in the local file system using glob wildcard patterns
+---
+
+Find files in the local file system using glob wildcard patterns. Unlike `file_search`, `file_find` matches by file name rather than file content.
+
+**Use cases**: Find specific file types, search for files by name, understand project structure, etc.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `pattern` | string | Yes | Glob wildcard pattern, e.g. `"**/*.rs"` to find all Rust files |
+| `path` | string | No | Search path (directory), defaults to current working directory |
+| `head_limit` | integer | No | Maximum number of results, default 100 |
+| `offset` | integer | No | Skip the first N results, used with `head_limit` for pagination |
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Search timeout | 20 seconds |
+| Max output length | 100,000 characters (returns error if exceeded) |
+| Default result limit | 100 items |
+| Hidden files | Includes hidden files (same as ripgrep `--hidden`) |
+
+## Output Format
+
+```text
+Matched pattern "**/*.rs" in 15 files
+
+/path/to/main.rs
+/path/to/lib.rs
+/path/to/subdir/mod.rs
+...
+(Showing 10 / 15 files, use offset=10 to view more)
+```
+
+## Difference from file_search
+
+> **file_search** searches for matching text within file **content**.
+> **file_find** finds files by file **name** patterns.
+> The AI Agent automatically combines the two: first using `file_find` to locate target files, then `file_read` to view the specific content.
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Missing `pattern` | Required parameter not provided |
+| Invalid glob pattern | Glob syntax error (e.g. unclosed `[`) |
+| Search timeout | Search exceeded 20 seconds |
+| Output too large | Result exceeded 100K character limit |
+
+## Usage Examples
+
+```bash
+zapmyco run 'Find all Rust source files in the project'
+zapmyco run 'Find all Markdown files in the src/ directory'
+zapmyco run 'Find all test files in the project, limit to first 5 results'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [file_search](/built-in/file_search) — Search file content
+- [file_read](/built-in/file_read) — Read file content

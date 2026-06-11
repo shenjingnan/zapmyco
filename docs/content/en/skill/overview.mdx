@@ -1,0 +1,61 @@
+---
+title: Quick Start
+description: The Skill system lets AI Agents load predefined workflow templates for structured, reusable task execution
+---
+
+Skills are predefined workflow templates stored as `SKILL.md` files, containing detailed execution rules and steps. The AI Agent loads a Skill via the `--skill` CLI parameter before executing a task, or dynamically loads it at runtime through the `skill` tool.
+
+Skills codify team development standards, CI/CD processes, review criteria, etc., into reusable instruction files, allowing the AI Agent to execute tasks according to consistent standards.
+
+## Three-Tier Discovery Mechanism
+
+Skill files are discovered through a three-tier directory structure, ranging from general to specific. Skills with the same name are overridden by priority:
+
+| Tier | Path | Priority |
+|------|------|:--------:|
+| Project-level | `<project>/.zapmyco/skills/<name>/SKILL.md` | **Highest** |
+| Common-level | `<project>/.agents/skills/<name>/SKILL.md` | Medium |
+| User-level | `~/.zapmyco/skills/<name>/SKILL.md` | Lowest |
+
+The discovery mechanism scans only one level of subdirectories, without recursive nesting. A higher-priority skill with the same name replaces a lower-priority definition.
+
+For example, if the user-level defines a `check` skill for general code inspection, and the project-level also defines a `check` skill with project-specific inspection rules, the project-level `check` will replace the user-level definition, and the AI Agent will load the project-level version.
+
+## Usage
+
+Skills have three usage modes, depending on whether a specific Skill needs to be fixed:
+
+### Method 1: Automatic On-Demand Usage
+
+```bash
+zapmyco run 'Review the code changes on the current branch'
+```
+
+Without specifying `--skill`, the Agent's context prompt lists all available Skills. The Agent decides on its own whether to load a Skill using the `skill` tool to complete the current task.
+
+### Method 2: Fixed Skill (No Additional Instructions)
+
+```bash
+zapmyco run --skill code-review
+```
+
+Loads the specified Skill and automatically fills in the default startup instruction: "Please start working according to the loaded Skill 'xxx' instructions...". Suitable for using common workflows as shortcuts.
+
+### Method 3: Fixed Skill + Specific Instructions
+
+```bash
+zapmyco run --skill code-review 'Focus on security vulnerabilities and performance issues'
+```
+
+Loads the specified Skill while conveying the specific requirements of this task to the Agent. The Skill handles the workflow framework, and content handles the current focus points — the two complement each other.
+
+---
+
+In Methods 2 and 3, when the `--skill` parameter is used, the Skill is loaded into the system prompt during the Agent startup phase; Method 1 relies on the Agent dynamically loading the Skill at runtime via the `skill` tool.
+
+## Related Documentation
+
+- [Writing a Skill](/skill/writing) — SKILL.md format specification and writing guide
+- [Skill Loading Mechanism](/skill/loading) — How Skills are injected into the Agent's prompt context
+- [skill Tool Reference](/built-in/skill) — Detailed parameters and usage of the `skill` built-in tool
+- [Command Reference](/commands/run) — Detailed usage of the `run` command

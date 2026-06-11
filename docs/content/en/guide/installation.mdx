@@ -1,0 +1,70 @@
+---
+title: Installation
+description: ZapMyCo's multiple installation methods explained in detail
+---
+
+ZapMyCo offers multiple installation methods. You can choose the one that best suits your use case.
+
+## One-Click Install Script (Recommended, No Rust Required)
+
+<Tabs items={["macOS / Linux", "Windows (PowerShell)", "Windows (cmd.exe)"]}>
+
+<Tab>
+```bash
+curl -fsSL https://zapmyco.com/install.sh | sh
+```
+</Tab>
+
+<Tab>
+```powershell
+irm https://zapmyco.com/install.ps1 | iex
+```
+</Tab>
+
+<Tab>
+```powershell
+powershell -c "irm https://zapmyco.com/install.ps1 | iex"
+```
+</Tab>
+
+</Tabs>
+
+The install script automatically detects the platform, downloads the corresponding binary archive, verifies integrity, and configures PATH.
+
+## Install via cargo
+
+```bash
+cargo install zapmyco
+```
+
+Requires the [Rust toolchain](https://rustup.rs).
+
+## Manual Download
+
+Each release publishes pre-compiled binary archives (`.tar.xz` / `.zip`):
+
+| Platform | Architecture | Download Link |
+| -------- | ------------ | ------------- |
+| Linux | x86_64 | [zapmyco-x86_64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-unknown-linux-gnu.tar.xz) |
+| Linux | ARM64 | [zapmyco-aarch64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-unknown-linux-gnu.tar.xz) |
+| macOS | Apple Silicon | [zapmyco-aarch64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-apple-darwin.tar.xz) |
+| macOS | Intel | [zapmyco-x86_64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-apple-darwin.tar.xz) |
+| Windows | x86_64 | [zapmyco-x86_64-pc-windows-msvc.zip](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-pc-windows-msvc.zip) |
+
+## Build from Source
+
+```bash
+git clone https://github.com/shenjingnan/zapmyco.git
+cd zapmyco
+cargo build --release
+# Artifact located at target/release/zapmyco
+
+# Verify the build result
+./target/release/zapmyco -V
+
+# Install to PATH
+cargo install --path .
+
+# Verify installation
+zapmyco -V
+```

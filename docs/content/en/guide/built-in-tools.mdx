@@ -1,0 +1,116 @@
+---
+title: Built-in Tools
+description: Reference for AI Agent built-in tools provided by ZapMyCo in `zapmyco run` mode
+---
+
+ZapMyCo's built-in tool system provides AI Agents with the ability to interact with the local environment and the user. Most tools are available in `zapmyco run <content>` one-shot execution mode, while interactive tools (such as `ask_user`, `task_*`) are also available in interactive mode (`zapmyco` without arguments).
+
+## Quick Reference
+
+| Tool Name | Function | Capabilities |
+|-----------|----------|--------------|
+| [web_fetch](/built-in/web_fetch) | Fetch web content | Converts a specified URL's web page to Markdown for AI analysis |
+| [web_search](/built-in/web_search) | Search the web | Searches for real-time information (news, docs, trends, etc.) |
+| [shell_exec](/built-in/shell_exec) | Execute commands | Executes shell commands on the local system and returns the output |
+| [file_read](/built-in/file_read) | Read file content | Reads local file content by line number range, supports segmented viewing |
+| [file_search](/built-in/file_search) | Search file content | Searches for file content in the local filesystem, supports regex |
+| [file_find](/built-in/file_find) | Find files | Finds files in the local filesystem by glob patterns (e.g., `**/*.rs`) |
+| [file_edit](/built-in/file_edit) | Edit file content | Five modes: line_range (recommended), append, insert_after, batch edit, legacy mode |
+| [file_write](/built-in/file_write) | Write files | Creates new files or fully overwrites existing files, with pre-read check and binary detection |
+| [ask_user](/built-in/ask_user) | Ask the user | Presents choice-based questions to the user and gets answers, supports single/multi-select and custom input |
+| [task_create](/built-in/task_create) | Create task | Creates a new task to track progress on complex multi-step work |
+| [task_get](/built-in/task_get) | View task | Gets details and status of a single task by ID |
+| [task_list](/built-in/task_list) | List tasks | Lists all current tasks and their status overview |
+| [task_update](/built-in/task_update) | Update task | Updates a task's status, fields, and dependencies |
+| [subagent](/built-in/subagent) | Sub-agent management | Creates independent sub-processes for concurrent task execution, supports spawn/poll/list/kill |
+| [skill](/built-in/skill) | Skill management | Manages Skill workflow templates, supports list/load operations |
+
+## Browse by Category
+
+### Web Tools
+
+| Tool | Description | Docs |
+|------|-------------|:----:|
+| `web_fetch` | Fetches content from a specified URL | [View Details](/built-in/web_fetch) |
+| `web_search` | Searches the web for real-time information | [View Details](/built-in/web_search) |
+
+The AI Agent automatically combines both: first using `web_search` to find relevant pages, then `web_fetch` to retrieve specific content.
+
+### Command Execution
+
+| Tool | Description | Docs |
+|------|-------------|:----:|
+| `shell_exec` | Executes shell commands on the local system | [View Details](/built-in/shell_exec) |
+
+A confirmation prompt is displayed before executing commands, requiring user authorization.
+
+### File Operations
+
+| Tool | Description | Docs |
+|------|-------------|:----:|
+| `file_read` | Reads file content, supports line number range segmented viewing | [View Details](/built-in/file_read) |
+| `file_search` | Searches file content using regular expressions | [View Details](/built-in/file_search) |
+| `file_find` | Finds files by name using glob patterns | [View Details](/built-in/file_find) |
+| `file_edit` | Makes precise, safe content modifications to existing files | [View Details](/built-in/file_edit) |
+| `file_write` | Creates new files or fully overwrites existing files | [View Details](/built-in/file_write) |
+
+File operation tools can be used together: first use `file_find` to locate files, `file_search` to search content, `file_read` to view context, then `file_edit` or `file_write` to make modifications.
+
+### Interaction Tools
+
+| Tool | Description | Docs |
+|------|-------------|:----:|
+| `ask_user` | Presents choice-based questions to the user and gets answers | [View Details](/built-in/ask_user) |
+
+### Task Management
+
+| Tool | Description | Docs |
+|------|-------------|:----:|
+| `task_create` | Creates a new task to track work progress | [View Details](/built-in/task_create) |
+| `task_get` | Gets task details and status by ID | [View Details](/built-in/task_get) |
+| `task_list` | Lists all tasks and their current status | [View Details](/built-in/task_list) |
+| `task_update` | Updates task status, fields, or dependencies | [View Details](/built-in/task_update) |
+
+The AI Agent automatically combines task tools to complete complex workflows: breaking down into sub-tasks, tracking progress, viewing details on demand, and updating status.
+
+### Sub-agent Management
+
+| Tool | Description | Docs |
+|------|-------------|:----:|
+| `subagent` | Creates independent sub-processes for concurrent sub-task execution, supports spawn/poll/list/kill operations | [View Details](/built-in/subagent) |
+| `skill` | Manages Skill workflow templates, supports list/load operations | [View Details](/built-in/skill) |
+
+Sub-agents are marked with `--subagent` to prevent recursive spawning — sub-processes do not register the SubAgent tool. Output is automatically collapsed (>2KB summarized, >1MB truncated).
+
+---
+
+## Future Expansion
+
+The `ToolHandler` enum is marked with `#[non_exhaustive]`, reserving extension capabilities. Future versions will continue to add new tools.
+
+| Version | New Tools | Description |
+|---------|-----------|-------------|
+| v0.29+ | `web_fetch`, `web_search`, `shell_exec` | Initial tools: web fetch, web search, command execution |
+| v0.31+ | `file_read`, `file_search`, `file_find` | File operations: read, content search, file find |
+| v0.32+ | `file_edit`, `file_write`, `ask_user` | File editing, file writing, user inquiry |
+| v0.33+ | `task_create`, `task_get`, `task_list`, `task_update` | Task management system |
+| v0.34+ | `file_edit` refactored | Added line_range, append, insert_after, batch edit modes, content validation algorithm |
+| v0.37+ | `subagent` | Sub-agent management: create independent sub-processes for concurrent task execution, supports spawn/poll/list/kill |
+| v0.38+ | `skill` | Skill system: predefined workflow template management, supports list/load operations; new `--skill` CLI parameter; three-layer SKILL.md discovery mechanism; allowed-tools whitelist filtering |
+
+---
+
+## Best Practices
+
+- **Combined Use**: The AI Agent can automatically combine multiple tools, e.g., "search for the latest Rust version -> visit the release page -> summarize changes"
+- **`description` parameter**: Explaining why a command needs to be executed in the prompt helps the AI Agent generate more meaningful descriptions, making it easier for you to decide whether to authorize
+- **Safety First**: Only authorize commands you have verified as safe. Be cautious with dangerous operations such as deletions or system configuration modifications
+- **Large Page Limit**: `web_fetch` has a 100K character output limit for large document pages. The AI may only see truncated content. For complex tasks, consider executing in steps
+
+---
+
+## Related Documentation
+
+- [Commands Reference](/commands/run) — Detailed `run` command usage
+- [AI Agent Feature](/guide/ai-agent) — AI Agent working modes
+- [file_edit Design Document](/guide/file-edit) — Deep dive into the file editing tool's design principles and security model

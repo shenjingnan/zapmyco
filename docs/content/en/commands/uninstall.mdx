@@ -1,0 +1,29 @@
+---
+title: uninstall — Uninstall
+description: Uninstall zapmyco and clean up related files
+---
+
+Uninstall zapmyco, cleaning up configuration files, installation receipts, and the binary:
+
+```bash
+zapmyco uninstall
+```
+
+The uninstall process consists of two phases:
+
+**Phase 1 — Confirmation**
+- Asks whether to keep memories and configuration (`~/.zapmyco/` directory)
+- Confirms again whether to proceed with uninstallation
+- This phase can be safely aborted with `Ctrl+C`, no data will be deleted
+
+**Phase 2 — Execution**
+- Deletes the installation receipt directory `~/.config/zapmyco/`
+- If the user chooses not to keep, deletes `~/.zapmyco/` (including settings.toml, memories, etc.)
+- Deletes the currently running binary
+
+**Platform Differences**
+
+| Platform | Binary Deletion Method |
+|----------|----------------------|
+| macOS / Linux | Automatically deletes its own binary |
+| Windows | Prompts the user to manually delete the binary |

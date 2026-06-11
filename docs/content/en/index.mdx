@@ -1,0 +1,133 @@
+---
+title: ZapMyCo
+---
+
+<p align="center">
+  <img src="/logo.svg" alt="zapmyco logo" width="240" />
+</p>
+
+<div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+  <a href="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml"><img src="https://github.com/shenjingnan/zapmyco/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://crates.io/crates/zapmyco"><img src="https://img.shields.io/crates/v/zapmyco.svg?color=brightgreen" alt="crates.io" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-brightgreen.svg" alt="License: MIT" /></a>
+</div>
+
+**ZapMyCo** is a Rust-based AI-driven command-line tool that provides an interactive chat experience with LLMs.
+
+## Features
+
+- **Rust Implementation** — Single binary (~5-10MB), zero runtime dependencies, millisecond startup
+- **AI Integration** — Built-in AI Agent conversation mode with streaming output
+- **Quick Notes** — Capture ideas, todos, and thoughts anytime, purely local Markdown storage
+- **Multi-Platform Distribution** — crates.io publishing + precompiled binaries for 5 platforms
+- **Multi-Provider** — Built-in DeepSeek, GLM model support, with custom provider support
+- **Automated Publishing** — GitHub Actions-driven automated build, test, and release
+
+## Installation Methods
+
+### One-Click Install (Recommended)
+
+<Tabs items={["macOS / Linux", "Windows (PowerShell)", "Windows (cmd.exe)"]}>
+
+<Tab>
+```bash
+curl -fsSL https://zapmyco.com/install.sh | sh
+```
+</Tab>
+
+<Tab>
+```powershell
+irm https://zapmyco.com/install.ps1 | iex
+```
+</Tab>
+
+<Tab>
+```powershell
+powershell -c "irm https://zapmyco.com/install.ps1 | iex"
+```
+</Tab>
+
+</Tabs>
+
+### Install via cargo
+
+Requires [Rust toolchain](https://rustup.rs):
+
+```bash
+cargo install zapmyco
+```
+
+### Manual Download
+
+Each release publishes precompiled binary archives (`.tar.xz` / `.zip`):
+
+| Platform | Architecture | Download Link |
+| -------- | ------------ | ------------- |
+| Linux | x86_64 | [zapmyco-x86_64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-unknown-linux-gnu.tar.xz) |
+| Linux | ARM64 | [zapmyco-aarch64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-unknown-linux-gnu.tar.xz) |
+| macOS | Apple Silicon | [zapmyco-aarch64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-apple-darwin.tar.xz) |
+| macOS | Intel | [zapmyco-x86_64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-apple-darwin.tar.xz) |
+| Windows | x86_64 | [zapmyco-x86_64-pc-windows-msvc.zip](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-pc-windows-msvc.zip) |
+
+### Build from Source
+
+```bash
+git clone https://github.com/shenjingnan/zapmyco.git
+cd zapmyco
+cargo build --release
+# Artifact located at target/release/zapmyco
+
+# Verify the build
+./target/release/zapmyco -V
+
+# Install to PATH
+cargo install --path .
+
+# Verify installation
+zapmyco -V
+```
+
+## Verify Installation
+
+After installation, run the following commands to verify:
+
+```bash
+zapmyco --version
+# Example output: zapmyco 0.25.1
+
+zapmyco --help
+# Example output:
+# A Rust-based AI-driven command-line tool
+#
+# Usage: zapmyco [COMMAND]
+#
+# Commands:
+#   note      Quick note taking
+#   settings  Display LLM configuration
+#   run       One-shot AI task execution
+#   init      Initialize LLM configuration
+#   completion Generate shell completion scripts
+#   help      Display help information
+```
+
+## Quick Start
+
+```bash
+# Initialize configuration
+zapmyco init
+
+# View help
+zapmyco --help
+
+# AI chat mode
+zapmyco
+```
+
+## Next Steps
+
+- [Initialize Configuration](/commands/init) — Run `zapmyco init` to configure your API Key
+- [Command Reference](/commands/overview) — Learn about all available commands in detail
+- [Built-in Tools](/guide/built-in-tools) — Learn about the AI Agent tool capabilities of the `run` command
+- [file_edit Implementation Details](/guide/file-edit) — Deep dive into the design principles and security model of the file editing tool
+- [AI Agent Features](/guide/ai-agent) — Experience AI chat mode
+- [Architecture Overview](/advanced/architecture) — Understand the project design

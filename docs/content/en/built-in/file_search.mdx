@@ -1,0 +1,97 @@
+---
+title: file_search — Search File Content
+description: Search file content in the local file system with regular expression support
+---
+
+Search file content in the local file system with regular expression support. Suitable for finding code definitions, searching keywords, analyzing project structure, and more.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `pattern` | string | Yes | Search pattern (regular expression) |
+| `path` | string | No | Search path (directory or file), defaults to current directory |
+| `glob` | string | No | File glob filter, e.g. `"*.rs"` to search only Rust files |
+| `output_mode` | string | No | Output mode: `content` (show matching lines with line numbers, default), `files_with_matches` (show file names only), `count` (show match count per file) |
+| `-i` | boolean | No | Case-insensitive search |
+| `-A` | integer | No | Number of context lines after each match |
+| `-B` | integer | No | Number of context lines before each match |
+| `-C` | integer | No | Number of context lines before and after each match (higher priority than `-A`/`-B`) |
+| `head_limit` | integer | No | Maximum number of result lines, default 250 |
+| `offset` | integer | No | Skip the first N results, used with `head_limit` for pagination |
+| `multiline` | boolean | No | Enable multiline mode, allows `.` to match newlines, supports cross-line matching |
+| `type` | string | No | File type filter, e.g. `"rust"`, `"py"`, `"js"`, `"md"` |
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Search timeout | 20 seconds |
+| Max output length | 100,000 characters (returns error if exceeded) |
+| Default result limit per pattern | 250 lines |
+
+## Output Modes
+
+**content** (default):
+```text
+Matched "pattern" in N files (M matches)
+
+path/to/file.rs:42:let result = pattern_match();
+path/to/file.rs:58:another_match();
+```
+
+**files_with_matches**:
+```text
+Matched "pattern" in N files:
+
+path/to/file1.rs
+path/to/file2.rs
+```
+
+**count**:
+```text
+Matched "pattern" in N files (M total matches):
+
+  path/to/file1.rs:3
+  path/to/file2.rs:5
+```
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Missing pattern | Required parameter `pattern` not provided |
+| Search timeout | Search exceeded 20 seconds |
+| Output too large | Result exceeded 100K character limit |
+| Invalid path | Specified search path does not exist |
+| Search failed | Internal search engine error |
+
+## Pagination
+
+When results exceed `head_limit` (default 250), a pagination hint is shown at the end of the output:
+
+```text
+---
+[Showing 250 / 1000 lines, use offset=250 and head_limit for pagination]
+```
+
+The AI Agent can combine `offset` and `head_limit` parameters to iterate through all results:
+
+```bash
+zapmyco run 'Search all TODO comments in the project, 200 per page, get page 1 first'
+zapmyco run 'Then get page 2 of TODO search results, offset=200'
+```
+
+## Usage Examples
+
+```bash
+zapmyco run 'Search for all Rust code containing "unwrap" in the src/ directory'
+zapmyco run 'Search for all FIXME comments in the project, case insensitive'
+zapmyco run 'Count function definitions in JavaScript and TypeScript files in the project'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [file_read](/built-in/file_read) — Read file content, used together with file_search
+- [file_find](/built-in/file_find) — Find files by name

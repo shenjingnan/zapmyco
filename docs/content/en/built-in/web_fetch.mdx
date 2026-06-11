@@ -1,0 +1,48 @@
+---
+title: web_fetch — Fetch Web Page Content
+description: Fetch web page content from a specified URL and convert it to clean Markdown text
+---
+
+Fetch web page content from a specified URL and convert it to clean Markdown text.
+
+**Use cases**: Let AI read online documentation, fetch API references, view article details, scrape web data, etc.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `url` | string | Yes | Full URL to fetch (including protocol, e.g. `https://`) |
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Supported protocols | `http://` and `https://` only |
+| Max response body | 1 MB |
+| Request timeout | 30 seconds |
+| Max redirects | 5 times |
+| Max output length | 100,000 characters (auto-truncated with trailing note) |
+| Allowed Content-Type | `text/html`, `text/plain` |
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Invalid URL | Empty URL, non-http/https protocol (e.g. `ftp://`) |
+| Network error | Timeout, DNS resolution failure, connection refused, too many redirects |
+| HTTP error | Server returned non-2xx status code (e.g. 404, 502) |
+| Response body too large | Exceeded 1 MB limit |
+| HTML conversion failed | Content parsing error |
+| Unsupported Content-Type | Server returned non-`text/html` / `text/plain` type |
+
+## Usage Examples
+
+```bash
+zapmyco run 'Please visit https://example.com and summarize the page content'
+zapmyco run 'Extract the table of contents from https://doc.rust-lang.org/book/'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [web_search](/built-in/web_search) — Search the web, used together with web_fetch

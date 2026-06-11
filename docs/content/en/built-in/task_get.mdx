@@ -1,0 +1,30 @@
+---
+title: task_get — View Task
+description: Get the details and status of a single task by ID
+---
+
+Get the details and status of a single task by ID.
+
+The task management system provides 4 tools (`task_create`, `task_get`, `task_list`, `task_update`) for breaking down complex multi-step work into trackable task units and monitoring progress in real-time.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `task_id` | string | Yes | ID of the task to retrieve |
+
+## Output Example
+
+```text
+Task #1: Implement user login functionality
+Status: pending
+Description: Implement email/password login, OAuth third-party login
+Active form: Implementing login
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [task_create](/built-in/task_create) — Create a task
+- [task_list](/built-in/task_list) — List all tasks
+- [task_update](/built-in/task_update) — Update task status

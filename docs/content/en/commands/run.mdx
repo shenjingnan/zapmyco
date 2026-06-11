@@ -1,0 +1,189 @@
+---
+title: run — Execute AI Tasks
+description: Execute AI tasks with conversation interaction and multiple parameters
+---
+
+Execute AI tasks:
+
+```bash
+# Basic usage
+zapmyco run 'Introduce the features of Rust in Chinese'
+
+# Use advanced profile
+zapmyco run --profile advanced Refactor this module
+```
+
+## Parameter Overview
+
+| Parameter | Required | Description |
+|-----------|:--------:|-------------|
+| `<content>` | No* | Task description or prompt (can be omitted when using `--skill`) |
+| `--profile <name>` | No | Specify model configuration profile |
+| `--model <name>` | No | Specify AI model name |
+| `--api-key <key>` | No | Specify API Key |
+| `--base-url <url>` | No | Specify API base URL |
+| `--skill <name>` | No | Reference an external Skill workflow |
+| `--conversation <id>` | No | Reuse specified conversation context |
+| `--task-id <id>` | No | Reuse the task list of a specified conversation |
+| `--permission-mode <mode>` | No | Restrict agent operation permissions |
+
+> \* An error is thrown when neither `<content>` nor `--skill` is provided.
+
+## Parameter Details
+
+### `<content>` — Task Description
+
+The task content to be executed. Directly tell the AI what you want it to do. Supports Chinese, English, and other languages.
+
+This parameter is optional — it can be omitted when using the `--skill` parameter, as the AI will obtain the task description from the Skill file.
+
+```bash
+# Simple task
+zapmyco run 'Check today's date'
+
+# Complex task
+zapmyco run 'Analyze the Rust project structure in the current directory and provide improvement suggestions'
+
+# Can be omitted when using skill
+zapmyco run --skill code-review
+```
+
+---
+
+### `--profile <name>` — Model Configuration Profile
+
+Specifies a predefined model configuration from `settings.toml`. You can define multiple configuration profiles under `[llm.models]` in `~/.zapmyco/settings.toml`, for example one for quick daily Q&A and another for deep analysis.
+
+Ideal for quickly switching configurations between different scenarios without manually specifying models and parameters each time.
+
+```bash
+# Use advanced profile for deep analysis
+zapmyco run --profile advanced 'Analyze the performance bottlenecks of this code'
+
+# Use fast profile for quick Q&A
+zapmyco run --profile fast 'What is the difference between Vec and arrays in Rust?'
+```
+
+---
+
+### `--model <name>` — Specify Model
+
+Temporarily specify an AI model, overriding the default model configuration in `settings.toml`. Supports Tab completion for the built-in model list (displays model name and context window size), and also accepts any custom model name.
+
+```bash
+# Tab can complete built-in models
+zapmyco run --model deepseek-v4-flash 'Quick Q&A'
+
+# Use full model name
+zapmyco run --model claude-sonnet-4-20250514 'Analyze data'
+```
+
+---
+
+### `--api-key <key>` — API Key
+
+Temporarily specify an API Key, with higher priority than the configuration in `settings.toml` and environment variables such as `DEEPSEEK_API_KEY`.
+
+Useful for temporarily using a different account, testing a new API Key, or avoiding writing keys into configuration files.
+
+```bash
+zapmyco run --api-key sk-xxxxxxxxxxxx 'Execute task'
+```
+
+---
+
+### `--base-url <url>` — API Base URL
+
+Temporarily specify an API base URL, overriding the default address in `settings.toml`. Supports Tab completion for built-in provider URLs.
+
+If no protocol prefix is provided (e.g., `http://`), `https://` is automatically prepended. Supports both `http` and `https` protocols, and can be used with locally deployed models or third-party services compatible with the Anthropic API.
+
+```bash
+# Use official URL (Tab can complete)
+zapmyco run --base-url https://api.deepseek.com 'Task'
+
+# Local deployment (must use http://)
+zapmyco run --base-url http://localhost:11434 'Local test'
+
+# Omitting protocol prefix will auto-complete to https://
+zapmyco run --base-url api.deepseek.com 'Task'
+```
+
+---
+
+### `--skill <name>` — Skill Workflow
+
+Reference an external Skill file (SKILL.md) to predefine the AI Agent's workflow. A Skill is a structured instruction file that tells the AI how to perform specific types of tasks.
+
+When using `--skill`, the `<content>` parameter can be omitted — the AI will read the task description from the Skill file. Supports Tab completion for available Skill files in the current directory.
+
+If the Skill defines an `allowed-tools` whitelist, the AI Agent's available built-in tools will be restricted to the whitelist.
+
+```bash
+# Use Skill + task description
+zapmyco run --skill code-review 'Review the login module code'
+
+# Omit content, get task from Skill
+zapmyco run --skill security-audit
+
+# Use check skill for code quality inspection
+zapmyco run --skill check
+```
+
+For detailed instructions, see the [Skill System Guide](/skill/overview).
+
+---
+
+### `--conversation <id>` — Continue Conversation
+
+Reuse the conversation history from a previous session, allowing the AI to remember past dialogue. Supports Tab completion for available conversations — sorted in descending order by time, each entry shows message count and a summary preview.
+
+Ideal for scenarios where you need to continue from a previous task, allowing the AI to pick up where it left off.
+
+```bash
+zapmyco run --conversation conv_20260610_223045 'Continue the previous analysis'
+```
+
+---
+
+### `--task-id <id>` — Task List
+
+Reuse the task list from a specified conversation. Each `run` session maintains a task list to track the AI's work progress. Without this parameter, a new session and task list are automatically created.
+
+Useful for picking up where unfinished tasks left off.
+
+```bash
+zapmyco run --task-id my-session 'Continue executing unfinished tasks'
+```
+
+---
+
+### `--permission-mode <mode>` — Permission Control
+
+Restricts the AI Agent's operation permissions. Defaults to `full` (full permissions) and can be flexibly adjusted based on task trustworthiness.
+
+| Mode | Alias | Permissions |
+|------|-------|-------------|
+| `full` (default) | — | Full permissions: can read, write, and execute shell commands |
+| `read-write` | `readwrite` | Read-write mode: can read and write, **prohibited** from executing shell commands |
+| `read-only` | `readonly` | Read-only mode: can only read and analyze content, **prohibited** from writing and executing |
+
+```bash
+# Read-only mode: analyze only, no modifications
+zapmyco run --permission-mode read-only 'Analyze the project structure and produce a dependency graph'
+
+# Read-write mode: can modify code, but cannot execute commands
+zapmyco run --permission-mode read-write 'Refactor src/utils.rs'
+
+# Full permissions: default, no need to specify explicitly
+zapmyco run 'Deploy application to server'
+```
+
+---
+
+**Prerequisite**: You must complete the initial configuration via `zapmyco init` first.
+
+**Error Scenarios**
+
+- If no configuration file is found, prompts to run `zapmyco init`
+- If the task description is empty, returns error: `Task description cannot be empty`

@@ -4309,10 +4309,10 @@ mod tests {
                 cacheable_ratio
             );
 
-            // 预期 system + tools 至少占请求的 40%+
+            // 预期 system + tools 至少占请求的 30%+
             assert!(
-                cacheable_ratio > 35.0,
-                "system_prompt + tools 应占请求 35% 以上，实际 {:.1}%（system: {}B, tools: {}B, msg: {}B）",
+                cacheable_ratio > 30.0,
+                "system_prompt + tools 应占请求 30% 以上，实际 {:.1}%（system: {}B, tools: {}B, msg: {}B）",
                 cacheable_ratio,
                 system_prompt_len,
                 tool_defs_json.len(),

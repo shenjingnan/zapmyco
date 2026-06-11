@@ -1,0 +1,66 @@
+---
+title: Command Reference Overview
+description: Complete command reference for the ZapMyCo CLI tool
+---
+
+ZapMyCo provides a clean command-line interface with the following commands.
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--help`, `-h` | Display help information |
+| `--version`, `-V` | Display version number |
+
+## Command Cheat Sheet
+
+| Command | Function | Requires init first? |
+|---------|----------|:--------------------:|
+| `zapmyco` (default) | Enter interactive AI chat mode | Yes |
+| `zapmyco init` | Initialize LLM configuration wizard | — |
+| `zapmyco note add [content]` | Quick note taking (ideas/todos/thoughts), leave blank for interactive editing | No |
+| `zapmyco run <content>` | Execute AI tasks | Yes |
+| `zapmyco settings [subcommand]` | Display or manage LLM configuration | No |
+| `zapmyco config` | Display application configuration | No |
+| `zapmyco upgrade` | Upgrade zapmyco to the latest version | No |
+| `zapmyco uninstall` | Uninstall zapmyco | No |
+
+## Usage Examples
+
+```bash
+# View version
+zapmyco --version
+
+# Initialize configuration
+zapmyco init
+
+# Quick note
+zapmyco note add 'Meeting at 3pm tomorrow'
+zapmyco note ls
+
+# One-shot AI task
+zapmyco run check today's date
+
+# Using the Skill system
+zapmyco run --skill code-review
+zapmyco run --skill check 'Inspect and fix code quality issues'
+
+# Interactive AI chat
+zapmyco
+
+# View configuration
+zapmyco settings
+zapmyco settings path
+
+# View app configuration
+zapmyco config
+
+# Upgrade
+zapmyco upgrade
+
+# Uninstall
+zapmyco uninstall
+
+# View help
+zapmyco --help
+```

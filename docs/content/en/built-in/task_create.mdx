@@ -1,0 +1,29 @@
+---
+title: task_create — Create Task
+description: Create a new task to track progress on complex multi-step work
+---
+
+Create a new task to break down complex multi-step work into trackable task units.
+
+The task management system provides 4 tools (`task_create`, `task_get`, `task_list`, `task_update`) for breaking down complex multi-step work into trackable task units and monitoring progress in real-time.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `subject` | string | Yes | Concise task title (e.g., "Implement user login functionality") |
+| `description` | string | Yes | Detailed task description and completion criteria |
+| `active_form` | string | No | Active form for progress display (e.g., "Implementing login") |
+
+## Usage Examples
+
+```bash
+zapmyco run 'I need to create a task to track the development progress of the user login feature'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [task_get](/built-in/task_get) — View task details
+- [task_list](/built-in/task_list) — List all tasks
+- [task_update](/built-in/task_update) — Update task status

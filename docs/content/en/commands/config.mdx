@@ -1,0 +1,26 @@
+---
+title: config — Application Configuration
+description: Display application built-in configuration information
+---
+
+Display current application configuration information:
+
+```bash
+zapmyco config
+# Example output:
+# {
+#   "debug": false,
+#   "logLevel": "info",
+#   "createdAt": "2026-05-25T..."
+# }
+```
+
+**Output Field Description**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `debug` | boolean | Debug mode toggle (currently fixed to `false`) |
+| `logLevel` | string | Log level (currently fixed to `info`) |
+| `createdAt` | string | UTC timestamp when the command was executed (ISO 8601 format) |
+
+This command displays **application built-in configuration**, which is different from the user configuration shown by `settings`.

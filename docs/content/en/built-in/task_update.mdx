@@ -1,0 +1,52 @@
+---
+title: task_update — Update Task
+description: Update task status, fields, and dependency relationships
+---
+
+Update task status, fields, and dependency relationships.
+
+The task management system provides 4 tools (`task_create`, `task_get`, `task_list`, `task_update`) for breaking down complex multi-step work into trackable task units and monitoring progress in real-time.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `task_id` | string | Yes | ID of the task to update |
+| `status` | string | No | New status: `pending`, `in_progress`, `completed`, `deleted` |
+| `subject` | string | No | New title |
+| `description` | string | No | New description |
+| `active_form` | string | No | Active form for progress display |
+| `owner` | string | No | Task owner |
+| `add_blocks` | string[] | No | List of task IDs this task blocks |
+| `add_blocked_by` | string[] | No | List of task IDs that block this task |
+
+## Status Transitions
+
+Task status transitions follow this direction:
+
+```text
+pending → in_progress → completed
+                            ↓
+                        deleted
+```
+
+- **pending**: Task created, waiting to start
+- **in_progress**: Currently being executed
+- **completed**: Finished (only mark as this when fully complete)
+- **deleted**: Permanently delete the task
+
+## Dependency Relationships
+
+Dependencies can be set between tasks:
+
+- **blocked_by**: Which tasks block this task. For example, task B is blocked by task A, so task B can only start after A is completed
+- **blocks**: Which tasks this task blocks. For example, task A blocks task B, so task B should not start if A is not finished
+
+Blocking relationships are automatically displayed in the output of `task_list` and `task_get`.
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [task_create](/built-in/task_create) — Create a task
+- [task_get](/built-in/task_get) — View task details
+- [task_list](/built-in/task_list) — List all tasks

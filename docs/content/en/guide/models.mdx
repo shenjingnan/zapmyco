@@ -1,0 +1,263 @@
+---
+title: Built-in Models
+---
+
+ZapMyCo comes with 22 models from 8 providers, all accessible via the Anthropic Messages API format.
+
+You can reference model names directly in the `[llm.models]` section of `settings.toml`. You can combine models from different providers to achieve the best results. **Note: Each model's provider requires its corresponding API Key to be configured.**
+
+```toml
+[llm]
+
+[llm.providers.deepseek]
+apiKey = "sk-your-deepseek-key"
+
+[llm.providers.anthropic]
+apiKey = "sk-your-anthropic-key"
+
+[llm.models]
+default = "deepseek-v4-flash"
+advanced = "claude-sonnet-4-6"
+```
+
+Models are listed below grouped by provider.
+
+## DeepSeek
+
+For more information, please refer to [DeepSeek Official Models and Pricing](https://api-docs.deepseek.com/zh-cn/quick_start/pricing).
+
+**Base URL:** `https://api.deepseek.com/anthropic`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `deepseek-v4-flash` (Recommended) | 1,000,000 | 384,000 | Text |
+| `deepseek-v4-pro` | 1,000,000 | 384,000 | Text |
+
+## Anthropic
+
+For more information, please refer to [Anthropic Official Models Overview](https://platform.claude.com/docs/en/about-claude/models/overview).
+
+**Base URL:** `https://api.anthropic.com`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `claude-opus-4-8` | 1,000,000 | 128,000 | Text |
+| `claude-opus-4-7` | 1,000,000 | 128,000 | Text |
+| `claude-sonnet-4-6` | 1,000,000 | 64,000 | Text |
+| `claude-haiku-4-5` | 200,000 | 64,000 | Text |
+
+## MiniMax
+
+For more information, please refer to [MiniMax Official Model Introduction](https://platform.minimaxi.com/docs/guides/models-intro).
+
+- **Base URL (China, Default):** `https://api.minimaxi.com/anthropic`
+- **Base URL (Global):** `https://api.minimax.io/anthropic`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `MiniMax-M3` | 1,000,000 | 128,000 | Text, Vision |
+| `MiniMax-M2.7` | 204,800 | 131,072 | Text |
+| `MiniMax-M2.7-highspeed` | 204,800 | 131,072 | Text |
+
+> Need to switch to the global endpoint? Configure `baseUrl = "https://api.minimax.io/anthropic"` for the `minimax` provider in `settings.toml`. For more information, refer to [MiniMax Global Official Docs](https://platform.minimax.io/docs/guides/models-intro).
+
+## GLM (Zhipu)
+
+For more information, please refer to [Zhipu Official Model Overview](https://docs.bigmodel.cn/cn/guide/start/model-overview).
+
+- **Base URL (China, Default):** `https://open.bigmodel.cn/api/anthropic`
+- **Base URL (Global):** `https://api.z.ai/api/anthropic`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `glm-5v-turbo` | 200,000 | 128,000 | Text, Vision |
+| `glm-5.1` | 200,000 | 128,000 | Text |
+| `glm-5-turbo` | 200,000 | 128,000 | Text |
+| `glm-4.7-flash` | 200,000 | 128,000 | Text |
+
+> Need to switch to the global endpoint? Configure `baseUrl = "https://api.z.ai/api/anthropic"` for the `glm` provider in `settings.toml`. For more information, refer to [Zhipu Global Official Docs](https://docs.z.ai/guides/overview/overview).
+
+## Kimi (Moonshot)
+
+**China Docs:** [Kimi Official Model List](https://platform.kimi.com/docs/models)
+
+**Global Docs:** [Kimi Official Models](https://platform.kimi.ai/docs/models)
+
+**Base URL (China, Default):** `https://api.moonshot.cn/anthropic`
+
+**Base URL (Global):** `https://api.moonshot.ai/anthropic`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `kimi-k2.6` | 256,000 | 32,768 | Text, Vision |
+| `kimi-k2.5` | 256,000 | 32,768 | Text, Vision |
+
+> Need to switch to the global endpoint? Configure `baseUrl = "https://api.moonshot.ai/anthropic"` for the `kimi` provider in `settings.toml`.
+
+## Doubao (Volcengine / ByteDance)
+
+For more information, please refer to [Volcengine Ark Model List](https://www.volcengine.com/docs/82379/1330310).
+
+**Base URL:** `https://ark.cn-beijing.volces.com/api/compatible`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `doubao-seed-2-0-pro` | 256,000 | 128,000 | Text, Vision |
+| `doubao-seed-2-0-lite` | 256,000 | 128,000 | Text, Vision |
+
+## Qwen (Tongyi Qianwen)
+
+For more information, please refer to [Alibaba Cloud Bailian Model Docs](https://help.aliyun.com/zh/model-studio/text-generation-model/).
+
+- **Base URL (China, Default):** `https://dashscope.aliyuncs.com/apps/anthropic`
+- **Base URL (Global):** `https://dashscope-us.aliyuncs.com/apps/anthropic`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `qwen3.7-max` | 1,000,000 | 128,000 | Text |
+| `qwen3.7-plus` | 1,000,000 | 64,000 | Text, Vision |
+| `qwen3.6-flash` | 1,000,000 | 64,000 | Text |
+
+> Need to switch to the global endpoint? Configure `baseUrl = "https://dashscope-us.aliyuncs.com/apps/anthropic"` for the `qwen` provider in `settings.toml`.
+
+## MIMO (Xiaomi)
+
+For more information, please refer to [MIMO Official Model List](https://platform.xiaomimimo.com/docs/en/quick-start/model).
+
+**Base URL:** `https://api.xiaomimimo.com/anthropic`
+
+> If using Token Plan, adjust `baseUrl` according to your cluster:
+> - **China Cluster:** `https://token-plan-cn.xiaomimimo.com/anthropic`
+> - **Singapore Cluster:** `https://token-plan-sgp.xiaomimimo.com/anthropic`
+> - **Europe Cluster:** `https://token-plan-ams.xiaomimimo.com/anthropic`
+
+| Model Name | Context Window | Max Output | Capabilities |
+|-----------|:--------------:|:----------:|:------------:|
+| `mimo-v2.5-pro` | 1,000,000 | 128,000 | Text |
+| `mimo-v2.5` | 1,000,000 | 128,000 | Text, Vision |
+
+## OpenRouter
+
+OpenRouter provides an Anthropic API-compatible `/v1/messages` endpoint, allowing you to access 400+ models from a single platform. Configure via custom `baseUrl`:
+
+```toml
+[llm.providers.openrouter]
+apiKey = "sk-or-v1-xxxxx"
+baseUrl = "https://openrouter.ai/api"
+
+[llm.models]
+default = "anthropic/claude-sonnet-4-6"
+fast = "deepseek/deepseek-v4-flash"
+```
+
+> Model names use OpenRouter's namespace format, e.g., `anthropic/claude-sonnet-4-6`, `deepseek/deepseek-v4-flash`. For details, refer to [OpenRouter Model List](https://openrouter.ai/models).
+
+## SiliconFlow
+
+SiliconFlow offers 200+ models with Anthropic Messages API support:
+
+- **Base URL (China, Default):** `https://api.siliconflow.cn/v1`
+- **Base URL (Global):** `https://api.siliconflow.com/v1`
+
+```toml
+[llm.providers.siliconflow]
+apiKey = "sk-xxxxx"
+baseUrl = "https://api.siliconflow.cn/v1"
+
+[llm.models]
+default = "deepseek-ai/DeepSeek-V3"
+```
+
+> Model names use SiliconFlow's model identifier format, e.g., `deepseek-ai/DeepSeek-V3`, `Qwen/Qwen3-14B`. For details, refer to [SiliconFlow Model List](https://siliconflow.cn/models).
+
+## Local Models
+
+The following inference frameworks natively support the Anthropic Messages API format and can be integrated via a custom `baseUrl`:
+
+| Framework | Minimum Version | Default Port | Notes |
+|-----------|:---------------:|:------------:|-------|
+| **Ollama** | v0.14.0 | `:11434` | Easiest local deployment option |
+| **llama.cpp** | Mainline supported | `:8080` | Native support for tool use, streaming, vision |
+| **LM Studio** | v0.4.1 | `:1234` | GUI-based, out of the box |
+| **LMDeploy** | Supported | `:23333` | Official Anthropic compatibility docs |
+| **vLLM** | v0.11.1rc2+ | `:8000` | Warning: thinking tokens not yet supported |
+| **SGLang** | Mainline supported | `:30000` | Fully compatible |
+| **LocalAI** | v3.10.0+ | `:8080` | Built-in Anthropic compatibility layer |
+| **Xinference** | v1.10.0+ | `:9997` | Endpoint prefix `/anthropic/v1/messages` |
+
+The configuration method is uniform — just change `baseUrl` and the model name:
+
+```toml
+[llm]
+
+[llm.providers.ollama]
+apiKey = "ollama"
+baseUrl = "http://localhost:11434/v1"
+
+[llm.providers.llamacpp]
+apiKey = "not-needed"
+baseUrl = "http://localhost:8080/v1"
+
+[llm.providers.lmstudio]
+apiKey = "lmstudio"
+baseUrl = "http://localhost:1234/v1"
+
+[llm.models]
+default = "qwen3"
+fast = "llama3.2"
+```
+
+> Models from these frameworks are not in the built-in list — simply enter the name of your locally deployed model.
+
+## Provider API Key via Environment Variables
+
+While writing API Keys directly in `settings.toml` is simple, it poses a security risk (the config file might be accidentally committed to version control). Using environment variable references is recommended:
+
+```toml
+[llm.providers.deepseek]
+apiKey = "${env.DEEPSEEK_API_KEY}"
+```
+
+At runtime, ZapMyCo automatically replaces `${env.DEEPSEEK_API_KEY}` with the value of the `DEEPSEEK_API_KEY` environment variable.
+
+### Benefits
+
+- **Security** — API Keys are not stored as plaintext in config files, avoiding accidental Git commits
+- **Flexibility** — The same config file can use different keys across environments (development/CI/production)
+- **Best Practice** — Aligns with industry standards and works naturally with Docker, CI/CD, and other toolchains
+
+### When to Use
+
+| Scenario | Recommended Approach |
+|----------|---------------------|
+| Personal local development | Either direct entry or environment variables |
+| Shared config across multiple machines | Environment variables (config is shareable, each machine sets its own key) |
+| CI/CD environment | Environment variables (injected via GitHub Secrets / CI variables) |
+| Team-shared config files | Environment variables (avoid key leakage) |
+| Quick trial and testing | Direct entry |
+
+### How to Set
+
+```bash
+# Temporary (current terminal session only)
+export DEEPSEEK_API_KEY="sk-your-key"
+
+# Permanent (add to your shell config file)
+echo 'export DEEPSEEK_API_KEY="sk-your-key"' >> ~/.zshrc
+
+# Or use the zapmyco init wizard to auto-configure
+zapmyco init
+```
+
+### Recommended Environment Variable Names per Provider
+
+| Provider | Environment Variable Name |
+|----------|---------------------------|
+| Anthropic | `ANTHROPIC_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| Qwen (Tongyi Qianwen) | `QWEN_API_KEY` |
+| MiniMax | `MINIMAX_API_KEY` |
+| GLM (Zhipu) | `GLM_API_KEY` |
+| Kimi (Moonshot) | `KIMI_API_KEY` |
+| Doubao (Volcengine) | `DOUBAO_API_KEY` |
+| MIMO (Xiaomi) | `MIMO_API_KEY` |

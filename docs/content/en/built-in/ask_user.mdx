@@ -1,0 +1,68 @@
+---
+title: ask_user — Ask User
+description: Ask the user a question with options and get a response
+---
+
+Ask the user a question with options and get a response. Used when user decisions, requirement clarification, operation confirmation, or preference selection is needed.
+
+**Use cases**: Let AI ask the user which option to choose, confirm whether to perform an action, clarify ambiguous requirements, collect user preferences, etc.
+
+**Note**: Only one question at a time; do not include multiple independent questions in `question`.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `question` | string | Yes | The question to ask the user, should be clear and end with a question mark |
+| `options` | object[] | Yes | List of options (1-6 items), each with `label` and `description` |
+| `multi_select` | boolean | No | Whether to allow multiple selection, defaults to `false` |
+
+## Interactive Interface
+
+In an interactive terminal, `ask_user` displays a polished selection interface:
+
+```
+? Which option would you prefer?
+
+  1. Option A    Recommended, simple to implement
+> 2. Option B    Better performance but complex to implement
+  3. Option C    Third-party solution
+  ───
+  0. Custom input
+
+Number selection · j/k or up/down navigate · Enter confirm · Ctrl+C cancel
+```
+
+- **Number shortcuts**: Press `1`-`9` to directly select the corresponding option
+- **Navigation**: `j`/`k` or `up`/`down` to move the cursor
+- **Custom input**: The last option allows users to freely enter text
+- **Cancel**: `Ctrl+C` or `Esc` to cancel selection
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Number of options | 1-6 |
+| Runtime environment | Interactive terminal (TTY) only; returns error in non-TTY environments |
+| Multi-select mode | Enabled via the `multi_select` parameter |
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Missing `question` | Required parameter not provided |
+| Missing `options` | Required parameter not provided |
+| Empty options | Options list cannot be an empty array |
+| Missing label | The `label` field in an option cannot be empty |
+| Non-TTY environment | Not available in non-interactive environments like pipes, CI, redirection |
+| User cancelled | User pressed `Ctrl+C` to cancel selection |
+
+## Usage Examples
+
+```bash
+zapmyco run 'I want to refactor this module, which approach do you prefer?'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
