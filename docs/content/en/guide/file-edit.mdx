@@ -1,0 +1,263 @@
+---
+title: file_edit File Editing Tool
+---
+
+`file_edit` is one of zapmyco's core tools, responsible for making precise and safe content modifications to local files.
+
+## Design Philosophy
+
+The core idea behind `file_edit` is: **Make the tool adapt to the AI, not the AI adapt to the tool.**
+
+This means we analyze the AI's capabilities and design the interface around them:
+
+| What AI is good at | What AI is not good at |
+|-------------------|------------------------|
+| Understanding code logic and intent | Precisely reproducing indentation, spaces, blank lines |
+| Generating correct code | Providing exact-match original text |
+| Describing "what to change" | Remembering every formatting detail it read |
+
+So `file_edit` adopts a **line-number positioning + content validation** strategy — the AI only needs to say "change these lines to this," and the tool handles "finding the location" and "verifying safety."
+
+---
+
+## Two Edit Modes
+
+### 1. line_range
+
+A general-purpose line range editing mode covering replace, insert, and delete operations.
+
+**Use cases:**
+
+- **Replace** — Modify specified lines in a file by providing the line number range and new content
+- **Insert** — Insert new lines at any position (beginning, between lines, end of file); include the existing lines in `new_content` with the new lines inserted among them
+- **Delete** — Remove specified lines by omitting them from `new_content`
+
+**How it works:** When the AI reads a file via `file_read`, it already gets the content with line numbers, so it can directly specify the range.
+
+```json
+{
+  "file_path": "src/main.rs",
+  "start_line": 11,
+  "end_line": 13,
+  "expected": "    let x = 1;\n    return x;\n}",
+  "new_content": "    let x = 42;\n    return x;\n}"
+}
+```
+
+**Insert example** (inserting a new line after line 3):
+
+```
+Line 3: let a = 1;
+Line 4: let b = 2;
+Line 5: let c = 3;
+
+line_range(start=4, end=4,
+  expected="let b = 2;\nlet c = 3;\nlet d = 4;",
+  new_content="let b = 2;\nlet inserted = 999;\nlet c = 3;")
+
+Result: At line 4, expands to 3 lines (preserves existing lines + inserts new line)
+```
+
+**Delete example** (deleting lines 5-6):
+
+```
+line_range(start=5, end=6,
+  expected="let e = 5;\nlet f = 6;\nlet g = 7;",
+  new_content="let g = 7;")
+
+Result: Lines 5-6 are compressed into 1 line (skipping the deleted lines)
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `file_path` | string | Yes | Absolute path to the file to modify |
+| `start_line` | integer | Yes | Starting line number for replacement (1-based) |
+| `end_line` | integer | Yes | Ending line number for replacement (inclusive) |
+| `expected` | string | Yes | Expected current content, used to verify line number accuracy. Requires at least 3 non-empty code lines |
+| `new_content` | string | Yes | New content after replacement |
+
+**Safety:** The tool automatically verifies that `expected` matches the actual content (see the "Content Validation Algorithm" section). If verification fails, the operation is rejected.
+
+### 2. append
+
+Appends content to the end of a file.
+
+**Use cases:**
+
+- **Append to end of file** — Add new functions, config items, import statements, etc., to the end of an existing file
+- **Write to empty file** — When a file has no content, append is the only available edit mode (line_range cannot locate line numbers)
+- **Don't care about line numbers** — If you don't want to calculate the insertion position, just append to the end
+
+Append does not require a line number or content validation — the end of the file is unambiguous.
+
+```json
+{
+  "file_path": "src/lib.rs",
+  "mode": "append",
+  "content": "\n// New function\npub fn helper() {}"
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `file_path` | string | Yes | Absolute path to the file |
+| `mode` | string | Yes | Must be `"append"` |
+| `content` | string | Yes | Content to append |
+
+---
+
+## Content Validation Algorithm
+
+This is the core design of `file_edit`. The algorithm's purpose is simple: **The AI says "lines 11-13 look roughly like this" — how do we confirm it's correct?**
+
+### Algorithm Definition
+
+```rust
+fn validate_content(expected: &str, actual: &str) -> bool {
+    // 0. Normalize quotes in both expected and actual
+    //    (curly quotes -> straight quotes, eliminating LLM output format differences)
+    // 1. Extract all non-empty lines from expected, trim whitespace
+    // 2. If fewer than 3 lines -> reject (insufficient discriminative power)
+    // 3. If any line is shorter than 3 chars and total lines < 4 -> reject (avoid triple "}" match)
+    // 4. Each trimmed line must be found in actual -> pass
+    // 5. Otherwise -> reject
+}
+```
+
+### Design Principles
+
+1. **Conservative Rejection**: Better to reject than silently allow editing the wrong location. After rejection, the AI can re-read the file and try again, but editing the wrong place could introduce hard-to-find bugs.
+2. **Simple and Predictable**: No percentage fuzziness, no multi-level computation. The rule is "every line must match" — if not, reject. The behavior is binary.
+3. **Language Agnostic**: By trimming whitespace before matching, indentation differences are eliminated. Set-based matching eliminates line order differences.
+4. **Directionality**: Only requires that lines mentioned by the AI appear in the file, not that every line in the file appears in the AI's description. This allows the AI to omit comments, blank lines, and other non-critical content.
+
+### Edge Cases
+
+| Scenario | expected | Actual File Content | Result |
+|----------|---------|-------------------|--------|
+| Exact match | `let x = 1;\nlet y = 2;\nlet z = 3;` | Same as left | ✅ Pass |
+| Different indentation | `  let x = 1;\n  let y = 2;\n  let z = 3;` | `    let x = 1;\n    let y = 2;\n    let z = 3;` | ✅ Pass |
+| One line wrong | `let x = 1;\nlet y = 2;\nlet z = 3;` | `let x = 1;\nlet y = 999;\nlet z = 3;` | ❌ Reject |
+| Completely unrelated | `let x = 1;\nlet y = 2;\nlet z = 3;` | `fn foo() {\n    bar()\n}` | ❌ Reject |
+| Fewer than 3 lines | `let x = 1;\nlet y = 2;` | Same as left | ❌ Reject (insufficient discrimination) |
+| Contains blank lines (filtered to < 3 lines) | `let x = 1;\n\nlet y = 2;` | Same as left | ❌ Reject |
+| Triple short lines | `x\n}\ny` | Same as left | ❌ Reject (requires at least 4 lines) |
+| Extra content in actual | `let x = 1;\nlet y = 2;\nreturn x;` | `let x = 1;\nlet y = 2;\n// debug\nreturn x;` | ✅ Pass (extra lines don't affect) |
+| Different order | `let y = 2;\nlet z = 3;\nlet x = 1;` | `let x = 1;\nlet y = 2;\nlet z = 3;` | ✅ Pass (set matching) |
+
+---
+
+## Security Model
+
+`file_edit` has a multi-layered security model:
+
+```
+Layer 1: Permission Control
+  └── Controlled via CLI --permission-mode
+      ├── Full: All tools available
+      ├── ReadWrite: shell_exec is prohibited
+      └── ReadOnly: file_write, file_edit, shell_exec are prohibited
+
+Layer 2: Pre-read Check
+  └── Before editing an existing file, it must first be read via file_read
+      ├── Prevents the AI from blindly overwriting without knowing the file content
+      └── Tracks file mtime, rejects operations if the file was modified externally
+
+Layer 3: Content Validation
+  └── Verifies the AI's description matches the actual content before performing the replacement
+      ├── Prevents the AI from miscounting line numbers and editing the wrong location
+      └── Returns detailed diff information on verification failure to help the AI correct itself
+
+Layer 4: File Safety
+  └── Binary file detection (null byte check)
+  └── UTF-8 encoding validation
+  └── .ipynb file rejection
+  └── Directory path rejection
+```
+
+---
+
+## Multi-Edit Line Number Safety
+
+When the AI issues multiple edits in one turn, line number offset is a classic problem.
+
+### The Problem
+
+The AI wants to modify two locations in a file simultaneously:
+
+```
+file_edit(file.txt, lines 5-6)   → replace with 3 lines (+1 line)
+file_edit(file.txt, lines 10-12) → replace with 1 line (-2 lines)
+```
+
+If executed top-to-bottom, after modifying lines 5-6, the actual position of lines 10-12 in the file becomes lines 11-13 — the original line numbers are now wrong.
+
+### Solution: Descending Order Execution
+
+All edits are calculated based on the original file's line numbers and executed in descending line number order:
+
+```
+Received edits:
+  edit A: lines 5-6
+  edit B: lines 10-12
+
+Executed after sorting:
+  1. edit B: lines 10-12 (executed first: doesn't affect lines above)
+  2. edit A: lines 5-6 (executed later: changes to lines 10-12 don't affect lines 5-6)
+```
+
+Edits are applied sequentially in memory and written back to the file in one go. The AI doesn't need to worry about line number offsets — even when issuing multiple edits in one turn, the system automatically handles them in descending order.
+
+---
+
+## Design Considerations
+
+### Why not use diff/patch format?
+
+diff/patch is human-readable but adds complexity for the AI. The AI needs to calculate line offsets correctly, ensure context lines match exactly, and use `+`/`-` prefixes for every line — all additional points of failure. Line number + content validation is a simpler, more reliable approach.
+
+### Why not use percentage-based fuzzy matching?
+
+A percentage threshold (e.g., 70% similarity) introduces a gray area — which differences count as a match? Do different scenarios need different thresholds? These questions are unintuitive.
+
+Our approach is binary: either every line is present, or it's rejected. No gray area, predictable behavior, simple debugging.
+
+### Why require at least 3 lines?
+
+1 line has too little discriminative power. `"}"` appears in almost every code file. 2 lines is slightly better but still insufficient — combinations like `"}"` + `"}"` aren't uncommon in Rust or Go. 3 lines ensures the AI provides enough context that it's very unlikely two different locations have the exact same 3 lines.
+
+### What if the line numbers are wrong?
+
+Line number errors are the only remaining friction point in line_range mode. But the failure consequence is low — content validation will reject the operation, return detailed diff information, and the AI can fix it by re-reading the file.
+
+---
+
+## Usage Examples
+
+```bash
+# Replace: Modify content of lines 11-13 in src/main.rs
+zapmyco run 'Change lines 11-13 of src/main.rs to return 42'
+
+# Insert: Insert a new import statement after line 5
+zapmyco run 'Insert use std::collections::HashMap; after line 5 in src/main.rs'
+
+# Delete: Remove lines 20-22 from the file
+zapmyco run 'Delete lines 20-22 from src/main.rs'
+
+# Append: Add a new function at the end of the file
+zapmyco run 'Append a helper function at the end of src/lib.rs'
+
+# Empty file write: Create and write initial content
+zapmyco run 'Write default config into src/config.rs'
+
+# Edit multiple locations simultaneously (auto-merged for descending order execution)
+zapmyco run 'Change the version number in Cargo.toml to 0.2.0 and the edition to 2024'
+```
+
+---
+
+## Related Documentation
+
+- [file_edit Quick Reference](/built-in/file_edit) — Parameter overview and constraints
+- [Built-in Tools Reference](/guide/built-in-tools) — Overview of all tools
+- [Commands Reference](/commands/run) — Detailed `run` command usage

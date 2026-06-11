@@ -1,6 +1,6 @@
 {
   "name": "ZapMyCo",
-  "description": "基于 Rust 的 AI 驱动命令行工具",
+  "description": "A Rust-based AI-powered CLI tool",
   "favicon": "/favicon.svg",
   "logo": {
     "light": "/logo-text.svg",
@@ -9,6 +9,15 @@
   },
   "siteUrl": "https://docs.zapmyco.com",
   "locale": "zh",
+  "i18n": {
+    "enabled": true,
+    "languages": [
+      { "code": "zh", "name": "中文" },
+      { "code": "en", "name": "English" }
+    ],
+    "parser": "dir",
+    "defaultLanguage": "zh"
+  },
   "header": {
     "links": [
       { "icon": "/icons/github-fill.svg", "href": "https://github.com/shenjingnan/zapmyco" }
@@ -16,49 +25,49 @@
   },
   "navbar": {
     "items": [
-      { "label": "快速开始", "href": "/" },
-      { "label": "指南", "href": "/guide" },
-      { "label": "命令参考", "href": "/commands/overview" },
-      { "label": "进阶", "href": "/advanced" },
-      { "label": "社区", "href": "/community" }
+      { "label": "Quick Start", "href": "/" },
+      { "label": "Guide", "href": "/guide" },
+      { "label": "Commands", "href": "/commands/overview" },
+      { "label": "Advanced", "href": "/advanced" },
+      { "label": "Community", "href": "/community" }
     ]
   },
   "footer": {
     "columns": {
       "brand": {
         "name": "ZapMyCo",
-        "description": "基于 Rust 的 AI 驱动命令行工具"
+        "description": "A Rust-based AI-powered CLI tool"
       },
       "groups": [
         {
-          "title": "指南",
+          "title": "Guide",
           "links": [
-            { "label": "快速开始", "href": "/" },
-            { "label": "安装方式", "href": "/guide/installation" },
-            { "label": "命令参考", "href": "/commands/overview" },
-            { "label": "内置工具", "href": "/guide/built-in-tools" },
-            { "label": "AI 代理", "href": "/guide/ai-agent" }
+            { "label": "Quick Start", "href": "/" },
+            { "label": "Installation", "href": "/guide/installation" },
+            { "label": "Commands Reference", "href": "/commands/overview" },
+            { "label": "Built-in Tools", "href": "/guide/built-in-tools" },
+            { "label": "AI Agent", "href": "/guide/ai-agent" }
           ]
         },
         {
-          "title": "社区",
+          "title": "Community",
           "links": [
             {
               "label": "GitHub",
               "href": "https://github.com/shenjingnan/zapmyco",
               "external": true
             },
-            { "label": "贡献指南", "href": "/community/contributing" }
+            { "label": "Contributing", "href": "/community/contributing" }
           ]
         },
         {
-          "title": "资源",
+          "title": "Resources",
           "links": [
-            { "label": "架构说明", "href": "/advanced/architecture" },
-            { "label": "发布流程", "href": "/advanced/release-flow" },
-            { "label": "系统提示词设计", "href": "/advanced/system-prompt" },
+            { "label": "Architecture", "href": "/advanced/architecture" },
+            { "label": "Release Flow", "href": "/advanced/release-flow" },
+            { "label": "System Prompt Design", "href": "/advanced/system-prompt" },
             {
-              "label": "更新日志",
+              "label": "Changelog",
               "href": "https://github.com/shenjingnan/zapmyco/releases",
               "external": true
             }

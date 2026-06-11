@@ -1,0 +1,62 @@
+---
+title: file_write — Write File
+description: Create new files or fully overwrite existing file content with pre-read check and binary detection
+---
+
+Create a new file or fully overwrite the content of an existing file. For small modifications to existing files, use the `file_edit` tool instead.
+
+**Use cases**: Let AI create new files, generate code files, write configuration files, overwrite and update existing files, etc.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `file_path` | string | Yes | Absolute path to the file to write |
+| `content` | string | Yes | Complete file content to write |
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Write content | Plain text files only (UTF-8 encoded) |
+| Unsupported types | Binary files (containing null byte sequences) |
+| Parent directory | Automatically creates non-existent parent directories |
+
+## Security Mechanisms
+
+| Protection | Description |
+|------------|-------------|
+| Pre-read check | Before overwriting an existing file, the file must first be read via `file_read` |
+| Directory detection | Refuses to write when the path is a directory |
+| Binary detection | Scans the first 8KB of content; if null bytes are found, it is identified as binary |
+| Auto-create directories | Automatically creates parent directories if they do not exist |
+
+## Difference from file_edit
+
+> **file_edit** is used for precise string replacement in existing files (small scope modifications).
+> **file_write** is used to create new files or fully overwrite existing files (full write).
+> The AI Agent automatically selects based on the scenario: use `file_write` for new files, use `file_edit` for modifying existing content.
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Missing `file_path` | Required parameter not provided |
+| Missing `content` | Required parameter not provided |
+| Path is a directory | Write path points to a directory |
+| Binary content | Content contains null bytes |
+| Directory creation failed | Insufficient permissions to create parent directory, etc. |
+
+## Usage Examples
+
+```bash
+zapmyco run 'Create a new module file utils/helpers.rs under src/'
+zapmyco run 'Generate a Cargo.toml configuration file'
+zapmyco run 'Write refactored code to src/new_implementation.rs'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [file_edit](/built-in/file_edit) — Make precise modifications to existing files
+- [file_read](/built-in/file_read) — Read file content

@@ -1,0 +1,153 @@
+---
+title: Contributing Guide
+description: How to contribute to the ZapMyCo project
+---
+
+Thank you for considering contributing to ZapMyCo!
+
+## Code of Conduct
+
+This project adheres to the Contributor Covenant as its code of conduct. By participating, you agree to abide by its terms.
+
+## How to Contribute
+
+### Reporting Bugs
+
+If you find a bug, please report it via [GitHub Issues](https://github.com/shenjingnan/zapmyco/issues).
+
+When reporting a bug, please include:
+
+1. **Clear title** — Briefly describe the issue
+2. **Steps to reproduce** — Detailed instructions on how to reproduce
+3. **Expected behavior** — What you expected to happen
+4. **Actual behavior** — What actually happened
+5. **Environment information** — Operating system, Rust version (`rustc --version`), etc.
+
+### Suggesting Features
+
+We welcome feature suggestions! Please describe in an Issue:
+
+1. **Feature description** — What feature you would like to add
+2. **Use case** — Why this feature is needed
+3. **Alternatives** — Other solutions you have considered
+
+### Submitting Code
+
+#### Development Environment Setup
+
+Requires [Rust toolchain](https://rustup.rs):
+
+```bash
+# Clone the repository
+git clone https://github.com/shenjingnan/zapmyco.git
+cd zapmyco
+
+# Verify
+cargo build
+```
+
+#### Branch Strategy
+
+- `main` — Main branch, stays stable
+- `feature/*` — New feature branches
+- `fix/*` — Bug fix branches
+- `docs/*` — Documentation update branches
+
+#### Commit Convention
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <description>
+```
+
+**Types**:
+
+- `feat` — New feature
+- `fix` — Bug fix
+- `docs` — Documentation
+- `style` — Code formatting
+- `refactor` — Refactoring
+- `perf` — Performance improvement
+- `test` — Testing
+- `chore` — Build/tooling
+
+**Examples**:
+
+```
+feat: add new CLI command
+fix(agent): handle empty input
+docs: update API reference
+```
+
+#### Pull Request Process
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Make your changes
+4. Ensure checks pass: `cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1`
+5. Commit your changes
+6. Push the branch (`git push origin feature/my-feature`)
+7. Create a Pull Request
+
+#### PR Checklist
+
+- [ ] Code passes all tests
+- [ ] Code passes clippy checks
+- [ ] Code passes formatting checks
+- [ ] New features have corresponding tests
+- [ ] Documentation has been updated (if needed)
+- [ ] Commit messages follow the convention
+
+## Development Guidelines
+
+### Code Style
+
+Enforced by `cargo fmt` (Rust Edition 2024):
+
+- 2-space indentation
+- Single quotes
+- Semicolons required
+- 100-character line width
+
+### Quality Checks
+
+```bash
+# Run all checks
+cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1
+
+# Or step by step
+cargo fmt --check             # Format check
+cargo clippy -- -D warnings   # Lint check
+cargo test -- --test-threads=1 # Tests
+```
+
+### Testing Guidelines
+
+- Unit tests: `#[cfg(test)] mod tests` in `src/*.rs`
+- Integration tests: `tests/*.rs`
+- Run tests: `cargo test`
+- Run tests (single-threaded to avoid environment variable race conditions): `cargo test -- --test-threads=1`
+
+### Tech Stack
+
+| Technology | Purpose |
+|------------|---------|
+| Rust 1.95+ | Programming language |
+| clap 4.x | CLI argument parsing |
+| anthropic-ai-sdk | Anthropic Messages API client |
+| inquire | Interactive terminal prompts |
+| tokio | Async runtime |
+| serde / serde_json | JSON serialization |
+
+## Getting Help
+
+If you have any questions, you can:
+
+- Check the [documentation site](https://zapmyco-docs.vercel.app)
+- Ask in [Discussions](https://github.com/shenjingnan/zapmyco/discussions)
+- Create an [Issue](https://github.com/shenjingnan/zapmyco/issues)
+
+## License
+
+By contributing code, you agree that your code will be released under the MIT License.

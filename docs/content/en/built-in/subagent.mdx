@@ -1,0 +1,148 @@
+---
+title: subagent — Sub-agent Management
+description: Create independent sub-processes to execute tasks concurrently, supporting spawn / poll / list / kill operations
+---
+
+Create independent sub-processes to execute sub-tasks concurrently. Sub-processes are launched via `zapmyco run --subagent <task>`, with independent LLM sessions and tool sets.
+
+**Use cases**: Break down large tasks into independent sub-tasks for concurrent execution, analyze the same codebase from multiple perspectives, perform independent work in parallel for acceleration.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `action` | string | Yes | Operation type: `spawn`, `poll`, `list`, `kill` |
+| `cli` | string | No | CLI Agent type (currently only supports `zapmyco`) |
+| `task` | string | When spawning | Specific task description for the sub-agent |
+| `subagent_ids` | array[string] | When polling/killing | List of sub-agent IDs to query or terminate |
+| `wait_secs` | number | No | Additional wait seconds when polling (range 1-30, default 0). The tool has a built-in initial 5-second wait |
+
+## Operation Details
+
+### `spawn` — Create Sub-agent
+
+Creates a sub-agent and immediately returns `subagent_id`. The sub-process runs in the background as an independent OS process without blocking the main Agent.
+
+```json
+{
+  "action": "spawn",
+  "cli": "zapmyco",
+  "task": "Analyze security vulnerabilities in src/login.rs"
+}
+```
+
+Return format:
+
+```
+[SubAgent] sa_20260606_a1b2c3d4: running
+CLI: zapmyco
+Task: Analyze security vulnerabilities in src/login.rs
+Created: 2026-06-06T15:30:00.123456
+```
+
+### `poll` — Query Results
+
+Queries the execution results of one or more sub-agents. Supports batch queries and internal wait-retry.
+
+```json
+{
+  "action": "poll",
+  "subagent_ids": ["sa_20260606_a1b2c3d4", "sa_20260606_e5f6g7h8"],
+  "wait_secs": 10
+}
+```
+
+**Wait mechanism**: Regardless of the `wait_secs` parameter, the tool first waits 5 seconds (giving short tasks a completion window). `wait_secs` adds additional wait time on top of this. During the wait, completion status is checked every 500ms without consuming LLM turns.
+
+**Output folding**: When stdout exceeds 2KB, it is automatically folded into a summary showing the first and last 2KB each; when exceeding 1MB, it is truncated and marked with `OUTPUT TRUNCATED`.
+
+**All running folding**: When all queried sub-agents have not completed, a single-line summary is returned:
+```
+[SubAgent] 2/2 still running (waited 23s)
+  Tasks: analyze auth module / test api module
+```
+
+### `list` — List Sub-agents
+
+Lists all sub-agents in the current session and their statuses.
+
+```json
+{
+  "action": "list"
+}
+```
+
+Return format:
+
+```
+[SubAgent] Total 2 sub-agents
+
+sa_20260606_a1b2c3d4: running (ran for 23s)
+  CLI: zapmyco
+  Task: Analyze auth module
+
+sa_20260606_e5f6g7h8: completed (took 45s, exit 0)
+  CLI: zapmyco
+  Task: Test api module
+```
+
+**Session isolation**: list only displays sub-agents created by the current Agent session; those created by other terminals are not visible.
+
+### `kill` — Terminate Sub-agent
+
+Terminates a running sub-agent.
+
+```json
+{
+  "action": "kill",
+  "subagent_ids": ["sa_20260606_a1b2c3d4"]
+}
+```
+
+Return format:
+
+```
+[SubAgent] Terminated 1 sub-agent:
+  sa_20260606_a1b2c3d4: cancelled (SIGTERM → PID 12345)
+```
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Sub-process timeout | 300 seconds (auto-kill on timeout) |
+| Output truncation | 1 MB (truncated and marked) |
+| Output folding threshold | 2 KB (auto-summarized to head and tail) |
+| Max concurrency | Unlimited (limited by system resources) |
+| Poll max additional wait | 30 seconds |
+| Number of sub-processes | Unlimited (recursion blocked; sub-agents cannot spawn further) |
+| Sub-process working directory | Inherits the main Agent's current directory |
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Missing `action` | Returns an error with available values |
+| Empty `task` (spawn) | Returns error synchronously, does not create a sub-agent |
+| Empty `subagent_ids` (poll/kill) | Returns error |
+| CLI unsupported | Returns error synchronously (currently only supports `zapmyco`) |
+| Sub-process timeout | Auto-kill and mark as timeout |
+| Sub-process externally dead | Dead process detection (kill -0) auto-marks as lost |
+| Output exceeds 1MB | Truncated, first line marked `OUTPUT TRUNCATED` |
+| subagent_id does not exist (poll) | That ID returns "ID does not exist", other IDs unaffected |
+| Insufficient disk space | Returns directory creation failure during spawn |
+
+## Usage Examples
+
+```bash
+# Let the LLM use subagent to analyze multiple modules concurrently
+zapmyco run "Create 3 subagents to analyze src/auth, src/api, and src/web modules simultaneously"
+
+# Create a sub-agent and poll for results
+zapmyco run "Create a subagent to analyze project dependencies, then poll until results are available"
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [AI Agent Features](/guide/ai-agent) — AI Agent working mode

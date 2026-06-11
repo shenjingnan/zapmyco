@@ -1,0 +1,54 @@
+---
+title: settings — Configuration Management
+description: Display or manage LLM runtime configuration
+---
+
+Display or manage LLM runtime configuration:
+
+```bash
+zapmyco settings          # Display full configuration (API Key is automatically masked)
+zapmyco settings path     # Display the configuration file path
+```
+
+## Subcommand Overview
+
+| Subcommand | Behavior |
+|------------|----------|
+| No argument or `show` | Read and display `~/.zapmyco/settings.toml` |
+| `path` | Output only the configuration file path |
+
+## Subcommand Details
+
+### No argument / `show` — Display Configuration
+
+Reads `~/.zapmyco/settings.toml` and displays the current LLM configuration. The API Key is automatically masked (e.g., `sk-***`, `sho***`), with the first 3 characters preserved for identification.
+
+```bash
+zapmyco settings
+zapmyco settings show   # Same as above
+```
+
+---
+
+### `path` — Display Path
+
+Outputs only the configuration file path, without displaying configuration content.
+
+```bash
+zapmyco settings path
+# Example output:
+# /Users/xxx/.zapmyco/settings.toml
+```
+
+## Notes
+
+**Masking Rule**: API Key displays the first 3 characters followed by `***` (e.g., `sk-***`, `sho***`), preventing sensitive information leakage.
+
+**Error Scenarios**
+
+- Unknown subcommand returns error: `Unknown subcommand: xxx\nAvailable commands: settings, settings path`
+- JSON format errors provide Chinese prompts
+
+**Difference from `config` command**:
+- `settings` displays **user configuration** (`~/.zapmyco/settings.toml`, storing AI provider and model settings)
+- `config` displays **application configuration** (hardcoded debug flags, log levels, etc.)

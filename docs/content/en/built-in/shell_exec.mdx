@@ -1,0 +1,165 @@
+---
+title: shell_exec — Execute Command
+description: Execute shell commands on the local system and return stdout, stderr, and exit code
+---
+
+Execute shell commands on the local system and return stdout, stderr, and exit code.
+
+**Use cases**: Let AI run code checks, query system information, operate on files, execute git commands, etc.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `command` | string | Yes | Shell command to execute |
+| `description` | string | Yes | Explain to the user why this command is executed and the expected effect |
+| `working_directory` | string | No | Working directory for command execution (absolute path); uses current directory if not specified |
+
+## Security Mechanisms
+
+In interactive mode (TTY), the AI Agent prompts for confirmation before each command execution, letting you decide whether to authorize:
+
+```
+⚠️  Ready to execute command:
+  └ Description: Check encoding format of Rust files in the current directory
+  └ Command: file src/*.rs
+
+? Confirm execution?
+  ▸ 1. Allow
+    0. Deny
+```
+
+- **Allow** — Press `Enter` or `1`, the command will be executed
+- **Deny** — Press `0`, the command is cancelled
+- `Ctrl+C` — Safe exit
+
+> **Non-interactive environments** (pipes, CI, redirection, etc.): All command execution is denied by default. This is a safety design.
+
+### Auto-Allow
+
+For absolutely safe read-only commands (such as viewing system information, printing working directory, etc.), shell_exec automatically allows them without showing a confirmation prompt. The built-in command list is organized by operating system:
+
+<Tabs items={["macOS / Linux", "Windows"]}>
+
+<Tab>
+Applicable to Unix-like operating systems:
+
+| Category | Command | Description |
+|----------|---------|-------------|
+| General | `pwd` | Print working directory |
+| | `whoami` | Print current username |
+| | `true` `false` | No-op, returns 0/1 |
+| | `echo` | Output text (requires arguments; bare `echo` is not auto-allowed) |
+| | `printf` | Formatted output (requires arguments) |
+| | `cd` | Change working directory |
+| System Info | `uname` | System information |
+| | `hostname` | Host name |
+| | `uptime` | System uptime |
+| | `arch` | Hardware architecture |
+| | `which` | Locate command path (requires arguments) |
+| | `id` | User identity information |
+| | `logname` | Login user name |
+| | `tty` | Terminal device name |
+| | `cal` | Display calendar |
+| | `seq` | Generate number sequence (requires arguments) |
+| | `getconf` | System configuration variables (requires arguments) |
+| | `pathchk` | Path name check (requires arguments) |
+| Path operations | `basename` | Extract file name from path (requires arguments) |
+| | `dirname` | Extract directory name from path (requires arguments) |
+| | `realpath` | Resolve to absolute path (requires arguments) |
+| Directory listing | `ls` | List directory contents |
+| Date/Time | `date` | View current date and time |
+
+</Tab>
+
+<Tab>
+Applicable to Windows operating system:
+
+| Category | Command | Description |
+|----------|---------|-------------|
+| General | `pwd` | Print working directory |
+| | `whoami` | Print current username |
+| | `true` `false` | No-op, returns 0/1 |
+| | `echo` | Output text (requires arguments; bare `echo` is not auto-allowed) |
+| | `printf` | Formatted output (requires arguments) |
+| | `cd` | Change working directory |
+| System Info | `hostname` | Host name |
+| | `which` | Locate command path (requires arguments) |
+| | `id` | User identity information |
+| | `ver` | Display Windows version |
+| | `systeminfo` | Display system information |
+| Directory listing | `dir` | List directory |
+| Date/Time | `date /t` | Show date (`/t` means view only, not set) |
+| | `time /t` | Show time (`/t` means view only, not set) |
+| | `vol` | Display volume label |
+
+</Tab>
+</Tabs>
+
+**Matching rule**: A command is matched if it starts with any entry in the list (prefix matching).
+For example, `ls` will allow `ls` and `ls -la`, but will not incorrectly allow `lsblk`.
+
+> Even if a prefix is matched, commands containing control operators such as `;` `|` `>` `<` `` ` `` `$` `&` will still require confirmation as a safety measure.
+
+> The design principle of the built-in list is "better to fall through (back to confirmation flow) than to incorrectly allow."
+> If the built-in list does not cover the safe commands you commonly use, you can extend it via the `[permissions.commands]` configuration.
+
+### Custom Permission Configuration
+
+You can configure auto-allow (whitelist) and auto-deny (blacklist) for commands in `~/.zapmyco/settings.toml`:
+
+```toml
+[permissions.commands]
+# List of command prefixes to auto-allow (whitelist)
+# Commands are checked via "starts with" matching:
+# - "git status" will allow "git status" and "git status -s"
+# - Matching commands skip user confirmation
+allow = [
+    "git status",
+    "git diff",
+    "git log",
+    "cargo check",
+    "cargo clippy",
+    "cargo fmt --check",
+]
+
+# List of command prefixes to auto-deny (blacklist, takes precedence over allow)
+# If a command matches both allow and deny, deny takes effect
+deny = [
+    "rm -rf",
+    "sudo",
+]
+```
+
+> Exercise caution when configuring custom auto-allow commands.
+> Even with an allow list configured, commands containing control operators will still require confirmation.
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Execution timeout | 30 seconds |
+| Max output length | 100,000 characters (stdout + stderr combined) |
+| Shell (Unix) | `sh -c` |
+| Shell (Windows) | `cmd.exe /C` |
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Timeout | Command execution exceeded 30 seconds |
+| Command not found | Shell could not locate the specified executable |
+| Output too large | stdout + stderr exceeded 100K character limit |
+| User denied | User selected "Deny" or pressed `Ctrl+C` in the confirmation prompt |
+
+## Usage Examples
+
+```bash
+zapmyco run 'List files in the current directory'
+zapmyco run 'Run tests and show results'
+zapmyco run --profile advanced 'Refactor duplicate code in src/cli.rs, then run cargo fmt'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools

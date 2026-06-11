@@ -1,0 +1,31 @@
+---
+title: init — Initialize Configuration
+description: Interactive LLM configuration initialization wizard
+---
+
+Interactive initialization wizard for configuring AI provider and API Key:
+
+```bash
+zapmyco init
+```
+
+The wizard consists of three steps:
+
+1. **Choose AI Provider** — DeepSeek / GLM / Custom
+2. **Configure API Key** — Supports direct input, or using `${env.VAR_NAME}` to reference environment variables (recommended)
+3. **Select Default Model** — Filters available built-in models based on the chosen provider, displays context window information
+
+When `~/.zapmyco/settings.toml` already exists, `init` will refuse to run:
+
+```
+/home/user/.zapmyco/settings.toml already exists. To reinitialize, please delete this file first.
+```
+
+To reinitialize, manually delete the configuration file and then run `init`:
+
+```bash
+rm ~/.zapmyco/settings.toml
+zapmyco init
+```
+
+Each step of the wizard supports safe exit with `Ctrl+C`.

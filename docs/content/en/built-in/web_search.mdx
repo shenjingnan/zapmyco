@@ -1,0 +1,43 @@
+---
+title: web_search — Search the Web
+description: Search the web for real-time information with domain filtering support
+---
+
+Search the web for real-time information, supporting queries for latest news, documentation, trends, etc.
+
+Search is automatically performed by the API server (via the `web_search_20250305` capability); the client does not need to integrate a search engine.
+
+**Use cases**: Query current news, find latest documentation versions, get real-time data, etc.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `query` | string | Yes | Search query keywords |
+| `allowed_domains` | string[] | No | Only search within these domains |
+| `blocked_domains` | string[] | No | Exclude results from these domains |
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Search executor | API server automatic |
+| Max search count | 8 times (per conversation turn) |
+
+## Difference from web_fetch
+
+> **web_search** returns a list of search results (title + summary + link) but does not fetch the full page content.
+> **web_fetch** fetches the full content of a single page and converts it to Markdown.
+> The AI Agent automatically combines the two: first using `web_search` to find relevant pages, then `web_fetch` to retrieve specific content.
+
+## Usage Examples
+
+```bash
+zapmyco run 'Search for the latest Rust 2026 updates'
+zapmyco run 'Find Rust async programming best practices, limited to rust-lang.org domain'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [web_fetch](/built-in/web_fetch) — Fetch web page content, used together with web_search

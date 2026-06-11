@@ -1,0 +1,93 @@
+---
+title: skill — Skill Management
+description: Manage Skill workflow templates, supporting list and load operations
+---
+
+Manage Skill workflow templates. Skills are predefined workflow templates containing detailed execution rules and steps, stored as `SKILL.md` files.
+
+**Use cases**: View available Skills, dynamically load a Skill at runtime, view detailed Skill instructions.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `action` | string | Yes | Operation type: `list`, `load` |
+| `name` | string | When loading | Name of the Skill to load |
+
+## Operation Details
+
+### `list` — List Available Skills
+
+List all available Skills with their names, descriptions, and source levels (project/common/user).
+
+```json
+{"action": "list"}
+```
+
+Return format:
+
+```
+- **code-review**: Review code changes (project)
+- **check**: Run complete code quality check (project(.agents))
+- **build**: Build npm package or compile binary (project(.agents))
+Use action=load to load a skill.
+```
+
+### `load` — Load a Skill
+
+Load the full instruction content of a specified Skill. After loading, the AI should read and follow the rules in the Skill carefully.
+
+```json
+{
+  "action": "load",
+  "name": "code-review"
+}
+```
+
+Return format:
+
+```
+## Skill: code-review
+
+# Code Review Skill
+...
+```
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| action types | Only `list` and `load` are supported |
+| Skill name | Must not contain `/`, `\`, `..` (path traversal protection) |
+| Directory name matches name | Must match, otherwise returns an error |
+| Concurrency safe | Yes (all actions are read-only) |
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Missing `action` | Returns an error with available values |
+| Unsupported action | Returns `unsupported action: 'xxx' (supported: list, load)` |
+| Missing `name` (when loading) | Returns `missing name parameter for action load` |
+| Skill not found | Returns `Skill 'xxx' not found` and lists available Skills |
+| Directory name does not match name | Returns `directory name does not match frontmatter name 'xxx'` |
+| Name contains path traversal | Returns `invalid skill name` |
+
+## Usage Examples
+
+```bash
+# Let the LLM list available skills
+zapmyco run "List all currently available skills"
+
+# Let the LLM load the code-review skill
+zapmyco run "Load the code-review skill and review the code according to its rules"
+
+# Use --skill to load at startup (more efficient)
+zapmyco run --skill code-review
+```
+
+## Related Documentation
+
+- [Skill System Guide](/skill/overview) — Complete guide to the Skill system
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [Command Reference](/commands/run) — Detailed `--skill` parameter usage

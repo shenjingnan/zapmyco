@@ -1,0 +1,90 @@
+---
+title: AI Agent Feature
+description: Using and configuring the built-in AI Agent in ZapMyCo
+---
+
+ZapMyCo has a built-in AI Agent feature that allows you to interact with AI directly in your terminal.
+
+## Starting AI Mode
+
+```bash
+zapmyco
+```
+
+After execution, you enter an interactive conversation interface. The terminal displays a conversation prompt and waits for input.
+
+## Interactive Conversation
+
+The AI Agent supports multi-turn conversations. You can ask questions continuously, and the AI will respond based on context.
+
+```
+$ zapmyco
+Entering AI conversation mode
+Model: deepseek-v4-flash
+Enter /exit to quit, /clear to clear context
+---
+
+❯ Hello, please introduce ZapMyCo
+Hello! ZapMyCo is a Rust-based AI-driven command line tool...
+
+❯ What are its main features?
+Main features include: CLI command tools, AI conversation mode, configuration management...
+
+❯ /exit
+```
+
+### Exiting the Conversation
+
+Enter `/exit` or press `Ctrl+C` to exit conversation mode. Enter `/clear` to clear the conversation context.
+
+## One-Shot Execution Mode
+
+If you only need to execute a single task without further interaction, use the `run` command:
+
+```bash
+zapmyco run Write a hello world program for me
+```
+
+Differences between one-shot mode and interactive mode:
+
+| Mode | Command | Behavior | Built-in Tools |
+|------|---------|----------|:--------------:|
+| Interactive Mode | `zapmyco` | AI responds and waits for further input | ❌ None |
+| One-Shot Mode | `zapmyco run <task>` | AI responds and automatically exits | ✅ 3 tools |
+
+One-shot mode provides 3 additional built-in tools: `web_fetch` (fetch web pages), `web_search` (search the web), `shell_exec` (execute commands). These tools are **not enabled** in interactive mode. See [Built-in Tools](/guide/built-in-tools) for details.
+
+### Skill System Integration
+
+One-shot execution mode supports loading Skill workflow templates, allowing the AI Agent to execute tasks according to standardized instructions:
+
+- Pre-load a Skill via the `--skill` parameter: `zapmyco run --skill check`
+- Skill files (SKILL.md) define execution rules, steps, and tool permissions (allowed-tools)
+- After loading a Skill, the AI Agent automatically follows the workflow defined in the instruction file
+
+See the [Skill System Guide](/skill/overview) for details.
+
+## Implementation
+
+The AI Agent module (`src/agent.rs`) is built on the Rust/tokio async runtime:
+
+- Uses the `anthropic-ai-sdk` crate to call the Anthropic Messages API
+- Reads user input asynchronously via `tokio::io`
+- Supports SSE streaming parsing for real-time AI response output
+- Supports model configuration profiles for quick model switching
+
+## Configuration
+
+Configure via the `zapmyco init` interactive wizard:
+
+1. Select an AI provider (DeepSeek / GLM / Custom)
+2. Enter your API Key (supports environment variable reference `${env.VAR}`)
+3. Select a default model
+
+The configuration is stored in `~/.zapmyco/settings.toml`.
+
+## Use Cases
+
+- **Code Assistance** — Ask about code practices, debugging suggestions
+- **Project Consultation** — Understand project structure and features
+- **Daily Tool** — Replace simple web searches or documentation lookups

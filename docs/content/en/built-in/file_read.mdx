@@ -1,0 +1,88 @@
+---
+title: file_read — Read File Content
+description: Read file content from the local file system with support for specifying line ranges
+---
+
+Read file content from the local file system, with support for specifying line number ranges. Suitable for viewing source code files, reading configuration files, analyzing log files, and more.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `file_path` | string | Yes | Absolute path to the file to read |
+| `offset` | integer | No | Starting line number (starts at 1), defaults to 1. Only used for large files that need segmented reading |
+| `limit` | integer | No | Number of lines to read, defaults to 2000. Only used for large files that need segmented reading |
+
+## Constraints & Limits
+
+| Limit | Value |
+|-------|:-----:|
+| Maximum file size | 256 KB (larger files require segmented reading) |
+| Max output characters | 100,000 characters (returns error if exceeded) |
+| Default line limit | 2000 lines |
+| Supported file types | Plain text files (UTF-8 encoded) |
+
+## Output Format
+
+```text
+File /path/to/file (150 total lines, showing lines 1-100)
+
+1	First line content
+2	Second line content
+...
+```
+
+Supports pagination hints:
+
+```text
+File /path/to/file (500 total lines, showing lines 1-200)
+
+1	Content
+...
+
+---
+[Showing 200/500 lines, use offset=201 to view remaining content]
+```
+
+## Security Mechanisms
+
+| Protection | Description |
+|------------|-------------|
+| File not found | Returns a clear error message |
+| Directory read | Prompts to use `ls` command instead |
+| Device file blocking | Character devices (e.g. `/dev/null`) and block devices are not allowed |
+| File too large | Returns error when exceeding 256KB, suggests using offset/limit for segmented reading |
+| Binary detection | Scans the first 8KB of the file; if null bytes are found, it is identified as binary |
+| Non-UTF-8 encoding | Returns error for non-UTF-8 text files |
+
+## Error Scenarios
+
+| Error Type | Description |
+|------------|-------------|
+| Missing `file_path` | Required parameter not provided |
+| File not found | Specified path does not contain a file |
+| Path is a directory | Reading a directory is not allowed |
+| Device file | Character/block device files are not allowed |
+| File too large | Exceeds 256KB limit |
+| Binary file | Null bytes detected |
+| Non-UTF-8 text | File encoding is not UTF-8 |
+
+## Working with file_search
+
+> **file_search** is used to search for specific content within files (requires knowing the search target).
+> **file_read** is used to directly view file content (requires knowing the file path and line range).
+> The AI Agent automatically combines the two: first using `file_search` to locate relevant code lines, then `file_read` to view the specific context.
+
+## Usage Examples
+
+```bash
+zapmyco run 'Read the content of src/main.rs'
+zapmyco run 'View the first 30 lines of Cargo.toml'
+zapmyco run 'Read lines 50-100 of src/config/settings.rs'
+```
+
+## Related Documentation
+
+- [Built-in Tools Directory](/guide/built-in-tools) — View all tools
+- [file_search](/built-in/file_search) — Search file content
+- [file_find](/built-in/file_find) — Find files by name

@@ -1,0 +1,83 @@
+---
+title: Writing a Skill
+description: SKILL.md format specification, allowed-tools whitelist, and tool name reference
+---
+
+Skill files use Markdown format with YAML frontmatter at the beginning. The Skill format follows the [agentskills.io](https://agentskills.io/) standard:
+
+```markdown
+---
+name: code-review
+description: Review code changes, checking style, correctness, and security
+allowed-tools: file_read file_search file_find shell_exec
+---
+
+# Code Review Skill
+
+## Workflow
+1. Get all changes from the current branch relative to the main branch
+2. Review each modification line by line...
+```
+
+## Field Description
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| `name` | Skill name, must match the directory name |
+| `description` | Skill description, displayed in listings and prompts |
+
+### Optional Fields
+
+| Field | Description |
+|-------|-------------|
+| `allowed-tools` | Tool whitelist, restricts the set of tools available to the AI Agent |
+
+## `allowed-tools` Whitelist
+
+When `allowed-tools` is specified, tools not in the whitelist are removed from the Agent's registered tool list. Supports two formats:
+
+```yaml
+# Space-separated string
+allowed-tools: file_read file_search file_find shell_exec
+
+# Or YAML list
+allowed-tools:
+  - file_read
+  - file_search
+  - file_find
+  - shell_exec
+```
+
+The whitelist filtering takes effect before the permission mode (PermissionMode): tools are first filtered by the whitelist, then filtered again by the permission mode. Leaving this field unset means no restriction.
+
+### Available Tool Names
+
+`allowed-tools` supports the following built-in tool names:
+
+| Tool Name | Category | Description |
+|-----------|---------|-------------|
+| `web_fetch` | Network | Fetch web page content |
+| `web_search` | Network | Search the web |
+| `shell_exec` | Command | Execute shell commands |
+| `file_read` | File | Read files |
+| `file_search` | File | Search file contents |
+| `file_find` | File | Find files |
+| `file_edit` | File | Edit files |
+| `file_write` | File | Write files |
+| `ask_user` | Interaction | Ask the user |
+| `task_create` | Task | Create tasks |
+| `task_get` | Task | View tasks |
+| `task_list` | Task | List tasks |
+| `task_update` | Task | Update tasks |
+| `subagent` | Sub-agent | Sub-agent management |
+| `skill` | Skill | Skill management |
+
+For detailed information on each tool, see the [Built-in Tools Directory](/guide/built-in-tools).
+
+## Naming Rules
+
+- The SKILL.md file must be placed in a directory named after the skill
+- The directory name must match the `name` field in the frontmatter (an error will occur during loading otherwise)
+- The name must not contain `/`, `\`, `..` (path traversal protection)
