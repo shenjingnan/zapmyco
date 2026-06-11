@@ -1,0 +1,26 @@
+---
+title: config — 应用配置
+description: 显示应用内置配置信息
+---
+
+显示当前应用配置信息：
+
+```bash
+zapmyco config
+# 输出示例：
+# {
+#   "debug": false,
+#   "logLevel": "info",
+#   "createdAt": "2026-05-25T..."
+# }
+```
+
+**输出字段说明**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `debug` | boolean | 调试模式开关（当前固定为 `false`） |
+| `logLevel` | string | 日志级别（当前固定为 `info`） |
+| `createdAt` | string | 命令执行时的 UTC 时间戳（ISO 8601 格式） |
+
+此命令显示的是**应用内置配置**，与 `settings` 显示的用户配置不同。

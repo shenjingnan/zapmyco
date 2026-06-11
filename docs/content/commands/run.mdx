@@ -1,0 +1,189 @@
+---
+title: run — 执行 AI 任务
+description: 执行 AI 任务，支持对话交互和多参数
+---
+
+执行 AI 任务：
+
+```bash
+# 基本用法
+zapmyco run '用中文介绍 Rust 语言的特点'
+
+# 使用高级配置档
+zapmyco run --profile advanced 重构这个模块
+```
+
+## 参数一览
+
+| 参数 | 必需 | 说明 |
+|------|:--:|------|
+| `<content>` | 否* | 任务描述或提示词（使用 `--skill` 时可省略） |
+| `--profile <name>` | 否 | 指定模型配置档 |
+| `--model <name>` | 否 | 指定 AI 模型名称 |
+| `--api-key <key>` | 否 | 指定 API Key |
+| `--base-url <url>` | 否 | 指定 API 基础地址 |
+| `--skill <name>` | 否 | 引用外部 Skill 工作流 |
+| `--conversation <id>` | 否 | 复用指定会话上下文 |
+| `--task-id <id>` | 否 | 复用指定会话的任务列表 |
+| `--permission-mode <mode>` | 否 | 限制 agent 操作权限 |
+
+> \* 既没有 `<content>` 也没有 `--skill` 时会报错。
+
+## 参数详解
+
+### `<content>` — 任务描述
+
+要执行的任务内容。直接告诉 AI 你希望它做什么，支持中文、英文等多种语言。
+
+此参数可选——当使用 `--skill` 参数时可以省略，AI 会从 Skill 文件中获取任务描述。
+
+```bash
+# 简单任务
+zapmyco run '帮我查一下今天的日期'
+
+# 复杂任务
+zapmyco run '分析当前目录的 Rust 项目结构，给出改进建议'
+
+# 使用 skill 时可以省略
+zapmyco run --skill code-review
+```
+
+---
+
+### `--profile <name>` — 模型配置档
+
+指定使用 `settings.toml` 中预定义的模型配置。你可以在 `~/.zapmyco/settings.toml` 的 `[llm.models]` 下定义多个配置档，比如一个用于日常快速问答，一个用于深度分析。
+
+适用于在不同场景间快速切换配置，不需要每次手动指定模型和参数。
+
+```bash
+# 使用 advanced 配置档进行深度分析
+zapmyco run --profile advanced '分析这段代码的性能瓶颈'
+
+# 使用 fast 配置档快速问答
+zapmyco run --profile fast 'Rust 的 Vec 和数组有什么区别？'
+```
+
+---
+
+### `--model <name>` — 指定模型
+
+临时指定 AI 模型，会覆盖 `settings.toml` 中的默认模型配置。支持 Tab 键补全内置模型列表（会显示模型名称和上下文窗口大小），同时也接受任意自定义模型名。
+
+```bash
+# Tab 可补全内置模型
+zapmyco run --model deepseek-v4-flash '快速问答'
+
+# 使用完整模型名
+zapmyco run --model claude-sonnet-4-20250514 '分析数据'
+```
+
+---
+
+### `--api-key <key>` — API 密钥
+
+临时指定 API Key，优先级高于 `settings.toml` 中的配置和 `DEEPSEEK_API_KEY` 等环境变量。
+
+适用于临时使用不同账号、测试新 API Key，或者不想将 Key 写入配置文件的场景。
+
+```bash
+zapmyco run --api-key sk-xxxxxxxxxxxx '执行任务'
+```
+
+---
+
+### `--base-url <url>` — API 地址
+
+临时指定 API 基础地址，会覆盖 `settings.toml` 中的默认地址。支持 Tab 键补全内置供应商地址。
+
+如果不带协议前缀（如 `http://`），会自动补上 `https://`。支持 http 和 https 两种协议，可用于本地部署的模型或兼容 Anthropic API 的第三方服务。
+
+```bash
+# 使用官方地址（Tab 可补全）
+zapmyco run --base-url https://api.deepseek.com '任务'
+
+# 本地部署（必须使用 http://）
+zapmyco run --base-url http://localhost:11434 '本地测试'
+
+# 省略协议前缀会自动补全 https://
+zapmyco run --base-url api.deepseek.com '任务'
+```
+
+---
+
+### `--skill <name>` — Skill 工作流
+
+引用外部的 Skill 文件（SKILL.md）来预定义 AI Agent 的工作流程。Skill 是一份结构化指令文件，告诉 AI 如何执行特定类型的任务。
+
+当使用 `--skill` 时，`<content>` 参数可以省略——AI 会从 Skill 文件读取任务描述。支持 Tab 键补全当前目录下可用的 Skill 文件。
+
+如果 Skill 定义了 `allowed-tools` 白名单，AI Agent 可用的内置工具将被限制在白名单范围内。
+
+```bash
+# 使用 Skill + 任务描述
+zapmyco run --skill code-review '检查登录模块的代码'
+
+# 省略 content，从 Skill 获取任务
+zapmyco run --skill security-audit
+
+# 使用 check skill 进行代码质量检查
+zapmyco run --skill check
+```
+
+详细说明请参见 [Skill 系统指南](/skill/overview)。
+
+---
+
+### `--conversation <id>` — 继续会话
+
+复用之前某次会话的上下文历史，让 AI 记住之前的对话内容。支持 Tab 键补全可用会话列表——按时间降序排列，每条记录会显示消息数量和摘要预览。
+
+适用于需要接着上次的任务继续进行的场景，AI 会延续之前的上下文继续工作。
+
+```bash
+zapmyco run --conversation conv_20260610_223045 '继续之前的分析工作'
+```
+
+---
+
+### `--task-id <id>` — 任务列表
+
+复用指定会话的任务列表。每个 `run` 会话会维护一个任务列表来跟踪 AI 的工作进度。不传此参数时自动创建新的会话和任务列表。
+
+适用于需要接续之前未完成的任务进度的场景。
+
+```bash
+zapmyco run --task-id my-session '继续执行未完成的任务'
+```
+
+---
+
+### `--permission-mode <mode>` — 权限控制
+
+限制 AI Agent 的操作权限。默认为 `full`（完全权限），可以根据任务的可信度灵活调整。
+
+| 模式 | 别名 | 权限 |
+|------|------|------|
+| `full`（默认） | — | 完全权限：可读、可写、可执行 shell 命令 |
+| `read-write` | `readwrite` | 读写模式：可读、可写，**禁止**执行 shell 命令 |
+| `read-only` | `readonly` | 只读模式：只能读取和分析内容，**禁止**写入和执行 |
+
+```bash
+# 只读模式：仅分析，不修改任何内容
+zapmyco run --permission-mode read-only '分析项目结构，给出依赖关系图'
+
+# 读写模式：可修改代码，但不能执行命令
+zapmyco run --permission-mode read-write '重构 src/utils.rs'
+
+# 完全权限：默认，不需要显式指定
+zapmyco run '部署应用到服务器'
+```
+
+---
+
+**前置条件**：必须先通过 `zapmyco init` 完成初始化配置。
+
+**错误场景**
+
+- 未找到配置文件时提示运行 `zapmyco init`
+- 任务描述为空时返回错误：`任务描述不能为空`

@@ -1,0 +1,31 @@
+---
+title: init — 初始化配置
+description: 交互式 LLM 配置初始化向导
+---
+
+交互式初始化向导，用于配置 AI 供应商和 API Key：
+
+```bash
+zapmyco init
+```
+
+向导分为三步：
+
+1. **选择 AI 供应商** — DeepSeek / GLM（智谱）/ 自定义
+2. **配置 API Key** — 支持直接输入，或使用 `${env.VAR_NAME}` 引用环境变量（推荐）
+3. **选择默认模型** — 根据所选供应商过滤可用的内置模型，显示上下文窗口信息
+
+当 `~/.zapmyco/settings.toml` 已存在时，`init` 会拒绝运行：
+
+```
+/home/user/.zapmyco/settings.toml 已存在。如需重新初始化，请先删除该文件。
+```
+
+如需重新初始化，请手动删除配置文件后再运行 `init`：
+
+```bash
+rm ~/.zapmyco/settings.toml
+zapmyco init
+```
+
+向导每一步都支持 `Ctrl+C` 安全退出。

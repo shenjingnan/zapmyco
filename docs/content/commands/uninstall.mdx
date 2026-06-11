@@ -1,0 +1,29 @@
+---
+title: uninstall — 卸载
+description: 卸载 zapmyco 并清理相关文件
+---
+
+卸载 zapmyco，清理配置文件、安装收据和二进制文件：
+
+```bash
+zapmyco uninstall
+```
+
+卸载过程分为两个阶段：
+
+**Phase 1 — 确认阶段**
+- 询问是否保留记忆和配置（`~/.zapmyco/` 目录）
+- 再次确认是否卸载
+- 此阶段可按 `Ctrl+C` 安全终止，不会删除任何数据
+
+**Phase 2 — 执行阶段**
+- 删除安装收据目录 `~/.config/zapmyco/`
+- 若用户选择不保留，删除 `~/.zapmyco/`（含 settings.toml、记忆等）
+- 删除当前运行的二进制文件
+
+**平台差异**
+
+| 平台 | 二进制删除方式 |
+|------|--------------|
+| macOS / Linux | 自动删除自身二进制文件 |
+| Windows | 提示用户手动删除二进制文件 |
