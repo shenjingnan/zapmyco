@@ -694,6 +694,122 @@ mod tests {
         });
     }
 
+    // —————— note 命令输出验证 ——————
+
+    /// 辅助函数：注册 CollectTarget 到全局 ROUTER 并在测试结束后清理
+    fn with_note_collector<F>(test: F)
+    where
+        F: FnOnce(std::sync::Arc<output::test_util::CollectTarget>),
+    {
+        let collector = std::sync::Arc::new(output::test_util::CollectTarget::new("note_test"));
+        output::ROUTER.add_target(Box::new(collector.clone()));
+        test(collector.clone());
+        output::ROUTER.remove_target("note_test");
+    }
+
+    #[test]
+    fn test_note_add_multiple_content() {
+        run_with_temp_home(|_home| {
+            commands::note::cmd_note(NoteCommands::Add {
+                content: vec!["hello".to_string(), "world".to_string()],
+            })
+            .expect("多值合并创建笔记应成功");
+
+            let result = commands::note::cmd_note(NoteCommands::Ls {
+                limit: Some(10),
+                all: false,
+            });
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn test_note_show_with_frontmatter() {
+        run_with_temp_home(|_home| {
+            with_note_collector(|collector| {
+                commands::note::cmd_note(NoteCommands::Add {
+                    content: vec!["hello world".to_string()],
+                })
+                .expect("创建笔记应成功");
+
+                let entries = crate::notes::NotesDir::new()
+                    .unwrap()
+                    .list(10, false)
+                    .unwrap();
+                let id = entries[0].id.clone();
+
+                commands::note::cmd_note(NoteCommands::Show { id }).expect("查看笔记应成功");
+
+                let msgs = collector.messages();
+                let show_msg = msgs
+                    .iter()
+                    .find(|m| m.kind == output::MessageKind::ResultBlock)
+                    .expect("应有 ResultBlock 消息");
+                assert_eq!(
+                    show_msg.text.trim(),
+                    "hello world",
+                    "frontmatter 应被剥离，输出只含正文"
+                );
+            });
+        });
+    }
+
+    #[test]
+    fn test_note_show_no_frontmatter() {
+        run_with_temp_home(|_home| {
+            with_note_collector(|collector| {
+                // 直接写入一个无 frontmatter 的 markdown 文件
+                let notes_dir = crate::config::settings::get_settings_dir().join("notes");
+                std::fs::create_dir_all(&notes_dir).expect("创建笔记目录应成功");
+                let file_path = notes_dir.join("no_frontmatter_note.md");
+                let raw_content = "这是没有 frontmatter 的笔记正文";
+                std::fs::write(&file_path, raw_content).expect("写入笔记文件应成功");
+
+                // 使用文件名（不含 .md）作为 id
+                let id = "no_frontmatter_note".to_string();
+                commands::note::cmd_note(NoteCommands::Show { id }).expect("查看笔记应成功");
+
+                let msgs = collector.messages();
+                let show_msg = msgs
+                    .iter()
+                    .find(|m| m.kind == output::MessageKind::ResultBlock)
+                    .expect("应有 ResultBlock 消息");
+                assert_eq!(
+                    show_msg.text.trim(),
+                    raw_content,
+                    "无 frontmatter 时应原样输出正文"
+                );
+            });
+        });
+    }
+
+    #[test]
+    fn test_note_show_empty_body() {
+        run_with_temp_home(|_home| {
+            with_note_collector(|collector| {
+                // 创建一个只有 frontmatter、没有正文的笔记
+                let notes_dir = crate::config::settings::get_settings_dir().join("notes");
+                std::fs::create_dir_all(&notes_dir).expect("创建笔记目录应成功");
+                let file_path = notes_dir.join("empty_body.md");
+                let content = "---\ncreated: 2024-01-01T00:00:00+00:00\n---\n";
+                std::fs::write(&file_path, content).expect("写入笔记文件应成功");
+
+                let id = "empty_body".to_string();
+                commands::note::cmd_note(NoteCommands::Show { id }).expect("查看笔记应成功");
+
+                let msgs = collector.messages();
+                let show_msg = msgs
+                    .iter()
+                    .find(|m| m.kind == output::MessageKind::ResultBlock)
+                    .expect("应有 ResultBlock 消息");
+                assert!(
+                    show_msg.text.trim().is_empty(),
+                    "frontmatter 后无正文时应输出空字符串"
+                );
+            });
+        });
+    }
+
     // —————— PermissionMode 测试 ——————
 
     #[test]

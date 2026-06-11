@@ -383,6 +383,55 @@ impl Message {
 }
 
 // ============================================================================
+// Test utilities (available to external test modules)
+// ============================================================================
+
+/// 测试工具：用于捕获 Router 消息的 CollectTarget
+#[cfg(test)]
+pub mod test_util {
+    use super::*;
+    use std::sync::Mutex;
+
+    pub struct CollectTarget {
+        name: &'static str,
+        messages: Mutex<Vec<Message>>,
+    }
+
+    impl CollectTarget {
+        pub fn new(name: &'static str) -> Self {
+            CollectTarget {
+                name,
+                messages: Mutex::new(Vec::new()),
+            }
+        }
+        pub fn messages(&self) -> Vec<Message> {
+            self.messages.lock().unwrap().clone()
+        }
+        pub fn clear(&self) {
+            self.messages.lock().unwrap().clear();
+        }
+    }
+
+    impl Target for CollectTarget {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn on_message(&self, msg: &Message) {
+            self.messages.lock().unwrap().push(msg.clone());
+        }
+    }
+
+    impl Target for std::sync::Arc<CollectTarget> {
+        fn name(&self) -> &'static str {
+            (**self).name()
+        }
+        fn on_message(&self, msg: &Message) {
+            (**self).on_message(msg)
+        }
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

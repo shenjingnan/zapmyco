@@ -588,6 +588,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_interactive_editor_empty_content() {
         // EDITOR=true → 退出码 0 但不修改文件 → 内容为空 → 应报错
         let orig_editor = std::env::var("EDITOR").ok();
