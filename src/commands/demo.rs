@@ -3,7 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::{execute, terminal};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::io::{IsTerminal, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// demo 命令 — 模拟 Agent 工作流全过程（含用户交互）
 pub(crate) fn cmd_demo() -> Result<(), String> {
@@ -104,14 +104,124 @@ fn prompt_task_approval() -> Result<TaskDecision, String> {
 
     let mut selected = 0;
     let mut input = String::new();
-    let mut initial = true;
     let mut moved_up = false;
+    let mut show_cursor = true;
+    let mut need_render = true;
+    let mut last_key_time = Instant::now();
+    let mut initial = true;
+    let cursor_debounce = Duration::from_millis(400);
 
     let result = loop {
-        // 重新渲染：根据之前是否移动过光标来清空 list_height 行
+        let has_event =
+            crossterm::event::poll(Duration::from_millis(100)).map_err(|e| e.to_string())?;
+
+        if has_event {
+            match crossterm::event::read().map_err(|e| e.to_string())? {
+                // 导航
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    ..
+                }) if selected > 0 => {
+                    selected -= 1;
+                    need_render = true;
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('j'),
+                    ..
+                }) if selected < items.len() - 1 => {
+                    selected += 1;
+                    need_render = true;
+                }
+                // 数字快捷键
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c @ '1'..='9'),
+                    ..
+                }) => {
+                    let idx = (c as usize) - ('1' as usize);
+                    if idx < items.len() {
+                        if items[idx].is_empty() {
+                            selected = idx;
+                            need_render = true;
+                        } else {
+                            break match idx {
+                                0 => TaskDecision::Continue,
+                                1 => TaskDecision::Cancel,
+                                _ => TaskDecision::Cancel,
+                            };
+                        }
+                    }
+                }
+                // Enter 确认
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
+                    if items[selected].is_empty() {
+                        let text = input.trim().to_string();
+                        if text.is_empty() {
+                            need_render = true;
+                            continue;
+                        }
+                        break TaskDecision::Supplement(text);
+                    }
+                    break match selected {
+                        0 => TaskDecision::Continue,
+                        _ => TaskDecision::Cancel,
+                    };
+                }
+                // 自定义输入 — 打字
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c),
+                    ..
+                }) if selected == items.len() - 1 => {
+                    input.push(c);
+                    last_key_time = Instant::now();
+                    show_cursor = false;
+                    need_render = true;
+                }
+                // 自定义输入 — 退格
+                Event::Key(KeyEvent {
+                    code: KeyCode::Backspace,
+                    ..
+                }) if selected == items.len() - 1 => {
+                    input.pop();
+                    last_key_time = Instant::now();
+                    show_cursor = false;
+                    need_render = true;
+                }
+                // Ctrl+C 取消
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('c'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                }) => {
+                    break TaskDecision::Cancel;
+                }
+                _ => {}
+            }
+        }
+
+        // 打字停顿 debounce：400ms 无输入重新显示 █
+        if !show_cursor && last_key_time.elapsed() > cursor_debounce {
+            show_cursor = true;
+            need_render = true;
+        }
+
+        if !need_render {
+            continue;
+        }
+        need_render = false;
+
+        // ── 重新渲染（首次不清理） ──
         if !initial {
             if moved_up {
-                // 光标在自定义输入行：先清当前行再上移清其余
                 let _ = execute!(stderr, terminal::Clear(terminal::ClearType::CurrentLine));
                 for _ in 0..list_height - 1 {
                     let _ = execute!(
@@ -121,7 +231,6 @@ fn prompt_task_approval() -> Result<TaskDecision, String> {
                     );
                 }
             } else {
-                // 光标在列表下方：直接上移逐行清空
                 for _ in 0..list_height {
                     let _ = execute!(
                         stderr,
@@ -150,9 +259,9 @@ fn prompt_task_approval() -> Result<TaskDecision, String> {
             let prefix = if i == selected { "▸" } else { " " };
 
             if label.is_empty() {
-                // 自定义输入行：有输入时显示内容，无输入时显示占位
                 if !input.is_empty() {
-                    let _ = writeln!(stderr, "\r  {} {}. {}", prefix, num, input);
+                    let cursor = if show_cursor { "█" } else { "" };
+                    let _ = writeln!(stderr, "\r  {} {}. {}{}", prefix, num, input, cursor);
                 } else {
                     let _ = writeln!(stderr, "\r  {} {}. 自定义输入", prefix, num);
                 }
@@ -179,88 +288,6 @@ fn prompt_task_approval() -> Result<TaskDecision, String> {
         } else {
             false
         };
-
-        // 读取键盘事件
-        match crossterm::event::read().map_err(|e| e.to_string())? {
-            // 导航
-            Event::Key(KeyEvent {
-                code: KeyCode::Up, ..
-            })
-            | Event::Key(KeyEvent {
-                code: KeyCode::Char('k'),
-                ..
-            }) if selected > 0 => {
-                selected -= 1;
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                ..
-            })
-            | Event::Key(KeyEvent {
-                code: KeyCode::Char('j'),
-                ..
-            }) if selected < items.len() - 1 => {
-                selected += 1;
-            }
-            // 数字快捷键
-            Event::Key(KeyEvent {
-                code: KeyCode::Char(c @ '1'..='9'),
-                ..
-            }) => {
-                let idx = (c as usize) - ('1' as usize);
-                if idx < items.len() {
-                    if items[idx].is_empty() {
-                        selected = idx;
-                    } else {
-                        break match idx {
-                            0 => TaskDecision::Continue,
-                            1 => TaskDecision::Cancel,
-                            _ => TaskDecision::Cancel,
-                        };
-                    }
-                }
-            }
-            // Enter 确认
-            Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                ..
-            }) => {
-                if items[selected].is_empty() {
-                    let text = input.trim().to_string();
-                    if text.is_empty() {
-                        continue;
-                    }
-                    break TaskDecision::Supplement(text);
-                }
-                break match selected {
-                    0 => TaskDecision::Continue,
-                    _ => TaskDecision::Cancel,
-                };
-            }
-            // 自定义输入 — 打字
-            Event::Key(KeyEvent {
-                code: KeyCode::Char(c),
-                ..
-            }) if selected == items.len() - 1 => {
-                input.push(c);
-            }
-            // 自定义输入 — 退格
-            Event::Key(KeyEvent {
-                code: KeyCode::Backspace,
-                ..
-            }) if selected == items.len() - 1 => {
-                input.pop();
-            }
-            // Ctrl+C 取消
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('c'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
-            }) => {
-                break TaskDecision::Cancel;
-            }
-            _ => {}
-        }
     };
 
     // 清理终端（与渲染逻辑一致）
