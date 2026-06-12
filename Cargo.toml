@@ -33,8 +33,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 futures-util = "0.3.32"
 reqwest = "0.13"
 mdka = "2"
+ratatui = "0.30"
+ratatui-textarea = "0.9"
+console = "0.16"
 crossterm = "0.29"
+dialoguer = "0.12"
 ignore = "0.4"
+indicatif = "0.18"
 globset = "0.4"
 fs4 = { version = "0.13", features = ["tokio"] }
 yaml_serde = "0.10.4"
