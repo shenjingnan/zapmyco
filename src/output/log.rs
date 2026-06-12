@@ -92,6 +92,7 @@ impl LogTarget {
     }
 
     /// 写入日志，每条内容独立一行。如果 text 含多行，拆成多行写入，每行都带时间戳前缀。
+    /// 每次写入后立即 flush，确保进程异常退出时数据不丢失。
     fn write_log(&self, channel: &str, text: &str) {
         use chrono::Local;
         let now = Local::now().format("%Y-%m-%dT%H:%M:%S");
@@ -99,6 +100,8 @@ impl LogTarget {
             for line in text.lines() {
                 let _ = writeln!(file, "[{}] [{}] {}", now, channel, line);
             }
+            // 立即刷盘，防止 BufWriter 缓冲区在进程异常退出时丢失数据
+            let _ = file.flush();
         }
     }
 
