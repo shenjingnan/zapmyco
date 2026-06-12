@@ -1529,6 +1529,7 @@ fn prompt_model_replacement(
 mod tests {
     use super::*;
     use crate::test_util::run_with_temp_home;
+    use serde_json::json;
     use zapmyco_anthropic_ai_sdk::types::message::{
         MessageDeltaContent, MessageStartContent, StopReason, StreamError, StreamUsage, Usage,
     };
@@ -4933,5 +4934,152 @@ mod tests {
                 "纯文本消息经过回环后 blocks 应为 None"
             );
         });
+    }
+
+    // ---- Phase 2: log_tool_call 测试 (TC-13 ~ TC-15) ----
+
+    #[test]
+    fn test_log_tool_call_logger_none() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                // conversation_log 禁用 → tool_call_logger 为 None
+                create_test_settings(
+                    home,
+                    r#"
+[llm]
+[conversation_log]
+enabled = false
+"#,
+                );
+                let agent = AiAgent::new(AiAgentOptions {
+                    api_key: Some("test-key".into()),
+                    base_url: Some("http://localhost:9999".into()),
+                    ..Default::default()
+                })
+                .unwrap();
+                assert!(agent.tool_call_logger.is_none());
+
+                // 调用不应 panic
+                agent
+                    .log_tool_call("file_read", "tu_1", &json!({}), "ok", None, 0, 0)
+                    .await;
+            });
+        });
+    }
+
+    #[test]
+    fn test_log_tool_call_logger_some() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                // 默认 conversation_log enabled
+                create_test_settings(home, "[llm]\n");
+                let agent = AiAgent::new(AiAgentOptions {
+                    api_key: Some("test-key".into()),
+                    base_url: Some("http://localhost:9999".into()),
+                    ..Default::default()
+                })
+                .unwrap();
+                assert!(agent.tool_call_logger.is_some());
+
+                agent
+                    .log_tool_call(
+                        "file_read",
+                        "tu_1",
+                        &json!({"path": "x"}),
+                        "content",
+                        None,
+                        5,
+                        0,
+                    )
+                    .await;
+
+                let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
+                let records = read_jsonl(&session_dir.join("tool_calls.jsonl"));
+                assert_eq!(records.len(), 1);
+                assert_eq!(records[0]["tool"], "file_read");
+                assert_eq!(records[0]["output"], "content");
+            });
+        });
+    }
+
+    #[test]
+    fn test_log_tool_call_write_failure_isolated() {
+        run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                create_test_settings(home, "[llm]\n");
+                let agent = AiAgent::new(AiAgentOptions {
+                    api_key: Some("test-key".into()),
+                    base_url: Some("http://localhost:9999".into()),
+                    ..Default::default()
+                })
+                .unwrap();
+                let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
+                let file_path = session_dir.join("tool_calls.jsonl");
+
+                // 写入一条正常记录
+                agent
+                    .log_tool_call("file_read", "tu_1", &json!({}), "first", None, 0, 0)
+                    .await;
+
+                // 将文件设为只读
+                set_readonly(&file_path);
+
+                // 再次调用 log_tool_call——不应 panic，不应传播错误
+                agent
+                    .log_tool_call("file_read", "tu_2", &json!({}), "second", None, 0, 0)
+                    .await;
+
+                // 恢复权限后验证文件内容
+                set_writable(&file_path);
+                let records = read_jsonl(&file_path);
+                assert_eq!(records.len(), 1, "写入失败后不应追加新记录");
+                assert_eq!(records[0]["output"], "first");
+            });
+        });
+    }
+
+    // ---- 测试辅助函数 ----
+
+    /// 读取 JSONL 文件（仅测试用）
+    fn read_jsonl(path: &std::path::Path) -> Vec<serde_json::Value> {
+        let file = std::fs::File::open(path).unwrap();
+        use std::io::BufRead;
+        std::io::BufReader::new(file)
+            .lines()
+            .map(|line| serde_json::from_str(&line.unwrap()).unwrap())
+            .collect()
+    }
+
+    /// 设置文件只读（跨平台）
+    #[cfg(unix)]
+    fn set_readonly(path: &std::path::Path) {
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, Permissions::from_mode(0o444)).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn set_readonly(path: &std::path::Path) {
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    /// 设置文件可写（恢复只读）
+    #[cfg(unix)]
+    fn set_writable(path: &std::path::Path) {
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, Permissions::from_mode(0o644)).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn set_writable(path: &std::path::Path) {
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_readonly(false);
+        std::fs::set_permissions(path, perms).unwrap();
     }
 }
