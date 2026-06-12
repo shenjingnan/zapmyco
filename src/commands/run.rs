@@ -580,4 +580,49 @@ mod tests {
         // 重复移除应返回 false
         assert!(!router.remove_target("log"), "再次移除应返回 false");
     }
+
+    #[test]
+    fn test_terminal_log_captures_router_messages() {
+        run_with_temp_home(|home| {
+            // 1. 创建配置
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\napi_key = \"test\"\n",
+            )
+            .unwrap();
+
+            // 2. 构建 AiAgent（logger 启用）
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let session_id = agent.session_id().unwrap();
+
+            // 3. 注册 terminal.log
+            let _guard = register_terminal_log(&agent);
+            assert!(_guard.is_some(), "logger 启用时应返回 Some guard");
+
+            // 4. 验证 terminal.log 被创建
+            let conversations_dir = home.join(".zapmyco/conversations");
+            let terminal_log = conversations_dir.join(session_id).join("terminal.log");
+            assert!(
+                terminal_log.exists(),
+                "register_terminal_log 后 terminal.log 应存在"
+            );
+
+            // 5. 通过全局 ROUTER 发送消息
+            crate::output::send(&crate::output::Message::result("hello from test"));
+            crate::output::send(&crate::output::Message::warning("warning from test"));
+
+            // 6. 验证消息被正确写入
+            let content = std::fs::read_to_string(&terminal_log).unwrap();
+            assert!(content.contains("hello from test"), "应包含 stdout 消息");
+            assert!(content.contains("warning from test"), "应包含 stderr 消息");
+            assert!(content.contains("[STDOUT]"), "应包含 STDOUT 通道标记");
+            assert!(content.contains("[STDERR]"), "应包含 STDERR 通道标记");
+        });
+    }
 }

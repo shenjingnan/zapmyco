@@ -1916,6 +1916,42 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_session_id_returns_some_when_logger_enabled() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\napi_key = \"test\"\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let sid = agent.session_id();
+            assert!(sid.is_some(), "日志启用时 session_id() 应返回 Some");
+            assert!(!sid.unwrap().is_empty(), "session_id 不应为空");
+        });
+    }
+
+    #[test]
+    fn test_session_id_returns_none_when_logger_disabled() {
+        run_with_temp_home(|home| {
+            create_test_settings(
+                home,
+                "[llm]\napi_key = \"test\"\n[conversation_log]\nenabled = false\n",
+            );
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            assert!(
+                agent.session_id().is_none(),
+                "日志禁用时 session_id() 应返回 None"
+            );
+        });
+    }
+
     // ---- ToolHandler tests ----
 
     #[test]
