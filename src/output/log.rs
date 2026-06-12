@@ -245,6 +245,17 @@ mod tests {
         assert!(content.contains('Z') || content.contains('-'));
     }
 
+    /// 验证每次写入后数据立即落盘——不依赖 Drop 触发 flush
+    #[test]
+    fn test_log_immediate_flush_before_drop() {
+        let (target, dir) = setup_log();
+        target.on_message(&Message::result("immediate data"));
+        // 在不 drop target 的情况下直接读文件，验证数据已刷盘
+        let content = read_log(&dir);
+        assert!(content.contains("[STDOUT]"), "应有 STDOUT 通道标记");
+        assert!(content.contains("immediate data"), "应有写入的内容");
+    }
+
     #[test]
     fn test_log_write_stderr_message() {
         let (target, dir) = setup_log();
