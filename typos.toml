@@ -3,3 +3,5 @@
 alue = "alue"
 # 文档示例中故意使用的拼写错误，演示 Edit 工具修复拼写
 helo = "helo"
+# Rust TUI 框架 crate 名
+ratatui = "ratatui"

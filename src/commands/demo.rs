@@ -1,9 +1,5 @@
-use crossterm::cursor;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::{execute, terminal};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::io::{IsTerminal, Write};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// demo 命令 — 模拟 Agent 工作流全过程（含用户交互）
 pub(crate) fn cmd_demo() -> Result<(), String> {
@@ -70,6 +66,10 @@ pub(crate) fn cmd_demo() -> Result<(), String> {
     stage_finalize()?;
     println!();
 
+    // ratatui 渲染展示
+    stage_ratatui_demo()?;
+    println!();
+
     println!("{}", divider);
     println!("  ✔ Agent 工作流演示完成");
     println!("{}", divider);
@@ -83,234 +83,173 @@ enum TaskDecision {
     Supplement(String),
 }
 
-/// 内联选项选择器 — 支持在最后一项直接输入文字
-///
-/// 快捷键: ↑↓/jk 导航, 1-9 跳转, Enter 确认, Ctrl+C 取消
+/// 基于 ratatui 的内联选择+输入
 fn prompt_task_approval() -> Result<TaskDecision, String> {
-    if !std::io::stderr().is_terminal() {
-        return Ok(TaskDecision::Cancel);
-    }
+    use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 
-    let question = "请确认或补充需求";
-    let items: [&str; 3] = ["同意", "拒绝", ""]; // "" = 自定义输入
-    let descriptions: [&str; 3] = ["按当前拆分的子任务执行", "终止当前任务", ""];
-    let list_height = 1 + items.len();
+    crossterm::terminal::enable_raw_mode().map_err(|e| e.to_string())?;
 
-    let mut stderr = std::io::stderr();
+    let mut textarea = ratatui_textarea::TextArea::default();
+    textarea.set_placeholder_text("自定义输入");
 
-    // 进入原始模式
-    terminal::enable_raw_mode().map_err(|e| e.to_string())?;
-    let _ = execute!(stderr, cursor::Hide);
+    let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
+    let mut terminal = ratatui::Terminal::with_options(
+        backend,
+        ratatui::TerminalOptions {
+            viewport: ratatui::Viewport::Inline(14),
+        },
+    )
+    .map_err(|e| e.to_string())?;
 
+    let items = ["同意", "拒绝", ""]; // "" = 自定义输入
     let mut selected = 0;
-    let mut input = String::new();
-    let mut moved_up = false;
-    let mut show_cursor = true;
-    let mut need_render = true;
-    let mut last_key_time = Instant::now();
-    let mut initial = true;
-    let cursor_debounce = Duration::from_millis(400);
-
     let result = loop {
-        let has_event =
-            crossterm::event::poll(Duration::from_millis(100)).map_err(|e| e.to_string())?;
+        // 选中自定义输入时高亮
+        if selected == 2 {
+            textarea.set_style(ratatui::style::Style::default().fg(ratatui::style::Color::Green));
+        } else {
+            textarea.set_style(ratatui::style::Style::default());
+        }
 
-        if has_event {
-            match crossterm::event::read().map_err(|e| e.to_string())? {
-                // 导航
-                Event::Key(KeyEvent {
-                    code: KeyCode::Up, ..
-                })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('k'),
-                    ..
-                }) if selected > 0 => {
-                    selected -= 1;
-                    need_render = true;
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Down,
-                    ..
-                })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('j'),
-                    ..
-                }) if selected < items.len() - 1 => {
-                    selected += 1;
-                    need_render = true;
-                }
-                // 数字快捷键
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c @ '1'..='9'),
-                    ..
-                }) => {
-                    let idx = (c as usize) - ('1' as usize);
-                    if idx < items.len() {
-                        if items[idx].is_empty() {
-                            selected = idx;
-                            need_render = true;
-                        } else {
-                            break match idx {
-                                0 => TaskDecision::Continue,
-                                1 => TaskDecision::Cancel,
-                                _ => TaskDecision::Cancel,
-                            };
-                        }
-                    }
-                }
-                // Enter 确认
-                Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
-                    ..
-                }) => {
-                    if items[selected].is_empty() {
-                        let text = input.trim().to_string();
-                        if text.is_empty() {
-                            need_render = true;
-                            continue;
-                        }
+        let _ = terminal.draw(|f| {
+            use ratatui::{
+                layout::{Constraint, Layout},
+                style::{Color, Style},
+                text::{Line, Span},
+                widgets::{Block, BorderType, Paragraph},
+            };
+
+            let area = f.area();
+
+            let block = Block::bordered()
+                .title(" 请确认或补充需求 ")
+                .border_type(BorderType::Rounded);
+            let inner = block.inner(area);
+            f.render_widget(block, area);
+
+            // TextArea 高度随行数动态变化
+            let ta_lines = textarea.lines().len() as u16;
+            let input_h = ta_lines.clamp(1, 8);
+
+            let rows = Layout::vertical([
+                Constraint::Length(1),       // 空行
+                Constraint::Length(1),       // 选项 1
+                Constraint::Length(1),       // 选项 2
+                Constraint::Length(input_h), // 自定义输入（自适应）
+                Constraint::Length(1),       // 空行
+                Constraint::Length(1),       // 帮助行
+                Constraint::Min(0),          // 填充剩余空间
+            ])
+            .split(inner);
+
+            for (i, label) in items[..2].iter().enumerate() {
+                let is_sel = i == selected;
+                let prefix = if is_sel { "▸" } else { " " };
+                let line = if is_sel {
+                    Line::styled(
+                        format!("  {} {}. {}", prefix, i + 1, label),
+                        Style::default().fg(Color::Green),
+                    )
+                } else {
+                    Line::from(format!("  {} {}. {}", prefix, i + 1, label))
+                };
+                f.render_widget(Paragraph::new(line), rows[i + 1]);
+            }
+
+            if selected == 2 {
+                let input_cols =
+                    Layout::horizontal([Constraint::Length(7), Constraint::Min(1)]).split(rows[3]);
+                f.render_widget(
+                    Paragraph::new(Line::styled("  ▸ 3.", Style::default().fg(Color::Green))),
+                    input_cols[0],
+                );
+                f.render_widget(&textarea, input_cols[1]);
+            } else {
+                f.render_widget(Paragraph::new(Line::from("    3. 自定义输入")), rows[3]);
+            }
+
+            f.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "  ↑↓ 切换 · Enter 确认 · Ctrl+C 取消",
+                    Style::default().fg(Color::DarkGray),
+                ))),
+                rows[5],
+            );
+        });
+
+        match event::read().map_err(|e| e.to_string())? {
+            Event::Key(KeyEvent {
+                code: KeyCode::Up | KeyCode::Char('k'),
+                ..
+            }) if selected > 0 => {
+                selected -= 1;
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Down | KeyCode::Char('j'),
+                ..
+            }) if selected < 2 => {
+                selected += 1;
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('1'),
+                ..
+            }) => {
+                break TaskDecision::Continue;
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('2'),
+                ..
+            }) => {
+                break TaskDecision::Cancel;
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('3'),
+                ..
+            }) => {
+                selected = 2;
+            }
+            // Shift+Enter → 换行（交给 TextArea）
+            Event::Key(KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            }) if selected == 2 => {
+                textarea.input(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            }
+            // Enter → 提交
+            Event::Key(KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            }) => {
+                if selected == 2 {
+                    let text = textarea.lines()[0].trim().to_string();
+                    if !text.is_empty() {
                         break TaskDecision::Supplement(text);
                     }
+                } else {
                     break match selected {
                         0 => TaskDecision::Continue,
                         _ => TaskDecision::Cancel,
                     };
                 }
-                // 自定义输入 — 打字
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    ..
-                }) if selected == items.len() - 1 => {
-                    input.push(c);
-                    last_key_time = Instant::now();
-                    show_cursor = false;
-                    need_render = true;
-                }
-                // 自定义输入 — 退格
-                Event::Key(KeyEvent {
-                    code: KeyCode::Backspace,
-                    ..
-                }) if selected == items.len() - 1 => {
-                    input.pop();
-                    last_key_time = Instant::now();
-                    show_cursor = false;
-                    need_render = true;
-                }
-                // Ctrl+C 取消
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('c'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                }) => {
-                    break TaskDecision::Cancel;
-                }
-                _ => {}
             }
-        }
-
-        // 打字停顿 debounce：400ms 无输入重新显示 █
-        if !show_cursor && last_key_time.elapsed() > cursor_debounce {
-            show_cursor = true;
-            need_render = true;
-        }
-
-        if !need_render {
-            continue;
-        }
-        need_render = false;
-
-        // ── 重新渲染（首次不清理） ──
-        if !initial {
-            if moved_up {
-                let _ = execute!(stderr, terminal::Clear(terminal::ClearType::CurrentLine));
-                for _ in 0..list_height - 1 {
-                    let _ = execute!(
-                        stderr,
-                        cursor::MoveUp(1),
-                        terminal::Clear(terminal::ClearType::CurrentLine)
-                    );
-                }
-            } else {
-                for _ in 0..list_height {
-                    let _ = execute!(
-                        stderr,
-                        cursor::MoveUp(1),
-                        terminal::Clear(terminal::ClearType::CurrentLine)
-                    );
-                }
+            // 自定义输入 — 其他按键交给 TextArea 处理
+            Event::Key(key) if selected == 2 => {
+                textarea.input(key);
             }
-        }
-        initial = false;
-
-        // 问题行
-        let _ = write!(stderr, "\r? ");
-        let _ = stderr.flush();
-        let _ = execute!(
-            stderr,
-            crossterm::style::SetForegroundColor(crossterm::style::Color::Green)
-        );
-        let _ = write!(stderr, "{}", question);
-        let _ = execute!(stderr, crossterm::style::ResetColor);
-        let _ = writeln!(stderr);
-
-        // 选项行
-        for (i, label) in items.iter().enumerate() {
-            let num = i + 1;
-            let prefix = if i == selected { "▸" } else { " " };
-
-            if label.is_empty() {
-                if !input.is_empty() {
-                    let cursor = if show_cursor { "█" } else { "" };
-                    let _ = writeln!(stderr, "\r  {} {}. {}{}", prefix, num, input, cursor);
-                } else {
-                    let _ = writeln!(stderr, "\r  {} {}. 自定义输入", prefix, num);
-                }
-            } else {
-                let desc = descriptions[i];
-                if i == selected {
-                    let _ = execute!(
-                        stderr,
-                        crossterm::style::SetForegroundColor(crossterm::style::Color::Green)
-                    );
-                    let _ = writeln!(stderr, "\r  {} {}. {}  ─ {}", prefix, num, label, desc);
-                    let _ = execute!(stderr, crossterm::style::ResetColor);
-                } else {
-                    let _ = writeln!(stderr, "\r  {} {}. {}  ─ {}", prefix, num, label, desc);
-                }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::CONTROL,
+                ..
+            }) => {
+                break TaskDecision::Cancel;
             }
+            _ => {}
         }
-        let _ = stderr.flush();
-
-        // 光标上移一行：输入法在此位置弹出拼音候选框
-        moved_up = if selected == items.len() - 1 {
-            let _ = execute!(stderr, cursor::MoveUp(1));
-            true
-        } else {
-            false
-        };
     };
 
-    // 清理终端（与渲染逻辑一致）
-    if moved_up {
-        let _ = execute!(stderr, terminal::Clear(terminal::ClearType::CurrentLine));
-        for _ in 0..list_height - 1 {
-            let _ = execute!(
-                stderr,
-                cursor::MoveUp(1),
-                terminal::Clear(terminal::ClearType::CurrentLine)
-            );
-        }
-    } else {
-        for _ in 0..list_height {
-            let _ = execute!(
-                stderr,
-                cursor::MoveUp(1),
-                terminal::Clear(terminal::ClearType::CurrentLine)
-            );
-        }
-    }
-    let _ = execute!(stderr, cursor::Show);
-    let _ = terminal::disable_raw_mode();
+    drop(terminal);
+    crossterm::terminal::disable_raw_mode().ok();
 
     Ok(result)
 }
@@ -538,5 +477,98 @@ fn stage_finalize() -> Result<(), String> {
     }
 
     pb.finish_with_message("✔ 全部完成");
+    Ok(())
+}
+
+/// ratatui 渲染展示 — 独立演示 ratatui 的 UI 渲染能力
+fn stage_ratatui_demo() -> Result<(), String> {
+    println!("{}", "─".repeat(48));
+    println!("  ratatui 渲染展示");
+    println!("{}", "─".repeat(48));
+    println!();
+
+    crossterm::terminal::enable_raw_mode().map_err(|e| e.to_string())?;
+
+    let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
+    let mut terminal = ratatui::Terminal::with_options(
+        backend,
+        ratatui::TerminalOptions {
+            viewport: ratatui::Viewport::Inline(10),
+        },
+    )
+    .map_err(|e| e.to_string())?;
+
+    terminal
+        .draw(|f| {
+            use ratatui::{
+                layout::{Constraint, Layout},
+                style::{Color, Style},
+                text::{Line, Span, Text},
+                widgets::{Block, BorderType, Paragraph},
+            };
+
+            let rows = Layout::vertical([Constraint::Length(1); 5]).split(f.area());
+
+            let block = Block::bordered()
+                .title(" ratatui 演示面板 ")
+                .border_type(BorderType::Rounded);
+            f.render_widget(block, f.area());
+
+            f.render_widget(
+                Paragraph::new(Text::from(Line::from(Span::styled(
+                    "  ratatui 是一个 Rust TUI 渲染框架",
+                    Style::default().fg(Color::Cyan),
+                )))),
+                rows[0],
+            );
+            f.render_widget(
+                Paragraph::new(Text::from(Line::from(Span::styled(
+                    "  支持块、列表、段落、表格等组件",
+                    Style::default().fg(Color::Green),
+                )))),
+                rows[1],
+            );
+            f.render_widget(
+                Paragraph::new(Text::from(Line::from(Span::styled(
+                    "  跨平台终端渲染，无需手动管理 ANSI 码",
+                    Style::default().fg(Color::Yellow),
+                )))),
+                rows[2],
+            );
+            f.render_widget(
+                Paragraph::new(Text::from(Line::from(Span::styled(
+                    "  Viewport::Inline 实现内联模式",
+                    Style::default().fg(Color::Magenta),
+                )))),
+                rows[3],
+            );
+            f.render_widget(
+                Paragraph::new(Text::from(Line::from(Span::styled(
+                    "  Enter 继续",
+                    Style::default().fg(Color::DarkGray),
+                )))),
+                rows[4],
+            );
+        })
+        .map_err(|e| e.to_string())?;
+
+    // 等待用户按 Enter 继续
+    loop {
+        match crossterm::event::read().map_err(|e| e.to_string())? {
+            crossterm::event::Event::Key(crossterm::event::KeyEvent {
+                code: crossterm::event::KeyCode::Enter,
+                ..
+            })
+            | crossterm::event::Event::Key(crossterm::event::KeyEvent {
+                code: crossterm::event::KeyCode::Char('c'),
+                modifiers: crossterm::event::KeyModifiers::CONTROL,
+                ..
+            }) => break,
+            _ => {}
+        }
+    }
+
+    drop(terminal);
+    crossterm::terminal::disable_raw_mode().ok();
     Ok(())
 }
