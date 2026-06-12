@@ -1,7 +1,7 @@
 /// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/conversations/<session_id>/
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use chrono::Local;
 
@@ -104,6 +104,119 @@ impl ConversationLogger {
             .parent()
             .expect("log_path 应有父目录")
             .to_path_buf()
+    }
+}
+
+/// 一条工具调用记录，对应 tool_calls.jsonl 中的一行
+#[derive(Debug, Serialize)]
+pub struct ToolCallRecord {
+    /// 会话 ID: YYYY-MM-DD_HHMMSS_P{PID}
+    pub session_id: String,
+    /// 会话内全局递增序号（从 0 开始）
+    pub order: u64,
+    /// ISO 8601 时间戳
+    pub ts: String,
+    /// 工具调用轮次序号（第几次 round-trip）
+    pub round: u32,
+    /// 工具名称（如 "file_read"）
+    pub tool: String,
+    /// API 返回的 tool_use_id
+    pub tool_use_id: String,
+    /// 工具的输入参数
+    pub input: serde_json::Value,
+    /// 给 LLM 的完整输出文本（与 ToolResult.content 一致）
+    pub output: String,
+    /// 原始错误信息（无 [Tool error: ...] 包装），成功时为 None
+    pub error: Option<String>,
+    /// 执行耗时（毫秒）
+    pub duration_ms: u64,
+}
+
+/// 工具调用日志写入器，输出到 <session_dir>/tool_calls.jsonl
+pub struct ToolCallLogger {
+    log_path: PathBuf,
+    session_id: String,
+    order: AtomicU64,
+}
+
+impl ToolCallLogger {
+    /// 创建新的工具调用日志记录器
+    ///
+    /// session_dir: ConversationLogger 创建的会话子目录路径
+    /// 文件写入 <session_dir>/tool_calls.jsonl
+    pub fn new(session_dir: &std::path::Path, session_id: &str) -> Result<Self, String> {
+        let log_path = session_dir.join("tool_calls.jsonl");
+        Ok(Self {
+            log_path,
+            session_id: session_id.to_string(),
+            order: AtomicU64::new(0),
+        })
+    }
+
+    /// 追加一条工具调用记录到 tool_calls.jsonl
+    ///
+    /// 使用 `tokio::fs` 异步 I/O，避免阻塞 tokio 运行时。
+    /// 写失败会向上传播错误，调用方应记录但不影响主流程。
+    #[expect(clippy::too_many_arguments)]
+    pub async fn append_tool_call(
+        &self,
+        tool: &str,
+        tool_use_id: &str,
+        input: &serde_json::Value,
+        output: &str,
+        error: Option<&str>,
+        duration_ms: u64,
+        round: u32,
+    ) -> Result<(), String> {
+        let order = self.order.fetch_add(1, Ordering::SeqCst);
+        let ts = crate::datetime::iso_timestamp_now();
+
+        let record = ToolCallRecord {
+            session_id: self.session_id.clone(),
+            order,
+            ts,
+            round,
+            tool: tool.to_string(),
+            tool_use_id: tool_use_id.to_string(),
+            input: input.clone(),
+            output: output.to_string(),
+            error: error.map(|s| s.to_string()),
+            duration_ms,
+        };
+
+        let json_line =
+            serde_json::to_string(&record).map_err(|e| format!("序列化工具调用记录失败: {}", e))?;
+
+        use tokio::io::AsyncWriteExt;
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .create(true)
+            .open(&self.log_path)
+            .await
+            .map_err(|e| format!("打开工具调用日志文件失败: {}", e))?;
+
+        file.write_all(json_line.as_bytes())
+            .await
+            .map_err(|e| format!("写入工具调用日志文件失败: {}", e))?;
+        file.write_all(b"\n")
+            .await
+            .map_err(|e| format!("写入工具调用日志换行失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 返回当前会话子目录路径
+    pub fn session_dir(&self) -> std::path::PathBuf {
+        self.log_path
+            .parent()
+            .expect("log_path 应有父目录")
+            .to_path_buf()
+    }
+
+    /// 获取 session_id
+    pub fn session_id(&self) -> &str {
+        &self.session_id
     }
 }
 
@@ -517,5 +630,90 @@ mod tests {
             // terminal.log 此时还未创建（交给 register_terminal_log 创建）
             assert!(!terminal_log_path.exists());
         });
+    }
+
+    // ---- ToolCallLogger tests (TDD) ----
+
+    #[test]
+    fn test_tool_call_new_path() {
+        crate::test_util::run_with_temp_home(|home| {
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            let expected = cl.session_dir().join("tool_calls.jsonl");
+            assert_eq!(tcl.log_path, expected);
+        });
+    }
+
+    #[test]
+    fn test_tool_call_append_valid_jsonl() {
+        crate::test_util::run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let cl = ConversationLogger::new().unwrap();
+                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+                let file_path = cl.session_dir().join("tool_calls.jsonl");
+
+                assert!(!file_path.exists());
+
+                tcl.append_tool_call(
+                    "file_read",
+                    "toolu_abc",
+                    &json!({"file_path": "/tmp/test.txt"}),
+                    "file content",
+                    None,
+                    5,
+                    0,
+                )
+                .await
+                .unwrap();
+
+                assert!(file_path.exists());
+
+                let content = std::fs::read_to_string(&file_path).unwrap();
+                let lines: Vec<&str> = content.lines().collect();
+                assert_eq!(lines.len(), 1);
+                let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+                assert_eq!(parsed["tool"], "file_read");
+                assert_eq!(parsed["output"], "file content");
+                assert!(parsed["error"].is_null());
+            });
+        });
+    }
+
+    #[test]
+    fn test_tool_call_error_field() {
+        crate::test_util::run_with_temp_home(|home| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let cl = ConversationLogger::new().unwrap();
+                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+                tcl.append_tool_call(
+                    "shell_exec",
+                    "toolu_def",
+                    &json!({"command": "invalid cmd"}),
+                    "[Tool error: command not found]",
+                    Some("command not found"),
+                    1200,
+                    0,
+                )
+                .await
+                .unwrap();
+
+                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+                assert_eq!(records[0]["error"], "command not found");
+                assert_eq!(records[0]["output"], "[Tool error: command not found]");
+            });
+        });
+    }
+
+    /// 读取 JSONL 文件所有记录（测试辅助函数）
+    fn read_jsonl(path: &std::path::Path) -> Vec<serde_json::Value> {
+        let file = std::fs::File::open(path).unwrap();
+        use std::io::BufRead;
+        std::io::BufReader::new(file)
+            .lines()
+            .map(|line| serde_json::from_str(&line.unwrap()).unwrap())
+            .collect()
     }
 }
