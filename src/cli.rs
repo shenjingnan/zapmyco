@@ -284,6 +284,8 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+    /// 展示命令行 loading 效果演示
+    Demo,
 }
 
 /// note 子命令
@@ -416,6 +418,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             crate::commands::completion::cmd_completion(shell, &mut std::io::stdout());
             Ok(())
         }
+        Some(Commands::Demo) => commands::demo::cmd_demo(),
         // subcommand_required = true 时，此处不可达
         None => unreachable!(),
     }
