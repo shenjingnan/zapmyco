@@ -116,6 +116,9 @@ pub(crate) async fn cmd_run(
 
     let mut agent = AiAgent::new(options)?;
 
+    // ── 注册终端输出日志到当前会话目录 ──
+    let _log_guard = register_terminal_log(&agent);
+
     // 注册 Ask User 工具
     let ask_user = ask_user::AskUser;
     agent.register_tool(crate::agent::chat::ToolHandler::AskUser(ask_user));
@@ -405,6 +408,27 @@ fn generate_session_id() -> String {
     format!("run_{}", chrono::Local::now().format("%Y%m%d_%H%M%S%9f"))
 }
 
+/// 在会话子目录中创建 terminal.log 并注册到全局 ROUTER
+///
+/// 返回的 guard 在 drop 时自动从 ROUTER 注销，确保在函数各返回路径正确清理。
+fn register_terminal_log(agent: &AiAgent) -> Option<TerminalLogGuard> {
+    let session_id = agent.session_id()?;
+    let log_dir = crate::agent::conversation_logger::get_log_dir().ok()?;
+    let log_path = log_dir.join(session_id).join("terminal.log");
+    let target = crate::output::LogTarget::new(&log_path).ok()?;
+    crate::output::ROUTER.add_target(Box::new(target));
+    Some(TerminalLogGuard)
+}
+
+/// Drop 时自动从全局 ROUTER 移除 LogTarget
+struct TerminalLogGuard;
+
+impl Drop for TerminalLogGuard {
+    fn drop(&mut self) {
+        crate::output::ROUTER.remove_target("log");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,5 +562,67 @@ mod tests {
         assert_eq!(options.model.unwrap(), "claude-opus-4-7");
         assert_eq!(options.api_key.unwrap(), "sk-claude-key");
         assert_eq!(options.base_url.unwrap(), "https://api.anthropic.com");
+    }
+
+    #[test]
+    fn test_terminal_log_guard_removes_log_target() {
+        let router = crate::output::Router::new();
+        let dir = tempfile::TempDir::new().unwrap();
+        let log_path = dir.path().join("terminal.log");
+        let target = crate::output::LogTarget::new(&log_path).unwrap();
+
+        // 添加 target
+        router.add_target(Box::new(target));
+
+        // 验证 remove_target 返回 true
+        assert!(router.remove_target("log"), "应成功移除 log target");
+
+        // 重复移除应返回 false
+        assert!(!router.remove_target("log"), "再次移除应返回 false");
+    }
+
+    #[test]
+    fn test_terminal_log_captures_router_messages() {
+        run_with_temp_home(|home| {
+            // 1. 创建配置
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\napi_key = \"test\"\n",
+            )
+            .unwrap();
+
+            // 2. 构建 AiAgent（logger 启用）
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let session_id = agent.session_id().unwrap();
+
+            // 3. 注册 terminal.log
+            let _guard = register_terminal_log(&agent);
+            assert!(_guard.is_some(), "logger 启用时应返回 Some guard");
+
+            // 4. 验证 terminal.log 被创建
+            let conversations_dir = home.join(".zapmyco/conversations");
+            let terminal_log = conversations_dir.join(session_id).join("terminal.log");
+            assert!(
+                terminal_log.exists(),
+                "register_terminal_log 后 terminal.log 应存在"
+            );
+
+            // 5. 通过全局 ROUTER 发送消息
+            crate::output::send(&crate::output::Message::result("hello from test"));
+            crate::output::send(&crate::output::Message::warning("warning from test"));
+
+            // 6. 验证消息被正确写入
+            let content = std::fs::read_to_string(&terminal_log).unwrap();
+            assert!(content.contains("hello from test"), "应包含 stdout 消息");
+            assert!(content.contains("warning from test"), "应包含 stderr 消息");
+            assert!(content.contains("[STDOUT]"), "应包含 STDOUT 通道标记");
+            assert!(content.contains("[STDERR]"), "应包含 STDERR 通道标记");
+        });
     }
 }

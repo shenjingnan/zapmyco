@@ -1,4 +1,4 @@
-/// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/conversations/
+/// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/conversations/<session_id>/
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -26,7 +26,7 @@ pub struct ConversationRecord {
 
 /// 对话日志写入器，每个会话创建一个实例
 pub struct ConversationLogger {
-    /// 当前会话的 .jsonl 文件路径
+    /// 当前会话的 conversation.jsonl 文件路径（位于会话子目录下）
     log_path: PathBuf,
     /// 会话 ID
     session_id: String,
@@ -37,14 +37,19 @@ pub struct ConversationLogger {
 impl ConversationLogger {
     /// 创建新的日志记录器
     ///
-    /// 在 `~/.zapmyco/conversations/` 下创建一个独立的 jsonl 文件。
-    /// 如果目录不存在会自动创建。
+    /// 在 `~/.zapmyco/conversations/` 下创建一个独立的会话子目录，
+    /// 子目录中包含 conversation.jsonl 记录 LLM 调用日志。
     pub fn new() -> Result<Self, String> {
         let session_id = generate_session_id();
-        let log_dir = get_log_dir()?;
-        std::fs::create_dir_all(&log_dir).map_err(|e| format!("创建日志目录失败: {}", e))?;
-
-        let log_path = log_dir.join(format!("{}.jsonl", session_id));
+        let conversations_dir = get_log_dir()?;
+        // 确保 conversations/ 父目录存在
+        std::fs::create_dir_all(&conversations_dir)
+            .map_err(|e| format!("创建会话目录失败: {}", e))?;
+        // 创建会话子目录
+        let session_dir = conversations_dir.join(&session_id);
+        std::fs::create_dir(&session_dir).map_err(|e| format!("创建会话子目录失败: {}", e))?;
+        // JSONL 文件放在子目录内
+        let log_path = session_dir.join("conversation.jsonl");
 
         Ok(Self {
             log_path,
@@ -90,6 +95,15 @@ impl ConversationLogger {
     /// 获取 session_id
     pub fn session_id(&self) -> &str {
         &self.session_id
+    }
+
+    /// 返回当前会话子目录路径（供 LogTarget 等组件使用）
+    pub fn session_dir(&self) -> PathBuf {
+        // log_path 为 {session_dir}/conversation.jsonl
+        self.log_path
+            .parent()
+            .expect("log_path 应有父目录")
+            .to_path_buf()
     }
 }
 
@@ -150,7 +164,7 @@ mod tests {
     #[test]
     fn test_logger_new() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|_home| {
+        run_with_temp_home(|home| {
             let logger = ConversationLogger::new();
             assert!(logger.is_ok());
             let logger = logger.unwrap();
@@ -160,6 +174,9 @@ mod tests {
                 "session_id 长度至少 20: {}",
                 logger.session_id
             );
+            // 验证子目录已被创建
+            let session_dir = home.join(".zapmyco/conversations").join(&logger.session_id);
+            assert!(session_dir.is_dir(), "会话子目录应已创建");
         });
     }
 
@@ -169,7 +186,7 @@ mod tests {
         run_with_temp_home(|home| {
             let logger = ConversationLogger::new().unwrap();
             let log_dir = home.join(".zapmyco/conversations");
-            let expected_file = log_dir.join(format!("{}.jsonl", logger.session_id));
+            let expected_file = log_dir.join(&logger.session_id).join("conversation.jsonl");
 
             // 文件还未创建（append 时才创建）
             assert!(!expected_file.exists());
@@ -218,9 +235,10 @@ mod tests {
                 .unwrap();
 
             let log_dir = home.join(".zapmyco/conversations");
-            let content =
-                std::fs::read_to_string(log_dir.join(format!("{}.jsonl", logger.session_id)))
-                    .unwrap();
+            let content = std::fs::read_to_string(
+                log_dir.join(&logger.session_id).join("conversation.jsonl"),
+            )
+            .unwrap();
 
             let lines: Vec<&str> = content.lines().collect();
             assert_eq!(lines.len(), 2, "应有 2 行日志");
@@ -329,9 +347,10 @@ mod tests {
             }
 
             let log_dir = home.join(".zapmyco/conversations");
-            let content =
-                std::fs::read_to_string(log_dir.join(format!("{}.jsonl", logger.session_id())))
-                    .unwrap();
+            let content = std::fs::read_to_string(
+                log_dir.join(logger.session_id()).join("conversation.jsonl"),
+            )
+            .unwrap();
             let lines: Vec<&str> = content.lines().collect();
             assert_eq!(lines.len(), 5, "应有 5 条日志记录");
 
@@ -343,6 +362,160 @@ mod tests {
                 })
                 .collect();
             assert_eq!(orders, vec![0, 1, 2, 3, 4], "order 应连续递增");
+        });
+    }
+
+    // ==================== 新格式子目录测试 ====================
+
+    #[test]
+    fn test_session_dir_returns_correct_path() {
+        use crate::test_util::run_with_temp_home;
+        run_with_temp_home(|home| {
+            let logger = ConversationLogger::new().unwrap();
+            let session_dir = logger.session_dir();
+
+            // 验证返回的是子目录
+            let expected = home.join(".zapmyco/conversations").join(&logger.session_id);
+            assert_eq!(session_dir, expected, "session_dir 应与期望路径一致");
+
+            // 验证子目录已存在
+            assert!(session_dir.is_dir(), "子目录应已存在");
+
+            // 验证子目录名称与 session_id 一致
+            let dir_name = session_dir.file_name().and_then(|s| s.to_str()).unwrap();
+            assert_eq!(dir_name, &logger.session_id, "目录名应与 session_id 一致");
+        });
+    }
+
+    #[test]
+    fn test_new_creates_session_directory() {
+        use crate::test_util::run_with_temp_home;
+        run_with_temp_home(|home| {
+            let logger = ConversationLogger::new().unwrap();
+            let session_dir = home.join(".zapmyco/conversations").join(&logger.session_id);
+            let jsonl_path = session_dir.join("conversation.jsonl");
+
+            // new() 后：子目录存在但文件不存在
+            assert!(session_dir.is_dir(), "子目录应在 new() 时创建");
+            assert!(!jsonl_path.exists(), "jsonl 应在 append 时才创建");
+        });
+    }
+
+    #[test]
+    fn test_session_dir_isolation() {
+        use crate::test_util::run_with_temp_home;
+        use std::time::Duration;
+        run_with_temp_home(|home| {
+            let logger1 = ConversationLogger::new().unwrap();
+            // 等待跨秒边界确保 session_id 不同（秒级精度）
+            std::thread::sleep(Duration::from_millis(1500));
+            let logger2 = ConversationLogger::new().unwrap();
+
+            // 两个 session_id 不同
+            assert_ne!(
+                logger1.session_id, logger2.session_id,
+                "两次 new() 的 session_id 应不同"
+            );
+
+            // 子目录路径不同
+            let base = home.join(".zapmyco/conversations");
+            assert_ne!(
+                base.join(&logger1.session_id),
+                base.join(&logger2.session_id),
+                "两个 Logger 的子目录路径应不同"
+            );
+
+            // 各自写数据到各自子目录
+            logger1
+                .append_record(
+                    "ts1".into(),
+                    100,
+                    serde_json::json!({"msg": "logger1"}),
+                    serde_json::json!({"msg": "ok"}),
+                )
+                .unwrap();
+            logger2
+                .append_record(
+                    "ts2".into(),
+                    200,
+                    serde_json::json!({"msg": "logger2"}),
+                    serde_json::json!({"msg": "ok"}),
+                )
+                .unwrap();
+
+            // 验证数据隔离
+            let f1 =
+                std::fs::read_to_string(base.join(&logger1.session_id).join("conversation.jsonl"))
+                    .unwrap();
+            let f2 =
+                std::fs::read_to_string(base.join(&logger2.session_id).join("conversation.jsonl"))
+                    .unwrap();
+            assert!(f1.contains("logger1"), "logger1 文件应包含自己的数据");
+            assert!(f2.contains("logger2"), "logger2 文件应包含自己的数据");
+            assert!(
+                !f1.contains("logger2"),
+                "logger1 文件不应包含 logger2 的数据"
+            );
+        });
+    }
+
+    #[test]
+    fn test_session_dir_after_append() {
+        use crate::test_util::run_with_temp_home;
+        run_with_temp_home(|home| {
+            let logger = ConversationLogger::new().unwrap();
+            let expected = home.join(".zapmyco/conversations").join(&logger.session_id);
+
+            // append 前
+            assert_eq!(logger.session_dir(), expected);
+
+            logger
+                .append_record(
+                    "ts".into(),
+                    100,
+                    serde_json::json!({"key": "val"}),
+                    serde_json::json!({"key": "val"}),
+                )
+                .unwrap();
+
+            // append 后 session_dir() 不变
+            assert_eq!(logger.session_dir(), expected);
+            assert!(expected.join("conversation.jsonl").exists());
+        });
+    }
+
+    #[test]
+    fn test_conversations_parent_dir_not_exist() {
+        use crate::test_util::run_with_temp_home;
+        run_with_temp_home(|home| {
+            // 不创建 conversations 父目录
+            let logger = ConversationLogger::new();
+            assert!(logger.is_ok(), "即使父目录不存在，new() 也应成功");
+            let logger = logger.unwrap();
+
+            // 验证完整路径正确
+            let session_dir = home.join(".zapmyco/conversations").join(&logger.session_id);
+            assert!(session_dir.is_dir(), "会话子目录应已创建");
+        });
+    }
+
+    #[test]
+    fn test_terminal_log_path_derivation() {
+        use crate::test_util::run_with_temp_home;
+        run_with_temp_home(|home| {
+            let logger = ConversationLogger::new().unwrap();
+            let session_dir = logger.session_dir();
+            let terminal_log_path = session_dir.join("terminal.log");
+
+            // 验证路径推导正确
+            let expected = home
+                .join(".zapmyco/conversations")
+                .join(&logger.session_id)
+                .join("terminal.log");
+            assert_eq!(terminal_log_path, expected);
+
+            // terminal.log 此时还未创建（交给 register_terminal_log 创建）
+            assert!(!terminal_log_path.exists());
         });
     }
 }
