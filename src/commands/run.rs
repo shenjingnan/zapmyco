@@ -116,6 +116,9 @@ pub(crate) async fn cmd_run(
 
     let mut agent = AiAgent::new(options)?;
 
+    // ── 注册终端输出日志到当前会话目录 ──
+    let _log_guard = register_terminal_log(&agent);
+
     // 注册 Ask User 工具
     let ask_user = ask_user::AskUser;
     agent.register_tool(crate::agent::chat::ToolHandler::AskUser(ask_user));
@@ -405,6 +408,27 @@ fn generate_session_id() -> String {
     format!("run_{}", chrono::Local::now().format("%Y%m%d_%H%M%S%9f"))
 }
 
+/// 在会话子目录中创建 terminal.log 并注册到全局 ROUTER
+///
+/// 返回的 guard 在 drop 时自动从 ROUTER 注销，确保在函数各返回路径正确清理。
+fn register_terminal_log(agent: &AiAgent) -> Option<TerminalLogGuard> {
+    let session_id = agent.session_id()?;
+    let log_dir = crate::agent::conversation_logger::get_log_dir().ok()?;
+    let log_path = log_dir.join(session_id).join("terminal.log");
+    let target = crate::output::LogTarget::new(&log_path).ok()?;
+    crate::output::ROUTER.add_target(Box::new(target));
+    Some(TerminalLogGuard)
+}
+
+/// Drop 时自动从全局 ROUTER 移除 LogTarget
+struct TerminalLogGuard;
+
+impl Drop for TerminalLogGuard {
+    fn drop(&mut self) {
+        crate::output::ROUTER.remove_target("log");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,5 +562,22 @@ mod tests {
         assert_eq!(options.model.unwrap(), "claude-opus-4-7");
         assert_eq!(options.api_key.unwrap(), "sk-claude-key");
         assert_eq!(options.base_url.unwrap(), "https://api.anthropic.com");
+    }
+
+    #[test]
+    fn test_terminal_log_guard_removes_log_target() {
+        let router = crate::output::Router::new();
+        let dir = tempfile::TempDir::new().unwrap();
+        let log_path = dir.path().join("terminal.log");
+        let target = crate::output::LogTarget::new(&log_path).unwrap();
+
+        // 添加 target
+        router.add_target(Box::new(target));
+
+        // 验证 remove_target 返回 true
+        assert!(router.remove_target("log"), "应成功移除 log target");
+
+        // 重复移除应返回 false
+        assert!(!router.remove_target("log"), "再次移除应返回 false");
     }
 }

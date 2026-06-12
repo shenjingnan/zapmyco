@@ -1,4 +1,4 @@
-/// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/conversations/
+/// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/conversations/<session_id>/
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -26,7 +26,7 @@ pub struct ConversationRecord {
 
 /// 对话日志写入器，每个会话创建一个实例
 pub struct ConversationLogger {
-    /// 当前会话的 .jsonl 文件路径
+    /// 当前会话的 conversation.jsonl 文件路径（位于会话子目录下）
     log_path: PathBuf,
     /// 会话 ID
     session_id: String,
@@ -37,14 +37,19 @@ pub struct ConversationLogger {
 impl ConversationLogger {
     /// 创建新的日志记录器
     ///
-    /// 在 `~/.zapmyco/conversations/` 下创建一个独立的 jsonl 文件。
-    /// 如果目录不存在会自动创建。
+    /// 在 `~/.zapmyco/conversations/` 下创建一个独立的会话子目录，
+    /// 子目录中包含 conversation.jsonl 记录 LLM 调用日志。
     pub fn new() -> Result<Self, String> {
         let session_id = generate_session_id();
-        let log_dir = get_log_dir()?;
-        std::fs::create_dir_all(&log_dir).map_err(|e| format!("创建日志目录失败: {}", e))?;
-
-        let log_path = log_dir.join(format!("{}.jsonl", session_id));
+        let conversations_dir = get_log_dir()?;
+        // 确保 conversations/ 父目录存在
+        std::fs::create_dir_all(&conversations_dir)
+            .map_err(|e| format!("创建会话目录失败: {}", e))?;
+        // 创建会话子目录
+        let session_dir = conversations_dir.join(&session_id);
+        std::fs::create_dir(&session_dir).map_err(|e| format!("创建会话子目录失败: {}", e))?;
+        // JSONL 文件放在子目录内
+        let log_path = session_dir.join("conversation.jsonl");
 
         Ok(Self {
             log_path,
@@ -90,6 +95,15 @@ impl ConversationLogger {
     /// 获取 session_id
     pub fn session_id(&self) -> &str {
         &self.session_id
+    }
+
+    /// 返回当前会话子目录路径（供 LogTarget 等组件使用）
+    pub fn session_dir(&self) -> PathBuf {
+        // log_path 为 {session_dir}/conversation.jsonl
+        self.log_path
+            .parent()
+            .expect("log_path 应有父目录")
+            .to_path_buf()
     }
 }
 
@@ -150,7 +164,7 @@ mod tests {
     #[test]
     fn test_logger_new() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|_home| {
+        run_with_temp_home(|home| {
             let logger = ConversationLogger::new();
             assert!(logger.is_ok());
             let logger = logger.unwrap();
@@ -160,6 +174,9 @@ mod tests {
                 "session_id 长度至少 20: {}",
                 logger.session_id
             );
+            // 验证子目录已被创建
+            let session_dir = home.join(".zapmyco/conversations").join(&logger.session_id);
+            assert!(session_dir.is_dir(), "会话子目录应已创建");
         });
     }
 
@@ -169,7 +186,7 @@ mod tests {
         run_with_temp_home(|home| {
             let logger = ConversationLogger::new().unwrap();
             let log_dir = home.join(".zapmyco/conversations");
-            let expected_file = log_dir.join(format!("{}.jsonl", logger.session_id));
+            let expected_file = log_dir.join(&logger.session_id).join("conversation.jsonl");
 
             // 文件还未创建（append 时才创建）
             assert!(!expected_file.exists());
@@ -218,9 +235,10 @@ mod tests {
                 .unwrap();
 
             let log_dir = home.join(".zapmyco/conversations");
-            let content =
-                std::fs::read_to_string(log_dir.join(format!("{}.jsonl", logger.session_id)))
-                    .unwrap();
+            let content = std::fs::read_to_string(
+                log_dir.join(&logger.session_id).join("conversation.jsonl"),
+            )
+            .unwrap();
 
             let lines: Vec<&str> = content.lines().collect();
             assert_eq!(lines.len(), 2, "应有 2 行日志");
@@ -329,9 +347,10 @@ mod tests {
             }
 
             let log_dir = home.join(".zapmyco/conversations");
-            let content =
-                std::fs::read_to_string(log_dir.join(format!("{}.jsonl", logger.session_id())))
-                    .unwrap();
+            let content = std::fs::read_to_string(
+                log_dir.join(logger.session_id()).join("conversation.jsonl"),
+            )
+            .unwrap();
             let lines: Vec<&str> = content.lines().collect();
             assert_eq!(lines.len(), 5, "应有 5 条日志记录");
 

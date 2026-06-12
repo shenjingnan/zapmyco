@@ -1247,6 +1247,11 @@ impl AiAgent {
     pub fn max_tokens(&self) -> u32 {
         self.max_tokens
     }
+
+    /// 获取当前会话 ID（如果日志已启用）
+    pub fn session_id(&self) -> Option<&str> {
+        self.logger.as_ref().map(|l| l.session_id())
+    }
 }
 
 /// 解析 API Key
@@ -1880,7 +1885,7 @@ mod tests {
 
             // 验证日志文件被正确写入
             let log_dir = home.join(".zapmyco/conversations");
-            let log_file = log_dir.join(format!("{}.jsonl", logger.session_id()));
+            let log_file = log_dir.join(format!("{}/conversation.jsonl", logger.session_id()));
             let content = std::fs::read_to_string(&log_file).unwrap();
             assert!(content.contains("test-model"), "日志应包含模型名");
             assert!(content.contains("Hello"), "日志应包含请求内容");
@@ -2458,7 +2463,7 @@ mod tests {
 
             // 验证日志文件被正确写入
             let log_dir = home.join(".zapmyco/conversations");
-            let log_file = log_dir.join(format!("{}.jsonl", logger.session_id()));
+            let log_file = log_dir.join(format!("{}/conversation.jsonl", logger.session_id()));
             let content = std::fs::read_to_string(&log_file).unwrap();
             assert!(content.contains("test-model"), "日志应包含模型名");
             assert!(content.contains("你好"), "日志应包含文本");
@@ -2501,7 +2506,7 @@ mod tests {
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 100);
 
             let log_dir = home.join(".zapmyco/conversations");
-            let log_file = log_dir.join(format!("{}.jsonl", logger.session_id()));
+            let log_file = log_dir.join(format!("{}/conversation.jsonl", logger.session_id()));
             let content = std::fs::read_to_string(&log_file).unwrap();
             assert!(content.contains("tool_use"), "有工具调用时应为 tool_use");
             assert!(content.contains("file_find"), "日志应包含工具名");
@@ -4703,7 +4708,8 @@ mod tests {
     #[test]
     fn test_conversation_log_round_trip_content_preserved() {
         run_with_temp_home(|home| {
-            create_test_settings(home, "[llm]\n");
+            // 禁用 AiAgent 的日志，避免与下面的独立 logger 冲突
+            create_test_settings(home, "[llm]\n[conversation_log]\nenabled = false\n");
 
             // 构建含 context_reminder 的多轮对话
             let mut agent = AiAgent::new(AiAgentOptions {
