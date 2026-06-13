@@ -645,3 +645,85 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+mod run_tool_registration_tests {
+    use super::*;
+    use crate::agent::chat::{AiAgent, AiAgentOptions};
+    use crate::cli::PermissionMode;
+
+    fn agent_with_mode(mode: PermissionMode) -> AiAgent {
+        let mut agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        agent.register_tool(crate::agent::chat::ToolHandler::AskUser(
+            crate::tools::ask_user::AskUser,
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(
+            crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap(),
+        ));
+
+        let shell_exec = if mode == PermissionMode::ReadOnly {
+            crate::tools::shell_exec::ShellExec::new(crate::tools::shell_exec::ShellExecOptions {
+                readonly_mode: true,
+                allowed_commands: crate::tools::shell_exec::builtin_safe_commands(),
+                skip_confirm: true,
+                ..Default::default()
+            })
+        } else {
+            crate::tools::shell_exec::ShellExec::new(Default::default())
+        };
+        agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+
+        agent.register_tool(crate::agent::chat::ToolHandler::FileRead(
+            crate::tools::file_read::FileRead::new(Default::default()),
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(
+            crate::tools::file_edit::FileEdit::new(Default::default()),
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(
+            crate::tools::file_write::FileWrite::new(Default::default()),
+        ));
+
+        let deny_tools: &[&str] = match mode {
+            PermissionMode::ReadOnly => &["file_write", "file_edit"],
+            PermissionMode::ReadWrite => &["shell_exec"],
+            PermissionMode::Full => &[],
+        };
+        agent.remove_tools(deny_tools);
+        agent
+    }
+
+    #[test]
+    fn test_full_mode_has_all_tools() {
+        let agent = agent_with_mode(PermissionMode::Full);
+        let names = agent.tool_names();
+        assert!(names.contains(&"shell_exec".to_string()));
+        assert!(names.contains(&"file_write".to_string()));
+        assert!(names.contains(&"file_edit".to_string()));
+    }
+
+    #[test]
+    fn test_readwrite_removes_shell_exec() {
+        let agent = agent_with_mode(PermissionMode::ReadWrite);
+        let names = agent.tool_names();
+        assert!(!names.contains(&"shell_exec".to_string()));
+        assert!(names.contains(&"file_write".to_string()));
+        assert!(names.contains(&"file_edit".to_string()));
+    }
+
+    #[test]
+    fn test_readonly_keeps_shell_exec_removes_write() {
+        let agent = agent_with_mode(PermissionMode::ReadOnly);
+        let names = agent.tool_names();
+        assert!(
+            names.contains(&"shell_exec".to_string()),
+            "ReadOnly 应保留 shell_exec（受限）"
+        );
+        assert!(!names.contains(&"file_write".to_string()));
+        assert!(!names.contains(&"file_edit".to_string()));
+    }
+}

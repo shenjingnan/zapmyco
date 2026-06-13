@@ -1399,3 +1399,384 @@ allow = ["git status", "cargo check"]
         });
     }
 }
+
+#[cfg(test)]
+mod classify_readonly_tests {
+    use super::*;
+
+    #[test]
+    fn test_classify_pwd() {
+        assert!(classify_readonly_command("pwd", &[]).is_ok());
+    }
+
+    #[test]
+    fn test_classify_ls_with_args() {
+        assert!(classify_readonly_command("ls -la /tmp", &[]).is_ok());
+    }
+
+    #[test]
+    fn test_classify_echo_with_text() {
+        assert!(classify_readonly_command("echo hello", &[]).is_ok());
+    }
+
+    #[test]
+    fn test_classify_cd_with_path() {
+        assert!(classify_readonly_command("cd /tmp", &[]).is_ok());
+    }
+
+    #[test]
+    fn test_classify_all_builtin_commands() {
+        for pattern in BUILTIN_SAFE_COMMANDS {
+            if pattern.ends_with(' ') {
+                let test_cmd = format!("{}arg", pattern);
+                assert!(
+                    classify_readonly_command(&test_cmd, &[]).is_ok(),
+                    "BUILTIN '{}' 应匹配 '{}'",
+                    pattern,
+                    test_cmd
+                );
+            } else {
+                assert!(
+                    classify_readonly_command(pattern, &[]).is_ok(),
+                    "BUILTIN '{}' 应为安全",
+                    pattern
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_classify_rejects_redirect() {
+        let r = classify_readonly_command("echo hello > file", &[]);
+        assert!(matches!(r, Err(ReadonlyDenyReason::ControlOperator)));
+    }
+
+    #[test]
+    fn test_classify_rejects_pipe() {
+        let r = classify_readonly_command("ls | grep foo", &[]);
+        assert!(matches!(r, Err(ReadonlyDenyReason::ControlOperator)));
+    }
+
+    #[test]
+    fn test_classify_rejects_chain_and_or() {
+        assert!(matches!(
+            classify_readonly_command("echo a && echo b", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+        assert!(matches!(
+            classify_readonly_command("echo a || echo b", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+        assert!(matches!(
+            classify_readonly_command("echo a; rm -rf /", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+    }
+
+    #[test]
+    fn test_classify_rejects_subshell_backtick() {
+        assert!(matches!(
+            classify_readonly_command("echo $(whoami)", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+        assert!(matches!(
+            classify_readonly_command("echo `whoami`", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+    }
+
+    #[test]
+    fn test_classify_rejects_bare_var_expansion() {
+        assert!(matches!(
+            classify_readonly_command("echo $HOME", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+        assert!(matches!(
+            classify_readonly_command("echo $PATH", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+    }
+
+    #[test]
+    fn test_classify_rejects_background_ampersand() {
+        assert!(matches!(
+            classify_readonly_command("sleep 5 &", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+        assert!(matches!(
+            classify_readonly_command("echo hello & echo world", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+    }
+
+    #[test]
+    fn test_classify_rejects_input_redirect() {
+        assert!(matches!(
+            classify_readonly_command("cat < /etc/passwd", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+        assert!(matches!(
+            classify_readonly_command("sort < input.txt", &[]),
+            Err(ReadonlyDenyReason::ControlOperator)
+        ));
+    }
+
+    #[test]
+    fn test_classify_denied_command() {
+        let denied = vec!["git".to_string()];
+        let r = classify_readonly_command("git status", &denied);
+        assert!(matches!(r, Err(ReadonlyDenyReason::DeniedByUser(_))));
+        if let Err(ReadonlyDenyReason::DeniedByUser(p)) = r {
+            assert_eq!(p, "git");
+        }
+    }
+
+    #[test]
+    fn test_classify_deny_overrides_builtin() {
+        let denied = vec!["ls".to_string()];
+        let r = classify_readonly_command("ls -la", &denied);
+        assert!(matches!(r, Err(ReadonlyDenyReason::DeniedByUser(_))));
+    }
+
+    #[test]
+    fn test_classify_deny_trailing_space() {
+        let denied = vec!["git ".to_string()];
+        // "git"（裸）不应被 "git " 匹配，但 "git" 也不在安全列表中
+        let r = classify_readonly_command("git", &denied);
+        assert!(
+            matches!(r, Err(ReadonlyDenyReason::NotInSafeList)),
+            "bare 'git' 不应被 'git ' deny 规则匹配"
+        );
+        // "git status" 应被 "git " deny 规则匹配
+        let r = classify_readonly_command("git status", &denied);
+        assert!(matches!(r, Err(ReadonlyDenyReason::DeniedByUser(_))));
+    }
+
+    #[test]
+    fn test_classify_unknown_and_dangerous() {
+        assert!(matches!(
+            classify_readonly_command("git status", &[]),
+            Err(ReadonlyDenyReason::NotInSafeList)
+        ));
+        assert!(matches!(
+            classify_readonly_command("rm -rf /", &[]),
+            Err(ReadonlyDenyReason::NotInSafeList)
+        ));
+    }
+
+    #[test]
+    fn test_classify_empty_and_whitespace() {
+        assert!(matches!(
+            classify_readonly_command("", &[]),
+            Err(ReadonlyDenyReason::NotInSafeList)
+        ));
+        assert!(matches!(
+            classify_readonly_command("   ", &[]),
+            Err(ReadonlyDenyReason::NotInSafeList)
+        ));
+    }
+
+    #[test]
+    fn test_classify_bare_echo_rejected() {
+        let r = classify_readonly_command("echo", &[]);
+        assert!(matches!(r, Err(ReadonlyDenyReason::NotInSafeList)));
+    }
+
+    #[test]
+    fn test_classify_no_cross_word() {
+        assert!(matches!(
+            classify_readonly_command("lsblk", &[]),
+            Err(ReadonlyDenyReason::NotInSafeList)
+        ));
+        assert!(matches!(
+            classify_readonly_command("hostnamectl", &[]),
+            Err(ReadonlyDenyReason::NotInSafeList)
+        ));
+        assert!(matches!(
+            classify_readonly_command("idone", &[]),
+            Err(ReadonlyDenyReason::NotInSafeList)
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_classify_windows_commands() {
+        assert!(classify_readonly_command("ver", &[]).is_ok());
+        assert!(classify_readonly_command("systeminfo", &[]).is_ok());
+        assert!(classify_readonly_command("dir", &[]).is_ok());
+        assert!(classify_readonly_command("date /t", &[]).is_ok());
+        assert!(classify_readonly_command("time /t", &[]).is_ok());
+        assert!(classify_readonly_command("vol", &[]).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod readonly_execute_tests {
+    use super::*;
+
+    fn readonly_executor() -> ShellExec {
+        ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        })
+    }
+
+    #[tokio::test]
+    async fn test_execute_pwd() {
+        let r = readonly_executor()
+            .execute("pwd", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_ls() {
+        let r = readonly_executor().execute("ls", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_echo() {
+        let r = readonly_executor()
+            .execute("echo hello_world", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("hello_world"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_working_dir() {
+        let tmp = std::env::temp_dir();
+        let r = readonly_executor()
+            .execute("pwd", None, tmp.to_str())
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_rejects_unsafe() {
+        let r = readonly_executor()
+            .execute("rm -rf /", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+        assert!(r.contains("file_read"), "应有替代指引: {}", r);
+    }
+
+    #[tokio::test]
+    async fn test_execute_rejects_git() {
+        let r = readonly_executor()
+            .execute("git status", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+        assert!(
+            r.contains("pwd") || r.contains("通用"),
+            "应列出允许命令: {}",
+            r
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_rejects_redirect() {
+        let r = readonly_executor()
+            .execute("echo hello > /tmp/x", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+        assert!(r.contains("控制运算符"), "应指明控制运算符: {}", r);
+    }
+
+    #[tokio::test]
+    async fn test_execute_rejects_pipe() {
+        let r = readonly_executor()
+            .execute("ls | sort", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+        assert!(r.contains("控制运算符"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_respects_user_deny() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec!["ls".to_string()],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("ls -la", None, None).await.unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+        assert!(r.contains("禁止"), "应指明用户 deny: {}", r);
+    }
+
+    #[tokio::test]
+    async fn test_execute_readonly_overrides_skip_confirm() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("rm -rf /", None, None).await.unwrap();
+        assert!(
+            r.contains("[ReadOnly] 命令被拒绝"),
+            "skip_confirm=true 不应绕过 readonly"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_bare_echo_rejected() {
+        let r = readonly_executor()
+            .execute("echo", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"), "bare echo 应被拒绝");
+    }
+
+    #[tokio::test]
+    async fn test_normal_mode_still_works() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: false,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("pwd", None, None).await.unwrap();
+        assert!(
+            r.contains("Exit code: 0"),
+            "正常模式下 pwd 仍应可执行: {}",
+            r
+        );
+    }
+
+    #[tokio::test]
+    async fn test_readonly_with_skip_confirm_false() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: false,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("rm -rf /", None, None).await.unwrap();
+        assert!(
+            r.contains("[ReadOnly] 命令被拒绝"),
+            "readonly_mode=true 时 skip_confirm=false 也应拒绝"
+        );
+    }
+}

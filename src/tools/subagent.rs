@@ -1980,3 +1980,52 @@ mod tests {
     // Re-export File for tests
     use std::fs::File;
 }
+
+#[cfg(test)]
+mod permission_inheritance_tests {
+    use super::*;
+    use crate::cli::PermissionMode;
+
+    #[test]
+    fn test_build_command_full_no_flag() {
+        let (_, args) = build_command("task", true, None, PermissionMode::Full).unwrap();
+        assert!(!args.contains(&"--permission-mode".to_string()));
+    }
+
+    #[test]
+    fn test_build_command_readonly_adds_flag() {
+        let (_, args) = build_command("task", true, None, PermissionMode::ReadOnly).unwrap();
+        let idx = args.iter().position(|a| a == "--permission-mode").unwrap();
+        assert_eq!(args[idx + 1], "readonly");
+    }
+
+    #[test]
+    fn test_build_command_readwrite_adds_flag() {
+        let (_, args) = build_command("task", true, None, PermissionMode::ReadWrite).unwrap();
+        let idx = args.iter().position(|a| a == "--permission-mode").unwrap();
+        assert_eq!(args[idx + 1], "readwrite");
+    }
+
+    #[test]
+    fn test_build_command_with_skill_and_permission() {
+        let (_, args) =
+            build_command("task", true, Some("explore"), PermissionMode::ReadOnly).unwrap();
+        assert!(args.contains(&"--skill".to_string()));
+        assert!(args.contains(&"explore".to_string()));
+        assert!(args.contains(&"--permission-mode".to_string()));
+        assert!(args.contains(&"readonly".to_string()));
+        assert_eq!(args.last().unwrap(), "task");
+    }
+
+    #[test]
+    fn test_with_permission_mode_stores_value() {
+        let tool = SubAgentTool::with_permission_mode(PermissionMode::ReadOnly).unwrap();
+        assert_eq!(tool.permission_mode, PermissionMode::ReadOnly);
+    }
+
+    #[test]
+    fn test_new_defaults_to_full() {
+        let tool = SubAgentTool::new().unwrap();
+        assert_eq!(tool.permission_mode, PermissionMode::Full);
+    }
+}
