@@ -135,11 +135,21 @@ pub(crate) async fn cmd_run(
         .and_then(|s| s.permissions)
         .map(|p| (p.commands.allow, p.commands.deny))
         .unwrap_or_default();
-    let shell_exec = shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-        allowed_commands,
-        denied_commands,
-        ..Default::default()
-    });
+    let shell_exec = if permission_mode == PermissionMode::ReadOnly {
+        shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: shell_exec::builtin_safe_commands(),
+            denied_commands,
+            skip_confirm: true,
+            ..Default::default()
+        })
+    } else {
+        shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+            allowed_commands,
+            denied_commands,
+            ..Default::default()
+        })
+    };
     agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
 
     // 注册 Web 搜索工具
@@ -200,8 +210,8 @@ pub(crate) async fn cmd_run(
 
     // ---- 注册 SubAgent 工具（子进程模式跳过） ----
     if !subagent {
-        let subagent_tool =
-            subagent::SubAgentTool::new().map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
+        let subagent_tool = subagent::SubAgentTool::with_permission_mode(permission_mode)
+            .map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
         agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
     }
 
@@ -228,15 +238,24 @@ pub(crate) async fn cmd_run(
 
     // ---- 根据权限模式过滤工具 ----
     if permission_mode != PermissionMode::Full {
-        let deny_tools: &[&str] = match permission_mode {
-            PermissionMode::ReadOnly => &["file_write", "file_edit", "shell_exec"],
-            PermissionMode::ReadWrite => &["shell_exec"],
-            PermissionMode::Full => &[],
+        let (deny_tools, shell_note): (&[&str], &str) = match permission_mode {
+            PermissionMode::ReadOnly => (
+                &["file_write", "file_edit"],
+                "shell_exec 受限（仅安全只读命令）",
+            ),
+            PermissionMode::ReadWrite => (&["shell_exec"], ""),
+            PermissionMode::Full => (&[], ""),
         };
         output::send(&Message::info(format!(
-            "[权限模式] {:?} — 已禁止工具: {:?}",
-            permission_mode, deny_tools
+            "[权限模式] {:?} — 已禁止: {:?}",
+            permission_mode, deny_tools,
         )));
+        if !shell_note.is_empty() {
+            output::send(&Message::info(format!(
+                "[权限模式] {:?} — {}",
+                permission_mode, shell_note,
+            )));
+        }
         agent.remove_tools(deny_tools);
     }
 
@@ -623,6 +642,104 @@ mod tests {
             assert!(content.contains("warning from test"), "应包含 stderr 消息");
             assert!(content.contains("[STDOUT]"), "应包含 STDOUT 通道标记");
             assert!(content.contains("[STDERR]"), "应包含 STDERR 通道标记");
+        });
+    }
+}
+
+#[cfg(test)]
+mod run_tool_registration_tests {
+    use super::*;
+    use crate::agent::chat::{AiAgent, AiAgentOptions};
+    use crate::cli::PermissionMode;
+    use crate::test_util::run_with_temp_home;
+
+    fn agent_with_mode(mode: PermissionMode, home: &std::path::Path) -> AiAgent {
+        // AiAgent::new() 需要 settings.toml
+        let settings_dir = home.join(".zapmyco");
+        std::fs::create_dir_all(&settings_dir).unwrap();
+        std::fs::write(
+            settings_dir.join("settings.toml"),
+            "[llm]\napi_key = \"test\"\n",
+        )
+        .unwrap();
+
+        let mut agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        agent.register_tool(crate::agent::chat::ToolHandler::AskUser(
+            crate::tools::ask_user::AskUser,
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(
+            crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap(),
+        ));
+
+        let shell_exec = if mode == PermissionMode::ReadOnly {
+            crate::tools::shell_exec::ShellExec::new(crate::tools::shell_exec::ShellExecOptions {
+                readonly_mode: true,
+                allowed_commands: crate::tools::shell_exec::builtin_safe_commands(),
+                skip_confirm: true,
+                ..Default::default()
+            })
+        } else {
+            crate::tools::shell_exec::ShellExec::new(Default::default())
+        };
+        agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+
+        agent.register_tool(crate::agent::chat::ToolHandler::FileRead(
+            crate::tools::file_read::FileRead::new(Default::default()),
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(
+            crate::tools::file_edit::FileEdit::new(Default::default()),
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(
+            crate::tools::file_write::FileWrite::new(Default::default()),
+        ));
+
+        let deny_tools: &[&str] = match mode {
+            PermissionMode::ReadOnly => &["file_write", "file_edit"],
+            PermissionMode::ReadWrite => &["shell_exec"],
+            PermissionMode::Full => &[],
+        };
+        agent.remove_tools(deny_tools);
+        agent
+    }
+
+    #[test]
+    fn test_full_mode_has_all_tools() {
+        run_with_temp_home(|home| {
+            let agent = agent_with_mode(PermissionMode::Full, home);
+            let names = agent.tool_names();
+            assert!(names.contains(&"shell_exec".to_string()));
+            assert!(names.contains(&"file_write".to_string()));
+            assert!(names.contains(&"file_edit".to_string()));
+        });
+    }
+
+    #[test]
+    fn test_readwrite_removes_shell_exec() {
+        run_with_temp_home(|home| {
+            let agent = agent_with_mode(PermissionMode::ReadWrite, home);
+            let names = agent.tool_names();
+            assert!(!names.contains(&"shell_exec".to_string()));
+            assert!(names.contains(&"file_write".to_string()));
+            assert!(names.contains(&"file_edit".to_string()));
+        });
+    }
+
+    #[test]
+    fn test_readonly_keeps_shell_exec_removes_write() {
+        run_with_temp_home(|home| {
+            let agent = agent_with_mode(PermissionMode::ReadOnly, home);
+            let names = agent.tool_names();
+            assert!(
+                names.contains(&"shell_exec".to_string()),
+                "ReadOnly 应保留 shell_exec（受限）"
+            );
+            assert!(!names.contains(&"file_write".to_string()));
+            assert!(!names.contains(&"file_edit".to_string()));
         });
     }
 }
