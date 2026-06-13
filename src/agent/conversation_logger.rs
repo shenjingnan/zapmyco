@@ -1,7 +1,7 @@
 /// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/conversations/<session_id>/
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use chrono::Local;
 
@@ -104,6 +104,118 @@ impl ConversationLogger {
             .parent()
             .expect("log_path 应有父目录")
             .to_path_buf()
+    }
+}
+
+/// 一条工具调用记录，对应 tool_calls.jsonl 中的一行
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolCallRecord {
+    /// 会话 ID: YYYY-MM-DD_HHMMSS_P{PID}
+    pub session_id: String,
+    /// 会话内全局递增序号（从 0 开始）
+    pub order: u64,
+    /// ISO 8601 时间戳
+    pub ts: String,
+    /// 工具调用轮次序号（第几次 round-trip）
+    pub round: u32,
+    /// 工具名称（如 "file_read"）
+    pub tool: String,
+    /// API 返回的 tool_use_id
+    pub tool_use_id: String,
+    /// 工具的输入参数
+    pub input: serde_json::Value,
+    /// 给 LLM 的完整输出文本（与 ToolResult.content 一致）
+    pub output: String,
+    /// 原始错误信息（无 [Tool error: ...] 包装），成功时为 None
+    pub error: Option<String>,
+    /// 执行耗时（毫秒）
+    pub duration_ms: u64,
+}
+
+/// 工具调用日志写入器，输出到 <session_dir>/tool_calls.jsonl
+pub struct ToolCallLogger {
+    log_path: PathBuf,
+    session_id: String,
+    order: AtomicU64,
+    /// 写锁：确保并发写入时行不交错
+    write_lock: std::sync::Mutex<()>,
+}
+
+impl ToolCallLogger {
+    /// 创建新的工具调用日志记录器
+    ///
+    /// session_dir: ConversationLogger 创建的会话子目录路径
+    /// 文件写入 <session_dir>/tool_calls.jsonl
+    pub fn new(session_dir: &std::path::Path, session_id: &str) -> Result<Self, String> {
+        let log_path = session_dir.join("tool_calls.jsonl");
+        Ok(Self {
+            log_path,
+            session_id: session_id.to_string(),
+            order: AtomicU64::new(0),
+            write_lock: std::sync::Mutex::new(()),
+        })
+    }
+
+    /// 追加一条工具调用记录到 tool_calls.jsonl
+    ///
+    /// 使用 `std::fs` 同步 I/O（与 ConversationLogger.append_record 一致），
+    /// 避免在 tokio 运行时中引入额外的异步 I/O 复杂度。
+    /// 写失败会向上传播错误，调用方应记录但不影响主流程。
+    #[expect(clippy::too_many_arguments)]
+    pub fn append_tool_call(
+        &self,
+        tool: &str,
+        tool_use_id: &str,
+        input: &serde_json::Value,
+        output: &str,
+        error: Option<&str>,
+        duration_ms: u64,
+        round: u32,
+    ) -> Result<(), String> {
+        let order = self.order.fetch_add(1, Ordering::SeqCst);
+        let ts = crate::datetime::iso_timestamp_now();
+
+        let record = ToolCallRecord {
+            session_id: self.session_id.clone(),
+            order,
+            ts,
+            round,
+            tool: tool.to_string(),
+            tool_use_id: tool_use_id.to_string(),
+            input: input.clone(),
+            output: output.to_string(),
+            error: error.map(|s| s.to_string()),
+            duration_ms,
+        };
+
+        let json_line =
+            serde_json::to_string(&record).map_err(|e| format!("序列化工具调用记录失败: {}", e))?;
+
+        let _lock = self.write_lock.lock().unwrap();
+
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.log_path)
+            .map_err(|e| format!("打开工具调用日志文件失败: {}", e))?;
+
+        writeln!(file, "{}", json_line).map_err(|e| format!("写入工具调用日志文件失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 返回当前会话子目录路径
+    pub fn session_dir(&self) -> std::path::PathBuf {
+        self.log_path
+            .parent()
+            .expect("log_path 应有父目录")
+            .to_path_buf()
+    }
+
+    /// 获取 session_id
+    pub fn session_id(&self) -> &str {
+        &self.session_id
     }
 }
 
@@ -516,6 +628,482 @@ mod tests {
 
             // terminal.log 此时还未创建（交给 register_terminal_log 创建）
             assert!(!terminal_log_path.exists());
+        });
+    }
+
+    // ---- ToolCallLogger tests (TDD) ----
+
+    #[test]
+    fn test_tool_call_logger_new_path() {
+        crate::test_util::run_with_temp_home(|home| {
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            let expected = cl.session_dir().join("tool_calls.jsonl");
+            assert_eq!(tcl.log_path, expected);
+        });
+    }
+
+    #[test]
+    fn test_tool_call_logger_append_valid_jsonl() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            let file_path = cl.session_dir().join("tool_calls.jsonl");
+
+            assert!(!file_path.exists());
+
+            tcl.append_tool_call(
+                "file_read",
+                "toolu_abc",
+                &json!({"file_path": "/tmp/test.txt"}),
+                "file content",
+                None,
+                5,
+                0,
+            )
+            .unwrap();
+
+            assert!(file_path.exists());
+
+            let content = std::fs::read_to_string(&file_path).unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+            assert_eq!(lines.len(), 1);
+            let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+            assert_eq!(parsed["tool"], "file_read");
+            assert_eq!(parsed["output"], "file content");
+            assert!(parsed["error"].is_null());
+        });
+    }
+
+    #[test]
+    fn test_tool_call_logger_error_field() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            tcl.append_tool_call(
+                "shell_exec",
+                "toolu_def",
+                &json!({"command": "invalid cmd"}),
+                "[Tool error: command not found]",
+                Some("command not found"),
+                1200,
+                0,
+            )
+            .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["error"], "command not found");
+            assert_eq!(records[0]["output"], "[Tool error: command not found]");
+        });
+    }
+
+    /// 读取 JSONL 文件所有记录（测试辅助函数）
+    fn read_jsonl(path: &std::path::Path) -> Vec<serde_json::Value> {
+        let file = std::fs::File::open(path).unwrap();
+        use std::io::BufRead;
+        std::io::BufReader::new(file)
+            .lines()
+            .map(|line| serde_json::from_str(&line.unwrap()).unwrap())
+            .collect()
+    }
+
+    // ---- TC-4: order 全局递增 ----
+
+    #[test]
+    fn test_tool_call_logger_order_increments() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            for i in 0..10 {
+                tcl.append_tool_call(
+                    "file_read",
+                    "tu_1",
+                    &json!({}),
+                    &format!("result_{}", i),
+                    None,
+                    i * 10,
+                    0,
+                )
+                .unwrap();
+            }
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            for (idx, record) in records.iter().enumerate() {
+                assert_eq!(record["order"], idx as u64);
+                assert_eq!(record["output"], format!("result_{}", idx));
+            }
+        });
+    }
+
+    // ---- TC-5: 跨多个轮次记录（round 字段） ----
+
+    #[test]
+    fn test_tool_call_logger_round_field() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            tcl.append_tool_call(
+                "file_find",
+                "tu_a",
+                &json!({"pattern":"*.rs"}),
+                "a.rs",
+                None,
+                10,
+                0,
+            )
+            .unwrap();
+            tcl.append_tool_call(
+                "file_read",
+                "tu_b",
+                &json!({"file_path":"a.rs"}),
+                "content",
+                None,
+                5,
+                0,
+            )
+            .unwrap();
+            tcl.append_tool_call(
+                "file_edit",
+                "tu_c",
+                &json!({"file_path":"a.rs"}),
+                "ok",
+                None,
+                8,
+                1,
+            )
+            .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["round"], 0);
+            assert_eq!(records[1]["round"], 0);
+            assert_eq!(records[2]["round"], 1);
+        });
+    }
+
+    // ---- TC-6: 大量调用不丢数据 ----
+
+    #[test]
+    fn test_tool_call_logger_persists() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            let n = 1000u64;
+
+            for i in 0..n {
+                tcl.append_tool_call(
+                    "file_read",
+                    &format!("tu_{}", i),
+                    &json!({"idx": i}),
+                    &format!("out_{}", i),
+                    None,
+                    i,
+                    0,
+                )
+                .unwrap();
+            }
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records.len(), n as usize);
+            assert_eq!(records.last().unwrap()["order"], n - 1);
+        });
+    }
+
+    // ---- TC-7: 空字符串字段 ----
+
+    #[test]
+    fn test_tool_call_logger_empty_strings() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            tcl.append_tool_call("", "", &json!({}), "", Some(""), 0, 0)
+                .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["tool"], "");
+            assert_eq!(records[0]["tool_use_id"], "");
+            assert_eq!(records[0]["output"], "");
+            assert_eq!(records[0]["error"], "");
+            assert_eq!(records[0]["input"], json!({}));
+        });
+    }
+
+    // ---- TC-8: 大输出（100KB + 1MB） ----
+
+    #[test]
+    fn test_tool_call_logger_large_output_100kb() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            let large = "A".repeat(100 * 1024);
+            tcl.append_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"size":"100KB"}),
+                &large,
+                None,
+                50,
+                0,
+            )
+            .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            let output = records[0]["output"].as_str().unwrap();
+            assert_eq!(output.len(), 100 * 1024);
+            assert_eq!(output, &large);
+        });
+    }
+
+    #[test]
+    fn test_tool_call_logger_large_output_1mb() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            let large = "B".repeat(1024 * 1024);
+            tcl.append_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"size":"1MB"}),
+                &large,
+                None,
+                100,
+                0,
+            )
+            .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            let output = records[0]["output"].as_str().unwrap();
+            assert_eq!(output.len(), 1024 * 1024);
+            assert_eq!(output, &large);
+        });
+    }
+
+    // ---- TC-8b: 大入参（边界压力） ----
+
+    #[test]
+    fn test_tool_call_logger_large_input() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            let large = "x".repeat(100 * 1024);
+            let input = json!({"data": large, "nested": {"deep": large}});
+            tcl.append_tool_call("file_write", "tu_1", &input, "ok", None, 10, 0)
+                .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["input"]["data"], large);
+        });
+    }
+
+    // ---- TC-9: Unicode/特殊字符 ----
+
+    #[test]
+    fn test_tool_call_logger_unicode() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            let unicode_output = "你好，世界\nこんにちは\n🌍🌎🌏\n\x00null char \x1b escape";
+            tcl.append_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"path": "测试"}),
+                unicode_output,
+                None,
+                0,
+                0,
+            )
+            .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["output"], unicode_output);
+            assert_eq!(records[0]["input"]["path"], "测试");
+        });
+    }
+
+    // ---- TC-10: duration_ms = 0 ----
+
+    #[test]
+    fn test_tool_call_logger_zero_duration() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            tcl.append_tool_call(
+                "pre_read_check",
+                "tu_1",
+                &json!({}),
+                "[Tool error: blocked]",
+                Some("blocked"),
+                0,
+                0,
+            )
+            .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["duration_ms"], 0);
+        });
+    }
+
+    // ---- TC-11: 输入参数包含嵌套 JSON ----
+
+    #[test]
+    fn test_tool_call_logger_nested_input() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            let input = json!({
+                "file_path": "/path/to/file.rs",
+                "edits": [
+                    {"start_line": 1, "end_line": 3, "new_content": "abc"},
+                    {"start_line": 10, "end_line": 15, "new_content": "def"}
+                ]
+            });
+            tcl.append_tool_call("file_edit", "tu_1", &input, "edited 2 blocks", None, 15, 0)
+                .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["input"]["edits"][0]["start_line"], 1);
+            assert_eq!(records[0]["input"]["edits"][1]["start_line"], 10);
+        });
+    }
+
+    // ---- TC-11b: 超长工具名和 tool_use_id ----
+
+    #[test]
+    fn test_tool_call_logger_long_names() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+
+            let long_name = "a".repeat(1000);
+            let long_id = "toolu_".to_string() + &"x".repeat(500);
+            tcl.append_tool_call(&long_name, &long_id, &json!({}), "ok", None, 0, 0)
+                .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["tool"], long_name);
+            assert_eq!(records[0]["tool_use_id"], long_id);
+        });
+    }
+
+    // ---- TC-11c: session_id 一致性 ----
+
+    #[test]
+    fn test_tool_call_logger_session_id_match() {
+        crate::test_util::run_with_temp_home(|home| {
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let session_id = cl.session_id().to_string();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), &session_id).unwrap();
+
+            tcl.append_tool_call("file_read", "tu_1", &json!({}), "data", None, 0, 0)
+                .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["session_id"], session_id);
+        });
+    }
+
+    // ---- TC-11d: ToolCallRecord round-trip 序列化 ----
+
+    #[test]
+    fn test_tool_call_logger_record_roundtrip() {
+        let record = ToolCallRecord {
+            session_id: "2026-06-12_211500_P12345".into(),
+            order: 42,
+            ts: "2026-06-12T21:15:00+08:00".into(),
+            round: 2,
+            tool: "file_read".into(),
+            tool_use_id: "toolu_abc123".into(),
+            input: json!({"file_path": "/tmp/x.txt"}),
+            output: "file content".into(),
+            error: Some("permission denied".into()),
+            duration_ms: 5,
+        };
+
+        let json = serde_json::to_string(&record).unwrap();
+        let deserialized: ToolCallRecord = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.session_id, record.session_id);
+        assert_eq!(deserialized.order, record.order);
+        assert_eq!(deserialized.ts, record.ts);
+        assert_eq!(deserialized.round, record.round);
+        assert_eq!(deserialized.tool, record.tool);
+        assert_eq!(deserialized.tool_use_id, record.tool_use_id);
+        assert_eq!(deserialized.input, record.input);
+        assert_eq!(deserialized.output, record.output);
+        assert_eq!(deserialized.error, record.error);
+        assert_eq!(deserialized.duration_ms, record.duration_ms);
+    }
+
+    // ---- TC-12: 并发调用的 order 严格递增 ----
+
+    #[test]
+    fn test_tool_call_logger_concurrent_order() {
+        crate::test_util::run_with_temp_home(|home| {
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = std::sync::Arc::new(
+                ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap(),
+            );
+
+            let mut handles = vec![];
+            for i in 0..50u64 {
+                let tcl = tcl.clone();
+                handles.push(std::thread::spawn(move || {
+                    tcl.append_tool_call(
+                        "file_read",
+                        &format!("tu_{}", i),
+                        &json!({"idx": i}),
+                        &format!("out_{}", i),
+                        None,
+                        i,
+                        0,
+                    )
+                    .unwrap();
+                }));
+            }
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            let file_path = cl.session_dir().join("tool_calls.jsonl");
+            let records = read_jsonl(&file_path);
+            assert_eq!(records.len(), 50);
+
+            let mut orders: Vec<u64> = records
+                .iter()
+                .map(|r| r["order"].as_u64().unwrap())
+                .collect();
+            orders.sort();
+            let expected: Vec<u64> = (0..50).collect();
+            assert_eq!(orders, expected, "order 应覆盖 0..49 且无重复");
+
+            let raw = std::fs::read_to_string(&file_path).unwrap();
+            for line in raw.lines() {
+                let parsed: Result<serde_json::Value, _> = serde_json::from_str(line);
+                assert!(parsed.is_ok(), "并发写入后每行应为合法 JSON: {}", line);
+            }
         });
     }
 }

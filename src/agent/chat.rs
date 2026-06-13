@@ -9,7 +9,7 @@ use zapmyco_anthropic_ai_sdk::types::message::{
     RequiredMessageParams, Role, StreamEvent, Tool,
 };
 
-use crate::agent::conversation_logger::ConversationLogger;
+use crate::agent::conversation_logger::{ConversationLogger, ToolCallLogger};
 use crate::agent::system_prompt::SystemPromptBuilder;
 use crate::config::models::{
     get_built_in_model_names, get_model_info, guess_provider_from_model_name,
@@ -234,6 +234,8 @@ pub struct AiAgent {
     prompt_builder: crate::agent::system_prompt::SystemPromptBuilder,
     messages: Vec<ConversationMessage>,
     logger: Option<ConversationLogger>,
+    /// 工具调用日志记录器（记录每次工具调用的入参、出参、耗时）
+    tool_call_logger: Option<ToolCallLogger>,
     /// 已注册的工具
     tools: Vec<ToolHandler>,
     /// 工具调用最大轮次
@@ -381,6 +383,18 @@ impl AiAgent {
             None
         };
 
+        // 初始化工具调用日志记录器（与对话日志同生命周期）
+        let tool_call_logger = logger.as_ref().and_then(|l| {
+            ToolCallLogger::new(&l.session_dir(), l.session_id())
+                .inspect_err(|e| {
+                    output::send(&output::Message::warning(format!(
+                        "初始化工具调用日志失败: {}",
+                        e
+                    )));
+                })
+                .ok()
+        });
+
         // 10. 加载 AGENTS.md
         let agents_md_content =
             crate::agent::agents_md::load_agents_md(&std::env::current_dir().unwrap_or_default());
@@ -393,6 +407,7 @@ impl AiAgent {
             system_prompt,
             messages: Vec::new(),
             logger,
+            tool_call_logger,
             tools: Vec::new(),
             max_tool_rounds: u32::MAX,
             read_file_state: std::collections::HashMap::new(),
@@ -759,13 +774,13 @@ impl AiAgent {
             for batch in batches {
                 if batch.is_concurrency_safe {
                     let (blocks, state_updates) =
-                        self.execute_tools_concurrent(&batch.items).await?;
+                        self.execute_tools_concurrent(&batch.items, round).await?;
                     for (fp, mtime) in state_updates {
                         self.read_file_state.insert(fp, mtime);
                     }
                     tool_result_blocks.extend(blocks);
                 } else {
-                    let blocks = self.execute_tools_serial(&batch.items).await?;
+                    let blocks = self.execute_tools_serial(&batch.items, round).await?;
                     tool_result_blocks.extend(blocks);
                 }
             }
@@ -812,6 +827,7 @@ impl AiAgent {
     async fn execute_tools_serial(
         &mut self,
         tool_uses: &[(String, String, serde_json::Value)],
+        round: u32,
     ) -> Result<Vec<ContentBlock>, String> {
         // 按工具类型统计并输出本轮概览
         {
@@ -916,14 +932,14 @@ impl AiAgent {
             let icon = crate::agent::executor::tool_icon(name);
             let param = crate::agent::executor::format_tool_param(name, input);
 
-            let result_text = if let Some(err_msg) = pre_read_error {
+            let (result_text, error_opt) = if let Some(err_msg) = pre_read_error {
                 tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
                 output::send(&output::Message::tool_error(
                     icon,
                     name.clone(),
                     err_msg.clone(),
                 ));
-                format!("[Tool error: {}]", err_msg)
+                (format!("[Tool error: {}]", err_msg), Some(err_msg))
             } else {
                 match handler.execute(input).await {
                     Ok(text) => {
@@ -954,7 +970,7 @@ impl AiAgent {
                             param.clone(),
                             elapsed.as_millis() as u64,
                         ));
-                        text
+                        (text, None)
                     }
                     Err(e) => {
                         tracing::warn!(tool = %name, error = %e, "工具执行失败");
@@ -963,10 +979,24 @@ impl AiAgent {
                             name.clone(),
                             e.to_string(),
                         ));
-                        format!("[Tool error: {}]", e)
+                        let err_string = e.to_string();
+                        (format!("[Tool error: {}", err_string), Some(err_string))
                     }
                 }
             };
+
+            let duration_ms = tool_start.elapsed().as_millis() as u64;
+
+            // 记录工具调用日志（统一入口，失败只告警不阻塞主流程）
+            self.log_tool_call(
+                name,
+                tool_use_id,
+                input,
+                &result_text,
+                error_opt.as_deref(),
+                duration_ms,
+                round,
+            );
 
             tool_result_blocks.push(ContentBlock::ToolResult {
                 tool_use_id: tool_use_id.clone(),
@@ -981,6 +1011,7 @@ impl AiAgent {
     async fn execute_tools_concurrent(
         &self,
         tool_uses: &[(String, String, serde_json::Value)],
+        round: u32,
     ) -> Result<(Vec<ContentBlock>, Vec<(String, u64)>), String> {
         // 按工具类型统计并输出本轮概览
         {
@@ -1097,67 +1128,108 @@ impl AiAgent {
             futures.push(Box::pin(async move {
                 let tool_start = Instant::now();
 
-                let (result_text, file_state, log_line) = if let Some(err_msg) = pre_read_error {
-                    tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
-                    let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
-                    (format!("[Tool error: {}]", err_msg), None, line)
-                } else {
-                    match handler.execute(&input_clone).await {
-                        Ok(text) => {
-                            let file_state = if name_clone == "file_read" {
-                                input_clone
-                                    .get("file_path")
-                                    .and_then(|v| v.as_str())
-                                    .map(|fp| {
-                                        let mtime = std::path::Path::new(fp)
-                                            .metadata()
-                                            .ok()
-                                            .and_then(|meta| meta.modified().ok())
-                                            .and_then(|mtime| {
-                                                mtime.duration_since(std::time::UNIX_EPOCH).ok()
-                                            })
-                                            .map(|d| d.as_millis() as u64)
-                                            .unwrap_or(0);
-                                        (fp.to_string(), mtime)
-                                    })
-                            } else {
-                                None
-                            };
-                            let elapsed = tool_start.elapsed();
-                            tracing::info!(
-                                tool = %name_clone,
-                                duration_ms = elapsed.as_millis() as u64,
-                                result_len = text.len(),
-                                "工具执行成功"
-                            );
-                            let line = format!(
-                                "[工具] {} {}  {}  ({:.1}s, {} 字符)",
-                                icon,
-                                name_clone,
-                                param,
-                                elapsed.as_secs_f64(),
-                                text.len()
-                            );
-                            (text, file_state, line)
+                let (result_text, file_state, log_line, error_opt) =
+                    if let Some(err_msg) = pre_read_error {
+                        tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
+                        let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
+                        (
+                            format!("[Tool error: {}]", err_msg),
+                            None,
+                            line,
+                            Some(err_msg),
+                        )
+                    } else {
+                        match handler.execute(&input_clone).await {
+                            Ok(text) => {
+                                let file_state = if name_clone == "file_read" {
+                                    input_clone.get("file_path").and_then(|v| v.as_str()).map(
+                                        |fp| {
+                                            let mtime = std::path::Path::new(fp)
+                                                .metadata()
+                                                .ok()
+                                                .and_then(|meta| meta.modified().ok())
+                                                .and_then(|mtime| {
+                                                    mtime.duration_since(std::time::UNIX_EPOCH).ok()
+                                                })
+                                                .map(|d| d.as_millis() as u64)
+                                                .unwrap_or(0);
+                                            (fp.to_string(), mtime)
+                                        },
+                                    )
+                                } else {
+                                    None
+                                };
+                                let elapsed = tool_start.elapsed();
+                                tracing::info!(
+                                    tool = %name_clone,
+                                    duration_ms = elapsed.as_millis() as u64,
+                                    result_len = text.len(),
+                                    "工具执行成功"
+                                );
+                                let line = format!(
+                                    "[工具] {} {}  {}  ({:.1}s, {} 字符)",
+                                    icon,
+                                    name_clone,
+                                    param,
+                                    elapsed.as_secs_f64(),
+                                    text.len()
+                                );
+                                (text, file_state, line, None)
+                            }
+                            Err(e) => {
+                                tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
+                                let err_string = e.to_string();
+                                let line = format!(
+                                    "[工具] {} {}  {}  ❌ 失败: {}",
+                                    icon, name_clone, param, err_string
+                                );
+                                (
+                                    format!("[Tool error: {}]", err_string),
+                                    None,
+                                    line,
+                                    Some(err_string),
+                                )
+                            }
                         }
-                        Err(e) => {
-                            tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
-                            let line = format!(
-                                "[工具] {} {}  {}  ❌ 失败: {}",
-                                icon, name_clone, param, e
-                            );
-                            (format!("[Tool error: {}]", e), None, line)
-                        }
-                    }
-                };
+                    };
 
-                (idx, tool_use_id_clone, result_text, file_state, log_line)
+                let duration_ms = tool_start.elapsed().as_millis() as u64;
+                (
+                    idx,
+                    tool_use_id_clone,
+                    result_text,
+                    file_state,
+                    log_line,
+                    error_opt,
+                    duration_ms,
+                )
             }));
         }
 
-        // 收集并发 future 的结果
-        while let Some((idx, tool_use_id, result_text, file_state, log_line)) = futures.next().await
+        // 收集并发 future 的结果——每完成一个立即记录工具调用日志
+        while let Some((
+            idx,
+            tool_use_id,
+            result_text,
+            file_state,
+            log_line,
+            error_opt,
+            duration_ms,
+        )) = futures.next().await
         {
+            // 立即记录：每个工具完成时写入，避免意外退出导致数据丢失
+            // log_tool_call 内部已处理 logger 为空的情况
+            let (_, ref name, ref input) = tool_uses[idx];
+            self.log_tool_call(
+                name,
+                &tool_use_id,
+                input,
+                &result_text,
+                error_opt.as_deref(),
+                duration_ms,
+                round,
+            );
+
             results[idx] = Some(result_text);
             result_ids[idx] = Some(tool_use_id);
             log_lines[idx] = Some(log_line);
@@ -1251,6 +1323,36 @@ impl AiAgent {
     /// 获取当前会话 ID（如果日志已启用）
     pub fn session_id(&self) -> Option<&str> {
         self.logger.as_ref().map(|l| l.session_id())
+    }
+
+    /// 统一的工具调用日志记录入口
+    ///
+    /// 串行路径（execute_tools_serial）和并发路径（execute_tools_concurrent）
+    /// 都通过此方法记录。写失败只输出 `tracing::warn!`，不传播错误。
+    #[expect(clippy::too_many_arguments)]
+    fn log_tool_call(
+        &self,
+        name: &str,
+        tool_use_id: &str,
+        input: &serde_json::Value,
+        result_text: &str,
+        error_opt: Option<&str>,
+        duration_ms: u64,
+        round: u32,
+    ) {
+        if let Some(ref logger) = self.tool_call_logger
+            && let Err(e) = logger.append_tool_call(
+                name,
+                tool_use_id,
+                input,
+                result_text,
+                error_opt,
+                duration_ms,
+                round,
+            )
+        {
+            tracing::warn!(error = %e, "记录工具调用日志失败");
+        }
     }
 }
 
@@ -1423,6 +1525,7 @@ fn prompt_model_replacement(
 mod tests {
     use super::*;
     use crate::test_util::run_with_temp_home;
+    use serde_json::json;
     use zapmyco_anthropic_ai_sdk::types::message::{
         MessageDeltaContent, MessageStartContent, StopReason, StreamError, StreamUsage, Usage,
     };
@@ -2611,7 +2714,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses)
+                    .execute_tools_serial(&tool_uses, 0)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -2650,7 +2753,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses)
+                    .execute_tools_serial(&tool_uses, 0)
                     .await
                     .expect("execute_tools should not fail");
 
@@ -2683,11 +2786,10 @@ mod tests {
                     "file_path": test_file.to_string_lossy().to_string(),
                 });
                 let _ = agent
-                    .execute_tools_serial(&vec![(
-                        "tu00".to_string(),
-                        "file_read".to_string(),
-                        read_input,
-                    )])
+                    .execute_tools_serial(
+                        &vec![("tu00".to_string(), "file_read".to_string(), read_input)],
+                        0,
+                    )
                     .await
                     .unwrap();
 
@@ -2706,7 +2808,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses)
+                    .execute_tools_serial(&tool_uses, 0)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -2743,7 +2845,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses)
+                    .execute_tools_serial(&tool_uses, 0)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -2767,7 +2869,7 @@ mod tests {
                     serde_json::json!({}),
                 )];
 
-                let result = agent.execute_tools_serial(&tool_uses).await;
+                let result = agent.execute_tools_serial(&tool_uses, 0).await;
                 assert!(result.is_ok(), "unknown tool should not cause fatal error");
                 let blocks = result.unwrap();
                 assert_eq!(blocks.len(), 1, "should return one tool result");
@@ -3385,7 +3487,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -3410,7 +3512,7 @@ mod tests {
             rt.block_on(async {
                 let agent = make_agent_with_tools(home, &["file_read"]);
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&[])
+                    .execute_tools_concurrent(&[], 0)
                     .await
                     .expect("empty batch should succeed");
 
@@ -3440,7 +3542,7 @@ mod tests {
                 )];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("single tool should succeed");
 
@@ -3485,7 +3587,7 @@ mod tests {
                 ];
 
                 let (blocks, _) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -3540,7 +3642,7 @@ mod tests {
                 )];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent read should succeed");
 
@@ -3585,7 +3687,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent read should succeed");
 
@@ -3634,7 +3736,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent mixed execution should succeed");
 
@@ -3680,7 +3782,7 @@ mod tests {
                     serde_json::json!({}),
                 )];
 
-                let result = agent.execute_tools_concurrent(&tool_uses).await;
+                let result = agent.execute_tools_concurrent(&tool_uses, 0).await;
                 assert!(result.is_ok(), "unknown tool should not cause fatal error");
                 let (blocks, _) = result.unwrap();
                 assert_eq!(blocks.len(), 1, "should return one tool result");
@@ -3719,7 +3821,7 @@ mod tests {
                 ];
 
                 // 串行执行 — 不应 panic 或返回 Err
-                let result = agent.execute_tools_serial(&tool_uses).await;
+                let result = agent.execute_tools_serial(&tool_uses, 0).await;
                 assert!(
                     result.is_ok(),
                     "serial: unknown tool mixed with known should not error"
@@ -3756,7 +3858,7 @@ mod tests {
                 );
 
                 // 并发执行 — 不应 panic 或返回 Err
-                let result = agent.execute_tools_concurrent(&tool_uses).await;
+                let result = agent.execute_tools_concurrent(&tool_uses, 0).await;
                 assert!(
                     result.is_ok(),
                     "concurrent: unknown tool mixed with known should not error"
@@ -3807,7 +3909,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should not fail even if some find nothing");
 
@@ -3863,7 +3965,7 @@ mod tests {
                 )];
 
                 let (blocks, state_updates) =
-                    agent.execute_tools_concurrent(&tool_uses).await.expect(
+                    agent.execute_tools_concurrent(&tool_uses, 0).await.expect(
                         "concurrent execution should not fail (pre-read check returns error msg)",
                     );
 
@@ -3902,7 +4004,7 @@ mod tests {
                 )];
 
                 let (blocks, _) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -3940,7 +4042,7 @@ mod tests {
                 ];
 
                 let (blocks, _) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should not panic on failure");
 
@@ -3972,7 +4074,7 @@ mod tests {
                 )];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses)
+                    .execute_tools_concurrent(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -4040,7 +4142,7 @@ mod tests {
                 // Batch 1: safe — 并发执行
                 assert!(batches[0].is_concurrency_safe);
                 let (b1_blocks, _) = agent
-                    .execute_tools_concurrent(&batches[0].items)
+                    .execute_tools_concurrent(&batches[0].items, 0)
                     .await
                     .expect("batch 1 concurrent should succeed");
                 assert_eq!(b1_blocks.len(), 1);
@@ -4056,7 +4158,7 @@ mod tests {
                 // Batch 2: unsafe — 串行执行
                 assert!(!batches[1].is_concurrency_safe);
                 let b2_blocks = agent
-                    .execute_tools_serial(&batches[1].items)
+                    .execute_tools_serial(&batches[1].items, 0)
                     .await
                     .expect("batch 2 serial should succeed");
                 assert_eq!(b2_blocks.len(), 1);
@@ -4072,7 +4174,7 @@ mod tests {
                 // Batch 3: safe — 并发执行
                 assert!(batches[2].is_concurrency_safe);
                 let (b3_blocks, _) = agent
-                    .execute_tools_concurrent(&batches[2].items)
+                    .execute_tools_concurrent(&batches[2].items, 0)
                     .await
                     .expect("batch 3 concurrent should succeed");
                 assert_eq!(b3_blocks.len(), 1);
@@ -4104,7 +4206,7 @@ mod tests {
                 )];
 
                 let (read_blocks, state_updates) = agent
-                    .execute_tools_concurrent(&read_tools)
+                    .execute_tools_concurrent(&read_tools, 0)
                     .await
                     .expect("concurrent read should succeed");
 
@@ -4136,7 +4238,7 @@ mod tests {
                 )];
 
                 let edit_blocks = agent
-                    .execute_tools_serial(&edit_tools)
+                    .execute_tools_serial(&edit_tools, 0)
                     .await
                     .expect("serial edit should succeed after read");
 
@@ -4828,5 +4930,135 @@ mod tests {
                 "纯文本消息经过回环后 blocks 应为 None"
             );
         });
+    }
+
+    // ---- Phase 2: log_tool_call 测试 (TC-13 ~ TC-15) ----
+
+    #[test]
+    fn test_log_tool_call_logger_none() {
+        run_with_temp_home(|home| {
+            // conversation_log 禁用 → tool_call_logger 为 None
+            create_test_settings(
+                home,
+                r#"
+[llm]
+[conversation_log]
+enabled = false
+"#,
+            );
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".into()),
+                base_url: Some("http://localhost:9999".into()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(agent.tool_call_logger.is_none());
+
+            // 调用不应 panic（log_tool_call 是同步方法）
+            agent.log_tool_call("file_read", "tu_1", &json!({}), "ok", None, 0, 0);
+        });
+    }
+
+    #[test]
+    fn test_log_tool_call_logger_some() {
+        run_with_temp_home(|home| {
+            // 默认 conversation_log enabled
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".into()),
+                base_url: Some("http://localhost:9999".into()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(agent.tool_call_logger.is_some());
+
+            agent.log_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"path": "x"}),
+                "content",
+                None,
+                5,
+                0,
+            );
+
+            let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
+            let records = read_jsonl(&session_dir.join("tool_calls.jsonl"));
+            assert_eq!(records.len(), 1);
+            assert_eq!(records[0]["tool"], "file_read");
+            assert_eq!(records[0]["output"], "content");
+        });
+    }
+
+    #[test]
+    fn test_log_tool_call_write_failure_isolated() {
+        run_with_temp_home(|home| {
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".into()),
+                base_url: Some("http://localhost:9999".into()),
+                ..Default::default()
+            })
+            .unwrap();
+            let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
+            let file_path = session_dir.join("tool_calls.jsonl");
+
+            // 写入一条正常记录
+            agent.log_tool_call("file_read", "tu_1", &json!({}), "first", None, 0, 0);
+
+            // 将文件设为只读
+            set_readonly(&file_path);
+
+            // 再次调用 log_tool_call——不应 panic，不应传播错误
+            agent.log_tool_call("file_read", "tu_2", &json!({}), "second", None, 0, 0);
+
+            // 恢复权限后验证文件内容
+            set_writable(&file_path);
+            let records = read_jsonl(&file_path);
+            assert_eq!(records.len(), 1, "写入失败后不应追加新记录");
+            assert_eq!(records[0]["output"], "first");
+        });
+    }
+
+    // ---- 测试辅助函数 ----
+
+    /// 读取 JSONL 文件（仅测试用）
+    fn read_jsonl(path: &std::path::Path) -> Vec<serde_json::Value> {
+        let file = std::fs::File::open(path).unwrap();
+        use std::io::BufRead;
+        std::io::BufReader::new(file)
+            .lines()
+            .map(|line| serde_json::from_str(&line.unwrap()).unwrap())
+            .collect()
+    }
+
+    /// 设置文件只读（跨平台）
+    #[cfg(unix)]
+    fn set_readonly(path: &std::path::Path) {
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, Permissions::from_mode(0o444)).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn set_readonly(path: &std::path::Path) {
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    /// 设置文件可写（恢复只读）
+    #[cfg(unix)]
+    fn set_writable(path: &std::path::Path) {
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, Permissions::from_mode(0o644)).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn set_writable(path: &std::path::Path) {
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_readonly(false);
+        std::fs::set_permissions(path, perms).unwrap();
     }
 }

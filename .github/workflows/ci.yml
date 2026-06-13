@@ -46,7 +46,8 @@ jobs:
         run: typos .
 
       - name: Tests
-        run: cargo test -- --test-threads=1
+        # --jobs 1: 防止 lib 测试和集成测试并行修改 HOME 导致竞态
+        run: cargo test --jobs 1 -- --test-threads=1
 
       - name: Build
         run: cargo build --release
@@ -80,4 +81,5 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Tests
-        run: cargo test -- --test-threads=1
+        # --jobs 1: 防止 lib 测试和集成测试并行修改 HOME 导致竞态
+        run: cargo test --jobs 1 -- --test-threads=1
