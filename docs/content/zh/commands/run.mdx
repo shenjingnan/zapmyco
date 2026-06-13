@@ -23,7 +23,7 @@ zapmyco run --profile advanced 重构这个模块
 | `--api-key <key>` | 否 | 指定 API Key |
 | `--base-url <url>` | 否 | 指定 API 基础地址 |
 | `--skill <name>` | 否 | 引用外部 Skill 工作流 |
-| `--conversation <id>` | 否 | 复用指定会话上下文 |
+| `--session <id>` | 否 | 复用指定会话上下文 |
 | `--task-id <id>` | 否 | 复用指定会话的任务列表 |
 | `--permission-mode <mode>` | 否 | 限制 agent 操作权限 |
 
@@ -134,14 +134,14 @@ zapmyco run --skill check
 
 ---
 
-### `--conversation <id>` — 继续会话
+### `--session <id>` — 继续会话
 
 复用之前某次会话的上下文历史，让 AI 记住之前的对话内容。支持 Tab 键补全可用会话列表——按时间降序排列，每条记录会显示消息数量和摘要预览。
 
 适用于需要接着上次的任务继续进行的场景，AI 会延续之前的上下文继续工作。
 
 ```bash
-zapmyco run --conversation conv_20260610_223045 '继续之前的分析工作'
+zapmyco run --session conv_20260610_223045 '继续之前的分析工作'
 ```
 
 ---

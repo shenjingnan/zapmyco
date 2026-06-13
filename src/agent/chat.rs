@@ -9,13 +9,13 @@ use zapmyco_anthropic_ai_sdk::types::message::{
     RequiredMessageParams, Role, StreamEvent, Tool,
 };
 
-use crate::agent::conversation_logger::{ConversationLogger, ToolCallLogger};
+use crate::agent::session_logger::{SessionLogger, ToolCallLogger};
 use crate::agent::system_prompt::SystemPromptBuilder;
 use crate::config::models::{
     get_built_in_model_names, get_model_info, guess_provider_from_model_name,
 };
 use crate::config::settings::{
-    is_conversation_log_enabled, load_settings, resolve_env_ref, update_settings_model,
+    is_session_log_enabled, load_settings, resolve_env_ref, update_settings_model,
 };
 use crate::datetime;
 use crate::output;
@@ -233,7 +233,7 @@ pub struct AiAgent {
     /// 系统提示词构建器（管理基础提示词与静态长度）
     prompt_builder: crate::agent::system_prompt::SystemPromptBuilder,
     messages: Vec<ConversationMessage>,
-    logger: Option<ConversationLogger>,
+    logger: Option<SessionLogger>,
     /// 工具调用日志记录器（记录每次工具调用的入参、出参、耗时）
     tool_call_logger: Option<ToolCallLogger>,
     /// 已注册的工具
@@ -368,8 +368,8 @@ impl AiAgent {
         let system_prompt = prompt_builder.base_prompt().to_string();
 
         // 初始化对话日志记录器
-        let logger = if is_conversation_log_enabled(&settings) {
-            match ConversationLogger::new() {
+        let logger = if is_session_log_enabled(&settings) {
+            match SessionLogger::new() {
                 Ok(l) => Some(l),
                 Err(e) => {
                     output::send(&output::Message::warning(format!(
@@ -682,7 +682,7 @@ impl AiAgent {
         });
     }
 
-    /// 注入历史消息（用于 --conversation 恢复上下文）
+    /// 注入历史消息（用于 --session 恢复上下文）
     ///
     /// 将之前会话的消息历史注入当前 agent，同时设置 `context_injected = true`
     /// 防止 `chat_with_tools` 重复注入 context_reminder。
@@ -1961,7 +1961,7 @@ mod tests {
     #[test]
     fn test_log_round_trip_writes_record() {
         run_with_temp_home(|home| {
-            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
+            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
 
             let params = CreateMessageParams::new(RequiredMessageParams {
                 model: "test-model".to_string(),
@@ -1987,7 +1987,7 @@ mod tests {
             crate::agent::executor::log_round_trip(&logger, &params, &response, 100);
 
             // 验证日志文件被正确写入
-            let log_dir = home.join(".zapmyco/conversations");
+            let log_dir = home.join(".zapmyco/sessions");
             let log_file = log_dir.join(format!("{}/conversation.jsonl", logger.session_id()));
             let content = std::fs::read_to_string(&log_file).unwrap();
             assert!(content.contains("test-model"), "日志应包含模型名");
@@ -2004,8 +2004,8 @@ mod tests {
             std::fs::create_dir_all(&settings_dir).unwrap();
             std::fs::write(settings_dir.join("settings.toml"), "[llm]\n").unwrap();
 
-            // 将 conversations 创建为文件而非目录，使 create_dir_all 失败
-            std::fs::write(settings_dir.join("conversations"), "not a directory").unwrap();
+            // 将 sessions 创建为文件而非目录，使 create_dir_all 失败
+            std::fs::write(settings_dir.join("sessions"), "not a directory").unwrap();
 
             let result = AiAgent::new(AiAgentOptions {
                 api_key: Some("test-key".to_string()),
@@ -2040,7 +2040,7 @@ mod tests {
         run_with_temp_home(|home| {
             create_test_settings(
                 home,
-                "[llm]\napi_key = \"test\"\n[conversation_log]\nenabled = false\n",
+                "[llm]\napi_key = \"test\"\n[session_log]\nenabled = false\n",
             );
             let agent = AiAgent::new(AiAgentOptions {
                 api_key: Some("test-key".to_string()),
@@ -2575,7 +2575,7 @@ mod tests {
     #[test]
     fn test_log_round_trip_stream_writes_record() {
         run_with_temp_home(|home| {
-            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
+            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
 
             let params = CreateMessageParams::new(RequiredMessageParams {
                 model: "test-model".to_string(),
@@ -2601,7 +2601,7 @@ mod tests {
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 100);
 
             // 验证日志文件被正确写入
-            let log_dir = home.join(".zapmyco/conversations");
+            let log_dir = home.join(".zapmyco/sessions");
             let log_file = log_dir.join(format!("{}/conversation.jsonl", logger.session_id()));
             let content = std::fs::read_to_string(&log_file).unwrap();
             assert!(content.contains("test-model"), "日志应包含模型名");
@@ -2614,7 +2614,7 @@ mod tests {
     #[test]
     fn test_log_round_trip_stream_with_tool_uses() {
         run_with_temp_home(|home| {
-            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
+            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
 
             let params = CreateMessageParams::new(RequiredMessageParams {
                 model: "test-model".to_string(),
@@ -2644,7 +2644,7 @@ mod tests {
 
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 100);
 
-            let log_dir = home.join(".zapmyco/conversations");
+            let log_dir = home.join(".zapmyco/sessions");
             let log_file = log_dir.join(format!("{}/conversation.jsonl", logger.session_id()));
             let content = std::fs::read_to_string(&log_file).unwrap();
             assert!(content.contains("tool_use"), "有工具调用时应为 tool_use");
@@ -4780,7 +4780,7 @@ mod tests {
             let history = agent.messages.clone();
             let history_count = history.len();
 
-            // 创建新 agent 模拟 --conversation 场景
+            // 创建新 agent 模拟 --session 场景
             let mut new_agent = AiAgent::new(AiAgentOptions {
                 api_key: Some("test-key".to_string()),
                 ..Default::default()
@@ -4844,10 +4844,10 @@ mod tests {
     // ===== 对话日志回环测试 =====
 
     #[test]
-    fn test_conversation_log_round_trip_content_preserved() {
+    fn test_session_log_round_trip_content_preserved() {
         run_with_temp_home(|home| {
             // 禁用 AiAgent 的日志，避免与下面的独立 logger 冲突
-            create_test_settings(home, "[llm]\n[conversation_log]\nenabled = false\n");
+            create_test_settings(home, "[llm]\n[session_log]\nenabled = false\n");
 
             // 构建含 context_reminder 的多轮对话
             let mut agent = AiAgent::new(AiAgentOptions {
@@ -4874,7 +4874,7 @@ mod tests {
             let params = agent.build_params(true).unwrap();
 
             // 创建 logger 并写入日志
-            let logger = crate::agent::conversation_logger::ConversationLogger::new().unwrap();
+            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
             let result = crate::agent::stream::RoundResult {
                 full_text: "Here's the content of main.rs".to_string(),
                 tool_uses: vec![],
@@ -4892,8 +4892,7 @@ mod tests {
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 200);
 
             // 从 JSONL 加载回消息
-            let loaded =
-                crate::agent::conversation_loader::load_conversation(logger.session_id()).unwrap();
+            let loaded = crate::agent::session_loader::load_session(logger.session_id()).unwrap();
 
             // 验证消息条数一致
             assert_eq!(
@@ -4937,12 +4936,12 @@ mod tests {
     #[test]
     fn test_log_tool_call_logger_none() {
         run_with_temp_home(|home| {
-            // conversation_log 禁用 → tool_call_logger 为 None
+            // session_log 禁用 → tool_call_logger 为 None
             create_test_settings(
                 home,
                 r#"
 [llm]
-[conversation_log]
+[session_log]
 enabled = false
 "#,
             );
@@ -4962,7 +4961,7 @@ enabled = false
     #[test]
     fn test_log_tool_call_logger_some() {
         run_with_temp_home(|home| {
-            // 默认 conversation_log enabled
+            // 默认 session_log enabled
             create_test_settings(home, "[llm]\n");
             let agent = AiAgent::new(AiAgentOptions {
                 api_key: Some("test-key".into()),

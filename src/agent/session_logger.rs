@@ -1,11 +1,11 @@
-/// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/conversations/<session_id>/
+/// 对话日志模块 — 将每次 LLM 调用的完整请求/响应记录到 ~/.zapmyco/sessions/<session_id>/
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use chrono::Local;
 
-const CONVERSATIONS_DIR: &str = "conversations";
+const SESSIONS_DIR: &str = "sessions";
 
 /// 一条日志记录，对应 JSONL 中的一行
 #[derive(Debug, Serialize)]
@@ -25,7 +25,7 @@ pub struct ConversationRecord {
 }
 
 /// 对话日志写入器，每个会话创建一个实例
-pub struct ConversationLogger {
+pub struct SessionLogger {
     /// 当前会话的 conversation.jsonl 文件路径（位于会话子目录下）
     log_path: PathBuf,
     /// 会话 ID
@@ -34,19 +34,18 @@ pub struct ConversationLogger {
     order: AtomicU32,
 }
 
-impl ConversationLogger {
+impl SessionLogger {
     /// 创建新的日志记录器
     ///
-    /// 在 `~/.zapmyco/conversations/` 下创建一个独立的会话子目录，
+    /// 在 `~/.zapmyco/sessions/` 下创建一个独立的会话子目录，
     /// 子目录中包含 conversation.jsonl 记录 LLM 调用日志。
     pub fn new() -> Result<Self, String> {
         let session_id = generate_session_id();
-        let conversations_dir = get_log_dir()?;
-        // 确保 conversations/ 父目录存在
-        std::fs::create_dir_all(&conversations_dir)
-            .map_err(|e| format!("创建会话目录失败: {}", e))?;
+        let sessions_dir = get_sessions_dir()?;
+        // 确保 sessions/ 父目录存在
+        std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("创建会话目录失败: {}", e))?;
         // 创建会话子目录
-        let session_dir = conversations_dir.join(&session_id);
+        let session_dir = sessions_dir.join(&session_id);
         std::fs::create_dir(&session_dir).map_err(|e| format!("创建会话子目录失败: {}", e))?;
         // JSONL 文件放在子目录内
         let log_path = session_dir.join("conversation.jsonl");
@@ -144,7 +143,7 @@ pub struct ToolCallLogger {
 impl ToolCallLogger {
     /// 创建新的工具调用日志记录器
     ///
-    /// session_dir: ConversationLogger 创建的会话子目录路径
+    /// session_dir: SessionLogger 创建的会话子目录路径
     /// 文件写入 <session_dir>/tool_calls.jsonl
     pub fn new(session_dir: &std::path::Path, session_id: &str) -> Result<Self, String> {
         let log_path = session_dir.join("tool_calls.jsonl");
@@ -158,7 +157,7 @@ impl ToolCallLogger {
 
     /// 追加一条工具调用记录到 tool_calls.jsonl
     ///
-    /// 使用 `std::fs` 同步 I/O（与 ConversationLogger.append_record 一致），
+    /// 使用 `std::fs` 同步 I/O（与 SessionLogger.append_record 一致），
     /// 避免在 tokio 运行时中引入额外的异步 I/O 复杂度。
     /// 写失败会向上传播错误，调用方应记录但不影响主流程。
     #[expect(clippy::too_many_arguments)]
@@ -219,13 +218,13 @@ impl ToolCallLogger {
     }
 }
 
-/// 获取日志目录路径: ~/.zapmyco/conversations/
-pub(crate) fn get_log_dir() -> Result<PathBuf, String> {
+/// 获取日志目录路径: ~/.zapmyco/sessions/
+pub(crate) fn get_sessions_dir() -> Result<PathBuf, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| "无法获取用户 HOME 目录".to_string())?;
 
-    Ok(PathBuf::from(home).join(format!(".zapmyco/{}", CONVERSATIONS_DIR)))
+    Ok(PathBuf::from(home).join(format!(".zapmyco/{}", SESSIONS_DIR)))
 }
 
 /// 生成会话 ID: YYYY-MM-DD_HHMMSS_P{PID}
@@ -277,7 +276,7 @@ mod tests {
     fn test_logger_new() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new();
+            let logger = SessionLogger::new();
             assert!(logger.is_ok());
             let logger = logger.unwrap();
             // session_id 格式: YYYY-MM-DD_HHMMSS_P{PID}，至少 20 位
@@ -287,7 +286,7 @@ mod tests {
                 logger.session_id
             );
             // 验证子目录已被创建
-            let session_dir = home.join(".zapmyco/conversations").join(&logger.session_id);
+            let session_dir = home.join(".zapmyco/sessions").join(&logger.session_id);
             assert!(session_dir.is_dir(), "会话子目录应已创建");
         });
     }
@@ -296,8 +295,8 @@ mod tests {
     fn test_logger_creates_file_on_append() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new().unwrap();
-            let log_dir = home.join(".zapmyco/conversations");
+            let logger = SessionLogger::new().unwrap();
+            let log_dir = home.join(".zapmyco/sessions");
             let expected_file = log_dir.join(&logger.session_id).join("conversation.jsonl");
 
             // 文件还未创建（append 时才创建）
@@ -327,7 +326,7 @@ mod tests {
     fn test_logger_append_multiple_lines() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new().unwrap();
+            let logger = SessionLogger::new().unwrap();
 
             logger
                 .append_record(
@@ -346,7 +345,7 @@ mod tests {
                 )
                 .unwrap();
 
-            let log_dir = home.join(".zapmyco/conversations");
+            let log_dir = home.join(".zapmyco/sessions");
             let content = std::fs::read_to_string(
                 log_dir.join(&logger.session_id).join("conversation.jsonl"),
             )
@@ -366,16 +365,16 @@ mod tests {
     }
 
     #[test]
-    fn test_get_log_dir() {
+    fn test_get_sessions_dir() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let dir = get_log_dir().unwrap();
-            assert_eq!(dir, home.join(".zapmyco/conversations"));
+            let dir = get_sessions_dir().unwrap();
+            assert_eq!(dir, home.join(".zapmyco/sessions"));
         });
     }
 
     #[test]
-    fn test_get_log_dir_home_not_set() {
+    fn test_get_sessions_dir_home_not_set() {
         // SAFETY: 手动获取 HOME_LOCK 确保无竞态
         let _guard = crate::test_util::acquire_home_lock();
         let orig_home = std::env::var("HOME").ok();
@@ -384,7 +383,7 @@ mod tests {
             std::env::remove_var("HOME");
             std::env::remove_var("USERPROFILE");
         }
-        let result = get_log_dir();
+        let result = get_sessions_dir();
         assert!(result.is_err());
         assert!(result.err().unwrap().contains("HOME"));
         if let Some(h) = orig_home {
@@ -409,7 +408,7 @@ mod tests {
             std::env::remove_var("HOME");
             std::env::remove_var("USERPROFILE");
         }
-        let result = ConversationLogger::new();
+        let result = SessionLogger::new();
         assert!(result.is_err());
         if let Some(h) = orig_home {
             unsafe {
@@ -446,7 +445,7 @@ mod tests {
         use crate::test_util::run_with_temp_home;
 
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new().unwrap();
+            let logger = SessionLogger::new().unwrap();
             for i in 0..5 {
                 logger
                     .append_record(
@@ -458,7 +457,7 @@ mod tests {
                     .unwrap();
             }
 
-            let log_dir = home.join(".zapmyco/conversations");
+            let log_dir = home.join(".zapmyco/sessions");
             let content = std::fs::read_to_string(
                 log_dir.join(logger.session_id()).join("conversation.jsonl"),
             )
@@ -483,11 +482,11 @@ mod tests {
     fn test_session_dir_returns_correct_path() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new().unwrap();
+            let logger = SessionLogger::new().unwrap();
             let session_dir = logger.session_dir();
 
             // 验证返回的是子目录
-            let expected = home.join(".zapmyco/conversations").join(&logger.session_id);
+            let expected = home.join(".zapmyco/sessions").join(&logger.session_id);
             assert_eq!(session_dir, expected, "session_dir 应与期望路径一致");
 
             // 验证子目录已存在
@@ -503,8 +502,8 @@ mod tests {
     fn test_new_creates_session_directory() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new().unwrap();
-            let session_dir = home.join(".zapmyco/conversations").join(&logger.session_id);
+            let logger = SessionLogger::new().unwrap();
+            let session_dir = home.join(".zapmyco/sessions").join(&logger.session_id);
             let jsonl_path = session_dir.join("conversation.jsonl");
 
             // new() 后：子目录存在但文件不存在
@@ -518,10 +517,10 @@ mod tests {
         use crate::test_util::run_with_temp_home;
         use std::time::Duration;
         run_with_temp_home(|home| {
-            let logger1 = ConversationLogger::new().unwrap();
+            let logger1 = SessionLogger::new().unwrap();
             // 等待跨秒边界确保 session_id 不同（秒级精度）
             std::thread::sleep(Duration::from_millis(1500));
-            let logger2 = ConversationLogger::new().unwrap();
+            let logger2 = SessionLogger::new().unwrap();
 
             // 两个 session_id 不同
             assert_ne!(
@@ -530,7 +529,7 @@ mod tests {
             );
 
             // 子目录路径不同
-            let base = home.join(".zapmyco/conversations");
+            let base = home.join(".zapmyco/sessions");
             assert_ne!(
                 base.join(&logger1.session_id),
                 base.join(&logger2.session_id),
@@ -575,8 +574,8 @@ mod tests {
     fn test_session_dir_after_append() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new().unwrap();
-            let expected = home.join(".zapmyco/conversations").join(&logger.session_id);
+            let logger = SessionLogger::new().unwrap();
+            let expected = home.join(".zapmyco/sessions").join(&logger.session_id);
 
             // append 前
             assert_eq!(logger.session_dir(), expected);
@@ -597,16 +596,16 @@ mod tests {
     }
 
     #[test]
-    fn test_conversations_parent_dir_not_exist() {
+    fn test_sessions_parent_dir_not_exist() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            // 不创建 conversations 父目录
-            let logger = ConversationLogger::new();
+            // 不创建 sessions 父目录
+            let logger = SessionLogger::new();
             assert!(logger.is_ok(), "即使父目录不存在，new() 也应成功");
             let logger = logger.unwrap();
 
             // 验证完整路径正确
-            let session_dir = home.join(".zapmyco/conversations").join(&logger.session_id);
+            let session_dir = home.join(".zapmyco/sessions").join(&logger.session_id);
             assert!(session_dir.is_dir(), "会话子目录应已创建");
         });
     }
@@ -615,13 +614,13 @@ mod tests {
     fn test_terminal_log_path_derivation() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            let logger = ConversationLogger::new().unwrap();
+            let logger = SessionLogger::new().unwrap();
             let session_dir = logger.session_dir();
             let terminal_log_path = session_dir.join("terminal.log");
 
             // 验证路径推导正确
             let expected = home
-                .join(".zapmyco/conversations")
+                .join(".zapmyco/sessions")
                 .join(&logger.session_id)
                 .join("terminal.log");
             assert_eq!(terminal_log_path, expected);
@@ -636,7 +635,7 @@ mod tests {
     #[test]
     fn test_tool_call_logger_new_path() {
         crate::test_util::run_with_temp_home(|home| {
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
             let expected = cl.session_dir().join("tool_calls.jsonl");
             assert_eq!(tcl.log_path, expected);
@@ -647,7 +646,7 @@ mod tests {
     fn test_tool_call_logger_append_valid_jsonl() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
             let file_path = cl.session_dir().join("tool_calls.jsonl");
 
@@ -680,7 +679,7 @@ mod tests {
     fn test_tool_call_logger_error_field() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             tcl.append_tool_call(
@@ -716,7 +715,7 @@ mod tests {
     fn test_tool_call_logger_order_increments() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             for i in 0..10 {
@@ -746,7 +745,7 @@ mod tests {
     fn test_tool_call_logger_round_field() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             tcl.append_tool_call(
@@ -793,7 +792,7 @@ mod tests {
     fn test_tool_call_logger_persists() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
             let n = 1000u64;
 
@@ -822,7 +821,7 @@ mod tests {
     fn test_tool_call_logger_empty_strings() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             tcl.append_tool_call("", "", &json!({}), "", Some(""), 0, 0)
@@ -843,7 +842,7 @@ mod tests {
     fn test_tool_call_logger_large_output_100kb() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             let large = "A".repeat(100 * 1024);
@@ -869,7 +868,7 @@ mod tests {
     fn test_tool_call_logger_large_output_1mb() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             let large = "B".repeat(1024 * 1024);
@@ -897,7 +896,7 @@ mod tests {
     fn test_tool_call_logger_large_input() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             let large = "x".repeat(100 * 1024);
@@ -916,7 +915,7 @@ mod tests {
     fn test_tool_call_logger_unicode() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             let unicode_output = "你好，世界\nこんにちは\n🌍🌎🌏\n\x00null char \x1b escape";
@@ -943,7 +942,7 @@ mod tests {
     fn test_tool_call_logger_zero_duration() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             tcl.append_tool_call(
@@ -968,7 +967,7 @@ mod tests {
     fn test_tool_call_logger_nested_input() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             let input = json!({
@@ -993,7 +992,7 @@ mod tests {
     fn test_tool_call_logger_long_names() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
             let long_name = "a".repeat(1000);
@@ -1013,7 +1012,7 @@ mod tests {
     fn test_tool_call_logger_session_id_match() {
         crate::test_util::run_with_temp_home(|home| {
             // append_tool_call 是同步调用
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let session_id = cl.session_id().to_string();
             let tcl = ToolCallLogger::new(&cl.session_dir(), &session_id).unwrap();
 
@@ -1062,7 +1061,7 @@ mod tests {
     #[test]
     fn test_tool_call_logger_concurrent_order() {
         crate::test_util::run_with_temp_home(|home| {
-            let cl = ConversationLogger::new().unwrap();
+            let cl = SessionLogger::new().unwrap();
             let tcl = std::sync::Arc::new(
                 ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap(),
             );

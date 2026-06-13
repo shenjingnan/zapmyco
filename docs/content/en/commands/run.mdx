@@ -23,7 +23,7 @@ zapmyco run --profile advanced Refactor this module
 | `--api-key <key>` | No | Specify API Key |
 | `--base-url <url>` | No | Specify API base URL |
 | `--skill <name>` | No | Reference an external Skill workflow |
-| `--conversation <id>` | No | Reuse specified conversation context |
+| `--session <id>` | No | Reuse specified conversation context |
 | `--task-id <id>` | No | Reuse the task list of a specified conversation |
 | `--permission-mode <mode>` | No | Restrict agent operation permissions |
 
@@ -134,14 +134,14 @@ For detailed instructions, see the [Skill System Guide](/skill/overview).
 
 ---
 
-### `--conversation <id>` — Continue Conversation
+### `--session <id>` — Continue Conversation
 
 Reuse the conversation history from a previous session, allowing the AI to remember past dialogue. Supports Tab completion for available conversations — sorted in descending order by time, each entry shows message count and a summary preview.
 
 Ideal for scenarios where you need to continue from a previous task, allowing the AI to pick up where it left off.
 
 ```bash
-zapmyco run --conversation conv_20260610_223045 'Continue the previous analysis'
+zapmyco run --session conv_20260610_223045 'Continue the previous analysis'
 ```
 
 ---

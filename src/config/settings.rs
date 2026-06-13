@@ -39,7 +39,7 @@ pub struct LlmSettings {
 /// 对话日志配置
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ConversationLogSettings {
+pub struct SessionLogSettings {
     /// 是否启用对话日志（默认 true）
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -80,16 +80,16 @@ pub struct Settings {
     pub llm: Option<LlmSettings>,
     /// 对话日志配置
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub conversation_log: Option<ConversationLogSettings>,
+    pub session_log: Option<SessionLogSettings>,
     /// 权限配置（白名单/黑名单）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<Permissions>,
 }
 
 /// 检查对话日志是否启用（默认启用）
-pub fn is_conversation_log_enabled(settings: &Settings) -> bool {
+pub fn is_session_log_enabled(settings: &Settings) -> bool {
     settings
-        .conversation_log
+        .session_log
         .as_ref()
         .map(|c| c.enabled)
         .unwrap_or(true)
@@ -186,7 +186,7 @@ impl Settings {
         });
         Settings {
             llm,
-            conversation_log: self.conversation_log.clone(),
+            session_log: self.session_log.clone(),
             permissions: self.permissions.clone(),
         }
     }
@@ -582,7 +582,7 @@ advanced = "deepseek-v4-flash"
                     "deepseek-v4-flash".to_string(),
                 )])),
             }),
-            conversation_log: None,
+            session_log: None,
             permissions: None,
         };
         let masked = settings.masked();
@@ -613,7 +613,7 @@ advanced = "deepseek-v4-flash"
                 )])),
                 models: None,
             }),
-            conversation_log: None,
+            session_log: None,
             permissions: None,
         };
         let masked = settings.masked();
@@ -636,7 +636,7 @@ advanced = "deepseek-v4-flash"
     fn test_masked_no_llm() {
         let settings = Settings {
             llm: None,
-            conversation_log: None,
+            session_log: None,
             permissions: None,
         };
         let masked = settings.masked();
@@ -644,33 +644,33 @@ advanced = "deepseek-v4-flash"
     }
 
     #[test]
-    fn test_is_conversation_log_enabled_default_true() {
+    fn test_is_session_log_enabled_default_true() {
         let settings = Settings {
             llm: None,
-            conversation_log: None,
+            session_log: None,
             permissions: None,
         };
-        assert!(is_conversation_log_enabled(&settings));
+        assert!(is_session_log_enabled(&settings));
     }
 
     #[test]
-    fn test_is_conversation_log_enabled_explicit_true() {
+    fn test_is_session_log_enabled_explicit_true() {
         let settings = Settings {
             llm: None,
-            conversation_log: Some(ConversationLogSettings { enabled: true }),
+            session_log: Some(SessionLogSettings { enabled: true }),
             permissions: None,
         };
-        assert!(is_conversation_log_enabled(&settings));
+        assert!(is_session_log_enabled(&settings));
     }
 
     #[test]
-    fn test_is_conversation_log_enabled_explicit_false() {
+    fn test_is_session_log_enabled_explicit_false() {
         let settings = Settings {
             llm: None,
-            conversation_log: Some(ConversationLogSettings { enabled: false }),
+            session_log: Some(SessionLogSettings { enabled: false }),
             permissions: None,
         };
-        assert!(!is_conversation_log_enabled(&settings));
+        assert!(!is_session_log_enabled(&settings));
     }
 
     #[test]
@@ -830,7 +830,7 @@ default = "deepseek-v4-flash"
     fn test_serialize_settings_without_permissions() {
         let settings = Settings {
             llm: None,
-            conversation_log: None,
+            session_log: None,
             permissions: None,
         };
         let toml_str = toml::to_string(&settings).unwrap();
@@ -844,7 +844,7 @@ default = "deepseek-v4-flash"
     fn test_serialize_settings_with_permissions() {
         let settings = Settings {
             llm: None,
-            conversation_log: None,
+            session_log: None,
             permissions: Some(Permissions {
                 commands: CommandPermissions {
                     allow: vec!["git status".to_string()],
@@ -924,13 +924,13 @@ default = "deepseek-v4-flash"
 allow = ["git status"]
 deny = ["rm -rf"]
 
-[conversation_log]
+[session_log]
 enabled = true
 "#;
         let settings: Settings = toml::from_str(toml_str).unwrap();
         assert!(settings.llm.is_some());
         assert!(settings.permissions.is_some());
-        assert!(settings.conversation_log.unwrap().enabled);
+        assert!(settings.session_log.unwrap().enabled);
     }
 
     #[test]

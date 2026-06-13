@@ -1,4 +1,4 @@
-//! 日志消息目标——将消息写入 conversation 目录的 terminal.log。
+//! 日志消息目标——将消息写入 sessions 目录的 terminal.log。
 //!
 //! 在 conversation 期间注册到 Router，结束时移除。
 //! 写入的日志不含 ANSI 转义码，带时间戳和通道标记。
