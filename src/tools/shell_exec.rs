@@ -80,9 +80,6 @@ const BUILTIN_SAFE_COMMANDS: &[&str] = &[
     // ── Unix 目录列表 ──
     "ls", // 列出目录内容（含 ls -la, ls /tmp 等）
     // ── 日期和时间 ──
-    // 注意：允许 "date" 和 "date -u" 等参数，也允许 "date -s"（设置时间）。
-    // "date -s" 需要 root 权限，且 agent 极少生成此命令。
-    // 如对此有顾虑，可在 settings.toml 中将 "date" 加入 deny 列表。
     "date", // 日期时间
     // ── Windows CMD 等效命令 ──
     "ver",        // 显示 Windows 版本
@@ -91,6 +88,32 @@ const BUILTIN_SAFE_COMMANDS: &[&str] = &[
     "date /t",    // 显示日期（Windows，/t 表示只查看不设置）
     "time /t",    // 显示时间（Windows，/t 表示只查看不设置）
     "vol",        // 显示卷标（Windows）
+];
+
+/// 用户选择"始终允许"时禁止自动加入白名单的危险命令
+///
+/// 这些命令如果被误加入白名单，可能导致严重的安全问题。
+/// 用户仍然可以手动编辑 settings.toml 添加，但在交互式"始终允许"时被阻止。
+const DANGEROUS_ALWAYS_ALLOW_COMMANDS: &[&str] = &[
+    "rm",      // 删除文件/目录
+    "sudo",    // 提权执行
+    "dd",      // 直接磁盘操作
+    "chmod",   // 修改权限
+    "chown",   // 修改所有者
+    "mv",      // 移动/重命名（可覆盖文件）
+    "cp",      // 复制（可覆盖文件）
+    "python",  // Python 解释器（可执行任意代码）
+    "python3", // Python3 解释器
+    "node",    // Node.js 解释器
+    "ruby",    // Ruby 解释器
+    "perl",    // Perl 解释器
+    "php",     // PHP 解释器
+    "bash",    // 子 shell（可执行任意命令）
+    "sh",      // 子 shell
+    "zsh",     // 子 shell
+    "eval",    // 评估执行
+    "exec",    // 替换进程
+    "env",     // 环境变量操作
 ];
 
 /// 检查命令是否匹配允许模式，防止跨词匹配（如 "ls" 不匹配 "lsblk"）
@@ -416,22 +439,35 @@ impl ShellExec {
                     }
                     ConfirmAction::AlwaysAllow => {
                         let trimmed = command.trim();
-                        // 持久化到 settings.toml（允许失败，fail-open）
-                        if let Err(e) = crate::config::settings::add_to_command_allowlist(trimmed) {
+                        // 提取命令的第一个词作为白名单 pattern（匹配所有同命令操作）
+                        let first_word = trimmed.split_whitespace().next().unwrap_or(trimmed);
+
+                        // 危险命令不允许自动加入白名单
+                        if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+                            output::send(&Message::warning(format!(
+                                "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
+                                first_word
+                            )));
+                        } else if let Err(e) =
+                            crate::config::settings::add_to_command_allowlist(first_word)
+                        {
                             output::send(&Message::warning(format!(
                                 "⚠️  无法保存到白名单: {}，但命令将继续执行",
                                 e
                             )));
                         } else {
-                            output::send(&Message::info(
-                                "✅ 命令已加入白名单，以后将自动执行".to_string(),
-                            ));
+                            output::send(&Message::info(format!(
+                                "✅ 已加入白名单: `{}` 命令将自动执行",
+                                first_word
+                            )));
                         }
                         // 更新运行时白名单（Mutex 锁立即释放）
-                        self.allowed_commands_runtime
-                            .lock()
-                            .unwrap()
-                            .push(trimmed.to_string());
+                        if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+                            self.allowed_commands_runtime
+                                .lock()
+                                .unwrap()
+                                .push(first_word.to_string());
+                        }
                     }
                     ConfirmAction::Allow => {}
                 }
