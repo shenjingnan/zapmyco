@@ -122,6 +122,55 @@ fn contains_shell_control(cmd: &str) -> bool {
     cmd.contains(controls)
 }
 
+/// 返回内置安全命令列表的副本，供 ReadOnly 模式等场景使用。
+pub(crate) fn builtin_safe_commands() -> Vec<String> {
+    BUILTIN_SAFE_COMMANDS
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// 只读模式下的拒绝原因
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ReadonlyDenyReason {
+    /// 命令中包含 shell 控制运算符（; | > < ` $ &）
+    ControlOperator,
+    /// 被用户 deny 列表匹配
+    DeniedByUser(String),
+    /// 不在内置安全列表中
+    NotInSafeList,
+}
+
+/// 面向只读模式的统一安全检查，返回 Ok(()) 或具体拒绝原因。
+///
+/// 与 is_safe_command 不同：
+/// - 不检查 user_allowed 列表（readonly 模式忽略用户 allow）
+/// - 返回具体原因而非 bool，供拒绝消息直接使用
+/// - 检查顺序：空命令 → 控制运算符 → 用户 deny → BUILTIN_SAFE_COMMANDS
+pub(crate) fn classify_readonly_command(
+    command: &str,
+    denied: &[String],
+) -> Result<(), ReadonlyDenyReason> {
+    let cmd = command.trim();
+    if cmd.is_empty() {
+        return Err(ReadonlyDenyReason::NotInSafeList);
+    }
+    if contains_shell_control(cmd) {
+        return Err(ReadonlyDenyReason::ControlOperator);
+    }
+    for pattern in denied {
+        if matches_pattern(cmd, pattern) {
+            return Err(ReadonlyDenyReason::DeniedByUser(pattern.to_string()));
+        }
+    }
+    for pattern in BUILTIN_SAFE_COMMANDS {
+        if matches_pattern(cmd, pattern) {
+            return Ok(());
+        }
+    }
+    Err(ReadonlyDenyReason::NotInSafeList)
+}
+
 /// 判断命令是否为安全命令（匹配内置列表或用户自定义列表）
 ///
 /// 匹配流程：
@@ -174,6 +223,13 @@ pub struct ShellExecOptions {
     pub allowed_commands: Vec<String>,
     /// 用户自定义的拒绝命令前缀列表（优先于 allowed_commands）
     pub denied_commands: Vec<String>,
+    /// 只读模式标记
+    ///
+    /// 启用后：
+    /// - 仅允许 BUILTIN_SAFE_COMMANDS 中的命令（受 denied_commands 约束）
+    /// - 不匹配的命令直接返回拒绝消息，不弹确认框
+    /// - allowed_commands 在此模式下被忽略
+    pub readonly_mode: bool,
 }
 
 impl Default for ShellExecOptions {
@@ -184,6 +240,7 @@ impl Default for ShellExecOptions {
             skip_confirm: false,
             allowed_commands: Vec::new(),
             denied_commands: Vec::new(),
+            readonly_mode: false,
         }
     }
 }
@@ -282,7 +339,49 @@ impl ShellExec {
         }
 
         // 3. 权限检查
-        if !self.options.skip_confirm {
+        if self.options.readonly_mode {
+            // 只读模式权限检查：优先于 skip_confirm
+            match classify_readonly_command(command, &self.options.denied_commands) {
+                Ok(()) => {
+                    // 安全命令——直接放行
+                }
+                Err(reason) => {
+                    let msg = match reason {
+                        ReadonlyDenyReason::ControlOperator => format!(
+                            "[ReadOnly] 命令被拒绝: '{}'\n\
+                             原因: 命令包含 shell 控制运算符（; | > < ` $ &），\
+                             ReadOnly 模式禁止所有写入、管道、链式操作。\n\n\
+                             如需读取文件请使用 file_read 或 file_search 工具。",
+                            command
+                        ),
+                        ReadonlyDenyReason::DeniedByUser(pattern) => format!(
+                            "[ReadOnly] 命令被拒绝: '{}'\n\
+                             原因: 该命令已被用户在设置中配置为禁止（匹配规则: {}）。",
+                            command, pattern
+                        ),
+                        ReadonlyDenyReason::NotInSafeList => format!(
+                            "[ReadOnly] 命令被拒绝: '{}'\n\
+                             原因: 当前为 ReadOnly 模式，仅允许执行认证的安全只读命令。\n\n\
+                             允许的命令分类:\n\
+                               通用: pwd, whoami, echo, printf, cd\n\
+                               系统信息: uname, hostname, uptime, arch, which, id, logname, tty, cal\n\
+                               路径信息: basename, dirname, realpath, ls, date\n\
+                               Windows: ver, systeminfo, dir, date /t, time /t, vol\n\n\
+                             替代方案:\
+                             - 读取文件内容 → file_read\n\
+                             - 搜索文件内容 → file_search\n\
+                             - 查找文件名 → file_find\n\
+                             - 搜索网络 → web_search\n\
+                             - 获取网页 → web_fetch",
+                            command
+                        ),
+                    };
+                    output::send(&Message::warning(msg.clone()));
+                    return Ok(msg);
+                }
+            }
+        } else if !self.options.skip_confirm {
+            // 非只读模式：保持现有逻辑
             // 3a. 安全命令 → 自动放行（匹配内置或用户自定义列表）
             if is_safe_command(
                 command,
@@ -421,6 +520,7 @@ mod tests {
             skip_confirm: true,
             denied_commands: vec![],
             allowed_commands: Vec::new(),
+            readonly_mode: false,
         })
     }
 
@@ -561,6 +661,7 @@ mod tests {
             skip_confirm: true,
             denied_commands: vec![],
             allowed_commands: Vec::new(),
+            readonly_mode: false,
         });
 
         let result = executor.execute("sleep 10", None, None).await;
@@ -581,6 +682,7 @@ mod tests {
             skip_confirm: true,
             denied_commands: vec![],
             allowed_commands: Vec::new(),
+            readonly_mode: false,
         });
 
         // 生成超过 100 字符的输出
@@ -619,6 +721,7 @@ mod tests {
             skip_confirm: true,
             denied_commands: vec![],
             allowed_commands: Vec::new(),
+            readonly_mode: false,
         });
         assert_eq!(executor.options.timeout_secs, 60);
         assert_eq!(executor.options.output_max_chars, 50_000);

@@ -135,11 +135,21 @@ pub(crate) async fn cmd_run(
         .and_then(|s| s.permissions)
         .map(|p| (p.commands.allow, p.commands.deny))
         .unwrap_or_default();
-    let shell_exec = shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-        allowed_commands,
-        denied_commands,
-        ..Default::default()
-    });
+    let shell_exec = if permission_mode == PermissionMode::ReadOnly {
+        shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: shell_exec::builtin_safe_commands(),
+            denied_commands,
+            skip_confirm: true,
+            ..Default::default()
+        })
+    } else {
+        shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+            allowed_commands,
+            denied_commands,
+            ..Default::default()
+        })
+    };
     agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
 
     // 注册 Web 搜索工具
@@ -200,8 +210,8 @@ pub(crate) async fn cmd_run(
 
     // ---- 注册 SubAgent 工具（子进程模式跳过） ----
     if !subagent {
-        let subagent_tool =
-            subagent::SubAgentTool::new().map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
+        let subagent_tool = subagent::SubAgentTool::with_permission_mode(permission_mode)
+            .map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
         agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
     }
 
@@ -228,15 +238,24 @@ pub(crate) async fn cmd_run(
 
     // ---- 根据权限模式过滤工具 ----
     if permission_mode != PermissionMode::Full {
-        let deny_tools: &[&str] = match permission_mode {
-            PermissionMode::ReadOnly => &["file_write", "file_edit", "shell_exec"],
-            PermissionMode::ReadWrite => &["shell_exec"],
-            PermissionMode::Full => &[],
+        let (deny_tools, shell_note): (&[&str], &str) = match permission_mode {
+            PermissionMode::ReadOnly => (
+                &["file_write", "file_edit"],
+                "shell_exec 受限（仅安全只读命令）",
+            ),
+            PermissionMode::ReadWrite => (&["shell_exec"], ""),
+            PermissionMode::Full => (&[], ""),
         };
         output::send(&Message::info(format!(
-            "[权限模式] {:?} — 已禁止工具: {:?}",
-            permission_mode, deny_tools
+            "[权限模式] {:?} — 已禁止: {:?}",
+            permission_mode, deny_tools,
         )));
+        if !shell_note.is_empty() {
+            output::send(&Message::info(format!(
+                "[权限模式] {:?} — {}",
+                permission_mode, shell_note,
+            )));
+        }
         agent.remove_tools(deny_tools);
     }
 
