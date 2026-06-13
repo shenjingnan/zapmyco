@@ -228,6 +228,42 @@ pub fn update_settings_model(new_model: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 添加命令到白名单并持久化到 settings.toml
+///
+/// 文件不存在则自动创建；命令已存在则去重跳过。
+/// command 会被 .trim() 后存储，确保与 is_safe_command 的匹配规则一致。
+pub fn add_to_command_allowlist(command: &str) -> Result<(), String> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    let mut settings = match load_settings()? {
+        Some(s) => s,
+        None => Settings {
+            llm: None,
+            session_log: None,
+            permissions: None,
+        },
+    };
+
+    if settings.permissions.is_none() {
+        settings.permissions = Some(Permissions::default());
+    }
+    let perms = settings.permissions.as_mut().unwrap();
+
+    // 去重（精确匹配）
+    if perms.commands.allow.iter().any(|c| c == trimmed) {
+        return Ok(());
+    }
+    perms.commands.allow.push(trimmed.to_string());
+
+    let content = toml::to_string(&settings).map_err(|e| format!("序列化设置失败: {}", e))?;
+    std::fs::write(get_settings_path(), content).map_err(|e| format!("写入设置文件失败: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

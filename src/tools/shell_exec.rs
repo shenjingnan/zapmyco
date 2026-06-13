@@ -250,15 +250,32 @@ impl Default for ShellExecOptions {
 // ---------------------------------------------------------------------------
 
 /// run_command 工具
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ShellExec {
     options: ShellExecOptions,
+    /// 运行时动态白名单 = 启动时从 settings 加载的 + 用户交互式添加的
+    /// 使用 Mutex 因为并发执行路径需要 Send
+    allowed_commands_runtime: std::sync::Mutex<Vec<String>>,
+}
+
+impl Clone for ShellExec {
+    fn clone(&self) -> Self {
+        Self {
+            allowed_commands_runtime: std::sync::Mutex::new(
+                self.allowed_commands_runtime.lock().unwrap().clone(),
+            ),
+            options: self.options.clone(),
+        }
+    }
 }
 
 impl ShellExec {
     /// 创建新的 ShellExec 实例
     pub fn new(options: ShellExecOptions) -> Self {
-        Self { options }
+        Self {
+            allowed_commands_runtime: std::sync::Mutex::new(options.allowed_commands.clone()),
+            options,
+        }
     }
 
     /// 判断命令是否应跳过用户确认
@@ -270,7 +287,7 @@ impl ShellExec {
         self.options.skip_confirm
             || is_safe_command(
                 command,
-                &self.options.allowed_commands,
+                &self.allowed_commands_runtime.lock().unwrap(),
                 &self.options.denied_commands,
             )
     }
@@ -382,18 +399,42 @@ impl ShellExec {
             }
         } else if !self.options.skip_confirm {
             // 非只读模式：保持现有逻辑
-            // 3a. 安全命令 → 自动放行（匹配内置或用户自定义列表）
+            // 3a. 安全命令 → 自动放行（匹配内置或用户自定义列表，含运行时白名单）
             if is_safe_command(
                 command,
-                &self.options.allowed_commands,
+                &self.allowed_commands_runtime.lock().unwrap(),
                 &self.options.denied_commands,
             ) {
                 // 无需确认，直接执行
             }
-            // 3b. 非安全命令 → 弹出确认
-            else if !prompt_confirm(command, description) {
-                output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
-                return Ok("Command not executed (cancelled by user)".to_string());
+            // 3b. 非安全命令 → 弹出确认（三选项：允许 / 始终允许 / 拒绝）
+            else {
+                match prompt_confirm(command, description) {
+                    ConfirmAction::Deny => {
+                        output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
+                        return Ok("Command not executed (cancelled by user)".to_string());
+                    }
+                    ConfirmAction::AlwaysAllow => {
+                        let trimmed = command.trim();
+                        // 持久化到 settings.toml（允许失败，fail-open）
+                        if let Err(e) = crate::config::settings::add_to_command_allowlist(trimmed) {
+                            output::send(&Message::warning(format!(
+                                "⚠️  无法保存到白名单: {}，但命令将继续执行",
+                                e
+                            )));
+                        } else {
+                            output::send(&Message::info(
+                                "✅ 命令已加入白名单，以后将自动执行".to_string(),
+                            ));
+                        }
+                        // 更新运行时白名单（Mutex 锁立即释放）
+                        self.allowed_commands_runtime
+                            .lock()
+                            .unwrap()
+                            .push(trimmed.to_string());
+                    }
+                    ConfirmAction::Allow => {}
+                }
             }
         }
 
@@ -461,15 +502,25 @@ impl ShellExec {
 // User confirmation
 // ---------------------------------------------------------------------------
 
+/// 用户确认结果
+enum ConfirmAction {
+    /// 允许执行（单次）
+    Allow,
+    /// 始终允许（加入白名单后执行）
+    AlwaysAllow,
+    /// 拒绝执行
+    Deny,
+}
+
 /// 提示用户确认是否执行命令
 ///
-/// 使用共享的 SelectPrompt 组件显示允许/拒绝选项。
+/// 使用共享的 SelectPrompt 组件显示三个选项：允许 / 始终允许 / 拒绝。
 /// 非 TTY 环境下默认拒绝执行。
-fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
+fn prompt_confirm(command: &str, description: Option<&str>) -> ConfirmAction {
     use std::io::IsTerminal;
 
     if !std::io::stdin().is_terminal() {
-        return false;
+        return ConfirmAction::Deny;
     }
 
     output::send(&Message::info(String::new()));
@@ -492,16 +543,22 @@ fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
             custom_input: false,
         },
         crate::tools::prompt::SelectOption {
+            label: "始终允许",
+            description: "将该命令加入白名单并自动执行",
+            custom_input: false,
+        },
+        crate::tools::prompt::SelectOption {
             label: "拒绝",
             description: "取消执行该命令",
             custom_input: false,
         },
     ];
 
-    matches!(
-        crate::tools::prompt::prompt_single_select(question, &options),
-        Some(crate::tools::prompt::SingleSelectResult::Index(0))
-    )
+    match crate::tools::prompt::prompt_single_select(question, &options) {
+        Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
+        Some(crate::tools::prompt::SingleSelectResult::Index(1)) => ConfirmAction::AlwaysAllow,
+        _ => ConfirmAction::Deny,
+    }
 }
 
 // ---------------------------------------------------------------------------

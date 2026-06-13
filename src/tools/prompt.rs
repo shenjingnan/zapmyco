@@ -147,6 +147,22 @@ pub fn prompt_single_select(
                         return Some(SingleSelectResult::Index(idx));
                     }
                 }
+                // 数字快捷键 0 → 最后一个选项（拒绝/取消）
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('0'),
+                    ..
+                }) => {
+                    let idx = options.len() - 1;
+                    if options[idx].custom_input {
+                        selected = idx;
+                        let preview = if input_buf.is_empty() { "" } else { &input_buf };
+                        render_single_list(question, options, selected, false, Some(preview));
+                        continue;
+                    }
+                    clear_lines(list_height);
+                    drop(guard);
+                    return Some(SingleSelectResult::Index(idx));
+                }
                 // Ctrl+C → 取消
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('c'),
@@ -378,7 +394,12 @@ fn render_single_list(
     writeln!(stderr, "\r{} {}\x1b[0K", "?".green().bold(), question).ok();
 
     for (i, opt) in options.iter().enumerate() {
-        let num = i + 1;
+        // 末项且选项数 ≥3 时显示为 "0"，其余显示 i+1
+        let display_num = if i == options.len() - 1 && options.len() > 2 {
+            "0".to_string()
+        } else {
+            (i + 1).to_string()
+        };
         let is_sel = i == selected;
 
         if opt.custom_input {
@@ -386,25 +407,25 @@ fn render_single_list(
                 // 选中状态：只显示内联输入，不显示描述
                 let preview = input_preview.unwrap_or("");
                 if preview.is_empty() {
-                    writeln!(stderr, "\r  ▸ {}. █\x1b[0K", num).ok();
+                    writeln!(stderr, "\r  ▸ {}. █\x1b[0K", display_num).ok();
                 } else {
-                    writeln!(stderr, "\r  ▸ {}. {}█\x1b[0K", num, preview).ok();
+                    writeln!(stderr, "\r  ▸ {}. {}█\x1b[0K", display_num, preview).ok();
                 }
             } else {
                 // 未选中：有内容显示内容，无内容显示"自定义输入"占位
                 let content = input_preview.unwrap_or("");
                 if content.is_empty() {
-                    let display = format!("{}. 自定义输入", num);
+                    let display = format!("{}. 自定义输入", display_num);
                     writeln!(stderr, "\r    {}\x1b[0K", display.dark_grey()).ok();
                 } else {
-                    writeln!(stderr, "\r    {}. {}\x1b[0K", num, content).ok();
+                    writeln!(stderr, "\r    {}. {}\x1b[0K", display_num, content).ok();
                 }
             }
         } else if is_sel {
             writeln!(
                 stderr,
                 "\r  ▸ {}. {}  ─ {}\x1b[0K",
-                num,
+                display_num,
                 opt.label.green(),
                 opt.description
             )
@@ -413,7 +434,7 @@ fn render_single_list(
             writeln!(
                 stderr,
                 "\r    {}. {}  ─ {}\x1b[0K",
-                num, opt.label, opt.description
+                display_num, opt.label, opt.description
             )
             .ok();
         }
