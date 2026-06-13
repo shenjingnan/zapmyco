@@ -651,8 +651,18 @@ mod run_tool_registration_tests {
     use super::*;
     use crate::agent::chat::{AiAgent, AiAgentOptions};
     use crate::cli::PermissionMode;
+    use crate::test_util::run_with_temp_home;
 
-    fn agent_with_mode(mode: PermissionMode) -> AiAgent {
+    fn agent_with_mode(mode: PermissionMode, home: &std::path::Path) -> AiAgent {
+        // AiAgent::new() 需要 settings.toml
+        let settings_dir = home.join(".zapmyco");
+        std::fs::create_dir_all(&settings_dir).unwrap();
+        std::fs::write(
+            settings_dir.join("settings.toml"),
+            "[llm]\napi_key = \"test\"\n",
+        )
+        .unwrap();
+
         let mut agent = AiAgent::new(AiAgentOptions {
             api_key: Some("test-key".to_string()),
             ..Default::default()
@@ -699,31 +709,37 @@ mod run_tool_registration_tests {
 
     #[test]
     fn test_full_mode_has_all_tools() {
-        let agent = agent_with_mode(PermissionMode::Full);
-        let names = agent.tool_names();
-        assert!(names.contains(&"shell_exec".to_string()));
-        assert!(names.contains(&"file_write".to_string()));
-        assert!(names.contains(&"file_edit".to_string()));
+        run_with_temp_home(|home| {
+            let agent = agent_with_mode(PermissionMode::Full, home);
+            let names = agent.tool_names();
+            assert!(names.contains(&"shell_exec".to_string()));
+            assert!(names.contains(&"file_write".to_string()));
+            assert!(names.contains(&"file_edit".to_string()));
+        });
     }
 
     #[test]
     fn test_readwrite_removes_shell_exec() {
-        let agent = agent_with_mode(PermissionMode::ReadWrite);
-        let names = agent.tool_names();
-        assert!(!names.contains(&"shell_exec".to_string()));
-        assert!(names.contains(&"file_write".to_string()));
-        assert!(names.contains(&"file_edit".to_string()));
+        run_with_temp_home(|home| {
+            let agent = agent_with_mode(PermissionMode::ReadWrite, home);
+            let names = agent.tool_names();
+            assert!(!names.contains(&"shell_exec".to_string()));
+            assert!(names.contains(&"file_write".to_string()));
+            assert!(names.contains(&"file_edit".to_string()));
+        });
     }
 
     #[test]
     fn test_readonly_keeps_shell_exec_removes_write() {
-        let agent = agent_with_mode(PermissionMode::ReadOnly);
-        let names = agent.tool_names();
-        assert!(
-            names.contains(&"shell_exec".to_string()),
-            "ReadOnly 应保留 shell_exec（受限）"
-        );
-        assert!(!names.contains(&"file_write".to_string()));
-        assert!(!names.contains(&"file_edit".to_string()));
+        run_with_temp_home(|home| {
+            let agent = agent_with_mode(PermissionMode::ReadOnly, home);
+            let names = agent.tool_names();
+            assert!(
+                names.contains(&"shell_exec".to_string()),
+                "ReadOnly 应保留 shell_exec（受限）"
+            );
+            assert!(!names.contains(&"file_write".to_string()));
+            assert!(!names.contains(&"file_edit".to_string()));
+        });
     }
 }
