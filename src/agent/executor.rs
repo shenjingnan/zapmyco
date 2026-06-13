@@ -8,7 +8,7 @@ use zapmyco_anthropic_ai_sdk::types::message::{
 };
 
 use crate::agent::chat::ToolHandler;
-use crate::agent::conversation_logger::ConversationLogger;
+use crate::agent::session_logger::SessionLogger;
 use crate::agent::stream::RoundResult;
 use crate::datetime;
 use crate::output::{self, Message};
@@ -337,7 +337,7 @@ pub(crate) fn print_usage_line(
 
 /// 记录非流式对话的 round-trip 日志
 pub(crate) fn log_round_trip(
-    logger: &ConversationLogger,
+    logger: &SessionLogger,
     params: &CreateMessageParams,
     response: &CreateMessageResponse,
     duration_ms: u64,
@@ -350,7 +350,7 @@ pub(crate) fn log_round_trip(
 
 /// 记录流式对话的 round-trip 日志（从 RoundResult 重建响应）
 pub(crate) fn log_round_trip_stream(
-    logger: &ConversationLogger,
+    logger: &SessionLogger,
     params: &CreateMessageParams,
     result: &RoundResult,
     duration_ms: u64,

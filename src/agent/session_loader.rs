@@ -1,12 +1,10 @@
-//! 历史会话加载器 — 从 ~/.zapmyco/conversations/ 重建消息历史
+//! 历史会话加载器 — 从 ~/.zapmyco/sessions/ 重建消息历史
 //!
-//! 支持两种目录结构：
-//! - 旧格式: ~/.zapmyco/conversations/<session_id>.jsonl
-//! - 新格式: ~/.zapmyco/conversations/<session_id>/conversation.jsonl
+//! 子目录格式: ~/.zapmyco/sessions/<session_id>/conversation.jsonl
 //!
 //! 提供两个公共函数：
-//! - `list_conversations()` — 列出所有可用会话
-//! - `load_conversation(session_id)` — 加载指定会话的消息
+//! - `list_sessions()` — 列出所有可用会话
+//! - `load_session(session_id)` — 加载指定会话的消息
 
 use std::path::PathBuf;
 
@@ -15,11 +13,11 @@ use serde_json::Value;
 use zapmyco_anthropic_ai_sdk::types::message::ContentBlock;
 
 use crate::agent::chat::ConversationMessage;
-use crate::agent::conversation_logger;
 use crate::agent::executor::extract_text_from_blocks;
+use crate::agent::session_logger;
 
 /// 会话摘要（用于列表展示）
-pub struct ConversationSummary {
+pub struct SessionSummary {
     pub session_id: String,
     pub message_count: usize,
     pub first_message_time: String,
@@ -27,14 +25,14 @@ pub struct ConversationSummary {
     pub file_path: PathBuf,
 }
 
-/// 列出 ~/.zapmyco/conversations/ 下所有会话（支持新旧两种格式），按时间降序排列
-pub fn list_conversations() -> Result<Vec<ConversationSummary>, String> {
-    let dir = get_conversations_dir()?;
+/// 列出 ~/.zapmyco/sessions/ 下所有会话，按时间降序排列
+pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
+    let dir = get_sessions_dir()?;
     if !dir.exists() {
         return Ok(Vec::new());
     }
 
-    let mut conversations = Vec::new();
+    let mut sessions = Vec::new();
 
     let entries = std::fs::read_dir(&dir).map_err(|e| format!("读取会话目录失败: {}", e))?;
 
@@ -42,29 +40,18 @@ pub fn list_conversations() -> Result<Vec<ConversationSummary>, String> {
         let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
         let path = entry.path();
 
-        // ---- 判断是旧格式文件还是新格式子目录 ----
-        let (jsonl_path, session_id) =
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                // 情况 A: 旧格式 — <session_id>.jsonl
-                let session_id = match path.file_stem().and_then(|s| s.to_str()) {
-                    Some(id) => id.to_string(),
-                    None => continue,
-                };
-                (path, session_id)
-            } else if path.is_dir() {
-                // 情况 B: 新格式 — <session_id>/conversation.jsonl
-                let jsonl = path.join("conversation.jsonl");
-                if !jsonl.exists() {
-                    continue;
-                }
-                let session_id = match path.file_name().and_then(|s| s.to_str()) {
-                    Some(id) => id.to_string(),
-                    None => continue,
-                };
-                (jsonl, session_id)
-            } else {
-                continue;
-            };
+        // 仅支持子目录格式: <session_id>/conversation.jsonl
+        if !path.is_dir() {
+            continue;
+        }
+        let jsonl_path = path.join("conversation.jsonl");
+        if !jsonl_path.exists() {
+            continue;
+        }
+        let session_id = match path.file_name().and_then(|s| s.to_str()) {
+            Some(id) => id.to_string(),
+            None => continue,
+        };
 
         // ---- 读取解析 jsonl 文件 ----
         let content = match std::fs::read_to_string(&jsonl_path) {
@@ -101,7 +88,7 @@ pub fn list_conversations() -> Result<Vec<ConversationSummary>, String> {
             .and_then(|record| record["request"]["messages"].as_array().map(|a| a.len()))
             .unwrap_or(0);
 
-        conversations.push(ConversationSummary {
+        sessions.push(SessionSummary {
             session_id,
             message_count,
             first_message_time: first_time,
@@ -111,31 +98,22 @@ pub fn list_conversations() -> Result<Vec<ConversationSummary>, String> {
     }
 
     // 按时间降序（最新的在前）
-    conversations.sort_by(|a, b| b.first_message_time.cmp(&a.first_message_time));
+    sessions.sort_by(|a, b| b.first_message_time.cmp(&a.first_message_time));
 
-    Ok(conversations)
+    Ok(sessions)
 }
 
 /// 加载指定会话的消息历史
 ///
-/// 支持新旧两种目录结构，优先读取新格式（子目录 + conversation.jsonl），
-/// 找不到时回退到旧格式（平铺 .jsonl 文件）。
+/// 从 `~/.zapmyco/sessions/<session_id>/conversation.jsonl` 读取并重建消息列表。
 /// 从最后一条记录的 `request.messages` 重建完整消息列表。
-pub fn load_conversation(session_id: &str) -> Result<Vec<ConversationMessage>, String> {
-    let dir = get_conversations_dir()?;
-
-    // 优先尝试新格式: <dir>/<session_id>/conversation.jsonl
-    let new_path = dir.join(session_id).join("conversation.jsonl");
-    let path = if new_path.exists() {
-        new_path
-    } else {
-        // 回退旧格式: <dir>/<session_id>.jsonl
-        dir.join(format!("{}.jsonl", session_id))
-    };
+pub fn load_session(session_id: &str) -> Result<Vec<ConversationMessage>, String> {
+    let dir = get_sessions_dir()?;
+    let path = dir.join(session_id).join("conversation.jsonl");
 
     let content = std::fs::read_to_string(&path).map_err(|_| {
         format!(
-            "未找到会话 '{}'。\n可用 `zapmyco run --conversation` 按 Tab 查看可用会话",
+            "未找到会话 '{}'。\n可用 `zapmyco run --session` 按 Tab 查看可用会话",
             session_id
         )
     })?;
@@ -158,9 +136,9 @@ pub fn load_conversation(session_id: &str) -> Result<Vec<ConversationMessage>, S
 
 // ---- 内部辅助函数 ----
 
-/// 获取 ~/.zapmyco/conversations/ 目录路径
-fn get_conversations_dir() -> Result<PathBuf, String> {
-    conversation_logger::get_log_dir()
+/// 获取 ~/.zapmyco/sessions/ 目录路径
+fn get_sessions_dir() -> Result<PathBuf, String> {
+    session_logger::get_sessions_dir()
 }
 
 /// 将 JSON 格式的消息转换为内部 ConversationMessage
@@ -216,47 +194,8 @@ mod tests {
     use super::*;
     use crate::test_util::run_with_temp_home;
 
-    /// 创建一个模拟的 JSONL 文件
-    fn create_mock_jsonl(
-        dir: &std::path::Path,
-        session_id: &str,
-        user_text: &str,
-        assistant_text: &str,
-    ) -> PathBuf {
-        let path = dir.join(format!("{}.jsonl", session_id));
-
-        // 构造一条完整的请求/响应记录
-        let record = serde_json::json!({
-            "session_id": session_id,
-            "order": 0,
-            "ts": "2026-06-05T12:00:00Z",
-            "duration_ms": 1000,
-            "request": {
-                "model": "test-model",
-                "messages": [
-                    {"role": "user", "content": user_text},
-                    {"role": "assistant", "content": [{"type": "text", "text": assistant_text}]}
-                ],
-                "max_tokens": 4096
-            },
-            "response": {
-                "id": null,
-                "type": "message",
-                "role": "assistant",
-                "content": [{"type": "text", "text": assistant_text}],
-                "model": "test-model",
-                "stop_reason": "end_turn",
-                "usage": {"input_tokens": 10, "output_tokens": 5}
-            }
-        });
-
-        let json_line = serde_json::to_string(&record).unwrap();
-        std::fs::write(&path, format!("{}\n", json_line)).unwrap();
-        path
-    }
-
-    /// 创建一个子目录格式的模拟会话（新格式）
-    fn create_mock_conversation_dir(
+    /// 创建一个子目录格式的模拟会话
+    fn create_mock_session_dir(
         dir: &std::path::Path,
         session_id: &str,
         user_text: &str,
@@ -296,70 +235,33 @@ mod tests {
     }
 
     #[test]
-    fn test_load_conversation_success() {
-        run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
-            std::fs::create_dir_all(&dir).unwrap();
-            create_mock_jsonl(&dir, "test-session-1", "hello", "hi there");
-
-            let messages = load_conversation("test-session-1").unwrap();
-            assert_eq!(messages.len(), 2);
-
-            assert_eq!(messages[0].role, "user");
-            assert_eq!(messages[0].content, "hello");
-            assert!(messages[0].blocks.is_none());
-
-            assert_eq!(messages[1].role, "assistant");
-            assert_eq!(messages[1].content, "hi there");
-            assert!(messages[1].blocks.is_some());
-        });
-    }
-
-    #[test]
-    fn test_load_conversation_file_not_found() {
+    fn test_load_session_file_not_found() {
         run_with_temp_home(|_home| {
-            let result = load_conversation("nonexistent-session");
+            let result = load_session("nonexistent-session");
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("未找到会话"));
         });
     }
 
     #[test]
-    fn test_load_conversation_empty_file() {
+    fn test_load_session_empty_file() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("empty-session.jsonl"), "").unwrap();
+            let session_dir = dir.join("empty-session");
+            std::fs::create_dir(&session_dir).unwrap();
+            std::fs::write(session_dir.join("conversation.jsonl"), "").unwrap();
 
-            let result = load_conversation("empty-session");
+            let result = load_session("empty-session");
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("为空"));
         });
     }
 
     #[test]
-    fn test_list_conversations() {
-        run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
-            std::fs::create_dir_all(&dir).unwrap();
-
-            create_mock_jsonl(&dir, "session-old", "old task", "done");
-            create_mock_jsonl(&dir, "session-new", "new task", "in progress");
-
-            let list = list_conversations().unwrap();
-            // 按时间降序，最新的在前
-            assert_eq!(list.len(), 2);
-            // 两个会话的 ts 相同，所以顺序不重要
-            let ids: Vec<&str> = list.iter().map(|s| s.session_id.as_str()).collect();
-            assert!(ids.contains(&"session-old"));
-            assert!(ids.contains(&"session-new"));
-        });
-    }
-
-    #[test]
-    fn test_list_conversations_empty_dir() {
+    fn test_list_sessions_empty_dir() {
         run_with_temp_home(|_home| {
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert!(list.is_empty());
         });
     }
@@ -429,11 +331,13 @@ mod tests {
     }
 
     #[test]
-    fn test_load_conversation_multiple_records_uses_last() {
+    fn test_load_session_multiple_records_uses_last() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
-            let path = dir.join("multi-record.jsonl");
+            let session_dir = dir.join("multi-record");
+            std::fs::create_dir(&session_dir).unwrap();
+            let path = session_dir.join("conversation.jsonl");
 
             // 写入 3 条记录，每条消息数递增
             let rec1 = serde_json::json!({
@@ -488,7 +392,7 @@ mod tests {
             );
             std::fs::write(&path, &content).unwrap();
 
-            let messages = load_conversation("multi-record").unwrap();
+            let messages = load_session("multi-record").unwrap();
             assert_eq!(messages.len(), 2, "应使用最后一条记录的 2 条消息");
             assert_eq!(messages[0].content, "from last");
             assert_eq!(messages[1].content, "last reply");
@@ -524,15 +428,15 @@ mod tests {
     // ==================== 新格式测试 ====================
 
     #[test]
-    fn test_list_conversations_new_format_only() {
+    fn test_list_sessions_new_format_only() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
-            create_mock_conversation_dir(&dir, "session-v2-1", "hello", "hi");
-            create_mock_conversation_dir(&dir, "session-v2-2", "task", "done");
+            create_mock_session_dir(&dir, "session-v2-1", "hello", "hi");
+            create_mock_session_dir(&dir, "session-v2-2", "task", "done");
 
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert_eq!(list.len(), 2);
 
             let ids: Vec<&str> = list.iter().map(|s| s.session_id.as_str()).collect();
@@ -556,33 +460,13 @@ mod tests {
     }
 
     #[test]
-    fn test_list_conversations_mixed_format() {
+    fn test_load_session_new_format() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
+            create_mock_session_dir(&dir, "v2-session", "hello", "hi there");
 
-            // 旧格式
-            create_mock_jsonl(&dir, "old-session", "old task", "done");
-            // 新格式
-            create_mock_conversation_dir(&dir, "new-session", "new task", "in progress");
-
-            let list = list_conversations().unwrap();
-            assert_eq!(list.len(), 2);
-
-            let ids: Vec<&str> = list.iter().map(|s| s.session_id.as_str()).collect();
-            assert!(ids.contains(&"old-session"), "应包含旧格式");
-            assert!(ids.contains(&"new-session"), "应包含新格式");
-        });
-    }
-
-    #[test]
-    fn test_load_conversation_new_format() {
-        run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
-            std::fs::create_dir_all(&dir).unwrap();
-            create_mock_conversation_dir(&dir, "v2-session", "hello", "hi there");
-
-            let messages = load_conversation("v2-session").unwrap();
+            let messages = load_session("v2-session").unwrap();
             assert_eq!(messages.len(), 2);
             assert_eq!(messages[0].role, "user");
             assert_eq!(messages[0].content, "hello");
@@ -592,25 +476,9 @@ mod tests {
     }
 
     #[test]
-    fn test_load_conversation_prefers_new_format() {
+    fn test_list_sessions_ignores_non_jsonl_files() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
-            std::fs::create_dir_all(&dir).unwrap();
-
-            // 同时创建新旧格式（session_id 相同）
-            create_mock_jsonl(&dir, "dual-session", "old data", "old reply");
-            create_mock_conversation_dir(&dir, "dual-session", "new data", "new reply");
-
-            // 应优先加载新格式
-            let messages = load_conversation("dual-session").unwrap();
-            assert_eq!(messages[0].content, "new data", "应优先加载新格式数据");
-        });
-    }
-
-    #[test]
-    fn test_list_conversations_ignores_non_jsonl_files() {
-        run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
             // 创建非 jsonl 文件
@@ -619,18 +487,18 @@ mod tests {
             std::fs::write(dir.join("temp.txt"), "temp").unwrap();
 
             // 创建一条有效会话（新格式）
-            create_mock_conversation_dir(&dir, "real-session", "hi", "hello");
+            create_mock_session_dir(&dir, "real-session", "hi", "hello");
 
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert_eq!(list.len(), 1, "非 jsonl 文件不应计入");
             assert_eq!(list[0].session_id, "real-session");
         });
     }
 
     #[test]
-    fn test_list_conversations_ignores_empty_subdirs() {
+    fn test_list_sessions_ignores_empty_subdirs() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
             // 创建空子目录（可能来自中断的创建过程）
@@ -641,17 +509,17 @@ mod tests {
             std::fs::write(partial_dir.join("terminal.log"), "some output").unwrap();
 
             // 创建一条有效会话
-            create_mock_conversation_dir(&dir, "real-session", "hi", "hello");
+            create_mock_session_dir(&dir, "real-session", "hi", "hello");
 
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert_eq!(list.len(), 1, "空子目录和无 jsonl 的子目录不应计入");
         });
     }
 
     #[test]
-    fn test_list_conversations_only_noise_files() {
+    fn test_list_sessions_only_noise_files() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
             // 非 jsonl 扩展名的文件（含隐藏文件）
@@ -659,47 +527,19 @@ mod tests {
             std::fs::write(dir.join(".DS_Store"), "").unwrap();
             std::fs::write(dir.join("temp.txt"), "temp").unwrap();
 
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert_eq!(list.len(), 0, "无有效会话时应返回空列表");
         });
     }
 
     #[test]
-    fn test_load_conversation_mixed_world() {
+    fn test_list_sessions_sorts_by_time() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
-            std::fs::create_dir_all(&dir).unwrap();
-
-            // 会话 A：新格式
-            create_mock_conversation_dir(&dir, "session-a", "hello", "world");
-            // 会话 B：旧格式
-            create_mock_jsonl(&dir, "session-b", "ping", "pong");
-
-            let msgs_a = load_conversation("session-a").unwrap();
-            assert_eq!(msgs_a[0].content, "hello");
-            assert_eq!(msgs_a[1].content, "world");
-
-            let msgs_b = load_conversation("session-b").unwrap();
-            assert_eq!(msgs_b[0].content, "ping");
-            assert_eq!(msgs_b[1].content, "pong");
-        });
-    }
-
-    #[test]
-    fn test_list_conversations_sorts_by_time() {
-        run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
             // 创建记录时使用不同的时间戳来验证排序
-            fn create_with_ts(
-                dir: &std::path::Path,
-                sid: &str,
-                ts: &str,
-                user: &str,
-                asst: &str,
-                is_new_format: bool,
-            ) {
+            fn create_with_ts(dir: &std::path::Path, sid: &str, ts: &str, user: &str, asst: &str) {
                 let record = serde_json::json!({
                     "session_id": sid,
                     "order": 0,
@@ -712,55 +552,41 @@ mod tests {
                     "response": {"content": asst}
                 });
                 let line = serde_json::to_string(&record).unwrap();
-                if is_new_format {
-                    let sd = dir.join(sid);
-                    std::fs::create_dir_all(&sd).unwrap();
-                    std::fs::write(sd.join("conversation.jsonl"), format!("{}\n", line)).unwrap();
-                } else {
-                    std::fs::write(dir.join(format!("{}.jsonl", sid)), format!("{}\n", line))
-                        .unwrap();
-                }
+                let sd = dir.join(sid);
+                std::fs::create_dir_all(&sd).unwrap();
+                std::fs::write(sd.join("conversation.jsonl"), format!("{}\n", line)).unwrap();
             }
 
             create_with_ts(
                 &dir,
-                "old-early",
+                "session-early",
                 "2026-01-01T00:00:00Z",
                 "early",
                 "reply",
-                false,
             );
+            create_with_ts(&dir, "session-mid", "2026-06-01T00:00:00Z", "mid", "reply");
             create_with_ts(
                 &dir,
-                "new-mid",
-                "2026-06-01T00:00:00Z",
-                "mid",
-                "reply",
-                true,
-            );
-            create_with_ts(
-                &dir,
-                "old-late",
+                "session-late",
                 "2026-12-01T00:00:00Z",
                 "late",
                 "reply",
-                false,
             );
 
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert_eq!(list.len(), 3);
 
-            // 按时间降序：old-late → new-mid → old-early
-            assert_eq!(list[0].session_id, "old-late", "最新应在第一个");
-            assert_eq!(list[1].session_id, "new-mid");
-            assert_eq!(list[2].session_id, "old-early", "最旧应在最后一个");
+            // 按时间降序：session-late → session-mid → session-early
+            assert_eq!(list[0].session_id, "session-late", "最新应在第一个");
+            assert_eq!(list[1].session_id, "session-mid");
+            assert_eq!(list[2].session_id, "session-early", "最旧应在最后一个");
         });
     }
 
     #[test]
-    fn test_list_conversations_ignores_empty_jsonl_in_new_format() {
+    fn test_list_sessions_ignores_empty_jsonl_in_new_format() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
             // 创建子目录但 conversation.jsonl 为空
@@ -770,23 +596,23 @@ mod tests {
             std::fs::write(empty_dir.join("conversation.jsonl"), "").unwrap();
 
             // 创建有效的对照会话
-            create_mock_conversation_dir(&dir, "valid-session", "hi", "hello");
+            create_mock_session_dir(&dir, "valid-session", "hi", "hello");
 
             // list 应跳过空文件
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert_eq!(list.len(), 1, "空 jsonl 的会话不应计入");
             assert_eq!(list[0].session_id, "valid-session");
 
             // load 应报错
-            let result = load_conversation(empty_sid);
+            let result = load_session(empty_sid);
             assert!(result.is_err(), "空文件加载应失败");
         });
     }
 
     #[test]
-    fn test_list_conversations_handles_malformed_json_in_new_format() {
+    fn test_list_sessions_handles_malformed_json_in_new_format() {
         run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
+            let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
             // 创建子目录但 conversation.jsonl 内容是无效 JSON
@@ -796,38 +622,16 @@ mod tests {
             std::fs::write(bad_dir.join("conversation.jsonl"), "not valid json\n").unwrap();
 
             // 创建有效的对照会话
-            create_mock_conversation_dir(&dir, "valid-session", "hi", "hello");
+            create_mock_session_dir(&dir, "valid-session", "hi", "hello");
 
             // list 应跳过无效 JSON
-            let list = list_conversations().unwrap();
+            let list = list_sessions().unwrap();
             assert_eq!(list.len(), 1, "无效 JSON 的会话不应计入");
             assert_eq!(list[0].session_id, "valid-session");
 
             // load 应报错
-            let result = load_conversation(bad_sid);
+            let result = load_session(bad_sid);
             assert!(result.is_err(), "无效 JSON 加载应失败");
-        });
-    }
-
-    #[test]
-    fn test_load_conversation_new_format_missing_file() {
-        run_with_temp_home(|home| {
-            let dir = home.join(".zapmyco/conversations");
-            std::fs::create_dir_all(&dir).unwrap();
-
-            // 只有子目录但没有 conversation.jsonl
-            let sid = "dir-only";
-            std::fs::create_dir(dir.join(sid)).unwrap();
-
-            // 同时存在旧格式文件（模拟回退路径）
-            create_mock_jsonl(&dir, sid, "fallback data", "fallback reply");
-
-            // 应回退到旧格式
-            let messages = load_conversation(sid).unwrap();
-            assert_eq!(
-                messages[0].content, "fallback data",
-                "conversation.jsonl 缺失时应回退到旧格式"
-            );
         });
     }
 }

@@ -1183,7 +1183,7 @@ mod safe_command_tests {
         use crate::config::settings::{CommandPermissions, Permissions, Settings};
         let settings = Settings {
             llm: None,
-            conversation_log: None,
+            session_log: None,
             permissions: Some(Permissions {
                 commands: CommandPermissions {
                     allow: vec!["git status".to_string(), "cargo check".to_string()],
@@ -1211,7 +1211,7 @@ mod safe_command_tests {
         use crate::config::settings::Settings;
         let settings = Settings {
             llm: None,
-            conversation_log: None,
+            session_log: None,
             permissions: None,
         };
         let allowed_commands = settings
@@ -1240,7 +1240,7 @@ mod safe_command_tests {
         use crate::config::settings::{CommandPermissions, Permissions, Settings};
         let settings = Settings {
             llm: None,
-            conversation_log: None,
+            session_log: None,
             permissions: Some(Permissions {
                 commands: CommandPermissions {
                     allow: vec![],

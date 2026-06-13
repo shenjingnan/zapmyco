@@ -1,5 +1,5 @@
 use crate::agent::chat::{AiAgent, AiAgentOptions};
-use crate::agent::conversation_loader;
+use crate::agent::session_loader;
 use crate::agent::system_prompt;
 use crate::cli::PermissionMode;
 use crate::config::settings;
@@ -21,7 +21,7 @@ pub(crate) async fn cmd_run(
     profile: Option<&str>,
     permission_mode: PermissionMode,
     task_id: Option<&str>,
-    conversation: Option<&str>,
+    session: Option<&str>,
     model: Option<&str>,
     api_key: Option<&str>,
     base_url: Option<&str>,
@@ -240,10 +240,10 @@ pub(crate) async fn cmd_run(
         agent.remove_tools(deny_tools);
     }
 
-    // 如果指定了 --conversation，加载历史会话消息
-    if let Some(session_id) = conversation {
+    // 如果指定了 --session，加载历史会话消息
+    if let Some(session_id) = session {
         let session_id = session_id.to_string();
-        let history = conversation_loader::load_conversation(&session_id)?;
+        let history = session_loader::load_session(&session_id)?;
         let msg_count = history.len();
         output::send(&Message::info(format!(
             "[会话] 已加载历史会话 {} ({} 条消息)",
@@ -413,7 +413,7 @@ fn generate_session_id() -> String {
 /// 返回的 guard 在 drop 时自动从 ROUTER 注销，确保在函数各返回路径正确清理。
 fn register_terminal_log(agent: &AiAgent) -> Option<TerminalLogGuard> {
     let session_id = agent.session_id()?;
-    let log_dir = crate::agent::conversation_logger::get_log_dir().ok()?;
+    let log_dir = crate::agent::session_logger::get_sessions_dir().ok()?;
     let log_path = log_dir.join(session_id).join("terminal.log");
     let target = crate::output::LogTarget::new(&log_path).ok()?;
     crate::output::ROUTER.add_target(Box::new(target));
@@ -606,8 +606,8 @@ mod tests {
             assert!(_guard.is_some(), "logger 启用时应返回 Some guard");
 
             // 4. 验证 terminal.log 被创建
-            let conversations_dir = home.join(".zapmyco/conversations");
-            let terminal_log = conversations_dir.join(session_id).join("terminal.log");
+            let sessions_dir = home.join(".zapmyco/sessions");
+            let terminal_log = sessions_dir.join(session_id).join("terminal.log");
             assert!(
                 terminal_log.exists(),
                 "register_terminal_log 后 terminal.log 应存在"

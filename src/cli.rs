@@ -174,9 +174,9 @@ impl TypedValueParser for SkillNameValueParser {
 
 /// 自定义 value parser：Tab 补全历史会话 ID，按时间降序排列
 #[derive(Clone)]
-struct ConversationIdValueParser;
+struct SessionIdValueParser;
 
-impl TypedValueParser for ConversationIdValueParser {
+impl TypedValueParser for SessionIdValueParser {
     type Value = String;
 
     fn parse_ref(
@@ -190,8 +190,8 @@ impl TypedValueParser for ConversationIdValueParser {
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
-        use crate::agent::conversation_loader;
-        let list = conversation_loader::list_conversations().ok()?;
+        use crate::agent::session_loader;
+        let list = session_loader::list_sessions().ok()?;
         let values: Vec<PossibleValue> = list
             .into_iter()
             .map(|c| {
@@ -264,8 +264,8 @@ pub enum Commands {
         #[arg(long = "base-url", value_parser = BaseUrlValueParser)]
         base_url: Option<String>,
         /// 复用指定会话的上下文历史（Tab 可补全可用会话）
-        #[arg(long, value_parser = ConversationIdValueParser)]
-        conversation: Option<String>,
+        #[arg(long, value_parser = SessionIdValueParser)]
+        session: Option<String>,
         /// 标记此进程为子 Agent（隐藏，由 SubAgent 工具自动传入）
         #[arg(long, hide = true)]
         subagent: bool,
@@ -391,7 +391,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             profile,
             permission_mode,
             task_id,
-            conversation,
+            session,
             model,
             api_key,
             base_url,
@@ -403,7 +403,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 profile.as_deref(),
                 permission_mode,
                 task_id.as_deref(),
-                conversation.as_deref(),
+                session.as_deref(),
                 model.as_deref(),
                 api_key.as_deref(),
                 base_url.as_deref(),
