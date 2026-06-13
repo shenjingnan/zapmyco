@@ -599,7 +599,7 @@ mod tests {
     fn test_sessions_parent_dir_not_exist() {
         use crate::test_util::run_with_temp_home;
         run_with_temp_home(|home| {
-            // 不创建 conversations 父目录
+            // 不创建 sessions 父目录
             let logger = SessionLogger::new();
             assert!(logger.is_ok(), "即使父目录不存在，new() 也应成功");
             let logger = logger.unwrap();
