@@ -996,8 +996,7 @@ impl AiAgent {
                 error_opt.as_deref(),
                 duration_ms,
                 round,
-            )
-            .await;
+            );
 
             tool_result_blocks.push(ContentBlock::ToolResult {
                 tool_use_id: tool_use_id.clone(),
@@ -1229,8 +1228,7 @@ impl AiAgent {
                 error_opt.as_deref(),
                 duration_ms,
                 round,
-            )
-            .await;
+            );
 
             results[idx] = Some(result_text);
             result_ids[idx] = Some(tool_use_id);
@@ -1332,7 +1330,7 @@ impl AiAgent {
     /// 串行路径（execute_tools_serial）和并发路径（execute_tools_concurrent）
     /// 都通过此方法记录。写失败只输出 `tracing::warn!`，不传播错误。
     #[expect(clippy::too_many_arguments)]
-    async fn log_tool_call(
+    fn log_tool_call(
         &self,
         name: &str,
         tool_use_id: &str,
@@ -1343,17 +1341,15 @@ impl AiAgent {
         round: u32,
     ) {
         if let Some(ref logger) = self.tool_call_logger
-            && let Err(e) = logger
-                .append_tool_call(
-                    name,
-                    tool_use_id,
-                    input,
-                    result_text,
-                    error_opt,
-                    duration_ms,
-                    round,
-                )
-                .await
+            && let Err(e) = logger.append_tool_call(
+                name,
+                tool_use_id,
+                input,
+                result_text,
+                error_opt,
+                duration_ms,
+                round,
+            )
         {
             tracing::warn!(error = %e, "记录工具调用日志失败");
         }
@@ -4941,103 +4937,86 @@ mod tests {
     #[test]
     fn test_log_tool_call_logger_none() {
         run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                // conversation_log 禁用 → tool_call_logger 为 None
-                create_test_settings(
-                    home,
-                    r#"
+            // conversation_log 禁用 → tool_call_logger 为 None
+            create_test_settings(
+                home,
+                r#"
 [llm]
 [conversation_log]
 enabled = false
 "#,
-                );
-                let agent = AiAgent::new(AiAgentOptions {
-                    api_key: Some("test-key".into()),
-                    base_url: Some("http://localhost:9999".into()),
-                    ..Default::default()
-                })
-                .unwrap();
-                assert!(agent.tool_call_logger.is_none());
+            );
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".into()),
+                base_url: Some("http://localhost:9999".into()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(agent.tool_call_logger.is_none());
 
-                // 调用不应 panic
-                agent
-                    .log_tool_call("file_read", "tu_1", &json!({}), "ok", None, 0, 0)
-                    .await;
-            });
+            // 调用不应 panic（log_tool_call 是同步方法）
+            agent.log_tool_call("file_read", "tu_1", &json!({}), "ok", None, 0, 0);
         });
     }
 
     #[test]
     fn test_log_tool_call_logger_some() {
         run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                // 默认 conversation_log enabled
-                create_test_settings(home, "[llm]\n");
-                let agent = AiAgent::new(AiAgentOptions {
-                    api_key: Some("test-key".into()),
-                    base_url: Some("http://localhost:9999".into()),
-                    ..Default::default()
-                })
-                .unwrap();
-                assert!(agent.tool_call_logger.is_some());
+            // 默认 conversation_log enabled
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".into()),
+                base_url: Some("http://localhost:9999".into()),
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(agent.tool_call_logger.is_some());
 
-                agent
-                    .log_tool_call(
-                        "file_read",
-                        "tu_1",
-                        &json!({"path": "x"}),
-                        "content",
-                        None,
-                        5,
-                        0,
-                    )
-                    .await;
+            agent.log_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"path": "x"}),
+                "content",
+                None,
+                5,
+                0,
+            );
 
-                let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
-                let records = read_jsonl(&session_dir.join("tool_calls.jsonl"));
-                assert_eq!(records.len(), 1);
-                assert_eq!(records[0]["tool"], "file_read");
-                assert_eq!(records[0]["output"], "content");
-            });
+            let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
+            let records = read_jsonl(&session_dir.join("tool_calls.jsonl"));
+            assert_eq!(records.len(), 1);
+            assert_eq!(records[0]["tool"], "file_read");
+            assert_eq!(records[0]["output"], "content");
         });
     }
 
     #[test]
     fn test_log_tool_call_write_failure_isolated() {
         run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                create_test_settings(home, "[llm]\n");
-                let agent = AiAgent::new(AiAgentOptions {
-                    api_key: Some("test-key".into()),
-                    base_url: Some("http://localhost:9999".into()),
-                    ..Default::default()
-                })
-                .unwrap();
-                let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
-                let file_path = session_dir.join("tool_calls.jsonl");
+            create_test_settings(home, "[llm]\n");
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".into()),
+                base_url: Some("http://localhost:9999".into()),
+                ..Default::default()
+            })
+            .unwrap();
+            let session_dir = agent.tool_call_logger.as_ref().unwrap().session_dir();
+            let file_path = session_dir.join("tool_calls.jsonl");
 
-                // 写入一条正常记录
-                agent
-                    .log_tool_call("file_read", "tu_1", &json!({}), "first", None, 0, 0)
-                    .await;
+            // 写入一条正常记录
+            agent.log_tool_call("file_read", "tu_1", &json!({}), "first", None, 0, 0);
 
-                // 将文件设为只读
-                set_readonly(&file_path);
+            // 将文件设为只读
+            set_readonly(&file_path);
 
-                // 再次调用 log_tool_call——不应 panic，不应传播错误
-                agent
-                    .log_tool_call("file_read", "tu_2", &json!({}), "second", None, 0, 0)
-                    .await;
+            // 再次调用 log_tool_call——不应 panic，不应传播错误
+            agent.log_tool_call("file_read", "tu_2", &json!({}), "second", None, 0, 0);
 
-                // 恢复权限后验证文件内容
-                set_writable(&file_path);
-                let records = read_jsonl(&file_path);
-                assert_eq!(records.len(), 1, "写入失败后不应追加新记录");
-                assert_eq!(records[0]["output"], "first");
-            });
+            // 恢复权限后验证文件内容
+            set_writable(&file_path);
+            let records = read_jsonl(&file_path);
+            assert_eq!(records.len(), 1, "写入失败后不应追加新记录");
+            assert_eq!(records[0]["output"], "first");
         });
     }
 

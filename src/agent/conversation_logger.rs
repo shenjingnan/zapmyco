@@ -137,6 +137,8 @@ pub struct ToolCallLogger {
     log_path: PathBuf,
     session_id: String,
     order: AtomicU64,
+    /// 写锁：确保并发写入时行不交错
+    write_lock: std::sync::Mutex<()>,
 }
 
 impl ToolCallLogger {
@@ -150,15 +152,17 @@ impl ToolCallLogger {
             log_path,
             session_id: session_id.to_string(),
             order: AtomicU64::new(0),
+            write_lock: std::sync::Mutex::new(()),
         })
     }
 
     /// 追加一条工具调用记录到 tool_calls.jsonl
     ///
-    /// 使用 `tokio::fs` 异步 I/O，避免阻塞 tokio 运行时。
+    /// 使用 `std::fs` 同步 I/O（与 ConversationLogger.append_record 一致），
+    /// 避免在 tokio 运行时中引入额外的异步 I/O 复杂度。
     /// 写失败会向上传播错误，调用方应记录但不影响主流程。
     #[expect(clippy::too_many_arguments)]
-    pub async fn append_tool_call(
+    pub fn append_tool_call(
         &self,
         tool: &str,
         tool_use_id: &str,
@@ -187,21 +191,16 @@ impl ToolCallLogger {
         let json_line =
             serde_json::to_string(&record).map_err(|e| format!("序列化工具调用记录失败: {}", e))?;
 
-        use tokio::io::AsyncWriteExt;
-        let mut file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .append(true)
+        let _lock = self.write_lock.lock().unwrap();
+
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
             .create(true)
+            .append(true)
             .open(&self.log_path)
-            .await
             .map_err(|e| format!("打开工具调用日志文件失败: {}", e))?;
 
-        // 将 JSON 行和换行符合并为一个 write_all 调用，避免并发写入时行交错
-        let mut line_buf = json_line.into_bytes();
-        line_buf.push(b'\n');
-        file.write_all(&line_buf)
-            .await
-            .map_err(|e| format!("写入工具调用日志文件失败: {}", e))?;
+        writeln!(file, "{}", json_line).map_err(|e| format!("写入工具调用日志文件失败: {}", e))?;
 
         Ok(())
     }
@@ -647,63 +646,57 @@ mod tests {
     #[test]
     fn test_tool_call_logger_append_valid_jsonl() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
-                let file_path = cl.session_dir().join("tool_calls.jsonl");
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            let file_path = cl.session_dir().join("tool_calls.jsonl");
 
-                assert!(!file_path.exists());
+            assert!(!file_path.exists());
 
-                tcl.append_tool_call(
-                    "file_read",
-                    "toolu_abc",
-                    &json!({"file_path": "/tmp/test.txt"}),
-                    "file content",
-                    None,
-                    5,
-                    0,
-                )
-                .await
-                .unwrap();
+            tcl.append_tool_call(
+                "file_read",
+                "toolu_abc",
+                &json!({"file_path": "/tmp/test.txt"}),
+                "file content",
+                None,
+                5,
+                0,
+            )
+            .unwrap();
 
-                assert!(file_path.exists());
+            assert!(file_path.exists());
 
-                let content = std::fs::read_to_string(&file_path).unwrap();
-                let lines: Vec<&str> = content.lines().collect();
-                assert_eq!(lines.len(), 1);
-                let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
-                assert_eq!(parsed["tool"], "file_read");
-                assert_eq!(parsed["output"], "file content");
-                assert!(parsed["error"].is_null());
-            });
+            let content = std::fs::read_to_string(&file_path).unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+            assert_eq!(lines.len(), 1);
+            let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+            assert_eq!(parsed["tool"], "file_read");
+            assert_eq!(parsed["output"], "file content");
+            assert!(parsed["error"].is_null());
         });
     }
 
     #[test]
     fn test_tool_call_logger_error_field() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                tcl.append_tool_call(
-                    "shell_exec",
-                    "toolu_def",
-                    &json!({"command": "invalid cmd"}),
-                    "[Tool error: command not found]",
-                    Some("command not found"),
-                    1200,
-                    0,
-                )
-                .await
-                .unwrap();
+            tcl.append_tool_call(
+                "shell_exec",
+                "toolu_def",
+                &json!({"command": "invalid cmd"}),
+                "[Tool error: command not found]",
+                Some("command not found"),
+                1200,
+                0,
+            )
+            .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["error"], "command not found");
-                assert_eq!(records[0]["output"], "[Tool error: command not found]");
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["error"], "command not found");
+            assert_eq!(records[0]["output"], "[Tool error: command not found]");
         });
     }
 
@@ -722,31 +715,28 @@ mod tests {
     #[test]
     fn test_tool_call_logger_order_increments() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                for i in 0..10 {
-                    tcl.append_tool_call(
-                        "file_read",
-                        "tu_1",
-                        &json!({}),
-                        &format!("result_{}", i),
-                        None,
-                        i * 10,
-                        0,
-                    )
-                    .await
-                    .unwrap();
-                }
+            for i in 0..10 {
+                tcl.append_tool_call(
+                    "file_read",
+                    "tu_1",
+                    &json!({}),
+                    &format!("result_{}", i),
+                    None,
+                    i * 10,
+                    0,
+                )
+                .unwrap();
+            }
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                for (idx, record) in records.iter().enumerate() {
-                    assert_eq!(record["order"], idx as u64);
-                    assert_eq!(record["output"], format!("result_{}", idx));
-                }
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            for (idx, record) in records.iter().enumerate() {
+                assert_eq!(record["order"], idx as u64);
+                assert_eq!(record["output"], format!("result_{}", idx));
+            }
         });
     }
 
@@ -755,50 +745,45 @@ mod tests {
     #[test]
     fn test_tool_call_logger_round_field() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                tcl.append_tool_call(
-                    "file_find",
-                    "tu_a",
-                    &json!({"pattern":"*.rs"}),
-                    "a.rs",
-                    None,
-                    10,
-                    0,
-                )
-                .await
-                .unwrap();
-                tcl.append_tool_call(
-                    "file_read",
-                    "tu_b",
-                    &json!({"file_path":"a.rs"}),
-                    "content",
-                    None,
-                    5,
-                    0,
-                )
-                .await
-                .unwrap();
-                tcl.append_tool_call(
-                    "file_edit",
-                    "tu_c",
-                    &json!({"file_path":"a.rs"}),
-                    "ok",
-                    None,
-                    8,
-                    1,
-                )
-                .await
-                .unwrap();
+            tcl.append_tool_call(
+                "file_find",
+                "tu_a",
+                &json!({"pattern":"*.rs"}),
+                "a.rs",
+                None,
+                10,
+                0,
+            )
+            .unwrap();
+            tcl.append_tool_call(
+                "file_read",
+                "tu_b",
+                &json!({"file_path":"a.rs"}),
+                "content",
+                None,
+                5,
+                0,
+            )
+            .unwrap();
+            tcl.append_tool_call(
+                "file_edit",
+                "tu_c",
+                &json!({"file_path":"a.rs"}),
+                "ok",
+                None,
+                8,
+                1,
+            )
+            .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["round"], 0);
-                assert_eq!(records[1]["round"], 0);
-                assert_eq!(records[2]["round"], 1);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["round"], 0);
+            assert_eq!(records[1]["round"], 0);
+            assert_eq!(records[2]["round"], 1);
         });
     }
 
@@ -807,30 +792,27 @@ mod tests {
     #[test]
     fn test_tool_call_logger_persists() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
-                let n = 1000u64;
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            let n = 1000u64;
 
-                for i in 0..n {
-                    tcl.append_tool_call(
-                        "file_read",
-                        &format!("tu_{}", i),
-                        &json!({"idx": i}),
-                        &format!("out_{}", i),
-                        None,
-                        i,
-                        0,
-                    )
-                    .await
-                    .unwrap();
-                }
+            for i in 0..n {
+                tcl.append_tool_call(
+                    "file_read",
+                    &format!("tu_{}", i),
+                    &json!({"idx": i}),
+                    &format!("out_{}", i),
+                    None,
+                    i,
+                    0,
+                )
+                .unwrap();
+            }
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records.len(), n as usize);
-                assert_eq!(records.last().unwrap()["order"], n - 1);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records.len(), n as usize);
+            assert_eq!(records.last().unwrap()["order"], n - 1);
         });
     }
 
@@ -839,22 +821,19 @@ mod tests {
     #[test]
     fn test_tool_call_logger_empty_strings() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                tcl.append_tool_call("", "", &json!({}), "", Some(""), 0, 0)
-                    .await
-                    .unwrap();
+            tcl.append_tool_call("", "", &json!({}), "", Some(""), 0, 0)
+                .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["tool"], "");
-                assert_eq!(records[0]["tool_use_id"], "");
-                assert_eq!(records[0]["output"], "");
-                assert_eq!(records[0]["error"], "");
-                assert_eq!(records[0]["input"], json!({}));
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["tool"], "");
+            assert_eq!(records[0]["tool_use_id"], "");
+            assert_eq!(records[0]["output"], "");
+            assert_eq!(records[0]["error"], "");
+            assert_eq!(records[0]["input"], json!({}));
         });
     }
 
@@ -863,58 +842,52 @@ mod tests {
     #[test]
     fn test_tool_call_logger_large_output_100kb() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                let large = "A".repeat(100 * 1024);
-                tcl.append_tool_call(
-                    "file_read",
-                    "tu_1",
-                    &json!({"size":"100KB"}),
-                    &large,
-                    None,
-                    50,
-                    0,
-                )
-                .await
-                .unwrap();
+            let large = "A".repeat(100 * 1024);
+            tcl.append_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"size":"100KB"}),
+                &large,
+                None,
+                50,
+                0,
+            )
+            .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                let output = records[0]["output"].as_str().unwrap();
-                assert_eq!(output.len(), 100 * 1024);
-                assert_eq!(output, &large);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            let output = records[0]["output"].as_str().unwrap();
+            assert_eq!(output.len(), 100 * 1024);
+            assert_eq!(output, &large);
         });
     }
 
     #[test]
     fn test_tool_call_logger_large_output_1mb() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                let large = "B".repeat(1024 * 1024);
-                tcl.append_tool_call(
-                    "file_read",
-                    "tu_1",
-                    &json!({"size":"1MB"}),
-                    &large,
-                    None,
-                    100,
-                    0,
-                )
-                .await
-                .unwrap();
+            let large = "B".repeat(1024 * 1024);
+            tcl.append_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"size":"1MB"}),
+                &large,
+                None,
+                100,
+                0,
+            )
+            .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                let output = records[0]["output"].as_str().unwrap();
-                assert_eq!(output.len(), 1024 * 1024);
-                assert_eq!(output, &large);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            let output = records[0]["output"].as_str().unwrap();
+            assert_eq!(output.len(), 1024 * 1024);
+            assert_eq!(output, &large);
         });
     }
 
@@ -923,20 +896,17 @@ mod tests {
     #[test]
     fn test_tool_call_logger_large_input() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                let large = "x".repeat(100 * 1024);
-                let input = json!({"data": large, "nested": {"deep": large}});
-                tcl.append_tool_call("file_write", "tu_1", &input, "ok", None, 10, 0)
-                    .await
-                    .unwrap();
+            let large = "x".repeat(100 * 1024);
+            let input = json!({"data": large, "nested": {"deep": large}});
+            tcl.append_tool_call("file_write", "tu_1", &input, "ok", None, 10, 0)
+                .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["input"]["data"], large);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["input"]["data"], large);
         });
     }
 
@@ -945,28 +915,25 @@ mod tests {
     #[test]
     fn test_tool_call_logger_unicode() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                let unicode_output = "你好，世界\nこんにちは\n🌍🌎🌏\n\x00null char \x1b escape";
-                tcl.append_tool_call(
-                    "file_read",
-                    "tu_1",
-                    &json!({"path": "测试"}),
-                    unicode_output,
-                    None,
-                    0,
-                    0,
-                )
-                .await
-                .unwrap();
+            let unicode_output = "你好，世界\nこんにちは\n🌍🌎🌏\n\x00null char \x1b escape";
+            tcl.append_tool_call(
+                "file_read",
+                "tu_1",
+                &json!({"path": "测试"}),
+                unicode_output,
+                None,
+                0,
+                0,
+            )
+            .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["output"], unicode_output);
-                assert_eq!(records[0]["input"]["path"], "测试");
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["output"], unicode_output);
+            assert_eq!(records[0]["input"]["path"], "测试");
         });
     }
 
@@ -975,26 +942,23 @@ mod tests {
     #[test]
     fn test_tool_call_logger_zero_duration() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                tcl.append_tool_call(
-                    "pre_read_check",
-                    "tu_1",
-                    &json!({}),
-                    "[Tool error: blocked]",
-                    Some("blocked"),
-                    0,
-                    0,
-                )
-                .await
-                .unwrap();
+            tcl.append_tool_call(
+                "pre_read_check",
+                "tu_1",
+                &json!({}),
+                "[Tool error: blocked]",
+                Some("blocked"),
+                0,
+                0,
+            )
+            .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["duration_ms"], 0);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["duration_ms"], 0);
         });
     }
 
@@ -1003,26 +967,23 @@ mod tests {
     #[test]
     fn test_tool_call_logger_nested_input() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                let input = json!({
-                    "file_path": "/path/to/file.rs",
-                    "edits": [
-                        {"start_line": 1, "end_line": 3, "new_content": "abc"},
-                        {"start_line": 10, "end_line": 15, "new_content": "def"}
-                    ]
-                });
-                tcl.append_tool_call("file_edit", "tu_1", &input, "edited 2 blocks", None, 15, 0)
-                    .await
-                    .unwrap();
-
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["input"]["edits"][0]["start_line"], 1);
-                assert_eq!(records[0]["input"]["edits"][1]["start_line"], 10);
+            let input = json!({
+                "file_path": "/path/to/file.rs",
+                "edits": [
+                    {"start_line": 1, "end_line": 3, "new_content": "abc"},
+                    {"start_line": 10, "end_line": 15, "new_content": "def"}
+                ]
             });
+            tcl.append_tool_call("file_edit", "tu_1", &input, "edited 2 blocks", None, 15, 0)
+                .unwrap();
+
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["input"]["edits"][0]["start_line"], 1);
+            assert_eq!(records[0]["input"]["edits"][1]["start_line"], 10);
         });
     }
 
@@ -1031,21 +992,18 @@ mod tests {
     #[test]
     fn test_tool_call_logger_long_names() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap();
 
-                let long_name = "a".repeat(1000);
-                let long_id = "toolu_".to_string() + &"x".repeat(500);
-                tcl.append_tool_call(&long_name, &long_id, &json!({}), "ok", None, 0, 0)
-                    .await
-                    .unwrap();
+            let long_name = "a".repeat(1000);
+            let long_id = "toolu_".to_string() + &"x".repeat(500);
+            tcl.append_tool_call(&long_name, &long_id, &json!({}), "ok", None, 0, 0)
+                .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["tool"], long_name);
-                assert_eq!(records[0]["tool_use_id"], long_id);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["tool"], long_name);
+            assert_eq!(records[0]["tool_use_id"], long_id);
         });
     }
 
@@ -1054,19 +1012,16 @@ mod tests {
     #[test]
     fn test_tool_call_logger_session_id_match() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let session_id = cl.session_id().to_string();
-                let tcl = ToolCallLogger::new(&cl.session_dir(), &session_id).unwrap();
+            // append_tool_call 是同步调用
+            let cl = ConversationLogger::new().unwrap();
+            let session_id = cl.session_id().to_string();
+            let tcl = ToolCallLogger::new(&cl.session_dir(), &session_id).unwrap();
 
-                tcl.append_tool_call("file_read", "tu_1", &json!({}), "data", None, 0, 0)
-                    .await
-                    .unwrap();
+            tcl.append_tool_call("file_read", "tu_1", &json!({}), "data", None, 0, 0)
+                .unwrap();
 
-                let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
-                assert_eq!(records[0]["session_id"], session_id);
-            });
+            let records = read_jsonl(&cl.session_dir().join("tool_calls.jsonl"));
+            assert_eq!(records[0]["session_id"], session_id);
         });
     }
 
@@ -1107,51 +1062,48 @@ mod tests {
     #[test]
     fn test_tool_call_logger_concurrent_order() {
         crate::test_util::run_with_temp_home(|home| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let cl = ConversationLogger::new().unwrap();
-                let tcl = std::sync::Arc::new(
-                    ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap(),
-                );
+            let cl = ConversationLogger::new().unwrap();
+            let tcl = std::sync::Arc::new(
+                ToolCallLogger::new(&cl.session_dir(), cl.session_id()).unwrap(),
+            );
 
-                let mut handles = vec![];
-                for i in 0..50u64 {
-                    let tcl = tcl.clone();
-                    handles.push(tokio::spawn(async move {
-                        tcl.append_tool_call(
-                            "file_read",
-                            &format!("tu_{}", i),
-                            &json!({"idx": i}),
-                            &format!("out_{}", i),
-                            None,
-                            i,
-                            0,
-                        )
-                        .await
-                        .unwrap();
-                    }));
-                }
+            let mut handles = vec![];
+            for i in 0..50u64 {
+                let tcl = tcl.clone();
+                handles.push(std::thread::spawn(move || {
+                    tcl.append_tool_call(
+                        "file_read",
+                        &format!("tu_{}", i),
+                        &json!({"idx": i}),
+                        &format!("out_{}", i),
+                        None,
+                        i,
+                        0,
+                    )
+                    .unwrap();
+                }));
+            }
+            for h in handles {
+                h.join().unwrap();
+            }
 
-                futures_util::future::join_all(handles).await;
+            let file_path = cl.session_dir().join("tool_calls.jsonl");
+            let records = read_jsonl(&file_path);
+            assert_eq!(records.len(), 50);
 
-                let file_path = cl.session_dir().join("tool_calls.jsonl");
-                let records = read_jsonl(&file_path);
-                assert_eq!(records.len(), 50);
+            let mut orders: Vec<u64> = records
+                .iter()
+                .map(|r| r["order"].as_u64().unwrap())
+                .collect();
+            orders.sort();
+            let expected: Vec<u64> = (0..50).collect();
+            assert_eq!(orders, expected, "order 应覆盖 0..49 且无重复");
 
-                let mut orders: Vec<u64> = records
-                    .iter()
-                    .map(|r| r["order"].as_u64().unwrap())
-                    .collect();
-                orders.sort();
-                let expected: Vec<u64> = (0..50).collect();
-                assert_eq!(orders, expected, "order 应覆盖 0..49 且无重复");
-
-                let raw = std::fs::read_to_string(&file_path).unwrap();
-                for line in raw.lines() {
-                    let parsed: Result<serde_json::Value, _> = serde_json::from_str(line);
-                    assert!(parsed.is_ok(), "并发写入后每行应为合法 JSON: {}", line);
-                }
-            });
+            let raw = std::fs::read_to_string(&file_path).unwrap();
+            for line in raw.lines() {
+                let parsed: Result<serde_json::Value, _> = serde_json::from_str(line);
+                assert!(parsed.is_ok(), "并发写入后每行应为合法 JSON: {}", line);
+            }
         });
     }
 }
