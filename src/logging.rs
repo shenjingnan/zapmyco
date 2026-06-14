@@ -6,8 +6,31 @@
 use std::fs::OpenOptions;
 use std::io;
 use std::path::PathBuf;
+use std::sync::RwLock;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, Registry, fmt};
+
+/// 当前会话的 app.log 目录。None 表示没有活跃的会话。
+static SESSION_LOG_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
+
+/// 设置当前会话的日志目录（由 cmd_run 在 session 创建后调用）
+pub fn set_session_log_dir(path: PathBuf) {
+    if let Ok(mut dir) = SESSION_LOG_DIR.write() {
+        *dir = Some(path);
+    }
+}
+
+/// 清除当前会话的日志目录（由 Guard drop 时调用）
+pub fn clear_session_log_dir() {
+    if let Ok(mut dir) = SESSION_LOG_DIR.write() {
+        *dir = None;
+    }
+}
+
+/// 读取当前会话日志目录
+pub(crate) fn get_session_log_dir() -> Option<PathBuf> {
+    SESSION_LOG_DIR.read().ok()?.clone()
+}
 
 /// 初始化日志系统
 ///
@@ -37,17 +60,66 @@ pub fn init_logging() {
         .try_init();
 }
 
+/// 一个写入器，同时写入全局日志和 session 日志（Tee 模式）
+struct TeeWriter {
+    /// 全局 app.log 的文件句柄
+    global: std::fs::File,
+    /// session app.log 的文件句柄（仅在 session 活跃时存在）
+    session: Option<std::fs::File>,
+}
+
+impl io::Write for TeeWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // 始终写入全局日志
+        let _ = self.global.write(buf);
+        // 如果 session 活跃，也写入 session 日志
+        if let Some(ref mut f) = self.session {
+            let _ = f.write(buf);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let _ = self.global.flush();
+        if let Some(ref mut f) = self.session {
+            let _ = f.flush();
+        }
+        Ok(())
+    }
+}
+
 /// 创建文件日志 writer（可测试）
-fn make_file_writer(log_path: PathBuf) -> impl Fn() -> Box<dyn io::Write> {
+fn make_file_writer(global_log_path: PathBuf) -> impl Fn() -> Box<dyn io::Write> {
     move || -> Box<dyn io::Write> {
         // 确保目录存在（可能被外部删除）
-        if let Some(parent) = log_path.parent() {
+        if let Some(parent) = global_log_path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        match OpenOptions::new().create(true).append(true).open(&log_path) {
-            Ok(file) => Box::new(file),
-            Err(_) => Box::new(io::sink()),
-        }
+
+        // 打开全局 app.log
+        let global = match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&global_log_path)
+        {
+            Ok(f) => f,
+            Err(_) => return Box::new(io::sink()),
+        };
+
+        // 检查是否有活跃的 session，若有则打开 session app.log
+        let session = get_session_log_dir().and_then(|session_dir| {
+            let session_path = session_dir.join("app.log");
+            if let Some(parent) = session_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&session_path)
+                .ok()
+        });
+
+        Box::new(TeeWriter { global, session })
     }
 }
 
@@ -67,6 +139,9 @@ mod tests {
     use crate::test_util::run_with_temp_home;
     use std::io::Write;
 
+    // ================================================================
+    // 已有的测试
+    // ================================================================
     #[test]
     fn test_log_path_uses_zapmyco_dir() {
         run_with_temp_home(|_home| {
@@ -308,6 +383,322 @@ mod tests {
             assert_eq!(lines.len(), 2, "两个写入器的内容都应存在");
             assert_eq!(lines[0], "from first writer");
             assert_eq!(lines[1], "from second writer");
+        });
+    }
+
+    // ================================================================
+    // SESSION_LOG_DIR 状态管理
+    // ================================================================
+
+    #[test]
+    fn test_get_session_log_dir_default_none() {
+        // 默认状态应为 None
+        assert!(get_session_log_dir().is_none());
+    }
+
+    #[test]
+    fn test_set_and_get_session_log_dir() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        let dir = tempfile::TempDir::new().unwrap().into_path();
+        set_session_log_dir(dir.clone());
+        assert_eq!(get_session_log_dir(), Some(dir));
+        clear_session_log_dir();
+    }
+
+    #[test]
+    fn test_clear_session_log_dir() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        let dir = tempfile::TempDir::new().unwrap().into_path();
+        set_session_log_dir(dir);
+        assert!(get_session_log_dir().is_some());
+        clear_session_log_dir();
+        assert!(get_session_log_dir().is_none());
+    }
+
+    // ================================================================
+    // TeeWriter 单元测试
+    // ================================================================
+
+    #[test]
+    fn test_tee_writer_writes_global_only() {
+        run_with_temp_home(|home| {
+            let global_path = home.join("app.log");
+            let global = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&global_path)
+                .unwrap();
+            let mut writer = TeeWriter {
+                global,
+                session: None,
+            };
+            writeln!(writer, "hello").unwrap();
+
+            let content = std::fs::read_to_string(&global_path).unwrap();
+            assert!(content.contains("hello"));
+        });
+    }
+
+    #[test]
+    fn test_tee_writer_writes_both() {
+        run_with_temp_home(|home| {
+            let global_path = home.join("app.log");
+            let session_path = home.join("session").join("app.log");
+            std::fs::create_dir_all(home.join("session")).unwrap();
+
+            let global = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&global_path)
+                .unwrap();
+            let session = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&session_path)
+                .unwrap();
+            let mut writer = TeeWriter {
+                global,
+                session: Some(session),
+            };
+            writeln!(writer, "tee message").unwrap();
+
+            assert!(
+                std::fs::read_to_string(&global_path)
+                    .unwrap()
+                    .contains("tee message")
+            );
+            assert!(
+                std::fs::read_to_string(&session_path)
+                    .unwrap()
+                    .contains("tee message")
+            );
+        });
+    }
+
+    #[test]
+    fn test_tee_writer_flush() {
+        run_with_temp_home(|home| {
+            let global_path = home.join("app.log");
+            let global = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&global_path)
+                .unwrap();
+            let mut writer = TeeWriter {
+                global,
+                session: None,
+            };
+
+            write!(writer, "data").unwrap();
+            writer.flush().unwrap();
+
+            let content = std::fs::read_to_string(&global_path).unwrap();
+            assert!(content.contains("data"));
+        });
+    }
+
+    #[test]
+    fn test_tee_writer_drop_flushes() {
+        run_with_temp_home(|home| {
+            let global_path = home.join("app.log");
+            let session_path = home.join("session").join("app.log");
+            std::fs::create_dir_all(home.join("session")).unwrap();
+
+            {
+                let global = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&global_path)
+                    .unwrap();
+                let session = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&session_path)
+                    .unwrap();
+                let mut writer = TeeWriter {
+                    global,
+                    session: Some(session),
+                };
+                writeln!(writer, "dropped data").unwrap();
+            } // TeeWriter drop 在此发生
+
+            assert!(
+                std::fs::read_to_string(&global_path)
+                    .unwrap()
+                    .contains("dropped data")
+            );
+            assert!(
+                std::fs::read_to_string(&session_path)
+                    .unwrap()
+                    .contains("dropped data")
+            );
+        });
+    }
+
+    // ================================================================
+    // make_file_writer session 行为测试
+    // ================================================================
+
+    #[test]
+    fn test_make_file_writer_with_session_tee() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/test-session");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            set_session_log_dir(session_dir.clone());
+
+            let global_path = home.join(".zapmyco/logs/app.log");
+            let writer = make_file_writer(global_path.clone());
+            {
+                let mut w = writer();
+                writeln!(w, "session active").unwrap();
+            }
+
+            // 全局日志应包含消息
+            assert!(
+                std::fs::read_to_string(&global_path)
+                    .unwrap()
+                    .contains("session active")
+            );
+
+            // session 日志也应包含消息
+            let session_log = session_dir.join("app.log");
+            assert!(session_log.exists());
+            assert!(
+                std::fs::read_to_string(&session_log)
+                    .unwrap()
+                    .contains("session active")
+            );
+
+            clear_session_log_dir();
+        });
+    }
+
+    #[test]
+    fn test_make_file_writer_no_session_no_tee() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            clear_session_log_dir();
+
+            let global_path = home.join(".zapmyco/logs/app.log");
+            let writer = make_file_writer(global_path.clone());
+            {
+                let mut w = writer();
+                writeln!(w, "no session").unwrap();
+            }
+
+            assert!(
+                std::fs::read_to_string(&global_path)
+                    .unwrap()
+                    .contains("no session")
+            );
+        });
+    }
+
+    #[test]
+    fn test_make_file_writer_after_clear_stops_tee() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/session-1");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            set_session_log_dir(session_dir.clone());
+
+            let global_path = home.join(".zapmyco/logs/app.log");
+            let writer = make_file_writer(global_path.clone());
+
+            // session 激活时写入
+            {
+                let mut w = writer();
+                writeln!(w, "before clear").unwrap();
+            }
+
+            clear_session_log_dir();
+
+            // session 清除后写入
+            {
+                let mut w = writer();
+                writeln!(w, "after clear").unwrap();
+            }
+
+            // session 文件只应有 "before clear"
+            let content = std::fs::read_to_string(session_dir.join("app.log")).unwrap();
+            assert!(content.contains("before clear"));
+            assert!(
+                !content.contains("after clear"),
+                "clear 后不应再写入 session"
+            );
+        });
+    }
+
+    #[test]
+    fn test_make_file_writer_session_dir_deleted_recreated() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/to-be-deleted");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            set_session_log_dir(session_dir.clone());
+
+            // 外部删除 session 目录
+            std::fs::remove_dir_all(&session_dir).unwrap();
+
+            let global_path = home.join(".zapmyco/logs/app.log");
+            let writer = make_file_writer(global_path.clone());
+            {
+                let mut w = writer();
+                writeln!(w, "dir was deleted").unwrap();
+            }
+
+            // session app.log 应被重建
+            let session_log = session_dir.join("app.log");
+            assert!(session_log.exists(), "session 目录应被自动重建");
+            assert!(
+                std::fs::read_to_string(&session_log)
+                    .unwrap()
+                    .contains("dir was deleted"),
+                "删除后重新写入应成功"
+            );
+
+            clear_session_log_dir();
+        });
+    }
+
+    // ================================================================
+    // tracing 集成测试
+    // ================================================================
+
+    #[test]
+    fn test_tracing_events_tee_to_session_log() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/tracing-test");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            set_session_log_dir(session_dir.clone());
+
+            let global_path = home.join(".zapmyco/logs/app.log");
+
+            // 创建临时 subscriber
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(make_file_writer(global_path.clone()))
+                    .with_ansi(false)
+                    .with_filter(EnvFilter::new("info")),
+            );
+
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::info!("tracing session message");
+            });
+
+            // session 日志应包含消息
+            let session_log = session_dir.join("app.log");
+            assert!(session_log.exists());
+            assert!(
+                std::fs::read_to_string(&session_log)
+                    .unwrap()
+                    .contains("tracing session message"),
+                "session app.log 应包含 tracing 事件"
+            );
+
+            clear_session_log_dir();
         });
     }
 }
