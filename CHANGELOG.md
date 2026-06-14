@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.41.0](https://github.com/shenjingnan/zapmyco/compare/v0.40.0...v0.41.0) - 2026-06-14
+
+### Added
+
+- *(logging)* 为 session 目录添加 app.log 应用执行日志 ([#442](https://github.com/shenjingnan/zapmyco/pull/442))
+- *(shell-exec)* 增加始终允许选项，优化用户授权体验 ([#441](https://github.com/shenjingnan/zapmyco/pull/441))
+- *(permission)* ReadOnly 模式下 shell_exec 降级 + SubAgent 权限继承 ([#440](https://github.com/shenjingnan/zapmyco/pull/440))
+- *(agent)* 将 conversation 全面更名为 session ([#439](https://github.com/shenjingnan/zapmyco/pull/439))
+- *(agent)* 添加工具调用日志记录功能 ([#438](https://github.com/shenjingnan/zapmyco/pull/438))
+- *(run)* 每次 zapmyco run 创建会话子目录并记录终端输出 ([#435](https://github.com/shenjingnan/zapmyco/pull/435))
+
 ## [0.40.0](https://github.com/shenjingnan/zapmyco/compare/v0.39.1...v0.40.0) - 2026-06-11
 
 ### Other
