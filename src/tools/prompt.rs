@@ -711,4 +711,119 @@ mod tests {
         clear_lines(0);
         clear_lines(3);
     }
+
+    // ── render_single_list 末项编号 '0' ──
+
+    #[test]
+    fn test_render_single_list_two_options_unchanged() {
+        let options = [
+            SelectOption {
+                label: "A",
+                description: "desc A",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "B",
+                description: "desc B",
+                custom_input: false,
+            },
+        ];
+        render_single_list("测试?", &options, 0, true, None);
+    }
+
+    #[test]
+    fn test_render_single_list_three_options_last_is_zero() {
+        let options = [
+            SelectOption {
+                label: "允许",
+                description: "执行",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "始终允许",
+                description: "加入白名单",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "拒绝",
+                description: "取消",
+                custom_input: false,
+            },
+        ];
+        render_single_list("是否确认执行？", &options, 0, true, None);
+        render_single_list("是否确认执行？", &options, 2, false, None);
+    }
+
+    #[test]
+    fn test_render_single_list_four_options_last_is_zero() {
+        let options = [
+            SelectOption {
+                label: "A",
+                description: "",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "B",
+                description: "",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "C",
+                description: "",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "D",
+                description: "",
+                custom_input: false,
+            },
+        ];
+        render_single_list("测试?", &options, 0, true, None);
+        render_single_list("测试?", &options, 3, false, None);
+    }
+
+    #[test]
+    fn test_render_single_list_one_option() {
+        let options = [SelectOption {
+            label: "唯一选项",
+            description: "desc",
+            custom_input: false,
+        }];
+        render_single_list("测试?", &options, 0, true, None);
+    }
+
+    #[test]
+    fn test_render_single_list_zero_options() {
+        let options: [SelectOption; 0] = [];
+        render_single_list("测试?", &options, 0, true, None);
+    }
+
+    #[test]
+    fn test_render_single_list_zero_key_with_custom_input() {
+        let options = [
+            SelectOption {
+                label: "A",
+                description: "opt A",
+                custom_input: false,
+            },
+            SelectOption {
+                label: "B",
+                description: "opt B",
+                custom_input: true,
+            },
+        ];
+        render_single_list("测试?", &options, 1, false, Some(""));
+        render_single_list("测试?", &options, 1, false, Some("用户输入"));
+    }
+
+    // ── 0 键映射 ──
+
+    #[test]
+    fn test_single_select_result_index_zero_key() {
+        let r = SingleSelectResult::Index(2);
+        match r {
+            SingleSelectResult::Index(i) => assert_eq!(i, 2),
+            _ => panic!("expected Index"),
+        }
+    }
 }

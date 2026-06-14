@@ -1494,6 +1494,375 @@ allow = ["git status", "cargo check"]
 }
 
 #[cfg(test)]
+mod always_allow_tests {
+    use super::*;
+
+    // ── allowed_commands_runtime 初始化 ──
+
+    #[test]
+    fn test_allowed_commands_runtime_initialized_from_options() {
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands: vec!["git status".to_string(), "cargo check".to_string()],
+            ..Default::default()
+        });
+        let allowed = executor.allowed_commands_runtime.lock().unwrap();
+        assert_eq!(allowed.len(), 2);
+        assert!(allowed.contains(&"git status".to_string()));
+        assert!(allowed.contains(&"cargo check".to_string()));
+    }
+
+    #[test]
+    fn test_allowed_commands_runtime_empty_by_default() {
+        let executor = ShellExec::new(Default::default());
+        let allowed = executor.allowed_commands_runtime.lock().unwrap();
+        assert!(allowed.is_empty());
+    }
+
+    #[test]
+    fn test_allowed_commands_runtime_combined_with_options() {
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands: vec!["git status".to_string()],
+            ..Default::default()
+        });
+        // 初始时仅含 options 中的条目
+        {
+            let allowed = executor.allowed_commands_runtime.lock().unwrap();
+            assert_eq!(allowed.len(), 1);
+            assert!(allowed.contains(&"git status".to_string()));
+        }
+        // 运行时添加新条目
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("cargo check".to_string());
+
+        // 两者都应在运行时列表中
+        {
+            let allowed = executor.allowed_commands_runtime.lock().unwrap();
+            assert_eq!(allowed.len(), 2);
+            assert!(allowed.contains(&"git status".to_string()));
+            assert!(allowed.contains(&"cargo check".to_string()));
+        }
+        // options.allowed_commands 应保持不变（有效隔离）
+        assert_eq!(executor.options.allowed_commands.len(), 1);
+        assert_eq!(executor.options.allowed_commands[0], "git status");
+    }
+
+    #[test]
+    fn test_allowed_commands_runtime_cleared_options_unaffected() {
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands: vec!["git status".to_string()],
+            ..Default::default()
+        });
+        executor.allowed_commands_runtime.lock().unwrap().clear();
+
+        let allowed = executor.allowed_commands_runtime.lock().unwrap();
+        assert!(allowed.is_empty());
+        assert_eq!(executor.options.allowed_commands.len(), 1);
+    }
+
+    // ── should_skip_confirm 使用运行时列表 ──
+
+    #[test]
+    fn test_should_skip_confirm_runtime_allowed() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+        assert!(!executor.should_skip_confirm("git status"));
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("git status".to_string());
+
+        assert!(executor.should_skip_confirm("git status"));
+        assert!(executor.should_skip_confirm("git status -s"));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_runtime_does_not_affect_builtin() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            ..Default::default()
+        });
+        assert!(executor.should_skip_confirm("pwd"));
+        assert!(executor.should_skip_confirm("echo hello"));
+
+        executor.allowed_commands_runtime.lock().unwrap().clear();
+
+        assert!(executor.should_skip_confirm("pwd"));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_runtime_trimmed_matching() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("git status".to_string());
+
+        assert!(executor.should_skip_confirm("  git status  "));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_runtime_case_sensitive() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+
+        // 仅添加大写 GIT STATUS
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("GIT STATUS".to_string());
+
+        // 大写匹配
+        assert!(executor.should_skip_confirm("GIT STATUS"));
+        assert!(executor.should_skip_confirm("GIT STATUS -s"));
+        // 小写不应匹配（大小写敏感）
+        assert!(!executor.should_skip_confirm("git status"));
+        // 混合大小写不应匹配
+        assert!(!executor.should_skip_confirm("GIT status"));
+
+        // 反向验证：添加小写后，小写匹配，大写仍不匹配小写条目
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("git status".to_string());
+        assert!(executor.should_skip_confirm("git status"));
+        assert!(executor.should_skip_confirm("GIT STATUS"));
+    }
+
+    // ── 非 TTY 下 prompt_confirm 行为 ──
+
+    #[test]
+    fn test_prompt_confirm_non_tty_returns_deny() {
+        let result = prompt_confirm("echo hello", None);
+        assert!(matches!(result, ConfirmAction::Deny));
+    }
+
+    #[test]
+    fn test_prompt_confirm_non_tty_with_description() {
+        let result = prompt_confirm("echo hello", Some("测试命令"));
+        assert!(matches!(result, ConfirmAction::Deny));
+    }
+
+    // ── ConfirmAction 枚举 ──
+
+    #[test]
+    fn test_confirm_action_variants() {
+        match ConfirmAction::Allow {
+            ConfirmAction::Allow => {}
+            _ => panic!("expected Allow"),
+        }
+        match ConfirmAction::AlwaysAllow {
+            ConfirmAction::AlwaysAllow => {}
+            _ => panic!("expected AlwaysAllow"),
+        }
+        match ConfirmAction::Deny {
+            ConfirmAction::Deny => {}
+            _ => panic!("expected Deny"),
+        }
+    }
+
+    // ── DANGEROUS_ALWAYS_ALLOW_COMMANDS 验证 ──
+
+    #[test]
+    fn test_dangerous_commands_list_not_empty() {
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.is_empty());
+    }
+
+    #[test]
+    fn test_dangerous_commands_includes_rm_sudo() {
+        assert!(DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"rm"));
+        assert!(DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"sudo"));
+        assert!(DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"python"));
+    }
+
+    #[test]
+    fn test_safe_commands_not_in_dangerous_list() {
+        // 常用安全命令不应出现在危险列表中
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"git"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"cargo"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"touch"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"echo"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"ls"));
+    }
+
+    // ── execute 运行时白名单集成 ──
+
+    #[tokio::test]
+    async fn test_execute_respects_runtime_allowlist() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            denied_commands: vec![],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("echo ".to_string());
+
+        let result = executor
+            .execute("echo runtime_allow", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("runtime_allow"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_runtime_prefix_matching() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            denied_commands: vec![],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("echo ".to_string());
+
+        let result = executor
+            .execute("echo hello world", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("hello world"));
+    }
+
+    // ── 回归：skip_confirm=true 不受影响 ──
+
+    #[tokio::test]
+    async fn test_execute_skip_confirm_still_works() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let result = executor
+            .execute("echo skip_confirm_test", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("skip_confirm_test"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_skip_confirm_allows_unsafe() {
+        // skip_confirm=true 时即使"危险"命令也执行（测试模式）
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let result = executor
+            .execute("echo dangerous_but_skipped", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("dangerous_but_skipped"));
+    }
+
+    // ── 回归：deny 列表仍优先 ──
+
+    #[tokio::test]
+    async fn test_deny_list_still_overrides_allow() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: vec!["git status".to_string()],
+            denied_commands: vec!["git status".to_string()],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        // deny 优先 → is_safe_command 返回 false → 非 TTY 下 prompt_confirm 返回 Deny
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("not executed") || r.contains("已取消"));
+    }
+
+    // ── 回归：运行时白名单不影响控制运算符安全网 ──
+
+    #[tokio::test]
+    async fn test_runtime_allowlist_does_not_bypass_control_ops() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            denied_commands: vec![],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("echo hello | cat".to_string());
+
+        assert!(!executor.should_skip_confirm("echo hello | cat"));
+
+        let r = executor
+            .execute("echo hello | cat", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("not executed") || r.contains("已取消"));
+    }
+
+    // ── 回归：readonly 模式不受影响 ──
+
+    #[tokio::test]
+    async fn test_readonly_still_rejects_unsafe() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+    }
+
+    #[tokio::test]
+    async fn test_readonly_safe_still_works() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("pwd", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+}
+
+#[cfg(test)]
 mod classify_readonly_tests {
     use super::*;
 
