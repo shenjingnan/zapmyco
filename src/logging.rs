@@ -89,7 +89,7 @@ impl io::Write for TeeWriter {
 }
 
 /// 创建文件日志 writer（可测试）
-fn make_file_writer(global_log_path: PathBuf) -> impl Fn() -> Box<dyn io::Write> {
+pub(crate) fn make_file_writer(global_log_path: PathBuf) -> impl Fn() -> Box<dyn io::Write> {
     move || -> Box<dyn io::Write> {
         // 确保目录存在（可能被外部删除）
         if let Some(parent) = global_log_path.parent() {
@@ -699,6 +699,363 @@ mod tests {
             );
 
             clear_session_log_dir();
+        });
+    }
+
+    // ================================================================
+    // TC-TW-04: 多次写入持续追加
+    // ================================================================
+
+    #[test]
+    fn test_tee_writer_appends() {
+        run_with_temp_home(|home| {
+            let global_path = home.join("app.log");
+            let global = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&global_path)
+                .unwrap();
+            let mut writer = TeeWriter {
+                global,
+                session: None,
+            };
+
+            writeln!(writer, "line1").unwrap();
+            writeln!(writer, "line2").unwrap();
+            writer.flush().unwrap();
+
+            let content = std::fs::read_to_string(&global_path).unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+            assert_eq!(lines.len(), 2);
+            assert_eq!(lines[0], "line1");
+            assert_eq!(lines[1], "line2");
+        });
+    }
+
+    // ================================================================
+    // TC-TW-05: 大缓冲区写入不截断
+    // ================================================================
+
+    #[test]
+    fn test_tee_writer_large_buffer() {
+        run_with_temp_home(|home| {
+            let global_path = home.join("app.log");
+            let session_path = home.join("session").join("app.log");
+            std::fs::create_dir_all(home.join("session")).unwrap();
+
+            let global = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&global_path)
+                .unwrap();
+            let session = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&session_path)
+                .unwrap();
+            let mut writer = TeeWriter {
+                global,
+                session: Some(session),
+            };
+
+            let large = "A".repeat(1024 * 64); // 64KB
+            write!(writer, "{}", large).unwrap();
+            writer.flush().unwrap();
+
+            assert_eq!(std::fs::read_to_string(&global_path).unwrap().len(), 65536);
+            assert_eq!(std::fs::read_to_string(&session_path).unwrap().len(), 65536);
+        });
+    }
+
+    // ================================================================
+    // TC-MF-04: 多个 session 各自独立
+    // ================================================================
+
+    #[test]
+    fn test_make_file_writer_multiple_sessions() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let global_path = home.join(".zapmyco/logs/app.log");
+            let writer = make_file_writer(global_path.clone());
+
+            // Session A
+            let session_a = home.join(".zapmyco/sessions/session-a");
+            std::fs::create_dir_all(&session_a).unwrap();
+            set_session_log_dir(session_a.clone());
+            {
+                let mut w = writer();
+                writeln!(w, "from session a").unwrap();
+            }
+            clear_session_log_dir();
+
+            // Session B
+            let session_b = home.join(".zapmyco/sessions/session-b");
+            std::fs::create_dir_all(&session_b).unwrap();
+            set_session_log_dir(session_b.clone());
+            {
+                let mut w = writer();
+                writeln!(w, "from session b").unwrap();
+            }
+            clear_session_log_dir();
+
+            // 验证隔离
+            let content_a = std::fs::read_to_string(session_a.join("app.log")).unwrap();
+            let content_b = std::fs::read_to_string(session_b.join("app.log")).unwrap();
+            assert!(content_a.contains("from session a"));
+            assert!(content_b.contains("from session b"));
+            assert!(!content_a.contains("from session b"));
+            assert!(!content_b.contains("from session a"));
+
+            // 全局包含两者
+            let global = std::fs::read_to_string(&global_path).unwrap();
+            assert!(global.contains("from session a"));
+            assert!(global.contains("from session b"));
+        });
+    }
+
+    // ================================================================
+    // TC-MF-06: 多个 tracing 事件的顺序
+    // ================================================================
+
+    #[test]
+    fn test_tracing_session_log_event_order() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let global_path = home.join(".zapmyco/logs/app.log");
+
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(make_file_writer(global_path.clone()))
+                    .with_ansi(false),
+            );
+
+            let session_dir = home.join(".zapmyco/sessions/order-test");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            let session_log = session_dir.join("app.log");
+            set_session_log_dir(session_dir);
+
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::info!("first event");
+                tracing::warn!("second event");
+                tracing::error!("third event");
+            });
+
+            let content = std::fs::read_to_string(&session_log).unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+            assert_eq!(lines.len(), 3, "应记录所有 3 个事件");
+            assert!(lines[0].contains("first event"));
+            assert!(lines[1].contains("second event"));
+            assert!(lines[2].contains("third event"));
+
+            clear_session_log_dir();
+        });
+    }
+
+    // ================================================================
+    // TC-ER-01: TeeWriter 不可写路径不 panic
+    // ================================================================
+
+    #[test]
+    fn test_tee_writer_global_sink_on_invalid_path() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        clear_session_log_dir();
+        let writer = make_file_writer(PathBuf::from("/nonexistent/path/app.log"));
+        let mut w = writer();
+        let result = writeln!(w, "should not panic");
+        assert!(result.is_ok(), "全局文件不可写应回退到 io::sink");
+    }
+
+    // ================================================================
+    // TC-ER-02: session 目录不可写 → 全局仍正常写入
+    // ================================================================
+
+    #[test]
+    fn test_tee_writer_session_unwritable() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let session_dir = home.join("restricted-session");
+            std::fs::create_dir_all(&session_dir).unwrap();
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&session_dir, std::fs::Permissions::from_mode(0o444))
+                    .unwrap();
+            }
+
+            set_session_log_dir(session_dir);
+
+            let global_path = home.join("app.log");
+            let writer = make_file_writer(global_path.clone());
+            {
+                let mut w = writer();
+                let result = writeln!(w, "session unwritable test");
+                assert!(result.is_ok(), "session 不可写不应 panic");
+            }
+
+            // 全局日志应正常写入
+            assert!(
+                std::fs::read_to_string(&global_path)
+                    .unwrap()
+                    .contains("session unwritable test"),
+                "全局日志应正常写入"
+            );
+
+            clear_session_log_dir();
+        });
+    }
+
+    // ================================================================
+    // TC-ER-04: session 日志文件被删除后自动重建
+    // ================================================================
+
+    #[test]
+    fn test_tee_writer_session_file_deleted_recreated() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/file-deleted");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            set_session_log_dir(session_dir.clone());
+
+            let session_log = session_dir.join("app.log");
+
+            // 先写一条
+            let global_path = home.join("app.log");
+            let writer = make_file_writer(global_path.clone());
+            {
+                let mut w = writer();
+                writeln!(w, "first write").unwrap();
+            }
+            assert!(session_log.exists());
+
+            // 外部删除 session 日志文件
+            std::fs::remove_file(&session_log).unwrap();
+
+            // 再次写入
+            {
+                let mut w = writer();
+                writeln!(w, "after file deleted").unwrap();
+            }
+
+            // 文件应被重新创建
+            assert!(session_log.exists());
+            let content = std::fs::read_to_string(&session_log).unwrap();
+            assert!(!content.contains("first write"), "重建后不应包含旧内容");
+            assert!(content.contains("after file deleted"), "重建后应包含新内容");
+
+            clear_session_log_dir();
+        });
+    }
+
+    // ================================================================
+    // TC-CONC-01: 多线程同时写入 session 日志
+    // ================================================================
+
+    #[test]
+    fn test_tee_writer_concurrent_writes() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/concurrent");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            set_session_log_dir(session_dir.clone());
+
+            let global_path = home.join("app.log");
+            let writer = std::sync::Arc::new(make_file_writer(global_path.clone()));
+
+            let mut handles = vec![];
+            for i in 0..20usize {
+                let w = writer.clone();
+                handles.push(std::thread::spawn(move || {
+                    let mut f = w();
+                    writeln!(f, "thread {} writing", i).unwrap();
+                }));
+            }
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            let session_log = session_dir.join("app.log");
+            let content = std::fs::read_to_string(&session_log).unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+            assert_eq!(lines.len(), 20, "20 个线程的写入都应完整保留");
+            for line in &lines {
+                assert!(line.contains("writing"), "每行应包含预期内容: {:?}", line);
+            }
+
+            clear_session_log_dir();
+        });
+    }
+
+    // ================================================================
+    // TC-CONC-02: 多线程并发访问 SESSION_LOG_DIR
+    // ================================================================
+
+    #[test]
+    fn test_session_log_dir_concurrent_access() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        let dir = tempfile::TempDir::new().unwrap().into_path();
+        let mut handles = vec![];
+        for i in 0..10usize {
+            let d = dir.join(format!("thread-{}", i));
+            handles.push(std::thread::spawn(move || {
+                if i % 2 == 0 {
+                    set_session_log_dir(d);
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    clear_session_log_dir();
+                } else {
+                    let _ = get_session_log_dir();
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        clear_session_log_dir();
+        assert!(get_session_log_dir().is_none());
+    }
+
+    // ================================================================
+    // TC-CROSS-01: 路径分隔符跨平台兼容
+    // ================================================================
+
+    #[test]
+    fn test_path_construction_cross_platform() {
+        run_with_temp_home(|_home| {
+            let session_dir = PathBuf::from("sessions").join("test-id");
+            let log_path = session_dir.join("app.log");
+
+            assert!(log_path.to_string_lossy().ends_with("app.log"));
+            // 验证路径分隔符是平台正确的
+            let sep = std::path::MAIN_SEPARATOR;
+            assert_eq!(
+                log_path
+                    .to_string_lossy()
+                    .chars()
+                    .filter(|&c| c == sep)
+                    .count(),
+                2
+            );
+        });
+    }
+
+    // ================================================================
+    // TC-CROSS-02: session_id 不含非法路径字符
+    // ================================================================
+
+    #[test]
+    fn test_session_id_no_invalid_path_chars() {
+        run_with_temp_home(|_home| {
+            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
+            let session_id = logger.session_id();
+
+            // Windows 不允许的字符: \ / : * ? " < > |
+            let invalid = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+            for c in invalid {
+                assert!(!session_id.contains(c), "session_id 不应包含 '{}'", c);
+            }
+
+            assert!(session_id.len() < 50, "session_id 应控制在合理长度");
         });
     }
 }
