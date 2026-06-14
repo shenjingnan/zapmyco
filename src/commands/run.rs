@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use crate::agent::chat::{AiAgent, AiAgentOptions};
 use crate::agent::session_loader;
 use crate::agent::system_prompt;
@@ -13,6 +15,9 @@ use crate::tools::{
     subagent, task_manager, web_fetch, web_search,
 };
 
+/// 是否收到 Ctrl+C 中断信号
+static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
+
 /// run 命令 - 一次性执行 AI 任务（带工具支持）
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn cmd_run(
@@ -26,6 +31,7 @@ pub(crate) async fn cmd_run(
     api_key: Option<&str>,
     base_url: Option<&str>,
     subagent: bool,
+    parent_session_id: Option<&str>,
 ) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
@@ -107,7 +113,9 @@ pub(crate) async fn cmd_run(
     }
 
     // ── Step 5: 构建 AiAgentOptions ──
-    let mut options = build_run_options(profile, model, api_key, base_url);
+    let mut options = build_run_options(profile, model, api_key, base_url, permission_mode);
+    options.is_subagent = subagent;
+    options.parent_session_id = parent_session_id.map(|s| s.to_string());
     options.system_prompt = Some(full_prompt);
     options.skill_list_text = {
         let list = build_skill_list_text(&all_skills);
@@ -121,6 +129,21 @@ pub(crate) async fn cmd_run(
 
     // ── 注册应用执行日志到当前会话目录 ──
     let _app_log_guard = register_app_log(&agent);
+
+    // ── 注册 Ctrl+C 信号处理器（第一次优雅关闭，第二次强制退出） ──
+    std::mem::drop(tokio::spawn(async {
+        tokio::signal::ctrl_c().await.ok();
+        SHOULD_EXIT.store(true, Ordering::Relaxed);
+        output::send(&Message::info(
+            "收到中断信号，正在优雅关闭...（再按一次强制退出）",
+        ));
+
+        tokio::signal::ctrl_c().await.ok();
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        std::process::exit(130);
+    }));
 
     // 注册 Ask User 工具
     let ask_user = ask_user::AskUser;
@@ -406,6 +429,11 @@ pub(crate) async fn cmd_run(
     }
 
     output::send(&Message::result(String::new()));
+    if SHOULD_EXIT.load(Ordering::Relaxed) {
+        agent.finish_session(crate::agent::session_logger::ExitReason::Interrupted);
+    } else {
+        agent.finish_session(crate::agent::session_logger::ExitReason::Completed);
+    }
     Ok(())
 }
 
@@ -415,12 +443,15 @@ pub(crate) fn build_run_options(
     model: Option<&str>,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    permission_mode: PermissionMode,
 ) -> AiAgentOptions {
     AiAgentOptions {
         model_profile: profile.map(|s| s.to_string()),
+        profile: profile.map(|s| s.to_string()),
         model: model.map(|s| s.to_string()),
         api_key: api_key.map(|s| s.to_string()),
         base_url: base_url.map(|s| s.to_string()),
+        permission_mode: Some(permission_mode.to_string()),
         ..Default::default()
     }
 }
@@ -491,6 +522,7 @@ mod tests {
             None,
             None,  // task_id..base_url
             false, // subagent
+            None,  // parent_session_id
         )
         .await;
         assert!(result.is_err());
@@ -516,6 +548,7 @@ mod tests {
             None,
             None,  // task_id..base_url
             false, // subagent
+            None,  // parent_session_id
         )
         .await;
         assert!(result.is_err());
@@ -529,7 +562,7 @@ mod tests {
 
     #[test]
     fn test_build_run_options_no_profile() {
-        let options = build_run_options(None, None, None, None);
+        let options = build_run_options(None, None, None, None, PermissionMode::Full);
         assert!(options.model_profile.is_none());
         assert!(options.model.is_none());
         assert!(options.api_key.is_none());
@@ -538,7 +571,7 @@ mod tests {
 
     #[test]
     fn test_build_run_options_with_profile() {
-        let options = build_run_options(Some("advanced"), None, None, None);
+        let options = build_run_options(Some("advanced"), None, None, None, PermissionMode::Full);
         assert_eq!(options.model_profile.unwrap(), "advanced");
         assert!(options.model.is_none());
         assert!(options.api_key.is_none());
@@ -547,7 +580,13 @@ mod tests {
 
     #[test]
     fn test_build_run_options_with_model() {
-        let options = build_run_options(None, Some("deepseek-v4-flash"), None, None);
+        let options = build_run_options(
+            None,
+            Some("deepseek-v4-flash"),
+            None,
+            None,
+            PermissionMode::Full,
+        );
         assert_eq!(options.model.unwrap(), "deepseek-v4-flash");
         assert!(options.model_profile.is_none());
         assert!(options.api_key.is_none());
@@ -556,14 +595,21 @@ mod tests {
 
     #[test]
     fn test_build_run_options_with_api_key() {
-        let options = build_run_options(None, None, Some("sk-test-123"), None);
+        let options =
+            build_run_options(None, None, Some("sk-test-123"), None, PermissionMode::Full);
         assert_eq!(options.api_key.unwrap(), "sk-test-123");
         assert!(options.model.is_none());
     }
 
     #[test]
     fn test_build_run_options_with_base_url() {
-        let options = build_run_options(None, None, None, Some("https://custom.example.com"));
+        let options = build_run_options(
+            None,
+            None,
+            None,
+            Some("https://custom.example.com"),
+            PermissionMode::Full,
+        );
         assert_eq!(options.base_url.unwrap(), "https://custom.example.com");
         assert!(options.model.is_none());
     }
@@ -601,6 +647,7 @@ mod tests {
             Some("claude-opus-4-7"),
             Some("sk-claude-key"),
             Some("https://api.anthropic.com"),
+            PermissionMode::Full,
         );
         assert_eq!(options.model_profile.unwrap(), "my-profile");
         assert_eq!(options.model.unwrap(), "claude-opus-4-7");

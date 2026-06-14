@@ -9,7 +9,8 @@ use zapmyco_anthropic_ai_sdk::types::message::{
     RequiredMessageParams, Role, StreamEvent, Tool,
 };
 
-use crate::agent::session_logger::{SessionLogger, ToolCallLogger};
+use crate::agent::env_info;
+use crate::agent::session_logger::{SessionLogger, SessionMeta, ToolCallLogger};
 use crate::agent::system_prompt::SystemPromptBuilder;
 use crate::config::models::{
     get_built_in_model_names, get_model_info, guess_provider_from_model_name,
@@ -39,6 +40,14 @@ pub struct AiAgentOptions {
     pub system_prompt: Option<String>,
     /// 可用 skill 列表文本（注入到 context_reminder）
     pub skill_list_text: Option<String>,
+    /// 使用的 profile 名称（用于 SessionMeta）
+    pub profile: Option<String>,
+    /// 权限模式（用于 SessionMeta）
+    pub permission_mode: Option<String>,
+    /// 是否为子 agent
+    pub is_subagent: bool,
+    /// 父 agent 的 session_id
+    pub parent_session_id: Option<String>,
 }
 
 const DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic";
@@ -236,6 +245,8 @@ pub struct AiAgent {
     logger: Option<SessionLogger>,
     /// 工具调用日志记录器（记录每次工具调用的入参、出参、耗时）
     tool_call_logger: Option<ToolCallLogger>,
+    /// Session 元数据（session.json）
+    pub(crate) session_meta: Option<SessionMeta>,
     /// 已注册的工具
     tools: Vec<ToolHandler>,
     /// 工具调用最大轮次
@@ -395,7 +406,36 @@ impl AiAgent {
                 .ok()
         });
 
-        // 10. 加载 AGENTS.md
+        // 10. 创建 SessionMeta（session.json）
+        let session_meta = logger.as_ref().and_then(|l| {
+            let os = env_info::os_info();
+            let shell = env_info::shell_name();
+            let locale = env_info::locale_info();
+            SessionMeta::create(
+                &l.session_dir(),
+                l.session_id(),
+                env!("CARGO_PKG_VERSION"),
+                options.profile.as_deref().unwrap_or("default"),
+                provider_name,
+                &model_name,
+                base_url,
+                options.permission_mode.as_deref().unwrap_or("full"),
+                options.is_subagent,
+                options.parent_session_id.as_deref(),
+                &os,
+                &shell,
+                &locale,
+            )
+            .inspect_err(|e| {
+                output::send(&output::Message::warning(format!(
+                    "初始化 session 元数据失败: {}",
+                    e
+                )));
+            })
+            .ok()
+        });
+
+        // 11. 加载 AGENTS.md
         let agents_md_content =
             crate::agent::agents_md::load_agents_md(&std::env::current_dir().unwrap_or_default());
 
@@ -408,6 +448,7 @@ impl AiAgent {
             messages: Vec::new(),
             logger,
             tool_call_logger,
+            session_meta,
             tools: Vec::new(),
             max_tool_rounds: u32::MAX,
             read_file_state: std::collections::HashMap::new(),
@@ -471,7 +512,15 @@ impl AiAgent {
 
         // 记录日志
         if let Some(ref logger) = self.logger {
-            crate::agent::executor::log_round_trip(logger, &params, &response, duration_ms);
+            crate::agent::executor::log_round_trip(
+                logger,
+                &params,
+                &response,
+                duration_ms,
+                None,
+                None,
+                None,
+            );
         }
 
         Ok(full_content)
@@ -594,7 +643,15 @@ impl AiAgent {
                 "error": resp_error,
             });
             let ts = datetime::iso_timestamp_now();
-            let _ = logger.append_record(ts, duration_ms, request_value, response_value);
+            let _ = logger.append_record(
+                ts,
+                duration_ms,
+                request_value,
+                response_value,
+                None,
+                None,
+                None,
+            );
         }
 
         Ok(full_content)
@@ -1325,6 +1382,20 @@ impl AiAgent {
         self.logger.as_ref().map(|l| l.session_id())
     }
 
+    /// 获取当前会话的 session 目录路径
+    pub fn session_dir(&self) -> Option<std::path::PathBuf> {
+        self.logger.as_ref().map(|l| l.session_dir())
+    }
+
+    /// 完成 session 并写入结束状态
+    pub fn finish_session(&self, exit_reason: crate::agent::session_logger::ExitReason) {
+        if let Some(ref meta) = self.session_meta
+            && let Err(e) = meta.finish(exit_reason)
+        {
+            tracing::warn!(error = %e, "更新 session 元数据失败");
+        }
+    }
+
     /// 统一的工具调用日志记录入口
     ///
     /// 串行路径（execute_tools_serial）和并发路径（execute_tools_concurrent）
@@ -1984,7 +2055,9 @@ mod tests {
                 )
                 .unwrap();
 
-            crate::agent::executor::log_round_trip(&logger, &params, &response, 100);
+            crate::agent::executor::log_round_trip(
+                &logger, &params, &response, 100, None, None, None,
+            );
 
             // 验证日志文件被正确写入
             let log_dir = home.join(".zapmyco/sessions");
@@ -2596,6 +2669,9 @@ mod tests {
                 cache_creation_input_tokens: None,
                 duration_ms: 100,
                 model: "test-model".to_string(),
+                http_status: None,
+                rate_limit_remaining: None,
+                rate_limit_reset: None,
             };
 
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 100);
@@ -2640,6 +2716,9 @@ mod tests {
                 cache_creation_input_tokens: None,
                 duration_ms: 100,
                 model: "test-model".to_string(),
+                http_status: None,
+                rate_limit_remaining: None,
+                rate_limit_reset: None,
             };
 
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 100);
@@ -4888,6 +4967,9 @@ mod tests {
                 cache_creation_input_tokens: None,
                 duration_ms: 200,
                 model: "test-model".to_string(),
+                http_status: None,
+                rate_limit_remaining: None,
+                rate_limit_reset: None,
             };
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 200);
 

@@ -40,6 +40,16 @@ pub enum PermissionMode {
     ReadOnly,
 }
 
+impl std::fmt::Display for PermissionMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Full => write!(f, "full"),
+            Self::ReadWrite => write!(f, "readwrite"),
+            Self::ReadOnly => write!(f, "readonly"),
+        }
+    }
+}
+
 /// 自定义 value parser：Tab 补全内置模型名，但接受任意字符串（不校验）
 #[derive(Clone)]
 struct ModelValueParser;
@@ -269,6 +279,9 @@ pub enum Commands {
         /// 标记此进程为子 Agent（隐藏，由 SubAgent 工具自动传入）
         #[arg(long, hide = true)]
         subagent: bool,
+        /// 父 agent 的 session_id（隐藏，由 SubAgent 工具自动传入）
+        #[arg(long, hide = true)]
+        parent_session_id: Option<String>,
     },
     /// 快速记录笔记 — 灵感、待办、想法
     Note {
@@ -396,6 +409,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             api_key,
             base_url,
             subagent,
+            parent_session_id,
         }) => {
             commands::run::cmd_run(
                 content.as_deref(),
@@ -408,6 +422,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 api_key.as_deref(),
                 base_url.as_deref(),
                 subagent,
+                parent_session_id.as_deref(),
             )
             .await
         }

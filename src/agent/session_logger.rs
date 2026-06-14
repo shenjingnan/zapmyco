@@ -22,6 +22,15 @@ pub struct ConversationRecord {
     pub request: serde_json::Value,
     /// API 返回的完整响应
     pub response: serde_json::Value,
+    /// HTTP 状态码
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    /// 剩余请求配额
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate_limit_remaining: Option<u32>,
+    /// 配额重置时间（Unix 时间戳）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate_limit_reset: Option<u64>,
 }
 
 /// 对话日志写入器，每个会话创建一个实例
@@ -58,12 +67,16 @@ impl SessionLogger {
     }
 
     /// 追加一条日志记录到 jsonl 文件
+    #[expect(clippy::too_many_arguments)]
     pub fn append_record(
         &self,
         ts: String,
         duration_ms: u64,
         request: serde_json::Value,
         response: serde_json::Value,
+        http_status: Option<u16>,
+        rate_limit_remaining: Option<u32>,
+        rate_limit_reset: Option<u64>,
     ) -> Result<(), String> {
         let order = self.order.fetch_add(1, Ordering::SeqCst);
 
@@ -74,6 +87,9 @@ impl SessionLogger {
             duration_ms,
             request,
             response,
+            http_status,
+            rate_limit_remaining,
+            rate_limit_reset,
         };
 
         let json_line =
@@ -218,6 +234,168 @@ impl ToolCallLogger {
     }
 }
 
+// ============================================================================
+// SessionMeta — session.json 元数据
+// ============================================================================
+
+// ============================================================================
+// SessionMeta — session.json 元数据
+// ============================================================================
+
+const SESSION_META_FILE: &str = "session.json";
+
+/// Session 元数据，写入 session.json
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionMeta {
+    /// session.json 文件路径
+    #[serde(skip)]
+    log_path: PathBuf,
+    /// 会话 ID
+    pub session_id: String,
+    /// 应用版本号
+    pub app_version: String,
+    /// 启动时间（ISO 8601）
+    pub started_at: String,
+    /// 结束时间（ISO 8601），null 表示异常退出（panic/崩溃）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<String>,
+    /// 退出原因。null 表示异常退出
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_reason: Option<ExitReason>,
+    /// 使用的 profile 名称
+    pub profile: String,
+    /// 使用的 provider 名称
+    pub provider: String,
+    /// 使用的模型名称
+    pub model: String,
+    /// API base URL
+    pub base_url: String,
+    /// 权限模式
+    pub permission_mode: String,
+    /// 是否为子 agent
+    pub is_subagent: bool,
+    /// 父 agent 的 session_id（仅子 agent 时存在）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
+    /// 系统环境信息
+    pub system_info: SystemInfo,
+}
+
+/// 系统环境信息
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SystemInfo {
+    pub os: String,
+    pub shell: String,
+    pub locale: String,
+}
+
+/// 退出原因
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ExitReason {
+    #[serde(rename = "completed")]
+    Completed,
+    #[serde(rename = "interrupted")]
+    Interrupted,
+    #[serde(rename = "error")]
+    Error,
+}
+
+impl SessionMeta {
+    /// 创建新的 SessionMeta 并写入 session.json
+    #[expect(clippy::too_many_arguments)]
+    pub fn create(
+        session_dir: &std::path::Path,
+        session_id: &str,
+        app_version: &str,
+        profile: &str,
+        provider: &str,
+        model: &str,
+        base_url: &str,
+        permission_mode: &str,
+        is_subagent: bool,
+        parent_session_id: Option<&str>,
+        os: &str,
+        shell: &str,
+        locale: &str,
+    ) -> Result<Self, String> {
+        let log_path = session_dir.join(SESSION_META_FILE);
+        let started_at = crate::datetime::iso_timestamp_now();
+        let meta = Self {
+            log_path: log_path.clone(),
+            session_id: session_id.to_string(),
+            app_version: app_version.to_string(),
+            started_at,
+            finished_at: None,
+            exit_reason: None,
+            profile: profile.to_string(),
+            provider: provider.to_string(),
+            model: model.to_string(),
+            base_url: base_url.to_string(),
+            permission_mode: permission_mode.to_string(),
+            is_subagent,
+            parent_session_id: parent_session_id.map(|s| s.to_string()),
+            system_info: SystemInfo {
+                os: os.to_string(),
+                shell: shell.to_string(),
+                locale: locale.to_string(),
+            },
+        };
+        meta.save()?;
+        Ok(meta)
+    }
+
+    /// 写入 session.json（原子写入）
+    fn save(&self) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("序列化 SessionMeta 失败: {}", e))?;
+        write_session_json(&self.log_path, &json)
+    }
+
+    /// 标记 session 完成（更新 finished_at 和 exit_reason）
+    pub fn finish(&self, exit_reason: ExitReason) -> Result<(), String> {
+        let finished_at = crate::datetime::iso_timestamp_now();
+        let json = serde_json::to_string_pretty(&serde_json::json!({
+            "session_id": self.session_id,
+            "app_version": self.app_version,
+            "started_at": self.started_at,
+            "finished_at": finished_at,
+            "exit_reason": exit_reason,
+            "profile": self.profile,
+            "provider": self.provider,
+            "model": self.model,
+            "base_url": self.base_url,
+            "permission_mode": self.permission_mode,
+            "is_subagent": self.is_subagent,
+            "parent_session_id": self.parent_session_id,
+            "system_info": {
+                "os": self.system_info.os,
+                "shell": self.system_info.shell,
+                "locale": self.system_info.locale,
+            },
+        }))
+        .map_err(|e| format!("序列化 SessionMeta 失败: {}", e))?;
+        write_session_json(&self.log_path, &json)
+    }
+
+    /// 返回 session.json 文件路径
+    pub fn path(&self) -> &std::path::Path {
+        &self.log_path
+    }
+
+    /// 获取 session_id
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+}
+
+/// 原子写入 JSON 文件（临时文件 + rename）
+pub(crate) fn write_session_json(path: &std::path::Path, content: &str) -> Result<(), String> {
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, content).map_err(|e| format!("写入临时文件失败: {}", e))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("重命名文件失败: {}", e))?;
+    Ok(())
+}
+
 /// 获取日志目录路径: ~/.zapmyco/sessions/
 pub(crate) fn get_sessions_dir() -> Result<PathBuf, String> {
     let home = std::env::var("HOME")
@@ -308,6 +486,9 @@ mod tests {
                 1234,
                 serde_json::json!({"model": "test"}),
                 serde_json::json!({"content": "hello"}),
+                None,
+                None,
+                None,
             );
             assert!(result.is_ok());
 
@@ -334,6 +515,9 @@ mod tests {
                     100,
                     json!({"msg": "req1"}),
                     json!({"msg": "resp1"}),
+                    None,
+                    None,
+                    None,
                 )
                 .unwrap();
             logger
@@ -342,6 +526,9 @@ mod tests {
                     200,
                     json!({"msg": "req2"}),
                     json!({"msg": "resp2"}),
+                    None,
+                    None,
+                    None,
                 )
                 .unwrap();
 
@@ -453,6 +640,9 @@ mod tests {
                         i,
                         serde_json::json!({"n": i}),
                         serde_json::json!({"n": i}),
+                        None,
+                        None,
+                        None,
                     )
                     .unwrap();
             }
@@ -543,6 +733,9 @@ mod tests {
                     100,
                     serde_json::json!({"msg": "logger1"}),
                     serde_json::json!({"msg": "ok"}),
+                    None,
+                    None,
+                    None,
                 )
                 .unwrap();
             logger2
@@ -551,6 +744,9 @@ mod tests {
                     200,
                     serde_json::json!({"msg": "logger2"}),
                     serde_json::json!({"msg": "ok"}),
+                    None,
+                    None,
+                    None,
                 )
                 .unwrap();
 
@@ -586,6 +782,9 @@ mod tests {
                     100,
                     serde_json::json!({"key": "val"}),
                     serde_json::json!({"key": "val"}),
+                    None,
+                    None,
+                    None,
                 )
                 .unwrap();
 
