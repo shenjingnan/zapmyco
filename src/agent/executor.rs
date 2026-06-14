@@ -336,16 +336,30 @@ pub(crate) fn print_usage_line(
 // ---------------------------------------------------------------------------
 
 /// 记录非流式对话的 round-trip 日志
+///
+/// http_status / rate_limit_remaining / rate_limit_reset 当前为 None（SDK 暂未暴露 HTTP 元数据），
+/// 待 SDK 改造完成后从 response 中提取。
 pub(crate) fn log_round_trip(
     logger: &SessionLogger,
     params: &CreateMessageParams,
     response: &CreateMessageResponse,
     duration_ms: u64,
+    http_status: Option<u16>,
+    rate_limit_remaining: Option<u32>,
+    rate_limit_reset: Option<u64>,
 ) {
     let ts = datetime::iso_timestamp_now();
     let request_value = serde_json::to_value(params).unwrap_or_default();
     let response_value = serde_json::to_value(response).unwrap_or_default();
-    let _ = logger.append_record(ts, duration_ms, request_value, response_value);
+    let _ = logger.append_record(
+        ts,
+        duration_ms,
+        request_value,
+        response_value,
+        http_status,
+        rate_limit_remaining,
+        rate_limit_reset,
+    );
 }
 
 /// 记录流式对话的 round-trip 日志（从 RoundResult 重建响应）
@@ -372,7 +386,15 @@ pub(crate) fn log_round_trip_stream(
             "cache_read_input_tokens": result.cache_read_input_tokens,
         }
     });
-    let _ = logger.append_record(ts, duration_ms, request_value, response_value);
+    let _ = logger.append_record(
+        ts,
+        duration_ms,
+        request_value,
+        response_value,
+        result.http_status,
+        result.rate_limit_remaining,
+        result.rate_limit_reset,
+    );
 }
 
 #[cfg(test)]

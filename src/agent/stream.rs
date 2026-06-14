@@ -41,6 +41,12 @@ pub(crate) struct RoundResult {
     pub duration_ms: u64,
     /// 模型名称
     pub model: String,
+    /// HTTP 状态码（SDK 改造后填充）
+    pub http_status: Option<u16>,
+    /// 剩余请求配额
+    pub rate_limit_remaining: Option<u32>,
+    /// 配额重置时间（Unix 时间戳）
+    pub rate_limit_reset: Option<u64>,
 }
 
 /// 处理流式事件序列，返回解析结果（纯逻辑，可单元测试）
@@ -164,6 +170,9 @@ pub(crate) async fn process_stream_events(
         cache_creation_input_tokens: cache_create,
         duration_ms: 0,
         model,
+        http_status: None,
+        rate_limit_remaining: None,
+        rate_limit_reset: None,
     })
 }
 
