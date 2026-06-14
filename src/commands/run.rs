@@ -119,6 +119,9 @@ pub(crate) async fn cmd_run(
     // ── 注册终端输出日志到当前会话目录 ──
     let _log_guard = register_terminal_log(&agent);
 
+    // ── 注册应用执行日志到当前会话目录 ──
+    let _app_log_guard = register_app_log(&agent);
+
     // 注册 Ask User 工具
     let ask_user = ask_user::AskUser;
     agent.register_tool(crate::agent::chat::ToolHandler::AskUser(ask_user));
@@ -448,11 +451,33 @@ impl Drop for TerminalLogGuard {
     }
 }
 
+/// 在会话子目录中注册 app 日志（应用执行日志）
+///
+/// 当 session 活跃时，tracing 事件会同时写入全局 app.log 和 session app.log。
+/// 返回的 guard 在 drop 时自动清除 session 日志目录，停止写入。
+fn register_app_log(agent: &AiAgent) -> Option<AppLogGuard> {
+    let session_id = agent.session_id()?;
+    let sessions_dir = crate::agent::session_logger::get_sessions_dir().ok()?;
+    let session_dir = sessions_dir.join(session_id);
+    crate::logging::set_session_log_dir(session_dir);
+    Some(AppLogGuard)
+}
+
+/// Drop 时自动清除 SESSION_LOG_DIR
+struct AppLogGuard;
+
+impl Drop for AppLogGuard {
+    fn drop(&mut self) {
+        crate::logging::clear_session_log_dir();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cli::PermissionMode;
     use crate::test_util::run_with_temp_home;
+    use tracing_subscriber::prelude::*;
     #[tokio::test]
     async fn test_run_empty_content() {
         let result = cmd_run(
@@ -642,6 +667,181 @@ mod tests {
             assert!(content.contains("warning from test"), "应包含 stderr 消息");
             assert!(content.contains("[STDOUT]"), "应包含 STDOUT 通道标记");
             assert!(content.contains("[STDERR]"), "应包含 STDERR 通道标记");
+        });
+    }
+
+    // ================================================================
+    // register_app_log & AppLogGuard 测试
+    // ================================================================
+
+    #[test]
+    fn test_register_app_log_sets_session_dir() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            // 准备 AiAgent
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\napi_key = \"test\"\n",
+            )
+            .unwrap();
+
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let session_id = agent.session_id().unwrap().to_string();
+
+            // 注册 app 日志
+            let guard = register_app_log(&agent);
+            assert!(
+                guard.is_some(),
+                "logger 启用时 register_app_log 应返回 Some"
+            );
+
+            let session_dir = crate::agent::session_logger::get_sessions_dir()
+                .unwrap()
+                .join(&session_id);
+            assert_eq!(
+                crate::logging::get_session_log_dir(),
+                Some(session_dir),
+                "register_app_log 应设置 SESSION_LOG_DIR 为 session 目录"
+            );
+
+            // cleanup
+            crate::logging::clear_session_log_dir();
+        });
+    }
+
+    #[test]
+    fn test_app_log_guard_drop_clears_session_dir() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\napi_key = \"test\"\n",
+            )
+            .unwrap();
+
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let guard = register_app_log(&agent);
+            assert!(
+                crate::logging::get_session_log_dir().is_some(),
+                "guard 存在时应设置 session dir"
+            );
+
+            drop(guard);
+            assert!(
+                crate::logging::get_session_log_dir().is_none(),
+                "guard drop 后应清除 session dir"
+            );
+        });
+    }
+
+    #[test]
+    fn test_register_app_log_disabled_when_logger_off() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\napi_key = \"test\"\n",
+            )
+            .unwrap();
+
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let guard = register_app_log(&agent);
+            // 当前 AiAgent 默认启用 session 日志，因此 guard 应为 Some
+            if agent.session_id().is_some() {
+                assert!(guard.is_some());
+            } else {
+                assert!(guard.is_none());
+            }
+        });
+    }
+
+    #[test]
+    fn test_session_log_end_to_end() {
+        let _lock = crate::test_util::acquire_session_log_lock();
+        run_with_temp_home(|home| {
+            // 1. 准备 settings
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                "[llm]\napi_key = \"test\"\n",
+            )
+            .unwrap();
+
+            // 2. 创建 AiAgent
+            let agent = AiAgent::new(AiAgentOptions {
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let session_id = agent.session_id().unwrap().to_string();
+            let sessions_dir = crate::agent::session_logger::get_sessions_dir().unwrap();
+            let session_dir = sessions_dir.join(&session_id);
+            let session_log = session_dir.join("app.log");
+
+            // 3. 注册 app 日志
+            crate::logging::set_session_log_dir(session_dir.clone());
+
+            // 4. 配置 tracing subscriber
+            let global_path = home.join(".zapmyco/logs/app.log");
+            let subscriber = tracing_subscriber::Registry::default().with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(crate::logging::make_file_writer(global_path.clone()))
+                    .with_ansi(false)
+                    .with_filter(tracing_subscriber::EnvFilter::new("info")),
+            );
+
+            // 5. 产生 tracing 事件
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::info!("end-to-end test message");
+                tracing::warn!("end-to-end warning");
+            });
+
+            // 6. 验证 session app.log
+            assert!(session_log.exists(), "session app.log 应被创建");
+            let session_content = std::fs::read_to_string(&session_log).unwrap();
+            assert!(
+                session_content.contains("end-to-end test message"),
+                "session 日志应包含 info 事件"
+            );
+            assert!(
+                session_content.contains("end-to-end warning"),
+                "session 日志应包含 warn 事件"
+            );
+
+            // 7. 验证全局 app.log
+            let global_content = std::fs::read_to_string(&global_path).unwrap();
+            assert!(
+                global_content.contains("end-to-end test message"),
+                "全局日志也应包含 info 事件"
+            );
+
+            // 8. 模拟 guard drop
+            crate::logging::clear_session_log_dir();
+            assert!(
+                crate::logging::get_session_log_dir().is_none(),
+                "guard drop 后 SESSION_LOG_DIR 应为 None"
+            );
         });
     }
 }

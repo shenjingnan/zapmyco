@@ -29,6 +29,17 @@ pub(crate) mod test_util {
             .unwrap_or_else(|e| e.into_inner())
     }
 
+    /// SESSION_LOG_DIR 测试锁，串行化所有修改 SESSION_LOG_DIR 的测试
+    static SESSION_LOG_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    /// 获取 SESSION_LOG_DIR 锁守卫
+    pub(crate) fn acquire_session_log_lock() -> std::sync::MutexGuard<'static, ()> {
+        SESSION_LOG_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     /// 在临时 HOME 目录下执行测试函数
     /// 使用全局锁确保 HOME 环境变量不会被并行测试竞态覆盖
     pub fn run_with_temp_home(f: impl FnOnce(&std::path::Path)) {
