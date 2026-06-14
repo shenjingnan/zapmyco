@@ -80,9 +80,6 @@ const BUILTIN_SAFE_COMMANDS: &[&str] = &[
     // ── Unix 目录列表 ──
     "ls", // 列出目录内容（含 ls -la, ls /tmp 等）
     // ── 日期和时间 ──
-    // 注意：允许 "date" 和 "date -u" 等参数，也允许 "date -s"（设置时间）。
-    // "date -s" 需要 root 权限，且 agent 极少生成此命令。
-    // 如对此有顾虑，可在 settings.toml 中将 "date" 加入 deny 列表。
     "date", // 日期时间
     // ── Windows CMD 等效命令 ──
     "ver",        // 显示 Windows 版本
@@ -91,6 +88,32 @@ const BUILTIN_SAFE_COMMANDS: &[&str] = &[
     "date /t",    // 显示日期（Windows，/t 表示只查看不设置）
     "time /t",    // 显示时间（Windows，/t 表示只查看不设置）
     "vol",        // 显示卷标（Windows）
+];
+
+/// 用户选择"始终允许"时禁止自动加入白名单的危险命令
+///
+/// 这些命令如果被误加入白名单，可能导致严重的安全问题。
+/// 用户仍然可以手动编辑 settings.toml 添加，但在交互式"始终允许"时被阻止。
+const DANGEROUS_ALWAYS_ALLOW_COMMANDS: &[&str] = &[
+    "rm",      // 删除文件/目录
+    "sudo",    // 提权执行
+    "dd",      // 直接磁盘操作
+    "chmod",   // 修改权限
+    "chown",   // 修改所有者
+    "mv",      // 移动/重命名（可覆盖文件）
+    "cp",      // 复制（可覆盖文件）
+    "python",  // Python 解释器（可执行任意代码）
+    "python3", // Python3 解释器
+    "node",    // Node.js 解释器
+    "ruby",    // Ruby 解释器
+    "perl",    // Perl 解释器
+    "php",     // PHP 解释器
+    "bash",    // 子 shell（可执行任意命令）
+    "sh",      // 子 shell
+    "zsh",     // 子 shell
+    "eval",    // 评估执行
+    "exec",    // 替换进程
+    "env",     // 环境变量操作
 ];
 
 /// 检查命令是否匹配允许模式，防止跨词匹配（如 "ls" 不匹配 "lsblk"）
@@ -250,15 +273,32 @@ impl Default for ShellExecOptions {
 // ---------------------------------------------------------------------------
 
 /// run_command 工具
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ShellExec {
     options: ShellExecOptions,
+    /// 运行时动态白名单 = 启动时从 settings 加载的 + 用户交互式添加的
+    /// 使用 Mutex 因为并发执行路径需要 Send
+    allowed_commands_runtime: std::sync::Mutex<Vec<String>>,
+}
+
+impl Clone for ShellExec {
+    fn clone(&self) -> Self {
+        Self {
+            allowed_commands_runtime: std::sync::Mutex::new(
+                self.allowed_commands_runtime.lock().unwrap().clone(),
+            ),
+            options: self.options.clone(),
+        }
+    }
 }
 
 impl ShellExec {
     /// 创建新的 ShellExec 实例
     pub fn new(options: ShellExecOptions) -> Self {
-        Self { options }
+        Self {
+            allowed_commands_runtime: std::sync::Mutex::new(options.allowed_commands.clone()),
+            options,
+        }
     }
 
     /// 判断命令是否应跳过用户确认
@@ -270,7 +310,7 @@ impl ShellExec {
         self.options.skip_confirm
             || is_safe_command(
                 command,
-                &self.options.allowed_commands,
+                &self.allowed_commands_runtime.lock().unwrap(),
                 &self.options.denied_commands,
             )
     }
@@ -382,18 +422,55 @@ impl ShellExec {
             }
         } else if !self.options.skip_confirm {
             // 非只读模式：保持现有逻辑
-            // 3a. 安全命令 → 自动放行（匹配内置或用户自定义列表）
+            // 3a. 安全命令 → 自动放行（匹配内置或用户自定义列表，含运行时白名单）
             if is_safe_command(
                 command,
-                &self.options.allowed_commands,
+                &self.allowed_commands_runtime.lock().unwrap(),
                 &self.options.denied_commands,
             ) {
                 // 无需确认，直接执行
             }
-            // 3b. 非安全命令 → 弹出确认
-            else if !prompt_confirm(command, description) {
-                output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
-                return Ok("Command not executed (cancelled by user)".to_string());
+            // 3b. 非安全命令 → 弹出确认（三选项：允许 / 始终允许 / 拒绝）
+            else {
+                match prompt_confirm(command, description) {
+                    ConfirmAction::Deny => {
+                        output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
+                        return Ok("Command not executed (cancelled by user)".to_string());
+                    }
+                    ConfirmAction::AlwaysAllow => {
+                        let trimmed = command.trim();
+                        // 提取命令的第一个词作为白名单 pattern（匹配所有同命令操作）
+                        let first_word = trimmed.split_whitespace().next().unwrap_or(trimmed);
+
+                        // 危险命令不允许自动加入白名单
+                        if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+                            output::send(&Message::warning(format!(
+                                "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
+                                first_word
+                            )));
+                        } else if let Err(e) =
+                            crate::config::settings::add_to_command_allowlist(first_word)
+                        {
+                            output::send(&Message::warning(format!(
+                                "⚠️  无法保存到白名单: {}，但命令将继续执行",
+                                e
+                            )));
+                        } else {
+                            output::send(&Message::info(format!(
+                                "✅ 已加入白名单: `{}` 命令将自动执行",
+                                first_word
+                            )));
+                        }
+                        // 更新运行时白名单（Mutex 锁立即释放）
+                        if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+                            self.allowed_commands_runtime
+                                .lock()
+                                .unwrap()
+                                .push(first_word.to_string());
+                        }
+                    }
+                    ConfirmAction::Allow => {}
+                }
             }
         }
 
@@ -461,15 +538,25 @@ impl ShellExec {
 // User confirmation
 // ---------------------------------------------------------------------------
 
+/// 用户确认结果
+enum ConfirmAction {
+    /// 允许执行（单次）
+    Allow,
+    /// 始终允许（加入白名单后执行）
+    AlwaysAllow,
+    /// 拒绝执行
+    Deny,
+}
+
 /// 提示用户确认是否执行命令
 ///
-/// 使用共享的 SelectPrompt 组件显示允许/拒绝选项。
+/// 使用共享的 SelectPrompt 组件显示三个选项：允许 / 始终允许 / 拒绝。
 /// 非 TTY 环境下默认拒绝执行。
-fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
+fn prompt_confirm(command: &str, description: Option<&str>) -> ConfirmAction {
     use std::io::IsTerminal;
 
     if !std::io::stdin().is_terminal() {
-        return false;
+        return ConfirmAction::Deny;
     }
 
     output::send(&Message::info(String::new()));
@@ -492,16 +579,22 @@ fn prompt_confirm(command: &str, description: Option<&str>) -> bool {
             custom_input: false,
         },
         crate::tools::prompt::SelectOption {
+            label: "始终允许",
+            description: "将该命令加入白名单并自动执行",
+            custom_input: false,
+        },
+        crate::tools::prompt::SelectOption {
             label: "拒绝",
             description: "取消执行该命令",
             custom_input: false,
         },
     ];
 
-    matches!(
-        crate::tools::prompt::prompt_single_select(question, &options),
-        Some(crate::tools::prompt::SingleSelectResult::Index(0))
-    )
+    match crate::tools::prompt::prompt_single_select(question, &options) {
+        Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
+        Some(crate::tools::prompt::SingleSelectResult::Index(1)) => ConfirmAction::AlwaysAllow,
+        _ => ConfirmAction::Deny,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1397,6 +1490,375 @@ allow = ["git status", "cargo check"]
                 &executor.options.denied_commands,
             ));
         });
+    }
+}
+
+#[cfg(test)]
+mod always_allow_tests {
+    use super::*;
+
+    // ── allowed_commands_runtime 初始化 ──
+
+    #[test]
+    fn test_allowed_commands_runtime_initialized_from_options() {
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands: vec!["git status".to_string(), "cargo check".to_string()],
+            ..Default::default()
+        });
+        let allowed = executor.allowed_commands_runtime.lock().unwrap();
+        assert_eq!(allowed.len(), 2);
+        assert!(allowed.contains(&"git status".to_string()));
+        assert!(allowed.contains(&"cargo check".to_string()));
+    }
+
+    #[test]
+    fn test_allowed_commands_runtime_empty_by_default() {
+        let executor = ShellExec::new(Default::default());
+        let allowed = executor.allowed_commands_runtime.lock().unwrap();
+        assert!(allowed.is_empty());
+    }
+
+    #[test]
+    fn test_allowed_commands_runtime_combined_with_options() {
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands: vec!["git status".to_string()],
+            ..Default::default()
+        });
+        // 初始时仅含 options 中的条目
+        {
+            let allowed = executor.allowed_commands_runtime.lock().unwrap();
+            assert_eq!(allowed.len(), 1);
+            assert!(allowed.contains(&"git status".to_string()));
+        }
+        // 运行时添加新条目
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("cargo check".to_string());
+
+        // 两者都应在运行时列表中
+        {
+            let allowed = executor.allowed_commands_runtime.lock().unwrap();
+            assert_eq!(allowed.len(), 2);
+            assert!(allowed.contains(&"git status".to_string()));
+            assert!(allowed.contains(&"cargo check".to_string()));
+        }
+        // options.allowed_commands 应保持不变（有效隔离）
+        assert_eq!(executor.options.allowed_commands.len(), 1);
+        assert_eq!(executor.options.allowed_commands[0], "git status");
+    }
+
+    #[test]
+    fn test_allowed_commands_runtime_cleared_options_unaffected() {
+        let executor = ShellExec::new(ShellExecOptions {
+            allowed_commands: vec!["git status".to_string()],
+            ..Default::default()
+        });
+        executor.allowed_commands_runtime.lock().unwrap().clear();
+
+        let allowed = executor.allowed_commands_runtime.lock().unwrap();
+        assert!(allowed.is_empty());
+        assert_eq!(executor.options.allowed_commands.len(), 1);
+    }
+
+    // ── should_skip_confirm 使用运行时列表 ──
+
+    #[test]
+    fn test_should_skip_confirm_runtime_allowed() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+        assert!(!executor.should_skip_confirm("git status"));
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("git status".to_string());
+
+        assert!(executor.should_skip_confirm("git status"));
+        assert!(executor.should_skip_confirm("git status -s"));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_runtime_does_not_affect_builtin() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            ..Default::default()
+        });
+        assert!(executor.should_skip_confirm("pwd"));
+        assert!(executor.should_skip_confirm("echo hello"));
+
+        executor.allowed_commands_runtime.lock().unwrap().clear();
+
+        assert!(executor.should_skip_confirm("pwd"));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_runtime_trimmed_matching() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("git status".to_string());
+
+        assert!(executor.should_skip_confirm("  git status  "));
+    }
+
+    #[test]
+    fn test_should_skip_confirm_runtime_case_sensitive() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            ..Default::default()
+        });
+
+        // 仅添加大写 GIT STATUS
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("GIT STATUS".to_string());
+
+        // 大写匹配
+        assert!(executor.should_skip_confirm("GIT STATUS"));
+        assert!(executor.should_skip_confirm("GIT STATUS -s"));
+        // 小写不应匹配（大小写敏感）
+        assert!(!executor.should_skip_confirm("git status"));
+        // 混合大小写不应匹配
+        assert!(!executor.should_skip_confirm("GIT status"));
+
+        // 反向验证：添加小写后，小写匹配，大写仍不匹配小写条目
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("git status".to_string());
+        assert!(executor.should_skip_confirm("git status"));
+        assert!(executor.should_skip_confirm("GIT STATUS"));
+    }
+
+    // ── 非 TTY 下 prompt_confirm 行为 ──
+
+    #[test]
+    fn test_prompt_confirm_non_tty_returns_deny() {
+        let result = prompt_confirm("echo hello", None);
+        assert!(matches!(result, ConfirmAction::Deny));
+    }
+
+    #[test]
+    fn test_prompt_confirm_non_tty_with_description() {
+        let result = prompt_confirm("echo hello", Some("测试命令"));
+        assert!(matches!(result, ConfirmAction::Deny));
+    }
+
+    // ── ConfirmAction 枚举 ──
+
+    #[test]
+    fn test_confirm_action_variants() {
+        match ConfirmAction::Allow {
+            ConfirmAction::Allow => {}
+            _ => panic!("expected Allow"),
+        }
+        match ConfirmAction::AlwaysAllow {
+            ConfirmAction::AlwaysAllow => {}
+            _ => panic!("expected AlwaysAllow"),
+        }
+        match ConfirmAction::Deny {
+            ConfirmAction::Deny => {}
+            _ => panic!("expected Deny"),
+        }
+    }
+
+    // ── DANGEROUS_ALWAYS_ALLOW_COMMANDS 验证 ──
+
+    #[test]
+    fn test_dangerous_commands_list_not_empty() {
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.is_empty());
+    }
+
+    #[test]
+    fn test_dangerous_commands_includes_rm_sudo() {
+        assert!(DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"rm"));
+        assert!(DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"sudo"));
+        assert!(DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"python"));
+    }
+
+    #[test]
+    fn test_safe_commands_not_in_dangerous_list() {
+        // 常用安全命令不应出现在危险列表中
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"git"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"cargo"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"touch"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"echo"));
+        assert!(!DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&"ls"));
+    }
+
+    // ── execute 运行时白名单集成 ──
+
+    #[tokio::test]
+    async fn test_execute_respects_runtime_allowlist() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            denied_commands: vec![],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("echo ".to_string());
+
+        let result = executor
+            .execute("echo runtime_allow", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("runtime_allow"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_runtime_prefix_matching() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            denied_commands: vec![],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("echo ".to_string());
+
+        let result = executor
+            .execute("echo hello world", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("hello world"));
+    }
+
+    // ── 回归：skip_confirm=true 不受影响 ──
+
+    #[tokio::test]
+    async fn test_execute_skip_confirm_still_works() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let result = executor
+            .execute("echo skip_confirm_test", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("skip_confirm_test"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_skip_confirm_allows_unsafe() {
+        // skip_confirm=true 时即使"危险"命令也执行（测试模式）
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let result = executor
+            .execute("echo dangerous_but_skipped", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("dangerous_but_skipped"));
+    }
+
+    // ── 回归：deny 列表仍优先 ──
+
+    #[tokio::test]
+    async fn test_deny_list_still_overrides_allow() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: vec!["git status".to_string()],
+            denied_commands: vec!["git status".to_string()],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        // deny 优先 → is_safe_command 返回 false → 非 TTY 下 prompt_confirm 返回 Deny
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("not executed") || r.contains("已取消"));
+    }
+
+    // ── 回归：运行时白名单不影响控制运算符安全网 ──
+
+    #[tokio::test]
+    async fn test_runtime_allowlist_does_not_bypass_control_ops() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            allowed_commands: Vec::new(),
+            denied_commands: vec![],
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            readonly_mode: false,
+        });
+
+        executor
+            .allowed_commands_runtime
+            .lock()
+            .unwrap()
+            .push("echo hello | cat".to_string());
+
+        assert!(!executor.should_skip_confirm("echo hello | cat"));
+
+        let r = executor
+            .execute("echo hello | cat", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("not executed") || r.contains("已取消"));
+    }
+
+    // ── 回归：readonly 模式不受影响 ──
+
+    #[tokio::test]
+    async fn test_readonly_still_rejects_unsafe() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+    }
+
+    #[tokio::test]
+    async fn test_readonly_safe_still_works() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            allowed_commands: builtin_safe_commands(),
+            denied_commands: vec![],
+            skip_confirm: true,
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+        });
+        let r = executor.execute("pwd", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
     }
 }
 

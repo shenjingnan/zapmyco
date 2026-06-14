@@ -228,6 +228,47 @@ pub fn update_settings_model(new_model: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 添加命令到白名单并持久化到 settings.toml
+///
+/// 文件不存在则自动创建；命令已存在则去重跳过。
+/// command 会被 .trim() 后存储，确保与 is_safe_command 的匹配规则一致。
+pub fn add_to_command_allowlist(command: &str) -> Result<(), String> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    let mut settings = match load_settings()? {
+        Some(s) => s,
+        None => Settings {
+            llm: None,
+            session_log: None,
+            permissions: None,
+        },
+    };
+
+    if settings.permissions.is_none() {
+        settings.permissions = Some(Permissions::default());
+    }
+    let perms = settings.permissions.as_mut().unwrap();
+
+    // 去重（精确匹配）
+    if perms.commands.allow.iter().any(|c| c == trimmed) {
+        return Ok(());
+    }
+    perms.commands.allow.push(trimmed.to_string());
+
+    // 确保设置目录存在
+    if let Some(parent) = get_settings_path().parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建设置目录失败: {}", e))?;
+    }
+
+    let content = toml::to_string(&settings).map_err(|e| format!("序列化设置失败: {}", e))?;
+    std::fs::write(get_settings_path(), content).map_err(|e| format!("写入设置文件失败: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -958,5 +999,222 @@ allow = ["git status"]
         let cmds = settings.permissions.unwrap().commands;
         assert_eq!(cmds.allow.len(), 1);
         assert!(cmds.deny.is_empty());
+    }
+
+    // ── add_to_command_allowlist 测试 ──
+
+    #[test]
+    fn test_add_to_command_allowlist_creates_new_file() {
+        run_with_temp_home(|home| {
+            let path = home.join(".zapmyco/settings.toml");
+            assert!(!path.exists());
+
+            let result = add_to_command_allowlist("git status");
+            assert!(result.is_ok());
+            assert!(path.exists());
+
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(content.contains("git status"));
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_dedup() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                r#"[permissions.commands]
+allow = ["git status"]
+"#,
+            )
+            .unwrap();
+
+            let result = add_to_command_allowlist("git status");
+            assert!(result.is_ok());
+
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow.len(), 1);
+            assert_eq!(allow[0], "git status");
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_preserves_existing() {
+        run_with_temp_home(|home| {
+            write_toml_settings(
+                home,
+                r#"
+[llm]
+[llm.providers.deepseek]
+apiKey = "key"
+
+[llm.models]
+default = "deepseek-v4-flash"
+"#,
+            );
+
+            add_to_command_allowlist("cargo check").unwrap();
+
+            let settings = load_settings().unwrap().unwrap();
+            assert!(settings.llm.is_some());
+            let model = settings
+                .llm
+                .as_ref()
+                .unwrap()
+                .models
+                .as_ref()
+                .unwrap()
+                .get("default")
+                .unwrap()
+                .clone();
+            assert_eq!(model, "deepseek-v4-flash");
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow, vec!["cargo check"]);
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_trim() {
+        run_with_temp_home(|home| {
+            add_to_command_allowlist("  git status  ").unwrap();
+
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow, vec!["git status"]);
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_empty_after_trim() {
+        run_with_temp_home(|home| {
+            let result = add_to_command_allowlist("   ");
+            assert!(result.is_ok());
+
+            let settings = load_settings().unwrap();
+            assert!(settings.is_none(), "纯空白不应创建 settings.toml");
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_special_chars() {
+        run_with_temp_home(|home| {
+            let cmd = r#"git commit -m "fix: important bug""#;
+            let result = add_to_command_allowlist(cmd);
+            assert!(result.is_ok());
+
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow, vec![cmd]);
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_multiple_commands() {
+        run_with_temp_home(|home| {
+            add_to_command_allowlist("git status").unwrap();
+            add_to_command_allowlist("cargo check").unwrap();
+            add_to_command_allowlist("npm test").unwrap();
+
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow.len(), 3);
+            assert_eq!(allow[0], "git status");
+            assert_eq!(allow[1], "cargo check");
+            assert_eq!(allow[2], "npm test");
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_unicode() {
+        run_with_temp_home(|home| {
+            add_to_command_allowlist("echo 你好世界").unwrap();
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow, vec!["echo 你好世界"]);
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_emoji() {
+        run_with_temp_home(|home| {
+            add_to_command_allowlist("echo 🚀 test").unwrap();
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow, vec!["echo 🚀 test"]);
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_long_command() {
+        run_with_temp_home(|home| {
+            let long_arg = "a".repeat(10_000);
+            let cmd = format!("echo {}", long_arg);
+            let result = add_to_command_allowlist(&cmd);
+            assert!(result.is_ok());
+
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow.len(), 1);
+            assert!(allow[0].starts_with("echo "));
+            assert_eq!(allow[0].len(), cmd.len());
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_existing_deny_only() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(
+                settings_dir.join("settings.toml"),
+                r#"[permissions.commands]
+deny = ["rm -rf"]
+"#,
+            )
+            .unwrap();
+
+            add_to_command_allowlist("git status").unwrap();
+
+            let settings = load_settings().unwrap().unwrap();
+            let cmds = settings.permissions.unwrap().commands;
+            assert_eq!(cmds.allow, vec!["git status"]);
+            assert_eq!(cmds.deny, vec!["rm -rf"]);
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_corrupted_toml() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.toml"), "{{{NOT VALID TOML}}}").unwrap();
+
+            let result = add_to_command_allowlist("git status");
+            assert!(result.is_err());
+            let err_msg = result.err().unwrap();
+            assert!(
+                err_msg.contains("TOML") || err_msg.contains("格式错误"),
+                "错误信息应指向 TOML 解析失败: {}",
+                err_msg
+            );
+        });
+    }
+
+    #[test]
+    fn test_add_to_command_allowlist_empty_file() {
+        run_with_temp_home(|home| {
+            let settings_dir = home.join(".zapmyco");
+            std::fs::create_dir_all(&settings_dir).unwrap();
+            std::fs::write(settings_dir.join("settings.toml"), "").unwrap();
+
+            add_to_command_allowlist("git status").unwrap();
+
+            let settings = load_settings().unwrap().unwrap();
+            let allow = settings.permissions.unwrap().commands.allow;
+            assert_eq!(allow, vec!["git status"]);
+        });
     }
 }
