@@ -58,6 +58,33 @@ pub fn init_logging() {
         .with(file_layer)
         .with(stderr_layer)
         .try_init();
+
+    // 注册全局 panic hook：将 panic 信息写入 tracing error 日志并刷盘
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        // 先调用默认 hook（输出到 stderr），确保用户在终端看到 panic
+        default_hook(panic_info);
+
+        // 将 panic 信息写入 tracing error 日志（会通过 TeeWriter 同时写入全局和 session app.log）
+        let panic_msg = panic_info.to_string();
+        let location = panic_info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        tracing::error!(
+            panic_message = %panic_msg,
+            panic_location = %location,
+            backtrace = %backtrace,
+            "进程 panic",
+        );
+
+        // 强制刷盘，防止 BufWriter 缓冲区在进程退出时丢失日志
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+    }));
 }
 
 /// 一个写入器，同时写入全局日志和 session 日志（Tee 模式）
