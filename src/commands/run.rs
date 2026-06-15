@@ -236,8 +236,9 @@ pub(crate) async fn cmd_run(
 
     // ---- 注册 SubAgent 工具（子进程模式跳过） ----
     if !subagent {
-        let subagent_tool = subagent::SubAgentTool::with_permission_mode(permission_mode)
+        let mut subagent_tool = subagent::SubAgentTool::with_permission_mode(permission_mode)
             .map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
+        subagent_tool.set_parent_session_id(agent.session_id().map(|s| s.to_string()));
         agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
     }
 

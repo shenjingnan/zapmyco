@@ -23,9 +23,18 @@ pub struct SessionSummary {
     pub first_message_time: String,
     pub preview: String,
     pub file_path: PathBuf,
+    /// 模型名称（从 session.json 获取）
+    pub model: Option<String>,
+    /// 配置档名称（从 session.json 获取）
+    pub profile: Option<String>,
+    /// 退出原因（从 session.json 获取）
+    pub exit_reason: Option<String>,
 }
 
 /// 列出 ~/.zapmyco/sessions/ 下所有会话，按时间降序排列
+///
+/// 优先读取 session.json 获取会话信息，仅在没有 session.json 时
+/// fallback 到 conversation.jsonl 解析（兼容旧格式）。
 pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
     let dir = get_sessions_dir()?;
     if !dir.exists() {
@@ -40,12 +49,7 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
         let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
         let path = entry.path();
 
-        // 仅支持子目录格式: <session_id>/conversation.jsonl
         if !path.is_dir() {
-            continue;
-        }
-        let jsonl_path = path.join("conversation.jsonl");
-        if !jsonl_path.exists() {
             continue;
         }
         let session_id = match path.file_name().and_then(|s| s.to_str()) {
@@ -53,7 +57,39 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
             None => continue,
         };
 
-        // ---- 读取解析 jsonl 文件 ----
+        // ---- 优先读取 session.json（新格式） ----
+        let json_path = path.join("session.json");
+        if json_path.exists() {
+            let content = std::fs::read_to_string(&json_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+            if let Some(content) = content {
+                let first_time = content["started_at"].as_str().unwrap_or("").to_string();
+                let preview = content["model"]
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                sessions.push(SessionSummary {
+                    session_id,
+                    message_count: 0,
+                    first_message_time: first_time,
+                    preview,
+                    file_path: json_path,
+                    model: content["model"].as_str().map(|s| s.to_string()),
+                    profile: content["profile"].as_str().map(|s| s.to_string()),
+                    exit_reason: content["exit_reason"].as_str().map(|s| s.to_string()),
+                });
+                continue;
+            }
+            // session.json 损坏则降级到 JSONL
+        }
+
+        // ---- Fallback: 解析 conversation.jsonl（兼容旧格式） ----
+        let jsonl_path = path.join("conversation.jsonl");
+        if !jsonl_path.exists() {
+            continue;
+        }
+
         let content = match std::fs::read_to_string(&jsonl_path) {
             Ok(c) => c,
             Err(_) => continue,
@@ -94,6 +130,9 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
             first_message_time: first_time,
             preview,
             file_path: jsonl_path,
+            model: None,
+            profile: None,
+            exit_reason: None,
         });
     }
 
@@ -245,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_load_session_empty_file() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
             let session_dir = dir.join("empty-session");
@@ -332,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_load_session_multiple_records_uses_last() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
             let session_dir = dir.join("multi-record");
@@ -429,7 +468,7 @@ mod tests {
 
     #[test]
     fn test_list_sessions_new_format_only() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
@@ -461,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_load_session_new_format() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
             create_mock_session_dir(&dir, "v2-session", "hello", "hi there");
@@ -477,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_list_sessions_ignores_non_jsonl_files() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
@@ -497,7 +536,7 @@ mod tests {
 
     #[test]
     fn test_list_sessions_ignores_empty_subdirs() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
@@ -518,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_list_sessions_only_noise_files() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
@@ -534,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_list_sessions_sorts_by_time() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
@@ -585,7 +624,7 @@ mod tests {
 
     #[test]
     fn test_list_sessions_ignores_empty_jsonl_in_new_format() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
@@ -611,7 +650,7 @@ mod tests {
 
     #[test]
     fn test_list_sessions_handles_malformed_json_in_new_format() {
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = home.join(".zapmyco/sessions");
             std::fs::create_dir_all(&dir).unwrap();
 
@@ -632,6 +671,248 @@ mod tests {
             // load 应报错
             let result = load_session(bad_sid);
             assert!(result.is_err(), "无效 JSON 加载应失败");
+        });
+    }
+
+    // ==================== session.json 兼容性测试 ====================
+
+    fn write_session_json_to(dir: &std::path::Path, meta: serde_json::Value) {
+        let path = dir.join("session.json");
+        std::fs::write(&path, serde_json::to_string(&meta).unwrap()).unwrap();
+    }
+
+    fn create_session_dir(home: &std::path::Path, session_id: &str) -> std::path::PathBuf {
+        let dir = home.join(".zapmyco/sessions").join(session_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_list_sessions_prefers_session_json() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = create_session_dir(home, "test-session");
+            write_session_json_to(
+                &session_dir,
+                serde_json::json!({
+                    "session_id": "test-session",
+                    "model": "claude-4",
+                    "started_at": "2026-06-14T12:00:00+08:00",
+                    "profile": "test",
+                }),
+            );
+            let record = serde_json::json!({
+                "session_id": "test-session", "order": 0,
+                "ts": "2026-01-01T00:00:00Z", "duration_ms": 100,
+                "request": {"model": "test", "messages": [], "max_tokens": 100},
+                "response": {"content": "ok"}
+            });
+            std::fs::write(
+                session_dir.join("conversation.jsonl"),
+                format!("{}\n", serde_json::to_string(&record).unwrap()),
+            )
+            .unwrap();
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert_eq!(sessions[0].model.as_deref(), Some("claude-4"));
+            assert_eq!(sessions[0].profile.as_deref(), Some("test"));
+        });
+    }
+
+    #[test]
+    fn test_list_sessions_fallback_to_jsonl() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = create_session_dir(home, "legacy-session");
+            let record = serde_json::json!({
+                "session_id": "legacy-session", "order": 0,
+                "ts": "2026-06-14T12:00:00+08:00", "duration_ms": 100,
+                "request": {
+                    "model": "test", "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "hello"}]
+                },
+                "response": {"content": "hi"}
+            });
+            std::fs::write(
+                session_dir.join("conversation.jsonl"),
+                format!("{}\n", serde_json::to_string(&record).unwrap()),
+            )
+            .unwrap();
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert_eq!(sessions[0].session_id, "legacy-session");
+            assert!(sessions[0].model.is_none());
+            assert!(sessions[0].profile.is_none());
+        });
+    }
+
+    #[test]
+    fn test_list_sessions_fallback_on_corrupted_json() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = create_session_dir(home, "corrupted-session");
+            std::fs::write(session_dir.join("session.json"), "{invalid json}").unwrap();
+            let record = serde_json::json!({
+                "session_id": "corrupted-session", "order": 0,
+                "ts": "2026-06-14T12:00:00+08:00", "duration_ms": 100,
+                "request": {
+                    "model": "test", "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "hi"}]
+                },
+                "response": {"content": "hello"}
+            });
+            std::fs::write(
+                session_dir.join("conversation.jsonl"),
+                format!("{}\n", serde_json::to_string(&record).unwrap()),
+            )
+            .unwrap();
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert!(sessions[0].model.is_none());
+            assert_eq!(sessions[0].session_id, "corrupted-session");
+        });
+    }
+
+    #[test]
+    fn test_list_sessions_with_only_session_json() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = create_session_dir(home, "empty-session");
+            write_session_json_to(
+                &session_dir,
+                serde_json::json!({
+                    "session_id": "empty-session",
+                    "model": "claude-4",
+                    "started_at": "2026-06-14T12:00:00+08:00",
+                }),
+            );
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert_eq!(sessions[0].model.as_deref(), Some("claude-4"));
+        });
+    }
+
+    #[test]
+    fn test_list_sessions_migration_from_old_version() {
+        crate::test_util::run_with_temp_home(|home| {
+            for i in 0..3 {
+                let dir = create_session_dir(home, &format!("old-session-{}", i));
+                let record = serde_json::json!({
+                    "session_id": format!("old-session-{}", i), "order": 0,
+                    "ts": format!("2026-06-{:02}T12:00:00+08:00", i + 1),
+                    "duration_ms": 100,
+                    "request": {
+                        "model": "test", "max_tokens": 100,
+                        "messages": [{"role": "user", "content": format!("msg {}", i)}]
+                    },
+                    "response": {"content": "ok"}
+                });
+                std::fs::write(
+                    dir.join("conversation.jsonl"),
+                    format!("{}\n", serde_json::to_string(&record).unwrap()),
+                )
+                .unwrap();
+            }
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 3);
+            assert!(sessions.iter().all(|s| s.model.is_none()));
+        });
+    }
+
+    #[test]
+    fn test_load_session_ignores_session_json() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = create_session_dir(home, "test-session");
+            write_session_json_to(
+                &session_dir,
+                serde_json::json!({
+                    "session_id": "test-session",
+                    "started_at": "2026-06-14T12:00:00+08:00",
+                }),
+            );
+            let record = serde_json::json!({
+                "session_id": "test-session", "order": 0,
+                "ts": "2026-06-14T12:00:00+08:00", "duration_ms": 100,
+                "request": {
+                    "model": "test", "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "hello"}]
+                },
+                "response": {"content": "hi"}
+            });
+            std::fs::write(
+                session_dir.join("conversation.jsonl"),
+                format!("{}\n", serde_json::to_string(&record).unwrap()),
+            )
+            .unwrap();
+
+            let messages = load_session("test-session").unwrap();
+            assert_eq!(messages.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_list_sessions_ignores_tmp_file() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = create_session_dir(home, "clean-session");
+            std::fs::write(session_dir.join("session.json.tmp"), "garbage").unwrap();
+            write_session_json_to(
+                &session_dir,
+                serde_json::json!({
+                    "session_id": "clean-session",
+                    "started_at": "2026-06-14T12:00:00+08:00",
+                }),
+            );
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert_eq!(sessions[0].session_id, "clean-session");
+        });
+    }
+
+    #[test]
+    fn test_list_sessions_mixed_format_sorting() {
+        crate::test_util::run_with_temp_home(|home| {
+            let base = home.join(".zapmyco/sessions");
+            for i in 0..3 {
+                let dir = base.join(&format!("new-{}", i));
+                std::fs::create_dir_all(&dir).unwrap();
+                let meta = serde_json::json!({
+                    "session_id": format!("new-{}", i),
+                    "started_at": format!("2026-06-{:02}T12:00:00+08:00", 10 + i),
+                });
+                std::fs::write(
+                    dir.join("session.json"),
+                    serde_json::to_string(&meta).unwrap(),
+                )
+                .unwrap();
+            }
+            for i in 0..3 {
+                let dir = base.join(&format!("old-{}", i));
+                std::fs::create_dir_all(&dir).unwrap();
+                let record = serde_json::json!({
+                    "session_id": format!("old-{}", i), "order": 0,
+                    "ts": format!("2026-06-{:02}T12:00:00+08:00", 10 + i),
+                    "duration_ms": 100,
+                    "request": {"model": "test", "messages": [], "max_tokens": 100},
+                    "response": {"content": "ok"}
+                });
+                std::fs::write(
+                    dir.join("conversation.jsonl"),
+                    format!(
+                        "{}
+",
+                        serde_json::to_string(&record).unwrap()
+                    ),
+                )
+                .unwrap();
+            }
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 6);
+            for i in 0..5 {
+                assert!(sessions[i].first_message_time >= sessions[i + 1].first_message_time);
+            }
         });
     }
 }

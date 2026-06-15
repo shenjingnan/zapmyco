@@ -36,6 +36,8 @@ pub struct SubAgentTool {
     agent_session_id: String,
     /// 子进程的权限模式（默认 Full，保持向后兼容）
     permission_mode: PermissionMode,
+    /// 父 agent 的 session_id（由 AiAgent 在注册工具时注入）
+    parent_session_id: Option<String>,
     /// 测试用：覆盖 spawn 的子进程二进制路径
     #[cfg(test)]
     pub test_binary: Option<String>,
@@ -56,6 +58,7 @@ impl SubAgentTool {
             timeout_secs: DEFAULT_TIMEOUT_SECS,
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
+            parent_session_id: None,
             #[cfg(test)]
             test_binary: None,
         })
@@ -71,6 +74,11 @@ impl SubAgentTool {
     /// 返回当前 agent_session_id
     pub fn agent_session(&self) -> &str {
         &self.agent_session_id
+    }
+
+    /// 设置父 agent 的 session_id（由 AiAgent 在注册工具时调用）
+    pub fn set_parent_session_id(&mut self, id: Option<String>) {
+        self.parent_session_id = id;
     }
 
     /// 返回 Anthropic Tool 定义
@@ -233,12 +241,20 @@ impl SubAgentTool {
             &Local::now().format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
         )?;
 
+        // 输出关联日志
+        tracing::info!(
+            parent_session = %self.parent_session_id.as_deref().unwrap_or("none"),
+            child_subagent_id = %subagent_id,
+            "创建子 Agent",
+        );
+
         // 后台异步执行子进程
         let dir_clone = dir.clone();
         let timeout = self.timeout_secs;
         let task_owned = task.to_string();
         let skill_owned = skill.map(|s| s.to_string());
         let permission_mode = self.permission_mode;
+        let parent_session_id = self.parent_session_id.clone();
 
         #[cfg(test)]
         let test_bin = self.test_binary.clone();
@@ -250,11 +266,22 @@ impl SubAgentTool {
                 let (binary, args) = if let Some(ref tb) = test_bin {
                     (tb.clone(), vec![task_owned.clone()])
                 } else {
-                    build_command(&task_owned, true, skill_owned.as_deref(), permission_mode)?
+                    build_command(
+                        &task_owned,
+                        true,
+                        skill_owned.as_deref(),
+                        permission_mode,
+                        parent_session_id.as_deref(),
+                    )?
                 };
                 #[cfg(not(test))]
-                let (binary, args) =
-                    build_command(&task_owned, true, skill_owned.as_deref(), permission_mode)?;
+                let (binary, args) = build_command(
+                    &task_owned,
+                    true,
+                    skill_owned.as_deref(),
+                    permission_mode,
+                    parent_session_id.as_deref(),
+                )?;
 
                 let mut child = Command::new(&binary)
                     .args(&args)
@@ -556,6 +583,7 @@ fn build_command(
     is_subagent: bool,
     skill: Option<&str>,
     permission_mode: PermissionMode,
+    parent_session_id: Option<&str>,
 ) -> Result<(String, Vec<String>), String> {
     let binary = std::env::current_exe().map_err(|e| format!("无法获取当前二进制路径: {}", e))?;
     let mut args = vec!["run".to_string()];
@@ -574,6 +602,10 @@ fn build_command(
         };
         args.push("--permission-mode".to_string());
         args.push(flag_value.to_string());
+    }
+    if let Some(pid) = parent_session_id {
+        args.push("--parent-session-id".to_string());
+        args.push(pid.to_string());
     }
     args.push(task.to_string());
     Ok((binary.to_string_lossy().to_string(), args))
@@ -841,6 +873,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("echo".to_string()),
+            parent_session_id: None,
         }
     }
 
@@ -902,26 +935,26 @@ mod tests {
     #[test]
     fn test_build_command_uses_current_exe() {
         let current = std::env::current_exe().unwrap();
-        let (binary, _) = build_command("task", false, None, PermissionMode::Full).unwrap();
+        let (binary, _) = build_command("task", false, None, PermissionMode::Full, None).unwrap();
         assert_eq!(binary, current.to_string_lossy());
     }
 
     #[test]
     fn test_build_command_with_subagent_flag() {
-        let (_, args) = build_command("task", true, None, PermissionMode::Full).unwrap();
+        let (_, args) = build_command("task", true, None, PermissionMode::Full, None).unwrap();
         assert!(args.contains(&"--subagent".to_string()));
     }
 
     #[test]
     fn test_build_command_without_subagent_flag() {
-        let (_, args) = build_command("task", false, None, PermissionMode::Full).unwrap();
+        let (_, args) = build_command("task", false, None, PermissionMode::Full, None).unwrap();
         assert!(!args.contains(&"--subagent".to_string()));
     }
 
     #[test]
     fn test_build_command_basic() {
         let (binary, args) =
-            build_command("echo hello", false, None, PermissionMode::Full).unwrap();
+            build_command("echo hello", false, None, PermissionMode::Full, None).unwrap();
         assert!(!binary.is_empty(), "binary path should not be empty");
         assert_eq!(args[0], "run", "first arg should be 'run'");
         assert!(
@@ -932,20 +965,22 @@ mod tests {
 
     #[test]
     fn test_build_command_with_skill() {
-        let (_, args) = build_command("task", true, Some("explore"), PermissionMode::Full).unwrap();
+        let (_, args) =
+            build_command("task", true, Some("explore"), PermissionMode::Full, None).unwrap();
         assert!(args.contains(&"--skill".to_string()));
         assert!(args.contains(&"explore".to_string()));
     }
 
     #[test]
     fn test_build_command_without_skill() {
-        let (_, args) = build_command("task", true, None, PermissionMode::Full).unwrap();
+        let (_, args) = build_command("task", true, None, PermissionMode::Full, None).unwrap();
         assert!(!args.contains(&"--skill".to_string()));
     }
 
     #[test]
     fn test_build_command_skill_not_subagent() {
-        let (_, args) = build_command("task", false, Some("plan"), PermissionMode::Full).unwrap();
+        let (_, args) =
+            build_command("task", false, Some("plan"), PermissionMode::Full, None).unwrap();
         assert!(!args.contains(&"--subagent".to_string()));
         assert!(args.contains(&"--skill".to_string()));
         assert!(args.contains(&"plan".to_string()));
@@ -1340,6 +1375,7 @@ mod tests {
             agent_session_id: "as_session_a".to_string(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("echo".to_string()),
+            parent_session_id: None,
         };
         let tool2 = SubAgentTool {
             data_dir: tmp.path().to_path_buf(),
@@ -1347,6 +1383,7 @@ mod tests {
             agent_session_id: "as_session_b".to_string(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("echo".to_string()),
+            parent_session_id: None,
         };
 
         let id1 = tool1.spawn("zapmyco", "secret_task", None).await.unwrap();
@@ -1429,6 +1466,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("sleep".to_string()),
+            parent_session_id: None,
         };
         let id = tool.spawn("zapmyco", "1", None).await.unwrap();
         let result = tool.poll(&[id], 5).await.unwrap();
@@ -1444,6 +1482,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("sleep".to_string()),
+            parent_session_id: None,
         };
         let id = tool.spawn("zapmyco", "30", None).await.unwrap();
         let result = tool.poll(&[id], 0).await.unwrap();
@@ -1536,6 +1575,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("sleep".to_string()),
+            parent_session_id: None,
         };
         let id = tool.spawn("zapmyco", "30", None).await.unwrap();
 
@@ -1607,6 +1647,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("/nonexistent/binary".to_string()),
+            parent_session_id: None,
         };
         let id = tool.spawn("zapmyco", "task", None).await.unwrap();
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -1887,6 +1928,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("sleep".to_string()),
+            parent_session_id: None,
         };
         let id = tool.spawn("zapmyco", "5", None).await.unwrap();
         let dir = tool.data_dir.join(&id);
@@ -1959,6 +2001,7 @@ mod tests {
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("sleep".to_string()),
+            parent_session_id: None,
         };
         let id = tool.spawn("zapmyco", "60", None).await.unwrap();
         // 等超时（2s 超时 + 缓冲）
@@ -1988,28 +2031,34 @@ mod permission_inheritance_tests {
 
     #[test]
     fn test_build_command_full_no_flag() {
-        let (_, args) = build_command("task", true, None, PermissionMode::Full).unwrap();
+        let (_, args) = build_command("task", true, None, PermissionMode::Full, None).unwrap();
         assert!(!args.contains(&"--permission-mode".to_string()));
     }
 
     #[test]
     fn test_build_command_readonly_adds_flag() {
-        let (_, args) = build_command("task", true, None, PermissionMode::ReadOnly).unwrap();
+        let (_, args) = build_command("task", true, None, PermissionMode::ReadOnly, None).unwrap();
         let idx = args.iter().position(|a| a == "--permission-mode").unwrap();
         assert_eq!(args[idx + 1], "readonly");
     }
 
     #[test]
     fn test_build_command_readwrite_adds_flag() {
-        let (_, args) = build_command("task", true, None, PermissionMode::ReadWrite).unwrap();
+        let (_, args) = build_command("task", true, None, PermissionMode::ReadWrite, None).unwrap();
         let idx = args.iter().position(|a| a == "--permission-mode").unwrap();
         assert_eq!(args[idx + 1], "readwrite");
     }
 
     #[test]
     fn test_build_command_with_skill_and_permission() {
-        let (_, args) =
-            build_command("task", true, Some("explore"), PermissionMode::ReadOnly).unwrap();
+        let (_, args) = build_command(
+            "task",
+            true,
+            Some("explore"),
+            PermissionMode::ReadOnly,
+            None,
+        )
+        .unwrap();
         assert!(args.contains(&"--skill".to_string()));
         assert!(args.contains(&"explore".to_string()));
         assert!(args.contains(&"--permission-mode".to_string()));
@@ -2027,5 +2076,52 @@ mod permission_inheritance_tests {
     fn test_new_defaults_to_full() {
         let tool = SubAgentTool::new().unwrap();
         assert_eq!(tool.permission_mode, PermissionMode::Full);
+    }
+
+    // ==================== SubAgent 关联测试 ====================
+
+    #[test]
+    fn test_build_command_with_parent_session_id() {
+        let (_, args) = build_command(
+            "test task",
+            true,
+            None,
+            PermissionMode::Full,
+            Some("parent-123"),
+        )
+        .unwrap();
+        assert!(args.contains(&"--parent-session-id".to_string()));
+        let idx = args
+            .iter()
+            .position(|a| a == "--parent-session-id")
+            .unwrap();
+        assert_eq!(args[idx + 1], "parent-123");
+    }
+
+    #[test]
+    fn test_build_command_without_parent_session_id() {
+        let (_, args) = build_command("test task", true, None, PermissionMode::Full, None).unwrap();
+        assert!(!args.contains(&"--parent-session-id".to_string()));
+    }
+
+    #[test]
+    fn test_subagent_tool_parent_session_id() {
+        let mut tool = SubAgentTool::new().unwrap();
+        assert!(tool.parent_session_id.is_none());
+        tool.set_parent_session_id(Some("real-session-123".to_string()));
+        assert_eq!(tool.parent_session_id.as_deref(), Some("real-session-123"));
+    }
+
+    #[test]
+    fn test_subagent_tool_set_parent_session_id() {
+        let mut tool = SubAgentTool::new().unwrap();
+        assert!(tool.parent_session_id.is_none());
+        tool.set_parent_session_id(Some("parent-session-456".to_string()));
+        assert_eq!(
+            tool.parent_session_id.as_deref(),
+            Some("parent-session-456")
+        );
+        tool.set_parent_session_id(None);
+        assert!(tool.parent_session_id.is_none());
     }
 }

@@ -455,3 +455,49 @@ mod tests {
         assert!(result.unwrap_err().contains("connection reset"));
     }
 }
+
+// ==================== RoundResult HTTP 字段测试 (P0-3-04) ====================
+
+#[test]
+fn test_round_result_http_fields_default_none() {
+    use crate::agent::stream::RoundResult;
+    let result = RoundResult {
+        full_text: String::new(),
+        tool_uses: vec![],
+        blocks: vec![],
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+        duration_ms: 0,
+        model: String::new(),
+        http_status: None,
+        rate_limit_remaining: None,
+        rate_limit_reset: None,
+    };
+    assert!(result.http_status.is_none());
+    assert!(result.rate_limit_remaining.is_none());
+    assert!(result.rate_limit_reset.is_none());
+}
+
+#[test]
+fn test_round_result_http_fields_with_values() {
+    use crate::agent::stream::RoundResult;
+    let result = RoundResult {
+        full_text: "test".to_string(),
+        tool_uses: vec![],
+        blocks: vec![],
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+        duration_ms: 100,
+        model: "test".to_string(),
+        http_status: Some(200),
+        rate_limit_remaining: Some(42),
+        rate_limit_reset: Some(1718000000),
+    };
+    assert_eq!(result.http_status, Some(200));
+    assert_eq!(result.rate_limit_remaining, Some(42));
+    assert_eq!(result.rate_limit_reset, Some(1718000000));
+}
