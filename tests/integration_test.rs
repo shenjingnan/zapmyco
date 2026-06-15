@@ -401,3 +401,211 @@ async fn test_agent_context_injected_only_once() {
     );
     assert_eq!(second_user_msg.content, "第二条消息");
 }
+
+#[tokio::test]
+async fn test_agent_creates_session_meta() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_NON_STREAM_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    // 验证 session.json 已创建
+    let session_dir = agent.session_dir().expect("session_dir should exist");
+    let meta_path = session_dir.join("session.json");
+    assert!(
+        meta_path.exists(),
+        "session.json should exist after AiAgent::new()"
+    );
+
+    // 验证内容
+    let content = std::fs::read_to_string(&meta_path).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(parsed["app_version"], env!("CARGO_PKG_VERSION"));
+    assert!(parsed["started_at"].as_str().unwrap().len() > 0);
+    assert!(parsed["finished_at"].is_null());
+    assert!(parsed["exit_reason"].is_null());
+}
+
+#[tokio::test]
+async fn test_agent_finish_session_completed() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_NON_STREAM_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    // 执行 finish_session
+    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Completed);
+
+    // 验证 session.json 已更新
+    let session_dir = agent.session_dir().expect("session_dir should exist");
+    let meta_path = session_dir.join("session.json");
+    let content = std::fs::read_to_string(&meta_path).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(parsed["finished_at"].as_str().unwrap().len() > 0);
+    assert_eq!(parsed["exit_reason"], "completed");
+}
+
+#[tokio::test]
+async fn test_agent_finish_session_interrupted() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_NON_STREAM_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Interrupted);
+
+    let meta_path = agent
+        .session_dir()
+        .expect("session_dir")
+        .join("session.json");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+    assert_eq!(parsed["exit_reason"], "interrupted");
+}
+
+#[tokio::test]
+async fn test_agent_finish_session_error() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_NON_STREAM_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Error);
+
+    let meta_path = agent
+        .session_dir()
+        .expect("session_dir")
+        .join("session.json");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+    assert_eq!(parsed["exit_reason"], "error");
+}
+
+#[tokio::test]
+async fn test_agent_stats_after_chat() {
+    let _home = setup_temp_home();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(MOCK_NON_STREAM_RESPONSE)
+                .insert_header("Content-Type", "application/json"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut agent = AiAgent::new(AiAgentOptions {
+        api_key: Some("test-key".to_string()),
+        base_url: Some(mock_server.uri()),
+        model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to create AiAgent");
+
+    let _ = agent.chat("round 1").await.expect("Chat failed");
+    let _ = agent.chat("round 2").await.expect("Chat failed");
+    let _ = agent.chat("round 3").await.expect("Chat failed");
+    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Completed);
+
+    // 验证 stats
+    assert_eq!(
+        agent
+            .session_stats
+            .round_trips
+            .load(std::sync::atomic::Ordering::Relaxed),
+        3
+    );
+
+    // 验证 JSONL 行数与 stats 一致
+    let jsonl_path = agent
+        .session_dir()
+        .expect("session_dir")
+        .join("conversation.jsonl");
+    assert!(jsonl_path.exists());
+    let line_count = std::fs::read_to_string(&jsonl_path)
+        .unwrap()
+        .lines()
+        .count();
+    assert_eq!(
+        agent
+            .session_stats
+            .round_trips
+            .load(std::sync::atomic::Ordering::Relaxed) as usize,
+        line_count
+    );
+
+    // 验证 input_tokens > 0
+    assert!(
+        agent
+            .session_stats
+            .total_input_tokens
+            .load(std::sync::atomic::Ordering::Relaxed)
+            > 0
+    );
+}

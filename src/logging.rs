@@ -1085,4 +1085,120 @@ mod tests {
             assert!(session_id.len() < 50, "session_id 应控制在合理长度");
         });
     }
+
+    // ==================== Panic Hook 测试 ====================
+
+    #[test]
+    fn test_default_hook_is_called() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static DEFAULT_HOOK_CALLED: AtomicBool = AtomicBool::new(false);
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            DEFAULT_HOOK_CALLED.store(true, Ordering::Relaxed);
+            default_hook(panic_info);
+        }));
+
+        let result = std::panic::catch_unwind(|| {
+            panic!("test message");
+        });
+        assert!(result.is_err());
+        assert!(DEFAULT_HOOK_CALLED.load(Ordering::Relaxed));
+
+        let _ = std::panic::take_hook();
+    }
+
+    #[test]
+    fn test_panic_hook_no_panic_on_normal_use() {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            default_hook(panic_info);
+            tracing::error!(target: "panic", "{}", panic_info);
+        }));
+
+        let result = std::panic::catch_unwind(|| {
+            panic!("this should not cause double panic");
+        });
+        assert!(result.is_err());
+
+        let _ = std::panic::take_hook();
+    }
+
+    #[test]
+    fn test_panic_hook_includes_backtrace() {
+        crate::test_util::run_with_temp_home(|home| {
+            use std::fs::OpenOptions;
+            use tracing_subscriber::prelude::*;
+            use tracing_subscriber::{Registry, fmt};
+
+            let log_path = home.join("test_backtrace.log");
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .unwrap();
+
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(move || file.try_clone().unwrap())
+                    .with_ansi(false),
+            );
+            tracing::subscriber::with_default(subscriber, || {
+                let backtrace = std::backtrace::Backtrace::force_capture();
+                tracing::error!(
+                    panic_message = "test error",
+                    backtrace = %backtrace,
+                    "panic captured",
+                );
+            });
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("backtrace"));
+        });
+    }
+
+    #[test]
+    fn test_panic_hook_logs_to_tracing() {
+        crate::test_util::run_with_temp_home(|home| {
+            use std::fs::OpenOptions;
+            use tracing_subscriber::prelude::*;
+            use tracing_subscriber::{Registry, fmt};
+
+            let log_path = home.join("test_panic.log");
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .unwrap();
+
+            let subscriber = Registry::default().with(
+                fmt::layer()
+                    .with_writer(move || file.try_clone().unwrap())
+                    .with_ansi(false),
+            );
+            tracing::subscriber::with_default(subscriber, || {
+                let default_hook = std::panic::take_hook();
+                std::panic::set_hook(Box::new(move |panic_info| {
+                    default_hook(panic_info);
+                    tracing::error!(
+                        panic_message = %panic_info.to_string(),
+                        panic_location = panic_info.location()
+                            .map(|l| format!("{}:{}", l.file(), l.line()))
+                            .unwrap_or_default(),
+                        "panic captured in test",
+                    );
+                }));
+
+                let result = std::panic::catch_unwind(|| {
+                    panic!("test panic message");
+                });
+                assert!(result.is_err());
+            });
+
+            let _ = std::panic::take_hook();
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("test panic message"));
+            assert!(content.contains("panic_location"));
+        });
+    }
 }

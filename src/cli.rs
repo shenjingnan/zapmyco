@@ -210,6 +210,7 @@ impl TypedValueParser for SessionIdValueParser {
                 let preview = c.preview;
                 let msg_count = c.message_count;
                 let first_time = c.first_message_time;
+                let model = c.model.as_deref().unwrap_or("?");
 
                 let date = if first_time.len() >= 19 {
                     // ISO 8601: 2026-06-05T22:43:45+08:00 → 2026-06-05 22:43:45
@@ -226,7 +227,7 @@ impl TypedValueParser for SessionIdValueParser {
                 } else {
                     first_time
                 };
-                let help = format!("{}  {} ({}条)", date, preview, msg_count);
+                let help = format!("{} | {} | {} ({}条)", date, model, preview, msg_count);
                 PossibleValue::new(session_id).help(help)
             })
             .collect();
@@ -1214,4 +1215,27 @@ mod tests {
     // test_cmd_run_registers_subagent_tool_by_default:
     // 验证没有 --subagent 时 SubAgent 工具已注册
     // 同上，需要完整 LLM 环境
+
+    // ==================== --parent-session-id 测试 ====================
+
+    #[test]
+    fn test_cli_parent_session_id() {
+        let cli = Cli::try_parse_from(&[
+            "zapmyco",
+            "run",
+            "--subagent",
+            "--parent-session-id",
+            "parent-123",
+            "do task",
+        ])
+        .unwrap();
+        match cli.command.unwrap() {
+            Commands::Run {
+                parent_session_id, ..
+            } => {
+                assert_eq!(parent_session_id.unwrap(), "parent-123");
+            }
+            _ => panic!("Expected Run command"),
+        }
+    }
 }

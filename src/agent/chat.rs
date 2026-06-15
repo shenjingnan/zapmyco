@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+
 use futures_util::StreamExt;
 use std::io::IsTerminal;
 use std::pin::Pin;
@@ -18,7 +20,6 @@ use crate::config::models::{
 use crate::config::settings::{
     is_session_log_enabled, load_settings, resolve_env_ref, update_settings_model,
 };
-use crate::datetime;
 use crate::output;
 
 /// AiAgent 配置选项
@@ -233,6 +234,34 @@ impl ToolHandler {
     }
 }
 
+/// Session 聚合统计（原子计数器，无锁并发安全）
+#[derive(Debug)]
+pub struct SessionStats {
+    pub round_trips: AtomicU32,
+    pub tool_calls: AtomicU32,
+    pub total_input_tokens: AtomicU64,
+    pub total_output_tokens: AtomicU64,
+    pub total_cache_read_tokens: AtomicU64,
+    pub total_cache_create_tokens: AtomicU64,
+    pub error_count: AtomicU32,
+    pub start_time: Instant,
+}
+
+impl Default for SessionStats {
+    fn default() -> Self {
+        Self {
+            round_trips: AtomicU32::new(0),
+            tool_calls: AtomicU32::new(0),
+            total_input_tokens: AtomicU64::new(0),
+            total_output_tokens: AtomicU64::new(0),
+            total_cache_read_tokens: AtomicU64::new(0),
+            total_cache_create_tokens: AtomicU64::new(0),
+            error_count: AtomicU32::new(0),
+            start_time: Instant::now(),
+        }
+    }
+}
+
 /// AI Agent 类 - 封装 LLM 对话功能
 pub struct AiAgent {
     client: AnthropicClient,
@@ -247,6 +276,8 @@ pub struct AiAgent {
     tool_call_logger: Option<ToolCallLogger>,
     /// Session 元数据（session.json）
     pub(crate) session_meta: Option<SessionMeta>,
+    /// Session 聚合统计
+    pub session_stats: SessionStats,
     /// 已注册的工具
     tools: Vec<ToolHandler>,
     /// 工具调用最大轮次
@@ -406,7 +437,16 @@ impl AiAgent {
                 .ok()
         });
 
-        // 10. 创建 SessionMeta（session.json）
+        // 10. 输出环境信息
+        tracing::info!(
+            os = %env_info::os_info(),
+            shell = %env_info::shell_name(),
+            locale = %env_info::locale_info(),
+            tools = %env_info::available_tools().lines().collect::<Vec<_>>().join("; "),
+            "Session 环境信息",
+        );
+
+        // 11. 创建 SessionMeta（session.json）
         let session_meta = logger.as_ref().and_then(|l| {
             let os = env_info::os_info();
             let shell = env_info::shell_name();
@@ -435,7 +475,7 @@ impl AiAgent {
             .ok()
         });
 
-        // 11. 加载 AGENTS.md
+        // 12. 加载 AGENTS.md
         let agents_md_content =
             crate::agent::agents_md::load_agents_md(&std::env::current_dir().unwrap_or_default());
 
@@ -449,6 +489,7 @@ impl AiAgent {
             logger,
             tool_call_logger,
             session_meta,
+            session_stats: SessionStats::default(),
             tools: Vec::new(),
             max_tool_rounds: u32::MAX,
             read_file_state: std::collections::HashMap::new(),
@@ -491,6 +532,27 @@ impl AiAgent {
             .map_err(|e| format!("API 请求失败: {}", e))?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
+
+        // 更新 session 统计
+        self.session_stats
+            .round_trips
+            .fetch_add(1, Ordering::Relaxed);
+        self.session_stats
+            .total_input_tokens
+            .fetch_add(response.usage.input_tokens as u64, Ordering::Relaxed);
+        self.session_stats
+            .total_output_tokens
+            .fetch_add(response.usage.output_tokens as u64, Ordering::Relaxed);
+        if let Some(v) = response.usage.cache_read_input_tokens {
+            self.session_stats
+                .total_cache_read_tokens
+                .fetch_add(v as u64, Ordering::Relaxed);
+        }
+        if let Some(v) = response.usage.cache_creation_input_tokens {
+            self.session_stats
+                .total_cache_create_tokens
+                .fetch_add(v as u64, Ordering::Relaxed);
+        }
 
         let full_content = crate::agent::executor::extract_text_from_blocks(&response.content);
 
@@ -564,19 +626,15 @@ impl AiAgent {
         let mut callback = on_chunk;
 
         // 从流事件中重建完整响应
-        let mut resp_id = String::new();
         let mut resp_model = self.model.clone();
-        let mut resp_stop_reason: Option<String> = None;
         let mut resp_input_tokens: u32 = 0;
         let mut resp_output_tokens: u32 = 0;
         let mut resp_cache_creation_input_tokens: Option<u32> = None;
         let mut resp_cache_read_input_tokens: Option<u32> = None;
-        let mut resp_error: Option<String> = None;
 
         while let Some(event) = stream.next().await {
             match event.map_err(|e| format!("流式读取失败: {}", e))? {
                 StreamEvent::MessageStart { message } => {
-                    resp_id = message.id;
                     resp_model = message.model;
                     resp_input_tokens = message.usage.input_tokens;
                 }
@@ -587,19 +645,17 @@ impl AiAgent {
                     full_content.push_str(&text);
                     callback(&text);
                 }
-                StreamEvent::MessageDelta { delta, usage } => {
-                    if let Some(ref stop) = delta.stop_reason {
-                        resp_stop_reason = Some(format!("{:?}", stop));
-                    }
-                    if let Some(u) = usage {
-                        resp_output_tokens = u.output_tokens;
-                        resp_cache_creation_input_tokens = u.cache_creation_input_tokens;
-                        resp_cache_read_input_tokens = u.cache_read_input_tokens;
-                    }
+                StreamEvent::MessageDelta {
+                    delta: _,
+                    usage: Some(u),
+                } => {
+                    resp_output_tokens = u.output_tokens;
+                    resp_cache_creation_input_tokens = u.cache_creation_input_tokens;
+                    resp_cache_read_input_tokens = u.cache_read_input_tokens;
                 }
+                StreamEvent::MessageDelta { .. } => {}
                 StreamEvent::Error { error } => {
-                    resp_error = Some(format!("{} - {}", error.type_, error.message));
-                    return Err(format!("API 错误: {}", resp_error.as_ref().unwrap()));
+                    return Err(format!("API 错误: {} - {}", error.type_, error.message));
                 }
                 _ => {}
             }
@@ -617,40 +673,56 @@ impl AiAgent {
             duration_ms,
         );
 
+        // 更新 session 统计
+        self.session_stats
+            .round_trips
+            .fetch_add(1, Ordering::Relaxed);
+        self.session_stats
+            .total_input_tokens
+            .fetch_add(resp_input_tokens as u64, Ordering::Relaxed);
+        self.session_stats
+            .total_output_tokens
+            .fetch_add(resp_output_tokens as u64, Ordering::Relaxed);
+        if let Some(v) = resp_cache_read_input_tokens {
+            self.session_stats
+                .total_cache_read_tokens
+                .fetch_add(v as u64, Ordering::Relaxed);
+        }
+        if let Some(v) = resp_cache_creation_input_tokens {
+            self.session_stats
+                .total_cache_create_tokens
+                .fetch_add(v as u64, Ordering::Relaxed);
+        }
+
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
             content: full_content.clone(),
             blocks: None,
         });
 
-        // 记录日志
+        // 记录日志（使用统一的 log_round_trip_stream）
         if let Some(ref logger) = self.logger {
-            let request_value = serde_json::to_value(&params).unwrap_or_default();
-            let response_value = serde_json::json!({
-                "id": resp_id,
-                "type": "message",
-                "role": "assistant",
-                "model": resp_model,
-                "content": [{"type": "text", "text": full_content}],
-                "stop_reason": resp_stop_reason,
-                "stop_sequence": null,
-                "usage": {
-                    "input_tokens": resp_input_tokens,
-                    "output_tokens": resp_output_tokens,
-                    "cache_creation_input_tokens": resp_cache_creation_input_tokens,
-                    "cache_read_input_tokens": resp_cache_read_input_tokens,
+            crate::agent::executor::log_round_trip_stream(
+                logger,
+                &params,
+                &crate::agent::stream::RoundResult {
+                    full_text: full_content.clone(),
+                    tool_uses: vec![],
+                    blocks: vec![ContentBlock::Text {
+                        text: full_content.clone(),
+                        citations: None,
+                    }],
+                    input_tokens: resp_input_tokens,
+                    output_tokens: resp_output_tokens,
+                    cache_read_input_tokens: resp_cache_read_input_tokens,
+                    cache_creation_input_tokens: resp_cache_creation_input_tokens,
+                    duration_ms,
+                    model: resp_model,
+                    http_status: None,
+                    rate_limit_remaining: None,
+                    rate_limit_reset: None,
                 },
-                "error": resp_error,
-            });
-            let ts = datetime::iso_timestamp_now();
-            let _ = logger.append_record(
-                ts,
                 duration_ms,
-                request_value,
-                response_value,
-                None,
-                None,
-                None,
             );
         }
 
@@ -796,6 +868,27 @@ impl AiAgent {
                 result.cache_creation_input_tokens,
                 result.duration_ms,
             );
+
+            // 更新 session 统计
+            self.session_stats
+                .round_trips
+                .fetch_add(1, Ordering::Relaxed);
+            self.session_stats
+                .total_input_tokens
+                .fetch_add(result.input_tokens as u64, Ordering::Relaxed);
+            self.session_stats
+                .total_output_tokens
+                .fetch_add(result.output_tokens as u64, Ordering::Relaxed);
+            if let Some(v) = result.cache_read_input_tokens {
+                self.session_stats
+                    .total_cache_read_tokens
+                    .fetch_add(v as u64, Ordering::Relaxed);
+            }
+            if let Some(v) = result.cache_creation_input_tokens {
+                self.session_stats
+                    .total_cache_create_tokens
+                    .fetch_add(v as u64, Ordering::Relaxed);
+            }
 
             // 记录对话日志
             if let Some(ref logger) = self.logger
@@ -1387,8 +1480,25 @@ impl AiAgent {
         self.logger.as_ref().map(|l| l.session_dir())
     }
 
-    /// 完成 session 并写入结束状态
+    /// 完成 session 并写入结束状态，同时输出聚合摘要
     pub fn finish_session(&self, exit_reason: crate::agent::session_logger::ExitReason) {
+        // 输出聚合摘要
+        let stats = &self.session_stats;
+        tracing::info!(
+            session_id = %self.session_id().unwrap_or("unknown"),
+            round_trips = stats.round_trips.load(Ordering::Relaxed),
+            tool_calls = stats.tool_calls.load(Ordering::Relaxed),
+            total_input_tokens = stats.total_input_tokens.load(Ordering::Relaxed),
+            total_output_tokens = stats.total_output_tokens.load(Ordering::Relaxed),
+            total_cache_read_tokens = stats.total_cache_read_tokens.load(Ordering::Relaxed),
+            total_cache_create_tokens = stats.total_cache_create_tokens.load(Ordering::Relaxed),
+            total_duration_ms = stats.start_time.elapsed().as_millis() as u64,
+            error_count = stats.error_count.load(Ordering::Relaxed),
+            exit_reason = %serde_json::to_string(&exit_reason).unwrap_or_default(),
+            "Session 结束",
+        );
+
+        // 更新 session.json
         if let Some(ref meta) = self.session_meta
             && let Err(e) = meta.finish(exit_reason)
         {
@@ -1400,6 +1510,7 @@ impl AiAgent {
     ///
     /// 串行路径（execute_tools_serial）和并发路径（execute_tools_concurrent）
     /// 都通过此方法记录。写失败只输出 `tracing::warn!`，不传播错误。
+    /// 同时更新 session 统计中的 tool_calls 和 error_count。
     #[expect(clippy::too_many_arguments)]
     fn log_tool_call(
         &self,
@@ -1411,6 +1522,15 @@ impl AiAgent {
         duration_ms: u64,
         round: u32,
     ) {
+        // 更新 session 统计
+        self.session_stats
+            .tool_calls
+            .fetch_add(1, Ordering::Relaxed);
+        if error_opt.is_some() {
+            self.session_stats
+                .error_count
+                .fetch_add(1, Ordering::Relaxed);
+        }
         if let Some(ref logger) = self.tool_call_logger
             && let Err(e) = logger.append_tool_call(
                 name,
@@ -5142,4 +5262,59 @@ enabled = false
         perms.set_readonly(false);
         std::fs::set_permissions(path, perms).unwrap();
     }
+
+    // ==================== SessionStats 测试 ====================
+
+    #[test]
+    fn test_session_stats_increment() {
+        let stats = SessionStats::default();
+        stats.round_trips.fetch_add(1, Ordering::Relaxed);
+        stats.tool_calls.fetch_add(3, Ordering::Relaxed);
+        stats.total_input_tokens.fetch_add(100, Ordering::Relaxed);
+        stats.error_count.fetch_add(1, Ordering::Relaxed);
+
+        assert_eq!(stats.round_trips.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.tool_calls.load(Ordering::Relaxed), 3);
+        assert_eq!(stats.total_input_tokens.load(Ordering::Relaxed), 100);
+        assert_eq!(stats.error_count.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_session_stats_concurrent() {
+        let stats = std::sync::Arc::new(SessionStats::default());
+        let mut handles = vec![];
+
+        for _ in 0..10 {
+            let s = stats.clone();
+            handles.push(std::thread::spawn(move || {
+                for _ in 0..100 {
+                    s.round_trips.fetch_add(1, Ordering::Relaxed);
+                    s.tool_calls.fetch_add(1, Ordering::Relaxed);
+                    s.total_input_tokens.fetch_add(50, Ordering::Relaxed);
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        assert_eq!(stats.round_trips.load(Ordering::Relaxed), 1000);
+        assert_eq!(stats.tool_calls.load(Ordering::Relaxed), 1000);
+        assert_eq!(stats.total_input_tokens.load(Ordering::Relaxed), 50000);
+    }
+}
+
+// ==================== 环境信息测试 (P1-3-01) ====================
+
+#[test]
+fn test_env_info_functions_return_values() {
+    let os = crate::agent::env_info::os_info();
+    let shell = crate::agent::env_info::shell_name();
+    let locale = crate::agent::env_info::locale_info();
+    let tools = crate::agent::env_info::available_tools();
+
+    assert!(!os.is_empty(), "os_info() should not be empty");
+    assert!(!tools.is_empty(), "available_tools() should not be empty");
+    let _ = shell;
+    let _ = locale;
 }

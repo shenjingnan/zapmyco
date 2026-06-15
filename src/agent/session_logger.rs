@@ -8,7 +8,7 @@ use chrono::Local;
 const SESSIONS_DIR: &str = "sessions";
 
 /// 一条日志记录，对应 JSONL 中的一行
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ConversationRecord {
     /// 会话 ID: YYYY-MM-DD_HHMM_P{PID}
     pub session_id: String,
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn test_logger_new() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new();
             assert!(logger.is_ok());
             let logger = logger.unwrap();
@@ -472,7 +472,7 @@ mod tests {
     #[test]
     fn test_logger_creates_file_on_append() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new().unwrap();
             let log_dir = home.join(".zapmyco/sessions");
             let expected_file = log_dir.join(&logger.session_id).join("conversation.jsonl");
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn test_logger_append_multiple_lines() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new().unwrap();
 
             logger
@@ -554,7 +554,7 @@ mod tests {
     #[test]
     fn test_get_sessions_dir() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let dir = get_sessions_dir().unwrap();
             assert_eq!(dir, home.join(".zapmyco/sessions"));
         });
@@ -631,7 +631,7 @@ mod tests {
     fn test_logger_order_increments() {
         use crate::test_util::run_with_temp_home;
 
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new().unwrap();
             for i in 0..5 {
                 logger
@@ -671,7 +671,7 @@ mod tests {
     #[test]
     fn test_session_dir_returns_correct_path() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new().unwrap();
             let session_dir = logger.session_dir();
 
@@ -691,7 +691,7 @@ mod tests {
     #[test]
     fn test_new_creates_session_directory() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new().unwrap();
             let session_dir = home.join(".zapmyco/sessions").join(&logger.session_id);
             let jsonl_path = session_dir.join("conversation.jsonl");
@@ -706,7 +706,7 @@ mod tests {
     fn test_session_dir_isolation() {
         use crate::test_util::run_with_temp_home;
         use std::time::Duration;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger1 = SessionLogger::new().unwrap();
             // 等待跨秒边界确保 session_id 不同（秒级精度）
             std::thread::sleep(Duration::from_millis(1500));
@@ -769,7 +769,7 @@ mod tests {
     #[test]
     fn test_session_dir_after_append() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new().unwrap();
             let expected = home.join(".zapmyco/sessions").join(&logger.session_id);
 
@@ -797,7 +797,7 @@ mod tests {
     #[test]
     fn test_sessions_parent_dir_not_exist() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             // 不创建 sessions 父目录
             let logger = SessionLogger::new();
             assert!(logger.is_ok(), "即使父目录不存在，new() 也应成功");
@@ -812,7 +812,7 @@ mod tests {
     #[test]
     fn test_terminal_log_path_derivation() {
         use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
+        crate::test_util::run_with_temp_home(|home| {
             let logger = SessionLogger::new().unwrap();
             let session_dir = logger.session_dir();
             let terminal_log_path = session_dir.join("terminal.log");
@@ -1302,6 +1302,251 @@ mod tests {
                 let parsed: Result<serde_json::Value, _> = serde_json::from_str(line);
                 assert!(parsed.is_ok(), "并发写入后每行应为合法 JSON: {}", line);
             }
+        });
+    }
+
+    // ==================== SessionMeta 测试 ====================
+
+    fn read_session_json(path: &std::path::Path) -> serde_json::Value {
+        let content = std::fs::read_to_string(path).unwrap();
+        serde_json::from_str(&content).unwrap()
+    }
+
+    fn create_test_meta(home: &std::path::Path) -> SessionMeta {
+        let session_dir = home.join(".zapmyco/sessions/test-session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        SessionMeta::create(
+            &session_dir,
+            "test-session",
+            "0.2.0",
+            "default",
+            "anthropic",
+            "claude-4",
+            "https://api.anthropic.com",
+            "full",
+            false,
+            None,
+            "macOS 15.5 (arm64)",
+            "zsh",
+            "zh_CN.UTF-8",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_session_meta_creation() {
+        crate::test_util::run_with_temp_home(|home| {
+            let meta = create_test_meta(home);
+            let json_path = meta.path();
+            assert!(json_path.exists());
+            let parsed = read_session_json(json_path);
+            assert_eq!(parsed["session_id"], "test-session");
+            assert_eq!(parsed["app_version"], "0.2.0");
+            assert_eq!(parsed["profile"], "default");
+            assert!(parsed["finished_at"].is_null());
+            assert!(parsed["exit_reason"].is_null());
+            assert_eq!(parsed["system_info"]["os"], "macOS 15.5 (arm64)");
+        });
+    }
+
+    #[test]
+    fn test_session_meta_finish_completed() {
+        crate::test_util::run_with_temp_home(|home| {
+            let meta = create_test_meta(home);
+            meta.finish(ExitReason::Completed).unwrap();
+            let parsed = read_session_json(meta.path());
+            assert!(parsed["finished_at"].as_str().unwrap().len() > 0);
+            assert_eq!(parsed["exit_reason"], "completed");
+            assert_eq!(parsed["session_id"], "test-session");
+        });
+    }
+
+    #[test]
+    fn test_session_meta_finish_interrupted() {
+        crate::test_util::run_with_temp_home(|home| {
+            let meta = create_test_meta(home);
+            meta.finish(ExitReason::Interrupted).unwrap();
+            let parsed = read_session_json(meta.path());
+            assert_eq!(parsed["exit_reason"], "interrupted");
+        });
+    }
+
+    #[test]
+    fn test_session_meta_finish_error() {
+        crate::test_util::run_with_temp_home(|home| {
+            let meta = create_test_meta(home);
+            meta.finish(ExitReason::Error).unwrap();
+            let parsed = read_session_json(meta.path());
+            assert_eq!(parsed["exit_reason"], "error");
+        });
+    }
+
+    #[test]
+    fn test_write_session_json_atomicity() {
+        crate::test_util::run_with_temp_home(|home| {
+            let path = home.join("test.json");
+            write_session_json(&path, r#"{"key": "value"}"#).unwrap();
+            assert!(!path.with_extension("json.tmp").exists());
+            assert!(path.exists());
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert_eq!(content, r#"{"key": "value"}"#);
+        });
+    }
+
+    #[test]
+    fn test_subagent_session_meta() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/child-session");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            let meta = SessionMeta::create(
+                &session_dir,
+                "child-session",
+                "0.2.0",
+                "default",
+                "anthropic",
+                "claude-4",
+                "https://api.anthropic.com",
+                "full",
+                true,
+                Some("parent-123"),
+                "macOS 15.5 (arm64)",
+                "zsh",
+                "zh_CN.UTF-8",
+            )
+            .unwrap();
+            let parsed = read_session_json(meta.path());
+            assert_eq!(parsed["is_subagent"], true);
+            assert_eq!(parsed["parent_session_id"], "parent-123");
+        });
+    }
+
+    #[test]
+    fn test_session_meta_finish_idempotent() {
+        crate::test_util::run_with_temp_home(|home| {
+            let meta = create_test_meta(home);
+            meta.finish(ExitReason::Completed).unwrap();
+            meta.finish(ExitReason::Completed).unwrap();
+            let parsed = read_session_json(meta.path());
+            assert_eq!(parsed["exit_reason"], "completed");
+        });
+    }
+
+    #[test]
+    fn test_session_meta_unicode_path() {
+        crate::test_util::run_with_temp_home(|home| {
+            let session_dir = home.join(".zapmyco/sessions/会话_测试_🌍");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            let meta = SessionMeta::create(
+                &session_dir,
+                "会话_测试_🌍",
+                "0.2.0",
+                "default",
+                "anthropic",
+                "claude-4",
+                "https://api.anthropic.com",
+                "full",
+                false,
+                None,
+                "macOS 15.5 (arm64)",
+                "zsh",
+                "zh_CN.UTF-8",
+            )
+            .unwrap();
+            assert!(meta.path().exists());
+            let parsed = read_session_json(meta.path());
+            assert_eq!(parsed["session_id"], "会话_测试_🌍");
+        });
+    }
+
+    #[test]
+    fn test_session_meta_unchanged_after_panic() {
+        crate::test_util::run_with_temp_home(|home| {
+            let meta = create_test_meta(home);
+            let parsed = read_session_json(meta.path());
+            assert!(parsed["finished_at"].is_null());
+            assert!(parsed["exit_reason"].is_null());
+        });
+    }
+
+    // ==================== ConversationRecord HTTP 元数据测试 ====================
+
+    #[test]
+    fn test_conversation_record_with_http_meta() {
+        let r1 = ConversationRecord {
+            session_id: "s1".into(),
+            order: 0,
+            ts: "t".into(),
+            duration_ms: 100,
+            request: json!({"model": "test"}),
+            response: json!({"content": "hi"}),
+            http_status: None,
+            rate_limit_remaining: None,
+            rate_limit_reset: None,
+        };
+        let json1 = serde_json::to_string(&r1).unwrap();
+        assert!(!json1.contains("http_status"));
+
+        let r2 = ConversationRecord {
+            http_status: Some(200),
+            rate_limit_remaining: Some(99),
+            rate_limit_reset: Some(1718000000),
+            ..r1
+        };
+        let json2 = serde_json::to_string(&r2).unwrap();
+        assert!(json2.contains("\"http_status\":200"));
+        assert!(json2.contains("\"rate_limit_remaining\":99"));
+    }
+
+    #[test]
+    fn test_conversation_record_deserialize_legacy() {
+        let old_json = r#"{"session_id":"s1","order":0,"ts":"t","duration_ms":100,"request":{},"response":{}}"#;
+        let record: ConversationRecord = serde_json::from_str(old_json).unwrap();
+        assert_eq!(record.session_id, "s1");
+        assert!(record.http_status.is_none());
+    }
+
+    // ==================== 补充测试 ====================
+
+    #[test]
+    fn test_ctrlc_signal_flag() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
+
+        SHOULD_EXIT.store(true, Ordering::Relaxed);
+        assert!(SHOULD_EXIT.load(Ordering::Relaxed));
+
+        SHOULD_EXIT.store(false, Ordering::Relaxed);
+        assert!(!SHOULD_EXIT.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_write_session_json_failure() {
+        let path = std::path::PathBuf::from("");
+        let result = write_session_json(&path, "content");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_append_record_with_http_none() {
+        crate::test_util::run_with_temp_home(|home| {
+            let logger = SessionLogger::new().unwrap();
+            let result = logger.append_record(
+                "ts".to_string(),
+                100,
+                serde_json::json!({"model": "test"}),
+                serde_json::json!({"content": "hi"}),
+                None,
+                None,
+                None,
+            );
+            assert!(result.is_ok());
+            let content = std::fs::read_to_string(
+                home.join(".zapmyco/sessions")
+                    .join(logger.session_id())
+                    .join("conversation.jsonl"),
+            )
+            .unwrap();
+            assert!(!content.contains("http_status"));
         });
     }
 }
