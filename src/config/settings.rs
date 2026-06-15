@@ -43,10 +43,17 @@ pub struct SessionLogSettings {
     /// 是否启用对话日志（默认 true）
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Session 日志级别：info / debug / trace（默认 info，通过 ZAPMYCO_LOG 环境变量控制）
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
 }
 
 fn default_enabled() -> bool {
     true
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 /// 权限配置
@@ -698,7 +705,10 @@ advanced = "deepseek-v4-flash"
     fn test_is_session_log_enabled_explicit_true() {
         let settings = Settings {
             llm: None,
-            session_log: Some(SessionLogSettings { enabled: true }),
+            session_log: Some(SessionLogSettings {
+                enabled: true,
+                log_level: "info".to_string(),
+            }),
             permissions: None,
         };
         assert!(is_session_log_enabled(&settings));
@@ -708,7 +718,10 @@ advanced = "deepseek-v4-flash"
     fn test_is_session_log_enabled_explicit_false() {
         let settings = Settings {
             llm: None,
-            session_log: Some(SessionLogSettings { enabled: false }),
+            session_log: Some(SessionLogSettings {
+                enabled: false,
+                log_level: "info".to_string(),
+            }),
             permissions: None,
         };
         assert!(!is_session_log_enabled(&settings));
