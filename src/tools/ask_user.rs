@@ -6,6 +6,7 @@ use serde_json::Value;
 use std::io::IsTerminal;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 
+use crate::agent::session_logger;
 use crate::tools::prompt;
 
 /// 内部选项项，用于 JSON 解析中转
@@ -156,27 +157,43 @@ impl AskUser {
                             parts.push(text.clone());
                         }
                     }
-                    if parts.is_empty() {
-                        Ok("[用户取消了选择]".to_string())
+                    let result_str = if parts.is_empty() {
+                        "[用户取消了选择]".to_string()
                     } else {
-                        Ok(format!("用户选择了: {}", parts.join("，")))
-                    }
+                        format!("用户选择了: {}", parts.join("，"))
+                    };
+                    session_logger::log_user_event(&session_logger::sanitize_user_input(
+                        &result_str,
+                    ));
+                    Ok(result_str)
                 }
-                None => Ok("[用户取消了选择]".to_string()),
+                None => {
+                    session_logger::log_user_event("[用户取消了选择]");
+                    Ok("[用户取消了选择]".to_string())
+                }
             }
         } else {
             match prompt::prompt_single_select(question, &prompt_opts) {
                 Some(prompt::SingleSelectResult::Index(idx)) => {
-                    Ok(format!("用户选择了: {}", items[idx].label))
+                    let result_str = format!("用户选择了: {}", items[idx].label);
+                    session_logger::log_user_event(&result_str);
+                    Ok(result_str)
                 }
                 Some(prompt::SingleSelectResult::Custom(text)) => {
                     if text.is_empty() {
+                        session_logger::log_user_event("[用户取消了选择]");
                         Ok("[用户取消了选择]".to_string())
                     } else {
-                        Ok(format!("用户输入: {}", text))
+                        let sanitized = session_logger::sanitize_user_input(&text);
+                        let result_str = format!("用户输入: {}", sanitized);
+                        session_logger::log_user_event(&result_str);
+                        Ok(result_str)
                     }
                 }
-                None => Ok("[用户取消了选择]".to_string()),
+                None => {
+                    session_logger::log_user_event("[用户取消了选择]");
+                    Ok("[用户取消了选择]".to_string())
+                }
             }
         }
     }

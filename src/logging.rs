@@ -43,12 +43,16 @@ pub fn init_logging() {
         std::fs::create_dir_all(parent).ok();
     }
 
-    // 文件日志层 — 记录 info+，无 ANSI 颜色
+    // 文件日志层 — 受 ZAPMYCO_LOG 环境变量控制，默认 info
+    let file_filter = EnvFilter::builder()
+        .with_env_var("ZAPMYCO_LOG")
+        .try_from_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
     let file_layer = fmt::layer()
         .with_writer(make_file_writer(log_path.clone()))
         .with_ansi(false)
         .with_target(true)
-        .with_filter(EnvFilter::new("info"));
+        .with_filter(file_filter);
 
     // stderr 日志层 — 受 RUST_LOG 控制，默认 warn
     let stderr_layer = fmt::layer()

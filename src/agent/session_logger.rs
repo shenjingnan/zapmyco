@@ -396,6 +396,50 @@ pub(crate) fn write_session_json(path: &std::path::Path, content: &str) -> Resul
     Ok(())
 }
 
+// ============================================================================
+// EventsLogger — events.log 用户交互事件
+// ============================================================================
+
+/// 在 session 目录下写入 events.log（用户交互事件）
+///
+/// 使用 `SESSION_LOG_DIR` 全局状态定位 session 目录（与 app.log 相同）。
+/// 如果当前没有活跃 session，则静默忽略。
+pub fn log_user_event(event: &str) {
+    use std::io::Write;
+    if let Some(session_dir) = crate::logging::get_session_log_dir() {
+        let path = session_dir.join("events.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let ts = crate::datetime::iso_timestamp_now();
+            let _ = writeln!(file, "[{}] {}", ts, event);
+        }
+    }
+}
+
+/// 脱敏用户输入（替换疑似敏感信息），不使用 regex 依赖
+pub fn sanitize_user_input(input: &str) -> String {
+    let mut result = input.to_string();
+    // 替换 sk- 开头的 API Key（sk-后至少 20 位字母数字）
+    let mut i = 0;
+    while i < result.len() {
+        if result[i..].starts_with("sk-") {
+            let start = i;
+            let rest = &result[i + 3..];
+            let key_len = rest.chars().take_while(|c| c.is_alphanumeric()).count();
+            if key_len >= 20 {
+                result.replace_range(start..start + 3 + key_len, "sk-***");
+                i = start + 6; // "sk-***" 长度
+                continue;
+            }
+        }
+        i += 1;
+    }
+    result
+}
+
 /// 获取日志目录路径: ~/.zapmyco/sessions/
 pub(crate) fn get_sessions_dir() -> Result<PathBuf, String> {
     let home = std::env::var("HOME")
