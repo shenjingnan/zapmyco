@@ -119,6 +119,16 @@ impl AskUser {
     pub async fn execute(&self, input: &Value) -> Result<String, String> {
         let (question, items, multi_select) = Self::parse_and_validate_input(input)?;
 
+        // 检查 ZAPMYCO_AUTO_APPROVE 环境变量（CI/自动化场景）
+        if let Ok(val) = std::env::var("ZAPMYCO_AUTO_APPROVE")
+            && val == "1"
+            && items.iter().any(|opt| opt.label == "批准执行")
+        {
+            let result_str = "用户选择了: 批准执行".to_string();
+            session_logger::log_user_event(&result_str);
+            return Ok(result_str);
+        }
+
         // 检查是否为交互式终端
         if !std::io::stdin().is_terminal() {
             return Err("ask_user 工具只能在交互式终端中使用，当前不是终端环境。".to_string());

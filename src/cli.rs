@@ -204,6 +204,7 @@ impl TypedValueParser for SessionIdValueParser {
         let list = session_loader::list_sessions().ok()?;
         let values: Vec<PossibleValue> = list
             .into_iter()
+            .filter(|c| !c.is_subagent)
             .map(|c| {
                 // 先解构，避免借用 + move 冲突
                 let session_id = c.session_id;

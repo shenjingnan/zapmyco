@@ -2,9 +2,10 @@
 //!
 //! 子目录格式: ~/.zapmyco/sessions/<session_id>/conversation.jsonl
 //!
-//! 提供两个公共函数：
+//! 提供三个公共函数：
 //! - `list_sessions()` — 列出所有可用会话
 //! - `load_session(session_id)` — 加载指定会话的消息
+//! - `list_subagent_sessions(parent_id)` — 按父会话 ID 查询 SubAgent 会话
 
 use std::path::PathBuf;
 
@@ -29,6 +30,10 @@ pub struct SessionSummary {
     pub profile: Option<String>,
     /// 退出原因（从 session.json 获取）
     pub exit_reason: Option<String>,
+    /// 是否为 SubAgent 会话
+    pub is_subagent: bool,
+    /// 父会话 ID（SubAgent 会话关联到主 Agent）
+    pub parent_session_id: Option<String>,
 }
 
 /// 列出 ~/.zapmyco/sessions/ 下所有会话，按时间降序排列
@@ -78,6 +83,8 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
                     model: content["model"].as_str().map(|s| s.to_string()),
                     profile: content["profile"].as_str().map(|s| s.to_string()),
                     exit_reason: content["exit_reason"].as_str().map(|s| s.to_string()),
+                    is_subagent: content["is_subagent"].as_bool().unwrap_or(false),
+                    parent_session_id: content["parent_session_id"].as_str().map(|s| s.to_string()),
                 });
                 continue;
             }
@@ -133,6 +140,8 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
             model: None,
             profile: None,
             exit_reason: None,
+            is_subagent: false,
+            parent_session_id: None,
         });
     }
 
@@ -171,6 +180,15 @@ pub fn load_session(session_id: &str) -> Result<Vec<ConversationMessage>, String
         .ok_or_else(|| "会话文件中未找到消息记录".to_string())?;
 
     messages.iter().map(json_to_conversation_message).collect()
+}
+
+/// 按 parent_session_id 查询所有 SubAgent 会话
+pub fn list_subagent_sessions(parent_id: &str) -> Result<Vec<SessionSummary>, String> {
+    let all = list_sessions()?;
+    Ok(all
+        .into_iter()
+        .filter(|s| s.parent_session_id.as_deref() == Some(parent_id))
+        .collect())
 }
 
 // ---- 内部辅助函数 ----
@@ -899,11 +917,7 @@ mod tests {
                 });
                 std::fs::write(
                     dir.join("conversation.jsonl"),
-                    format!(
-                        "{}
-",
-                        serde_json::to_string(&record).unwrap()
-                    ),
+                    format!("{}\n", serde_json::to_string(&record).unwrap()),
                 )
                 .unwrap();
             }

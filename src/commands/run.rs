@@ -7,13 +7,10 @@ use crate::cli::PermissionMode;
 use crate::config::settings;
 use crate::output::{self, Message};
 use crate::skills::discovery::{list_available_skills, resolve_skill};
-use crate::skills::loader::{build_skill_list_text, compute_denied_tools};
+use crate::skills::loader::build_skill_list_text;
 use crate::skills::types::SkillFile;
 use crate::tools::task_manager::TaskStatus;
-use crate::tools::{
-    ask_user, file_edit, file_find, file_read, file_search, file_write, shell_exec, skill,
-    subagent, task_manager, web_fetch, web_search,
-};
+use crate::tools::{ask_user, subagent, task_manager, web_fetch, web_search};
 
 /// 是否收到 Ctrl+C 中断信号
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
@@ -103,11 +100,16 @@ pub(crate) async fn cmd_run(
     };
 
     // ── Step 4: 组装完整 system prompt ──
-    let mut full_prompt = format!(
-        "{}{}",
-        system_prompt::DEFAULT_SYSTEM_PROMPT,
-        system_prompt::BEHAVIORAL_GUIDANCE,
-    );
+    // 主 Agent 使用调度员提示词，SubAgent 使用默认编码助手提示词
+    let mut full_prompt = if subagent {
+        format!(
+            "{}{}",
+            system_prompt::DEFAULT_SYSTEM_PROMPT,
+            system_prompt::BEHAVIORAL_GUIDANCE,
+        )
+    } else {
+        system_prompt::DISPATCHER_SYSTEM_PROMPT.to_string()
+    };
     if let Some(ref skill) = active_skill {
         full_prompt.push_str(&format!("\n\n## Skill: {}\n\n{}", skill.name, skill.body));
     }
@@ -149,66 +151,7 @@ pub(crate) async fn cmd_run(
     let ask_user = ask_user::AskUser;
     agent.register_tool(crate::agent::chat::ToolHandler::AskUser(ask_user));
 
-    // 注册 Web Fetch 工具
-    let web_fetch = web_fetch::WebFetch::new(Default::default())
-        .map_err(|e| format!("初始化 Web Fetch 失败: {}", e))?;
-    agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(web_fetch));
-
-    // 注册命令执行工具
-    let (allowed_commands, denied_commands) = settings::load_settings()
-        .ok()
-        .flatten()
-        .and_then(|s| s.permissions)
-        .map(|p| (p.commands.allow, p.commands.deny))
-        .unwrap_or_default();
-    let shell_exec = if permission_mode == PermissionMode::ReadOnly {
-        shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-            readonly_mode: true,
-            allowed_commands: shell_exec::builtin_safe_commands(),
-            denied_commands,
-            skip_confirm: true,
-            ..Default::default()
-        })
-    } else {
-        shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-            allowed_commands,
-            denied_commands,
-            ..Default::default()
-        })
-    };
-    agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
-
-    // 注册 Web 搜索工具
-    let web_search = web_search::WebSearch::new(
-        agent.api_key().to_string(),
-        agent.api_base_url().to_string(),
-        agent.model_name().to_string(),
-        agent.max_tokens(),
-    )
-    .map_err(|e| format!("初始化 Web Search 失败: {}", e))?;
-    agent.register_tool(crate::agent::chat::ToolHandler::WebSearch(web_search));
-
-    // 注册文件搜索工具
-    let file_search = file_search::FileSearch::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::FileSearch(file_search));
-
-    // 注册文件查找工具
-    let file_find = file_find::FileFind::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::FileFind(file_find));
-
-    // 注册文件读取工具
-    let file_read = file_read::FileRead::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::FileRead(file_read));
-
-    // 注册文件编辑工具
-    let file_edit = file_edit::FileEdit::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
-
-    // 注册文件写入工具
-    let file_write = file_write::FileWrite::new(Default::default());
-    agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
-
-    // 注册 Task 管理工具
+    // ---- 创建 Task 管理器 ----
     let list_id = task_id
         .map(|s| s.to_string())
         .unwrap_or_else(generate_session_id);
@@ -221,69 +164,145 @@ pub(crate) async fn cmd_run(
         )));
     }
     agent.set_task_manager(task_manager.clone());
-    agent.register_tool(crate::agent::chat::ToolHandler::TaskCreate(
-        task_manager.clone(),
-    ));
-    agent.register_tool(crate::agent::chat::ToolHandler::TaskGet(
-        task_manager.clone(),
-    ));
-    agent.register_tool(crate::agent::chat::ToolHandler::TaskList(
-        task_manager.clone(),
-    ));
-    agent.register_tool(crate::agent::chat::ToolHandler::TaskUpdate(
-        task_manager.clone(),
-    ));
 
-    // ---- 注册 SubAgent 工具（子进程模式跳过） ----
-    if !subagent {
+    if subagent {
+        // ==================== SubAgent 模式：注册全套工具 ====================
+
+        // 注册 Web Fetch 工具
+        let web_fetch = web_fetch::WebFetch::new(Default::default())
+            .map_err(|e| format!("初始化 Web Fetch 失败: {}", e))?;
+        agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(web_fetch));
+
+        // 注册命令执行工具
+        let (allowed_commands, denied_commands) = settings::load_settings()
+            .ok()
+            .flatten()
+            .and_then(|s| s.permissions)
+            .map(|p| (p.commands.allow, p.commands.deny))
+            .unwrap_or_default();
+        let shell_exec = if permission_mode == PermissionMode::ReadOnly {
+            crate::tools::shell_exec::ShellExec::new(crate::tools::shell_exec::ShellExecOptions {
+                readonly_mode: true,
+                allowed_commands: crate::tools::shell_exec::builtin_safe_commands(),
+                denied_commands,
+                skip_confirm: true,
+                ..Default::default()
+            })
+        } else {
+            crate::tools::shell_exec::ShellExec::new(crate::tools::shell_exec::ShellExecOptions {
+                allowed_commands,
+                denied_commands,
+                ..Default::default()
+            })
+        };
+        agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+
+        // 注册 Web 搜索工具
+        let web_search = web_search::WebSearch::new(
+            agent.api_key().to_string(),
+            agent.api_base_url().to_string(),
+            agent.model_name().to_string(),
+            agent.max_tokens(),
+        )
+        .map_err(|e| format!("初始化 Web Search 失败: {}", e))?;
+        agent.register_tool(crate::agent::chat::ToolHandler::WebSearch(web_search));
+
+        // 注册文件搜索工具
+        agent.register_tool(crate::agent::chat::ToolHandler::FileSearch(
+            crate::tools::file_search::FileSearch::new(Default::default()),
+        ));
+
+        // 注册文件查找工具
+        agent.register_tool(crate::agent::chat::ToolHandler::FileFind(
+            crate::tools::file_find::FileFind::new(Default::default()),
+        ));
+
+        // 注册文件读取工具
+        agent.register_tool(crate::agent::chat::ToolHandler::FileRead(
+            crate::tools::file_read::FileRead::new(Default::default()),
+        ));
+
+        // 注册文件编辑工具
+        agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(
+            crate::tools::file_edit::FileEdit::new(Default::default()),
+        ));
+
+        // 注册文件写入工具
+        agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(
+            crate::tools::file_write::FileWrite::new(Default::default()),
+        ));
+
+        // 注册 Task 管理工具（SubAgent 有读取和更新权限，但不创建新任务）
+        agent.register_tool(crate::agent::chat::ToolHandler::TaskGet(
+            task_manager.clone(),
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::TaskList(
+            task_manager.clone(),
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::TaskUpdate(
+            task_manager.clone(),
+        ));
+
+        // ---- 注册 Skill 工具（LLM 可在对话中动态加载 skill） ----
+        if let Ok(skill_tool) = crate::tools::skill::SkillTool::new() {
+            agent.register_tool(crate::agent::chat::ToolHandler::Skill(skill_tool));
+        }
+
+        // ---- 如果 skill 指定了 allowed-tools，过滤工具 ----
+        if let Some(ref skill) = active_skill
+            && !skill.allowed_tools.is_empty()
+        {
+            let tool_names = agent.tool_names();
+            let to_remove =
+                crate::skills::loader::compute_denied_tools(&tool_names, &skill.allowed_tools);
+            if !to_remove.is_empty() {
+                output::send(&Message::info(format!(
+                    "[Skill] 工具过滤: 仅允许 {:?}",
+                    skill.allowed_tools
+                )));
+                let refs: Vec<&str> = to_remove.iter().map(|s| s.as_str()).collect();
+                agent.remove_tools(&refs);
+            }
+        }
+
+        // ---- 根据权限模式过滤工具 ----
+        if permission_mode != PermissionMode::Full {
+            let (deny_tools, shell_note): (&[&str], &str) = match permission_mode {
+                PermissionMode::ReadOnly => (
+                    &["file_write", "file_edit"],
+                    "shell_exec 受限（仅安全只读命令）",
+                ),
+                PermissionMode::ReadWrite => (&["shell_exec"], ""),
+                PermissionMode::Full => (&[], ""),
+            };
+            output::send(&Message::info(format!(
+                "[权限模式] {:?} — 已禁止: {:?}",
+                permission_mode, deny_tools,
+            )));
+            if !shell_note.is_empty() {
+                output::send(&Message::info(format!(
+                    "[权限模式] {:?} — {}",
+                    permission_mode, shell_note,
+                )));
+            }
+            agent.remove_tools(deny_tools);
+        }
+    } else {
+        // ==================== 主 Agent 模式：仅注册调度工具 ====================
+
+        // Task 读工具
+        agent.register_tool(crate::agent::chat::ToolHandler::TaskGet(
+            task_manager.clone(),
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::TaskList(
+            task_manager.clone(),
+        ));
+
+        // ---- SubAgent 工具 ----
         let mut subagent_tool = subagent::SubAgentTool::with_permission_mode(permission_mode)
             .map_err(|e| format!("初始化 SubAgent 失败: {}", e))?;
         subagent_tool.set_parent_session_id(agent.session_id().map(|s| s.to_string()));
         agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
-    }
-
-    // ---- 注册 Skill 工具（LLM 可在对话中动态加载 skill） ----
-    if let Ok(skill_tool) = skill::SkillTool::new() {
-        agent.register_tool(crate::agent::chat::ToolHandler::Skill(skill_tool));
-    }
-
-    // ---- 如果 skill 指定了 allowed-tools，过滤工具 ----
-    if let Some(ref skill) = active_skill
-        && !skill.allowed_tools.is_empty()
-    {
-        let tool_names = agent.tool_names();
-        let to_remove = compute_denied_tools(&tool_names, &skill.allowed_tools);
-        if !to_remove.is_empty() {
-            output::send(&Message::info(format!(
-                "[Skill] 工具过滤: 仅允许 {:?}",
-                skill.allowed_tools
-            )));
-            let refs: Vec<&str> = to_remove.iter().map(|s| s.as_str()).collect();
-            agent.remove_tools(&refs);
-        }
-    }
-
-    // ---- 根据权限模式过滤工具 ----
-    if permission_mode != PermissionMode::Full {
-        let (deny_tools, shell_note): (&[&str], &str) = match permission_mode {
-            PermissionMode::ReadOnly => (
-                &["file_write", "file_edit"],
-                "shell_exec 受限（仅安全只读命令）",
-            ),
-            PermissionMode::ReadWrite => (&["shell_exec"], ""),
-            PermissionMode::Full => (&[], ""),
-        };
-        output::send(&Message::info(format!(
-            "[权限模式] {:?} — 已禁止: {:?}",
-            permission_mode, deny_tools,
-        )));
-        if !shell_note.is_empty() {
-            output::send(&Message::info(format!(
-                "[权限模式] {:?} — {}",
-                permission_mode, shell_note,
-            )));
-        }
-        agent.remove_tools(deny_tools);
     }
 
     // 如果指定了 --session，加载历史会话消息
@@ -305,59 +324,61 @@ pub(crate) async fn cmd_run(
         })
         .await?;
 
-    // ---- 第二阶段：任务执行循环 ----
-    let mut task_completed = false;
+    // ---- 第二阶段：任务执行循环（仅 SubAgent 模式） ----
+    if subagent {
+        let mut task_completed = false;
 
-    loop {
-        let tasks = task_manager.list().await.map_err(|e| e.to_string())?;
-        let pending_count = tasks
-            .iter()
-            .filter(|t| t.status != TaskStatus::Completed)
-            .count();
+        loop {
+            let tasks = task_manager.list().await.map_err(|e| e.to_string())?;
+            let pending_count = tasks
+                .iter()
+                .filter(|t| t.status != TaskStatus::Completed)
+                .count();
 
-        if pending_count == 0 {
-            if task_completed {
-                output::send(&Message::result("\n✅ 全部任务已完成！".to_string()));
+            if pending_count == 0 {
+                if task_completed {
+                    output::send(&Message::result("\n✅ 全部任务已完成！".to_string()));
+                }
+                break;
             }
-            break;
-        }
 
-        let continuation = format!(
-            "请继续执行下一个可用任务。当前有 {} 个任务未完成。\
-             规则：检查 task_list 找出 blocked_by 为空的 pending 任务，\
-             标记为 in_progress 后开始实施，完成后标记为 completed。\
-             一次只做一个任务。",
-            pending_count,
-        );
+            let continuation = format!(
+                "请继续执行下一个可用任务。当前有 {} 个任务未完成。\
+                 规则：检查 task_list 找出 blocked_by 为空的 pending 任务，\
+                 标记为 in_progress 后开始实施，完成后标记为 completed。\
+                 一次只做一个任务。",
+                pending_count,
+            );
 
-        output::send(&Message::info(format!(
-            "\n[任务执行] {} 个任务待完成",
-            pending_count,
-        )));
+            output::send(&Message::info(format!(
+                "\n[任务执行] {} 个任务待完成",
+                pending_count,
+            )));
 
-        let result = tokio::select! {
-            result = agent.chat_with_tools(&continuation, |chunk| {
-                output::send(&Message::llm_chunk(chunk));
-            }) => Some(result),
-            _ = tokio::signal::ctrl_c() => None,
-        };
+            let result = tokio::select! {
+                result = agent.chat_with_tools(&continuation, |chunk| {
+                    output::send(&Message::llm_chunk(chunk));
+                }) => Some(result),
+                _ = tokio::signal::ctrl_c() => None,
+            };
 
-        match result {
-            Some(Ok(_)) => {
-                task_completed = true;
-            }
-            Some(Err(e)) => return Err(e),
-            None => {
-                output::send(&Message::result(String::new()));
-                let user_input =
-                    inquire::Text::new("🛑 已中断 LLM 执行。请输入补充说明以纠正执行方向：")
-                        .prompt()
-                        .map_err(|e| e.to_string())?;
-                agent.add_user_message(&format!(
-                    "[用户干预] {}\n\n请根据上述指引调整执行方向。",
-                    user_input,
-                ));
-                task_completed = true;
+            match result {
+                Some(Ok(_)) => {
+                    task_completed = true;
+                }
+                Some(Err(e)) => return Err(e),
+                None => {
+                    output::send(&Message::result(String::new()));
+                    let user_input =
+                        inquire::Text::new("🛑 已中断 LLM 执行。请输入补充说明以纠正执行方向：")
+                            .prompt()
+                            .map_err(|e| e.to_string())?;
+                    agent.add_user_message(&format!(
+                        "[用户干预] {}\n\n请根据上述指引调整执行方向。",
+                        user_input,
+                    ));
+                    task_completed = true;
+                }
             }
         }
     }
