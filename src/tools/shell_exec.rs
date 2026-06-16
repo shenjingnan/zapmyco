@@ -1,4 +1,8 @@
 /// shell_exec 工具 - 在本地系统执行 shell 命令并返回输出
+use std::io::IsTerminal;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::output::{self, Message};
@@ -29,6 +33,26 @@ pub enum ShellExecError {
         /// 最大允许大小
         max: usize,
     },
+}
+
+// ---------------------------------------------------------------------------
+// SubAgent Approval Types
+// ---------------------------------------------------------------------------
+
+/// SubAgent 审批请求（ShellExec 写入，主 Agent 读取）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PendingApproval {
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub requested_at: String,
+}
+
+/// SubAgent 审批响应（主 Agent 写入，ShellExec 读取）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApprovalResponse {
+    pub approved: bool,
+    pub responded_at: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -430,47 +454,75 @@ impl ShellExec {
             ) {
                 // 无需确认，直接执行
             }
-            // 3b. 非安全命令 → 弹出确认（三选项：允许 / 始终允许 / 拒绝）
+            // 3b. 非安全命令 → 弹出确认 或 SubAgent 文件审批
             else {
-                match prompt_confirm(command, description) {
-                    ConfirmAction::Deny => {
-                        output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
-                        return Ok("Command not executed (cancelled by user)".to_string());
-                    }
-                    ConfirmAction::AlwaysAllow => {
-                        let trimmed = command.trim();
-                        // 提取命令的第一个词作为白名单 pattern（匹配所有同命令操作）
-                        let first_word = trimmed.split_whitespace().next().unwrap_or(trimmed);
+                let mut subagent_approved = false;
 
-                        // 危险命令不允许自动加入白名单
-                        if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
-                            output::send(&Message::warning(format!(
-                                "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
-                                first_word
-                            )));
-                        } else if let Err(e) =
-                            crate::config::settings::add_to_command_allowlist(first_word)
-                        {
-                            output::send(&Message::warning(format!(
-                                "⚠️  无法保存到白名单: {}，但命令将继续执行",
-                                e
-                            )));
-                        } else {
-                            output::send(&Message::info(format!(
-                                "✅ 已加入白名单: `{}` 命令将自动执行",
-                                first_word
-                            )));
+                // SubAgent 环境：非 TTY + 有 ZAPMYCO_SUBAGENT_DIR → 走文件审批
+                if !std::io::stdin().is_terminal()
+                    && let Ok(subagent_dir) = std::env::var("ZAPMYCO_SUBAGENT_DIR")
+                {
+                    let dir = Path::new(&subagent_dir);
+                    if let Err(e) = write_pending_approval(dir, command, description) {
+                        output::send(&Message::warning(format!(
+                            "[run_command] 写入审批请求失败: {}",
+                            e
+                        )));
+                        return Ok(format!("Failed to request approval: {}", e));
+                    }
+                    match wait_for_approval(dir, &self.allowed_commands_runtime, command).await {
+                        Ok(()) => {
+                            subagent_approved = true;
                         }
-                        // 更新运行时白名单（Mutex 锁立即释放）
-                        if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
-                            self.allowed_commands_runtime
-                                .lock()
-                                .unwrap()
-                                .push(first_word.to_string());
+                        Err(msg) => {
+                            output::send(&Message::info(format!("[run_command] {}", msg)));
+                            return Ok(msg);
                         }
                     }
-                    ConfirmAction::Allow => {}
                 }
+
+                if !subagent_approved {
+                    // 非 SubAgent 环境（或 SubAgent 未命中）：走交互式 prompt_confirm
+                    match prompt_confirm(command, description) {
+                        ConfirmAction::Deny => {
+                            output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
+                            return Ok("Command not executed (cancelled by user)".to_string());
+                        }
+                        ConfirmAction::AlwaysAllow => {
+                            let trimmed = command.trim();
+                            // 提取命令的第一个词作为白名单 pattern（匹配所有同命令操作）
+                            let first_word = trimmed.split_whitespace().next().unwrap_or(trimmed);
+
+                            // 危险命令不允许自动加入白名单
+                            if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+                                output::send(&Message::warning(format!(
+                                    "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
+                                    first_word
+                                )));
+                            } else if let Err(e) =
+                                crate::config::settings::add_to_command_allowlist(first_word)
+                            {
+                                output::send(&Message::warning(format!(
+                                    "⚠️  无法保存到白名单: {}，但命令将继续执行",
+                                    e
+                                )));
+                            } else {
+                                output::send(&Message::info(format!(
+                                    "✅ 已加入白名单: `{}` 命令将自动执行",
+                                    first_word
+                                )));
+                            }
+                            // 更新运行时白名单（Mutex 锁立即释放）
+                            if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+                                self.allowed_commands_runtime
+                                    .lock()
+                                    .unwrap()
+                                    .push(first_word.to_string());
+                            }
+                        }
+                        ConfirmAction::Allow => {}
+                    }
+                } // end: if !subagent_approved
             }
         }
 
@@ -594,6 +646,79 @@ fn prompt_confirm(command: &str, description: Option<&str>) -> ConfirmAction {
         Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
         Some(crate::tools::prompt::SingleSelectResult::Index(1)) => ConfirmAction::AlwaysAllow,
         _ => ConfirmAction::Deny,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SubAgent Approval Helpers
+// ---------------------------------------------------------------------------
+
+/// 写入 pending_approval.json（使用 tmp + rename 原子模式）
+pub(crate) fn write_pending_approval(
+    subagent_dir: &Path,
+    command: &str,
+    description: Option<&str>,
+) -> Result<(), String> {
+    use chrono::Local;
+
+    let pending = PendingApproval {
+        command: command.to_string(),
+        description: description.map(|s| s.to_string()),
+        requested_at: Local::now().format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
+    };
+    let json_string =
+        serde_json::to_string_pretty(&pending).map_err(|e| format!("序列化审批请求失败: {}", e))?;
+
+    let tmp_path = subagent_dir.join("pending_approval.json.tmp");
+    let final_path = subagent_dir.join("pending_approval.json");
+
+    std::fs::write(&tmp_path, &json_string).map_err(|e| format!("写入临时审批文件失败: {}", e))?;
+    std::fs::rename(&tmp_path, &final_path).map_err(|e| format!("重命名审批文件失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 等待用户审批结果（无超时，一直等到用户做出决定）
+async fn wait_for_approval(
+    subagent_dir: &Path,
+    runtime_allowlist: &std::sync::Mutex<Vec<String>>,
+    command: &str,
+) -> Result<(), String> {
+    let pending_path = subagent_dir.join("pending_approval.json");
+    let result_path = subagent_dir.join("approval_result.json");
+
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        if !result_path.exists() {
+            continue;
+        }
+
+        // 1. 读取审批结果
+        let content = std::fs::read_to_string(&result_path)
+            .map_err(|e| format!("读取审批结果失败: {}", e))?;
+
+        // 2. 先解析 JSON，验证通过后再 cleanup
+        let response: ApprovalResponse =
+            serde_json::from_str(&content).map_err(|e| format!("解析审批结果失败: {}", e))?;
+
+        // 3. cleanup 文件（此时已验证通过）
+        let _ = std::fs::remove_file(&pending_path);
+        let _ = std::fs::remove_file(&result_path);
+
+        // 4. 处理结果
+        if response.approved {
+            // 加入运行时白名单（完整命令精确匹配）
+            if let Ok(mut list) = runtime_allowlist.lock() {
+                let trimmed = command.trim();
+                if !list.contains(&trimmed.to_string()) {
+                    list.push(trimmed.to_string());
+                }
+            }
+            return Ok(());
+        } else {
+            return Err("Command not approved by user".to_string());
+        }
     }
 }
 
@@ -842,6 +967,388 @@ mod tests {
             Err(_) => {
                 // IO 错误也合理
             }
+        }
+    }
+}
+
+// ---- SubAgent Approval Tests ----
+
+#[cfg(test)]
+mod subagent_approval_tests {
+    use super::*;
+
+    #[test]
+    fn test_pending_approval_serialize() {
+        let pending = PendingApproval {
+            command: "cargo build".to_string(),
+            description: Some("构建项目".to_string()),
+            requested_at: "2026-06-16T10:30:00.000+08:00".to_string(),
+        };
+        let json = serde_json::to_string(&pending).unwrap();
+        assert!(json.contains("cargo build"));
+        assert!(json.contains("构建项目"));
+        assert!(json.contains("2026-06-16T10:30:00.000+08:00"));
+    }
+
+    #[test]
+    fn test_pending_approval_deserialize() {
+        let json = r#"{"command":"cargo build","description":"构建项目","requested_at":"2026-06-16T10:30:00.000+08:00"}"#;
+        let pending: PendingApproval = serde_json::from_str(json).unwrap();
+        assert_eq!(pending.command, "cargo build");
+        assert_eq!(pending.description.as_deref(), Some("构建项目"));
+    }
+
+    #[test]
+    fn test_pending_approval_optional_description() {
+        let json = r#"{"command":"cargo build","requested_at":"2026-06-16T10:30:00.000+08:00"}"#;
+        let pending: PendingApproval = serde_json::from_str(json).unwrap();
+        assert_eq!(pending.command, "cargo build");
+        assert!(pending.description.is_none());
+    }
+
+    #[test]
+    fn test_approval_response_serialize_accepted() {
+        let resp = ApprovalResponse {
+            approved: true,
+            responded_at: "2026-06-16T10:30:05.000+08:00".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains(r#""approved":true"#) || json.contains(r#""approved": true"#));
+    }
+
+    #[test]
+    fn test_approval_response_serialize_rejected() {
+        let resp = ApprovalResponse {
+            approved: false,
+            responded_at: "2026-06-16T10:30:05.000+08:00".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains(r#""approved":false"#) || json.contains(r#""approved": false"#));
+    }
+
+    #[test]
+    fn test_approval_response_deserialize() {
+        let json = r#"{"approved":true,"responded_at":"2026-06-16T10:30:05.000+08:00"}"#;
+        let resp: ApprovalResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.approved);
+    }
+
+    #[test]
+    fn test_write_pending_approval_atomic() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = write_pending_approval(dir.path(), "echo hello", Some("测试命令"));
+        assert!(result.is_ok());
+        // tmp 文件不应存在
+        assert!(!dir.path().join("pending_approval.json.tmp").exists());
+        // 目标文件应存在且 JSON 合法
+        let final_path = dir.path().join("pending_approval.json");
+        assert!(final_path.exists());
+        let content = std::fs::read_to_string(&final_path).unwrap();
+        let pending: PendingApproval = serde_json::from_str(&content).unwrap();
+        assert_eq!(pending.command, "echo hello");
+        assert_eq!(pending.description.as_deref(), Some("测试命令"));
+    }
+
+    #[test]
+    fn test_write_pending_approval_cleanup_tmp() {
+        // 模拟残留 tmp 文件后再次写入
+        let dir = tempfile::TempDir::new().unwrap();
+        // 先创建一个残留的 tmp 文件
+        std::fs::write(dir.path().join("pending_approval.json.tmp"), "garbage").unwrap();
+        // 正常写入
+        let result = write_pending_approval(dir.path(), "cargo test", None);
+        assert!(result.is_ok());
+        // tmp 文件应被覆盖
+        let final_path = dir.path().join("pending_approval.json");
+        assert!(final_path.exists());
+        let content = std::fs::read_to_string(&final_path).unwrap();
+        let pending: PendingApproval = serde_json::from_str(&content).unwrap();
+        assert_eq!(pending.command, "cargo test");
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_approval_accepted() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let allowlist = std::sync::Mutex::new(Vec::<String>::new());
+
+        // 先写入 pending
+        write_pending_approval(dir.path(), "cargo build", None).unwrap();
+
+        // 在后台任务中写入 approval_result
+        let dir_clone = dir.path().to_path_buf();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let resp = ApprovalResponse {
+                approved: true,
+                responded_at: "2026-06-16T10:30:05.000+08:00".to_string(),
+            };
+            let tmp = dir_clone.join("approval_result.json.tmp");
+            let final_path = dir_clone.join("approval_result.json");
+            std::fs::write(&tmp, serde_json::to_string(&resp).unwrap()).unwrap();
+            std::fs::rename(&tmp, &final_path).unwrap();
+        });
+
+        // 等待审批（应在 2s 内完成）
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            wait_for_approval(dir.path(), &allowlist, "cargo build"),
+        )
+        .await;
+
+        assert!(result.is_ok(), "应在超时前完成审批");
+        assert!(result.unwrap().is_ok(), "应批准通过");
+
+        // 验证 cleanup: 两个文件都不应存在
+        assert!(!dir.path().join("pending_approval.json").exists());
+        assert!(!dir.path().join("approval_result.json").exists());
+
+        // 验证白名单更新
+        let list = allowlist.lock().unwrap();
+        assert!(list.contains(&"cargo build".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_approval_rejected() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let allowlist = std::sync::Mutex::new(Vec::<String>::new());
+
+        write_pending_approval(dir.path(), "rm -rf /", None).unwrap();
+
+        let dir_clone = dir.path().to_path_buf();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let resp = ApprovalResponse {
+                approved: false,
+                responded_at: "2026-06-16T10:30:05.000+08:00".to_string(),
+            };
+            let tmp = dir_clone.join("approval_result.json.tmp");
+            let final_path = dir_clone.join("approval_result.json");
+            std::fs::write(&tmp, serde_json::to_string(&resp).unwrap()).unwrap();
+            std::fs::rename(&tmp, &final_path).unwrap();
+        });
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            wait_for_approval(dir.path(), &allowlist, "rm -rf /"),
+        )
+        .await;
+
+        assert!(result.is_ok(), "应在超时前完成审批");
+        assert!(result.unwrap().is_err(), "应拒绝执行");
+        // 验证 cleanup
+        assert!(!dir.path().join("pending_approval.json").exists());
+        assert!(!dir.path().join("approval_result.json").exists());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_approval_parse_before_cleanup() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let allowlist = std::sync::Mutex::new(Vec::<String>::new());
+
+        write_pending_approval(dir.path(), "cargo build", None).unwrap();
+
+        // 写入残缺 JSON
+        let dir_clone = dir.path().to_path_buf();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            std::fs::write(dir_clone.join("approval_result.json"), "not valid json").unwrap();
+        });
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            wait_for_approval(dir.path(), &allowlist, "cargo build"),
+        )
+        .await;
+
+        assert!(result.is_ok(), "不应超时");
+        assert!(result.unwrap().is_err(), "应返回解析错误");
+
+        // 文件不应被删除（先解析后 cleanup 策略）
+        assert!(dir.path().join("pending_approval.json").exists());
+        assert!(dir.path().join("approval_result.json").exists());
+    }
+
+    #[test]
+    fn test_wait_for_approval_whitelist_exact_match() {
+        let allowlist = std::sync::Mutex::new(Vec::<String>::new());
+
+        // 模拟批准 cargo build 后的白名单更新
+        {
+            let mut list = allowlist.lock().unwrap();
+            let trimmed = "cargo build".trim();
+            list.push(trimmed.to_string());
+        }
+        let list = allowlist.lock().unwrap();
+        assert!(list.contains(&"cargo build".to_string()));
+        assert!(!list.contains(&"cargo".to_string())); // 不应只存 first_word
+        assert!(!list.contains(&"cargo test".to_string())); // 其他命令不应在
+    }
+
+    // ── Execute 决策路径测试 ──
+
+    #[tokio::test]
+    async fn test_execute_subagent_approval_path() {
+        let dir = tempfile::TempDir::new().unwrap();
+        // SAFETY: 单线程测试，无并发 env 访问
+        unsafe {
+            std::env::set_var("ZAPMYCO_SUBAGENT_DIR", dir.path());
+        }
+
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: Vec::new(),
+            readonly_mode: false,
+        });
+
+        // execute 会写入 pending 然后进入无限等待循环
+        // 用 timeout 限制等待时间
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            executor.execute("some-unknown-command", None, None),
+        )
+        .await;
+
+        // 超时是预期的（wait_for_approval 无限循环）
+        assert!(result.is_err(), "应因超时而返回 Err");
+
+        // 验证 pending_approval.json 已被创建
+        let pending_path = dir.path().join("pending_approval.json");
+        assert!(pending_path.exists(), "pending_approval.json 应被创建");
+
+        // SAFETY: 单线程测试，无并发 env 访问
+        unsafe {
+            std::env::remove_var("ZAPMYCO_SUBAGENT_DIR");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_no_subagent_dir() {
+        // 确保环境变量未设置
+        // SAFETY: 单线程测试，无并发 env 访问
+        unsafe {
+            std::env::remove_var("ZAPMYCO_SUBAGENT_DIR");
+        }
+
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: Vec::new(),
+            readonly_mode: false,
+        });
+
+        // 非 TTY 环境下，prompt_confirm 返回 Deny
+        let result = executor.execute("some-unknown-command", None, None).await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(
+            output.contains("not executed") || output.contains("cancelled"),
+            "应返回未执行消息: {}",
+            output
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_readonly_mode() {
+        // SAFETY: 单线程测试，无并发 env 访问
+        unsafe {
+            std::env::remove_var("ZAPMYCO_SUBAGENT_DIR");
+        }
+
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: true,
+            denied_commands: vec![],
+            allowed_commands: Vec::new(),
+            readonly_mode: true,
+        });
+
+        let result = executor.execute("rm -rf /", None, None).await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(
+            output.contains("拒绝") || output.contains("ReadOnly") || output.contains("denied"),
+            "ReadOnly 应拒绝: {}",
+            output
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_safe_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: true,
+            denied_commands: vec![],
+            allowed_commands: Vec::new(),
+            readonly_mode: false,
+        });
+
+        let result = executor.execute("echo hello", None, None).await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(
+            output.contains("Exit code: 0"),
+            "白名单命令应成功: {}",
+            output
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_subagent_approval_rejected() {
+        let dir = tempfile::TempDir::new().unwrap();
+        // SAFETY: 单线程测试，无并发 env 访问
+        unsafe {
+            std::env::set_var("ZAPMYCO_SUBAGENT_DIR", dir.path());
+        }
+
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: Vec::new(),
+            readonly_mode: false,
+        });
+
+        // 先写入 pending_approval.json（模拟 subagent 环境下的正常流程）
+        write_pending_approval(dir.path(), "some-command", None).unwrap();
+
+        // 在后台写入拒绝结果
+        let dir_clone = dir.path().to_path_buf();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let response = ApprovalResponse {
+                approved: false,
+                responded_at: "2026-06-16T10:30:05.000+08:00".to_string(),
+            };
+            let tmp = dir_clone.join("approval_result.json.tmp");
+            std::fs::write(&tmp, serde_json::to_string(&response).unwrap()).unwrap();
+            std::fs::rename(&tmp, dir_clone.join("approval_result.json")).unwrap();
+        });
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            executor.execute("some-command", None, None),
+        )
+        .await;
+
+        assert!(result.is_ok(), "应在超时前完成");
+        let output = result.unwrap().expect("execute 应返回 Ok");
+        assert!(
+            output.contains("not approved") || output.contains("cancelled"),
+            "应返回拒绝消息: {}",
+            output
+        );
+
+        // SAFETY: 单线程测试，无并发 env 访问
+        unsafe {
+            std::env::remove_var("ZAPMYCO_SUBAGENT_DIR");
         }
     }
 }

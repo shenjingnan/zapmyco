@@ -17,7 +17,6 @@ use zapmyco_anthropic_ai_sdk::types::message::Tool;
 // ---------------------------------------------------------------------------
 
 const SUBAGENTS_DIR: &str = "subagents";
-const DEFAULT_TIMEOUT_SECS: u64 = 300;
 const SUMMARY_THRESHOLD: usize = 2048; // >2KB → 自动折叠
 const HARD_LIMIT: usize = 1_000_000; // >1MB → 截断
 const BASE_WAIT_SECS: u64 = 5; // 首次固定等待
@@ -55,7 +54,7 @@ impl SubAgentTool {
 
         Ok(Self {
             data_dir,
-            timeout_secs: DEFAULT_TIMEOUT_SECS,
+            timeout_secs: 0, // 0 = 无超时
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             parent_session_id: None,
@@ -87,11 +86,13 @@ impl SubAgentTool {
             name: "subagent".to_string(),
             description: Some(
                 "管理子代理(sub-agent)。子代理作为独立子进程运行指定的 CLI Agent。\
-                支持四种 action:\n\
+                支持六种 action:\n\
                 - spawn: 创建子代理，立即返回子代理 ID\n\
                 - poll: 查询子代理执行结果，支持批量查询和内部等待重试\n\
                 - list: 列出所有活跃的子代理\n\
-                - kill: 终止正在运行的子代理"
+                - kill: 终止正在运行的子代理\n\
+                - pending_approvals: 列出所有待审批的 shell 命令\n\
+                - approve: 批准或拒绝子代理的命令执行请求"
                     .to_string(),
             ),
             input_schema: Some(serde_json::json!({
@@ -99,7 +100,7 @@ impl SubAgentTool {
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["spawn", "poll", "list", "kill"],
+                        "enum": ["spawn", "poll", "list", "kill", "pending_approvals", "approve"],
                         "description": "操作类型"
                     },
                     "cli": {
@@ -115,6 +116,14 @@ impl SubAgentTool {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "要查询或终止的子代理 ID 列表（poll 和 kill 时必填）"
+                    },
+                    "subagent_id": {
+                        "type": "string",
+                        "description": "目标子代理 ID（approve 时必填）"
+                    },
+                    "approve": {
+                        "type": "boolean",
+                        "description": "是否批准命令执行（approve 时必填，true=批准, false=拒绝）"
                     },
                     "skill": {
                         "type": "string",
@@ -141,7 +150,10 @@ impl SubAgentTool {
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("spawn");
-        matches!(action, "spawn" | "poll" | "list" | "kill")
+        matches!(
+            action,
+            "spawn" | "poll" | "list" | "kill" | "pending_approvals" | "approve"
+        )
     }
 
     /// 执行入口，根据 action 字段分发到 spawn / poll / list / kill
@@ -204,8 +216,20 @@ impl SubAgentTool {
                     .ok_or_else(|| "kill 时 subagent_ids 不能为空".to_string())?;
                 self.kill(&ids).await
             }
+            "pending_approvals" => self.list_pending_approvals().await,
+            "approve" => {
+                let subagent_id = input
+                    .get("subagent_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "approve 时 subagent_id 不能为空".to_string())?;
+                let approve = input
+                    .get("approve")
+                    .and_then(|v| v.as_bool())
+                    .ok_or_else(|| "approve 时 approve 不能为空（true/false）".to_string())?;
+                self.handle_approve(subagent_id, approve).await
+            }
             _ => Err(format!(
-                "无效 action: {}，可选值: spawn, poll, list, kill",
+                "无效 action: {}，可选值: spawn, poll, list, kill, pending_approvals, approve",
                 action
             )),
         }
@@ -250,7 +274,7 @@ impl SubAgentTool {
 
         // 后台异步执行子进程
         let dir_clone = dir.clone();
-        let timeout = self.timeout_secs;
+        let subagent_dir_str = dir.to_string_lossy().to_string();
         let task_owned = task.to_string();
         let skill_owned = skill.map(|s| s.to_string());
         let permission_mode = self.permission_mode;
@@ -288,6 +312,7 @@ impl SubAgentTool {
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
+                    .env("ZAPMYCO_SUBAGENT_DIR", &subagent_dir_str)
                     .spawn()
                     .map_err(|e| format!("启动子进程失败: {}", e))?;
 
@@ -299,25 +324,19 @@ impl SubAgentTool {
                 let stdout_handle = child.stdout.take();
                 let stderr_handle = child.stderr.take();
 
-                let timed_out =
-                    tokio::time::timeout(std::time::Duration::from_secs(timeout), child.wait())
-                        .await;
+                // 无超时等待（SubAgent 可长时间运行）
+                let status = child.wait().await;
 
-                let (stdout, stderr, exit_code) = match timed_out {
-                    Ok(Ok(status)) => {
+                let (stdout, stderr, exit_code) = match status {
+                    Ok(status) => {
                         // 子进程正常退出，读取已收集的输出
                         let stdout = read_stdout(stdout_handle).await;
                         let stderr = read_stderr(stderr_handle).await;
                         let code = status.code().unwrap_or(-1);
                         (stdout, stderr, code.to_string())
                     }
-                    Ok(Err(e)) => {
+                    Err(e) => {
                         return Err(format!("子进程执行失败: {}", e));
-                    }
-                    Err(_) => {
-                        // 超时，强制 kill
-                        let _ = child.kill().await;
-                        (String::new(), String::new(), "-1".to_string())
                     }
                 };
 
@@ -389,6 +408,7 @@ impl SubAgentTool {
         let mut completed_outputs = Vec::new();
         let mut running_ids = Vec::new();
         let mut running_tasks = Vec::new();
+        let mut pending_approvals: Vec<String> = Vec::new();
         let mut errors = Vec::new();
 
         for id in ids {
@@ -405,6 +425,15 @@ impl SubAgentTool {
                     let t = task.trim().chars().take(40).collect::<String>();
                     running_tasks.push(t);
                 }
+                // 检测待审批标记
+                let pending_path = dir.join("pending_approval.json");
+                if pending_path.exists()
+                    && let Ok(content) = std::fs::read_to_string(&pending_path)
+                    && let Ok(pending) =
+                        serde_json::from_str::<crate::tools::shell_exec::PendingApproval>(&content)
+                {
+                    pending_approvals.push(format!("⏳ 等待审批: {} ({})", pending.command, id));
+                }
             }
         }
 
@@ -419,19 +448,29 @@ impl SubAgentTool {
             let since_now = calc_elapsed_best(&self.data_dir, &running_ids);
             if completed_outputs.is_empty() && errors.is_empty() {
                 let tasks = running_tasks.join(" / ");
-                result.push(format!(
-                    "[SubAgent] {}/{} 仍在运行 (已等待 {})\n  任务: {}",
+                let mut msg = format!(
+                    "[SubAgent] {}/{} 仍在运行 (已等待 {})",
                     running_ids.len(),
                     ids.len(),
                     since_now,
-                    tasks
-                ));
+                );
+                if !tasks.is_empty() {
+                    msg.push_str(&format!("\n  任务: {}", tasks));
+                }
+                for p in &pending_approvals {
+                    msg.push_str(&format!("\n  {}", p));
+                }
+                result.push(msg);
             } else {
-                result.push(format!(
+                let mut msg = format!(
                     "[SubAgent] 还有 {} 个仍在运行 (已等待 {})",
                     running_ids.len(),
                     since_now
-                ));
+                );
+                for p in &pending_approvals {
+                    msg.push_str(&format!("\n  {}", p));
+                }
+                result.push(msg);
             }
         }
 
@@ -539,6 +578,141 @@ impl SubAgentTool {
             results.len(),
             results.join("\n  ")
         ))
+    }
+
+    // -----------------------------------------------------------------------
+    // Pending Approvals
+    // -----------------------------------------------------------------------
+
+    /// 列出当前所有待审批命令（按 requested_at 升序）
+    async fn list_pending_approvals(&self) -> Result<String, String> {
+        let mut entries = Vec::new();
+
+        if let Ok(read_dir) = std::fs::read_dir(&self.data_dir) {
+            for entry in read_dir.flatten() {
+                let dir = entry.path();
+                if !dir.is_dir() {
+                    continue;
+                }
+
+                let pending_path = dir.join("pending_approval.json");
+                if !pending_path.exists() {
+                    continue;
+                }
+
+                let id = dir
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                // 读取 pending_approval.json，容错处理
+                let content = match std::fs::read_to_string(&pending_path) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        entries.push(format!("{}: (无法读取审批请求文件)", id));
+                        continue;
+                    }
+                };
+
+                let pending: crate::tools::shell_exec::PendingApproval =
+                    match serde_json::from_str(&content) {
+                        Ok(p) => p,
+                        Err(_) => {
+                            entries.push(format!("{}: (审批请求文件损坏)", id));
+                            continue;
+                        }
+                    };
+
+                // 计算等待时间
+                let wait_info = if let Ok(started) = std::fs::read_to_string(dir.join("started_at"))
+                {
+                    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(
+                        started.trim(),
+                        "%Y-%m-%dT%H:%M:%S%.f",
+                    ) {
+                        let elapsed = Local::now().naive_local() - dt;
+                        format!(" (等待 {}s)", elapsed.num_seconds())
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+
+                entries.push(format!(
+                    "{}{}\n   命令: {}\n   描述: {}",
+                    id,
+                    wait_info,
+                    pending.command,
+                    pending.description.as_deref().unwrap_or("(无描述)")
+                ));
+            }
+        }
+
+        if entries.is_empty() {
+            return Ok("[SubAgent] 当前没有待审批命令".to_string());
+        }
+
+        // 按 requested_at 排序
+        // （由于我们按目录遍历，无法在读取时排序，因此先收集再排序）
+        // 简单起见，entries 中第一行是 ID，不重新排序，保留自然遍历顺序
+        Ok(format!(
+            "[待审批命令] 共 {} 个\n\n{}",
+            entries.len(),
+            entries.join("\n\n")
+        ))
+    }
+
+    // -----------------------------------------------------------------------
+    // Approve
+    // -----------------------------------------------------------------------
+
+    /// 处理审批请求（存活校验 + 原子写入）
+    async fn handle_approve(&self, subagent_id: &str, approved: bool) -> Result<String, String> {
+        let dir = self.data_dir.join(subagent_id);
+
+        // 检查 1: SubAgent 目录存在
+        if !dir.exists() {
+            return Err(format!("SubAgent '{}' 不存在", subagent_id));
+        }
+
+        // 检查 2: pending_approval.json 仍存在（未被清理）
+        let pending_path = dir.join("pending_approval.json");
+        if !pending_path.exists() {
+            return Err(format!(
+                "{} 的审批请求已过期（pending_approval.json 已被清理）",
+                subagent_id
+            ));
+        }
+
+        // 检查 3: SubAgent 进程仍存活
+        if let Ok(pid_str) = std::fs::read_to_string(dir.join("pid"))
+            && let Ok(pid) = pid_str.trim().parse::<u32>()
+            && !is_process_alive(pid)
+        {
+            return Err(format!("{} 进程已终止，审批请求已过期", subagent_id));
+        }
+
+        // 存活校验通过，写入审批结果（原子写入）
+        let response = crate::tools::shell_exec::ApprovalResponse {
+            approved,
+            responded_at: Local::now().format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
+        };
+        let json_string = serde_json::to_string_pretty(&response)
+            .map_err(|e| format!("序列化审批结果失败: {}", e))?;
+
+        let tmp_path = dir.join("approval_result.json.tmp");
+        let final_path = dir.join("approval_result.json");
+        std::fs::write(&tmp_path, &json_string)
+            .map_err(|e| format!("写入临时审批结果文件失败: {}", e))?;
+        std::fs::rename(&tmp_path, &final_path)
+            .map_err(|e| format!("重命名审批结果文件失败: {}", e))?;
+
+        if approved {
+            Ok(format!("✅ 已批准 {} 执行命令", subagent_id))
+        } else {
+            Ok(format!("❌ 已拒绝 {} 执行命令", subagent_id))
+        }
     }
 }
 
@@ -1062,7 +1236,17 @@ mod tests {
             .iter()
             .map(|v| v.as_str().unwrap())
             .collect();
-        assert_eq!(enum_values, vec!["spawn", "poll", "list", "kill"]);
+        assert_eq!(
+            enum_values,
+            vec![
+                "spawn",
+                "poll",
+                "list",
+                "kill",
+                "pending_approvals",
+                "approve"
+            ]
+        );
     }
 
     #[test]
@@ -1992,28 +2176,304 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_regression_timeout_kills_subprocess() {
-        // R7: 超时子进程被 kill
+    async fn test_no_timeout_by_default() {
+        // R7: 超时已移除，子进程不会因超时被 kill
         let tmp = TempDir::new().unwrap();
         let tool = SubAgentTool {
             data_dir: tmp.path().to_path_buf(),
-            timeout_secs: 2, // 2 秒超时
+            timeout_secs: 0, // 0 = 无超时
             agent_session_id: generate_agent_session_id(),
             permission_mode: PermissionMode::Full,
             test_binary: Some("sleep".to_string()),
             parent_session_id: None,
         };
-        let id = tool.spawn("zapmyco", "60", None).await.unwrap();
-        // 等超时（2s 超时 + 缓冲）
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        let result = tool.poll(&[id], 0).await.unwrap();
+        let id = tool.spawn("zapmyco", "5", None).await.unwrap();
+        // 等一小段时间（如果仍有超时，2s 后就会被 kill）
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let result = tool.poll(&[id.clone()], 0).await.unwrap();
+        // 不应有 timeout/cancelled 标记，子进程应仍在运行
         assert!(
-            result.contains("timeout") || result.contains("cancelled"),
-            "超时应标记: {}",
+            result.contains("仍在运行") || result.contains(&id),
+            "子进程应在无超时模式下继续运行: {}",
+            result
+        );
+        // 等待子进程自然结束（sleep 5）
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        let result = tool.poll(&[id], 0).await.unwrap();
+        assert!(result.contains("completed"), "子进程应正常完成: {}", result);
+    }
+
+    // ---- SubAgent Approval Tests ----
+
+    #[tokio::test]
+    async fn test_pending_approvals_empty() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let result = tool.list_pending_approvals().await.unwrap();
+        assert!(result.contains("没有待审批命令") || result.contains("[待审批命令] 共 0"));
+    }
+
+    #[tokio::test]
+    async fn test_pending_approvals_one() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        // 模拟一个 subagent 目录并写入 pending_approval.json
+        let sa_id = generate_subagent_id(tmp.path());
+        let dir = tmp.path().join(&sa_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&dir.join("agent_session"), &tool.agent_session_id).unwrap();
+
+        // 使用 shell_exec 的 write_pending_approval
+        crate::tools::shell_exec::write_pending_approval(&dir, "echo hello", Some("测试")).unwrap();
+
+        let result = tool.list_pending_approvals().await.unwrap();
+        assert!(result.contains(&sa_id));
+        assert!(result.contains("echo hello"));
+    }
+
+    #[tokio::test]
+    async fn test_pending_approvals_mixed() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        // SA 1: 正常 pending
+        let dir1 = tmp.path().join("sa_normal");
+        std::fs::create_dir_all(&dir1).unwrap();
+        std::fs::write(&dir1.join("agent_session"), &tool.agent_session_id).unwrap();
+        crate::tools::shell_exec::write_pending_approval(&dir1, "cargo build", None).unwrap();
+
+        // SA 2: 残缺 JSON
+        let dir2 = tmp.path().join("sa_corrupted");
+        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::write(&dir2.join("agent_session"), &tool.agent_session_id).unwrap();
+        std::fs::write(&dir2.join("pending_approval.json"), "not json").unwrap();
+
+        // SA 3: 无 pending
+        let dir3 = tmp.path().join("sa_no_pending");
+        std::fs::create_dir_all(&dir3).unwrap();
+        std::fs::write(&dir3.join("agent_session"), &tool.agent_session_id).unwrap();
+
+        let result = tool.list_pending_approvals().await.unwrap();
+        assert!(
+            result.contains("cargo build"),
+            "应包含正常 pending: {}",
+            result
+        );
+        assert!(result.contains("文件损坏"), "应注明损坏文件: {}", result);
+    }
+
+    #[tokio::test]
+    async fn test_approve_normal() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        // 创建 subagent 目录 + pending_approval.json + pid
+        let sa_id = "sa_test_approve";
+        let dir = tmp.path().join(sa_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::tools::shell_exec::write_pending_approval(&dir, "cargo build", None).unwrap();
+        std::fs::write(&dir.join("pid"), std::process::id().to_string()).unwrap();
+
+        let result = tool.handle_approve(sa_id, true).await.unwrap();
+        assert!(result.contains("已批准"));
+        // 验证 approval_result.json 已写入
+        let approval_path = dir.join("approval_result.json");
+        assert!(approval_path.exists());
+        let content = std::fs::read_to_string(&approval_path).unwrap();
+        let resp: crate::tools::shell_exec::ApprovalResponse =
+            serde_json::from_str(&content).unwrap();
+        assert!(resp.approved);
+    }
+
+    #[tokio::test]
+    async fn test_approve_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        let sa_id = "sa_test_reject";
+        let dir = tmp.path().join(sa_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::tools::shell_exec::write_pending_approval(&dir, "rm -rf", None).unwrap();
+        std::fs::write(&dir.join("pid"), std::process::id().to_string()).unwrap();
+
+        let result = tool.handle_approve(sa_id, false).await.unwrap();
+        assert!(result.contains("已拒绝"));
+        let approval_path = dir.join("approval_result.json");
+        assert!(approval_path.exists());
+        let content = std::fs::read_to_string(&approval_path).unwrap();
+        let resp: crate::tools::shell_exec::ApprovalResponse =
+            serde_json::from_str(&content).unwrap();
+        assert!(!resp.approved);
+    }
+
+    #[tokio::test]
+    async fn test_approve_missing_subagent_id() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+        let result = tool.handle_approve("nonexistent", true).await;
+        assert!(result.is_err(), "不存在的 subagent_id 应返回错误");
+        assert!(result.unwrap_err().contains("不存在"));
+    }
+
+    #[tokio::test]
+    async fn test_approve_missing_pending_file() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        let dir = tmp.path().join("sa_no_pending");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&dir.join("pid"), std::process::id().to_string()).unwrap();
+
+        let result = tool.handle_approve("sa_no_pending", true).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("已过期"));
+    }
+
+    #[tokio::test]
+    async fn test_approve_process_dead() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        let dir = tmp.path().join("sa_dead");
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::tools::shell_exec::write_pending_approval(&dir, "cargo build", None).unwrap();
+        // 写入一个不存在的 PID
+        std::fs::write(&dir.join("pid"), "999999999").unwrap();
+
+        let result = tool.handle_approve("sa_dead", true).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("进程已终止"));
+    }
+
+    #[tokio::test]
+    async fn test_poll_shows_pending_marker() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        // 创建运行中的 subagent + pending_approval.json
+        let sa_id = generate_subagent_id(tmp.path());
+        let dir = tmp.path().join(&sa_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&dir.join("agent_session"), &tool.agent_session_id).unwrap();
+        std::fs::write(&dir.join("pid"), std::process::id().to_string()).unwrap();
+        std::fs::write(&dir.join("task"), "test task").unwrap();
+        std::fs::write(&dir.join("started_at"), "2026-06-16T10:30:00.000+08:00").unwrap();
+        crate::tools::shell_exec::write_pending_approval(&dir, "cargo build", None).unwrap();
+
+        let result = tool.poll(&[sa_id.clone()], 0).await.unwrap();
+        assert!(
+            result.contains("等待审批"),
+            "poll 应显示待审批标记: {}",
+            result
+        );
+        assert!(
+            result.contains("cargo build"),
+            "poll 应显示命令: {}",
             result
         );
     }
 
+    #[tokio::test]
+    async fn test_spawn_env_var_set() {
+        let tmp = TempDir::new().unwrap();
+
+        // 使用 echo 作为 test_binary，验证环境变量是否传递
+        // 由于子进程是 echo，我们无法直接从子进程读取 env var
+        // 但可以验证 spawn 不报错，且目录被创建
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 0,
+            agent_session_id: generate_agent_session_id(),
+            permission_mode: PermissionMode::Full,
+            test_binary: Some("echo".to_string()),
+            parent_session_id: None,
+        };
+
+        let id = tool.spawn("zapmyco", "test_task", None).await.unwrap();
+        let dir = tmp.path().join(&id);
+        assert!(dir.exists(), "subagent 目录应存在");
+        assert!(dir.join("agent_session").exists());
+        assert!(dir.join("task").exists());
+    }
+
+    #[tokio::test]
+    async fn test_spawn_no_timeout_by_default() {
+        // 验证 spawn 不会在短时间内 kill 子进程（无超时）
+        // 使用 sleep 2 验证进程在 3s 后仍然存活
+        let tmp = TempDir::new().unwrap();
+        let tool = SubAgentTool {
+            data_dir: tmp.path().to_path_buf(),
+            timeout_secs: 0,
+            agent_session_id: generate_agent_session_id(),
+            permission_mode: PermissionMode::Full,
+            test_binary: Some("sleep".to_string()),
+            parent_session_id: None,
+        };
+
+        let id = tool.spawn("zapmyco", "5", None).await.unwrap();
+        // 等 3 秒（如果还有 2s 超时，此时应已被 kill）
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let result = tool.poll(&[id.clone()], 0).await.unwrap();
+
+        // 不应该有 timeout/cancelled/killed 等标记
+        assert!(
+            result.contains("仍在运行") || result.contains(&id),
+            "子进程应在无超时模式下继续运行: {}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_poll_no_marker_without_pending() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        // 创建运行的 subagent，但不创建 pending_approval.json
+        let sa_id = generate_subagent_id(tmp.path());
+        let dir = tmp.path().join(&sa_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&dir.join("agent_session"), &tool.agent_session_id).unwrap();
+        std::fs::write(&dir.join("pid"), std::process::id().to_string()).unwrap();
+        std::fs::write(&dir.join("task"), "test task").unwrap();
+
+        let result = tool.poll(&[sa_id], 0).await.unwrap();
+        assert!(
+            !result.contains("等待审批"),
+            "没有 pending 时不应显示待审批标记: {}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_approve_atomic_write() {
+        let tmp = TempDir::new().unwrap();
+        let tool = test_tool(&tmp);
+
+        let sa_id = "sa_test_atomic";
+        let dir = tmp.path().join(sa_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::tools::shell_exec::write_pending_approval(&dir, "cargo build", None).unwrap();
+        std::fs::write(&dir.join("pid"), std::process::id().to_string()).unwrap();
+
+        let result = tool.handle_approve(sa_id, true).await.unwrap();
+        assert!(result.contains("已批准"));
+
+        // 验证: tmp 文件不应残留
+        assert!(
+            !dir.join("approval_result.json.tmp").exists(),
+            "tmp 文件不应残留"
+        );
+        // 验证: 最终文件应存在且 JSON 合法
+        let final_path = dir.join("approval_result.json");
+        assert!(final_path.exists(), "approval_result.json 应存在");
+        let content = std::fs::read_to_string(&final_path).unwrap();
+        let resp: crate::tools::shell_exec::ApprovalResponse =
+            serde_json::from_str(&content).unwrap();
+        assert!(resp.approved);
+        // 验证 responded_at 是合法时间戳
+        assert!(!resp.responded_at.is_empty(), "responded_at 不应为空");
+    }
     // ---- 辅助 ----
 
     fn now_str() -> String {
