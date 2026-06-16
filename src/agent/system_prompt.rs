@@ -243,6 +243,11 @@ mod tests {
         let custom = "你是一个测试助手".to_string();
         let builder = SystemPromptBuilder::new(Some(custom.clone()));
         assert_eq!(builder.base_prompt(), &custom);
+
+        // DISPATCHER_SYSTEM_PROMPT 也能作为自定义提示词传入
+        let dispatcher_builder =
+            SystemPromptBuilder::new(Some(DISPATCHER_SYSTEM_PROMPT.to_string()));
+        assert_eq!(dispatcher_builder.base_prompt(), DISPATCHER_SYSTEM_PROMPT);
     }
 
     #[test]
@@ -269,6 +274,38 @@ mod tests {
         let guidance_pos = prompt.find("## 执行规则").unwrap();
         let tool_pos = prompt.find("## 工具使用规则").unwrap();
         assert!(tool_pos > guidance_pos, "工具规则应在执行规则之后");
+    }
+
+    // ---- DISPATCHER_SYSTEM_PROMPT 测试 ----
+
+    #[test]
+    fn test_dispatcher_prompt_exists_and_contains_keywords() {
+        let prompt = DISPATCHER_SYSTEM_PROMPT;
+        assert!(!prompt.is_empty(), "DISPATCHER_SYSTEM_PROMPT 不应为空");
+        assert!(prompt.contains("项目协调员"), "应包含调度员身份标识");
+        assert!(prompt.contains("ask_user"), "应包含审批规则");
+        assert!(prompt.contains("subagent"), "应包含 subagent 分派规则");
+        assert!(
+            prompt.contains("task_get") && prompt.contains("task_list"),
+            "应包含任务读取工具说明"
+        );
+    }
+
+    #[test]
+    fn test_dispatcher_prompt_does_not_contain_behavioral_guidance() {
+        let prompt = DISPATCHER_SYSTEM_PROMPT;
+        assert!(
+            !prompt.contains("执行规则"),
+            "调度员提示词不应包含 BEHAVIORAL_GUIDANCE 中的执行规则"
+        );
+        assert!(
+            !prompt.contains("工具使用规则"),
+            "调度员提示词不应包含工具使用规则"
+        );
+        assert!(
+            !prompt.contains("任务执行策略"),
+            "调度员提示词不应包含任务执行策略"
+        );
     }
 
     // ---- build_context_reminder tests ----

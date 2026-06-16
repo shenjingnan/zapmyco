@@ -415,4 +415,57 @@ mod tests {
             Some(1)
         );
     }
+
+    #[test]
+    fn test_auto_approve_env_var_skips_tty_check() {
+        unsafe {
+            std::env::set_var("ZAPMYCO_AUTO_APPROVE", "1");
+        }
+
+        let tool = AskUser;
+        let input = serde_json::json!({
+            "question": "是否执行？",
+            "options": [
+                {"label": "批准执行", "description": "开始实施"},
+                {"label": "取消", "description": "取消操作"}
+            ]
+        });
+
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(tool.execute(&input));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "用户选择了: 批准执行");
+
+        unsafe {
+            std::env::remove_var("ZAPMYCO_AUTO_APPROVE");
+        }
+    }
+
+    #[test]
+    fn test_auto_approve_ignored_for_non_approval() {
+        unsafe {
+            std::env::set_var("ZAPMYCO_AUTO_APPROVE", "1");
+        }
+
+        let tool = AskUser;
+        let input = serde_json::json!({
+            "question": "确认信息？",
+            "options": [
+                {"label": "确认", "description": "我知道了"},
+                {"label": "取消", "description": "取消"}
+            ]
+        });
+
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(tool.execute(&input));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("交互式终端") || err.contains("终端"));
+
+        unsafe {
+            std::env::remove_var("ZAPMYCO_AUTO_APPROVE");
+        }
+    }
 }

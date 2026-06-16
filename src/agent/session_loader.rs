@@ -929,4 +929,107 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    fn test_list_subagent_sessions_filters_by_parent() {
+        crate::test_util::run_with_temp_home(|home| {
+            let dir = home.join(".zapmyco/sessions");
+
+            let main_dir = dir.join("main-session");
+            std::fs::create_dir_all(&main_dir).unwrap();
+            write_session_json_to(
+                &main_dir,
+                serde_json::json!({
+                    "session_id": "main-session",
+                    "is_subagent": false,
+                    "parent_session_id": null,
+                    "started_at": "2026-06-16T12:00:00+08:00",
+                }),
+            );
+
+            let sub1_dir = dir.join("sub-agent-1");
+            std::fs::create_dir_all(&sub1_dir).unwrap();
+            write_session_json_to(
+                &sub1_dir,
+                serde_json::json!({
+                    "session_id": "sub-agent-1",
+                    "is_subagent": true,
+                    "parent_session_id": "main-session",
+                    "started_at": "2026-06-16T12:01:00+08:00",
+                }),
+            );
+
+            let sub2_dir = dir.join("sub-agent-2");
+            std::fs::create_dir_all(&sub2_dir).unwrap();
+            write_session_json_to(
+                &sub2_dir,
+                serde_json::json!({
+                    "session_id": "sub-agent-2",
+                    "is_subagent": true,
+                    "parent_session_id": "main-session",
+                    "started_at": "2026-06-16T12:02:00+08:00",
+                }),
+            );
+
+            let other_dir = dir.join("other-session");
+            std::fs::create_dir_all(&other_dir).unwrap();
+            write_session_json_to(
+                &other_dir,
+                serde_json::json!({
+                    "session_id": "other-session",
+                    "is_subagent": false,
+                    "parent_session_id": null,
+                    "started_at": "2026-06-16T13:00:00+08:00",
+                }),
+            );
+
+            let subagents = list_subagent_sessions("main-session").unwrap();
+            assert_eq!(subagents.len(), 2, "应返回 2 个子会话");
+            let ids: Vec<&str> = subagents.iter().map(|s| s.session_id.as_str()).collect();
+            assert!(ids.contains(&"sub-agent-1"));
+            assert!(ids.contains(&"sub-agent-2"));
+            assert!(subagents.iter().all(|s| s.is_subagent));
+            assert!(
+                subagents
+                    .iter()
+                    .all(|s| s.parent_session_id.as_deref() == Some("main-session"))
+            );
+
+            let other_subs = list_subagent_sessions("other-session").unwrap();
+            assert_eq!(other_subs.len(), 0);
+            let nonexistent = list_subagent_sessions("nonexistent").unwrap();
+            assert_eq!(nonexistent.len(), 0);
+        });
+    }
+
+    #[test]
+    fn test_session_summary_is_subagent_default_false() {
+        crate::test_util::run_with_temp_home(|home| {
+            let dir = home.join(".zapmyco/sessions");
+            let session_dir = dir.join("legacy-session");
+            std::fs::create_dir_all(&session_dir).unwrap();
+            let record = serde_json::json!({
+                "session_id": "legacy-session", "order": 0,
+                "ts": "2026-06-16T12:00:00+08:00", "duration_ms": 100,
+                "request": {
+                    "model": "test", "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "hello"}]
+                },
+                "response": {"content": "hi"}
+            });
+            std::fs::write(
+                session_dir.join("conversation.jsonl"),
+                format!("{}\n", serde_json::to_string(&record).unwrap()),
+            )
+            .unwrap();
+
+            let sessions = list_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert!(!sessions[0].is_subagent, "旧格式默认 is_subagent = false");
+            assert!(
+                sessions[0].parent_session_id.is_none(),
+                "旧格式默认 parent_session_id = None"
+            );
+        });
+    }
 }

@@ -924,6 +924,7 @@ mod tests {
 
     // —————— task-id 测试 ——————
 
+    #[test]
     fn test_task_id_default_none() {
         let cli = Cli::try_parse_from(vec!["zapmyco", "run", "hello"]).unwrap();
         if let Commands::Run { task_id, .. } = cli.command.unwrap() {
@@ -1238,5 +1239,15 @@ mod tests {
             }
             _ => panic!("Expected Run command"),
         }
+    }
+
+    #[test]
+    fn test_session_id_value_parser_accepts_any_string() {
+        use clap::Command;
+        let parser = SessionIdValueParser;
+        let cmd = Command::new("test");
+        let result = parser.parse_ref(&cmd, None, std::ffi::OsStr::new("test-session-id"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "test-session-id");
     }
 }

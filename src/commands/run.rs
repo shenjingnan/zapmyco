@@ -922,6 +922,39 @@ mod run_tool_registration_tests {
     use crate::cli::PermissionMode;
     use crate::test_util::run_with_temp_home;
 
+    fn create_main_agent(home: &std::path::Path) -> AiAgent {
+        let settings_dir = home.join(".zapmyco");
+        std::fs::create_dir_all(&settings_dir).unwrap();
+        std::fs::write(
+            settings_dir.join("settings.toml"),
+            "[llm]\napi_key = \"test\"\n",
+        )
+        .unwrap();
+
+        let mut agent = AiAgent::new(AiAgentOptions {
+            api_key: Some("test-key".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        // 模拟主 Agent 的工具注册（即 cmd_run 中 else 分支的行为）
+        agent.register_tool(crate::agent::chat::ToolHandler::AskUser(
+            crate::tools::ask_user::AskUser,
+        ));
+        let test_tm = std::sync::Arc::new(crate::tools::task_manager::TaskManager::with_list_id(
+            "test",
+        ));
+        agent.register_tool(crate::agent::chat::ToolHandler::TaskGet(test_tm.clone()));
+        agent.register_tool(crate::agent::chat::ToolHandler::TaskList(test_tm.clone()));
+
+        let subagent_tool = crate::tools::subagent::SubAgentTool::with_permission_mode(
+            crate::cli::PermissionMode::Full,
+        )
+        .unwrap();
+        agent.register_tool(crate::agent::chat::ToolHandler::SubAgent(subagent_tool));
+        agent
+    }
+
     fn agent_with_mode(mode: PermissionMode, home: &std::path::Path) -> AiAgent {
         // AiAgent::new() 需要 settings.toml
         let settings_dir = home.join(".zapmyco");
@@ -1009,6 +1042,54 @@ mod run_tool_registration_tests {
             );
             assert!(!names.contains(&"file_write".to_string()));
             assert!(!names.contains(&"file_edit".to_string()));
+        });
+    }
+
+    #[test]
+    fn test_main_agent_registers_only_dispatcher_tools() {
+        run_with_temp_home(|home| {
+            let agent = create_main_agent(home);
+            let names = agent.tool_names();
+            // 主 Agent 应包含 4 个调度工具
+            assert!(names.contains(&"ask_user".to_string()), "应包含 ask_user");
+            assert!(names.contains(&"subagent".to_string()), "应包含 subagent");
+            assert!(names.contains(&"task_get".to_string()), "应包含 task_get");
+            assert!(names.contains(&"task_list".to_string()), "应包含 task_list");
+            // 主 Agent 不应包含执行工具
+            assert!(
+                !names.contains(&"file_read".to_string()),
+                "不应包含 file_read"
+            );
+            assert!(
+                !names.contains(&"file_write".to_string()),
+                "不应包含 file_write"
+            );
+            assert!(
+                !names.contains(&"file_edit".to_string()),
+                "不应包含 file_edit"
+            );
+            assert!(
+                !names.contains(&"shell_exec".to_string()),
+                "不应包含 shell_exec"
+            );
+            assert!(
+                !names.contains(&"web_fetch".to_string()),
+                "不应包含 web_fetch"
+            );
+            assert!(
+                !names.contains(&"web_search".to_string()),
+                "不应包含 web_search"
+            );
+            assert!(
+                !names.contains(&"task_create".to_string()),
+                "不应包含 task_create"
+            );
+            assert!(
+                !names.contains(&"task_update".to_string()),
+                "不应包含 task_update"
+            );
+            // 精确数量验证
+            assert_eq!(names.len(), 4, "主 Agent 应恰好注册 4 个工具");
         });
     }
 }
