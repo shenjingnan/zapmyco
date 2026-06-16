@@ -309,7 +309,7 @@ pub(crate) fn partition_tool_calls(
 // Token 用量打印
 // ---------------------------------------------------------------------------
 
-/// 在终端输出当前轮次的 token 用量和缓存命中率信息
+/// 记录 token 用量日志（仅 tracing，不输出到终端）
 pub(crate) fn print_usage_line(
     round: Option<u32>,
     input_tokens: u32,
@@ -321,14 +321,15 @@ pub(crate) fn print_usage_line(
     let cache_read_val = cache_read.unwrap_or(0);
     let cache_create_val = cache_create.unwrap_or(0);
     let total_input = input_tokens + cache_read_val + cache_create_val;
-    output::send(&Message::llm_usage(
-        total_input as u64,
-        output_tokens as u64,
-        cache_read_val as u64,
-        cache_create_val as u64,
-        duration_ms,
-        round,
-    ));
+    tracing::info!(
+        round = round,
+        input_tokens = total_input,
+        output_tokens = output_tokens,
+        cache_read = cache_read_val,
+        cache_create = cache_create_val,
+        duration_ms = duration_ms,
+        "LLM round-trip usage",
+    );
 }
 
 // ---------------------------------------------------------------------------

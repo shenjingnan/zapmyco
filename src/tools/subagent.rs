@@ -9,6 +9,8 @@ use chrono::Local;
 use tokio::io::AsyncReadExt;
 use tokio::process::{ChildStderr, ChildStdout, Command};
 
+use crate::output::{self, Message};
+
 use crate::cli::PermissionMode;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 
@@ -410,6 +412,7 @@ impl SubAgentTool {
         let mut running_tasks = Vec::new();
         let mut pending_approvals: Vec<String> = Vec::new();
         let mut errors = Vec::new();
+        let mut status_lines: Vec<String> = Vec::new();
 
         for id in ids {
             let dir = self.data_dir.join(id);
@@ -427,13 +430,32 @@ impl SubAgentTool {
                 }
                 // 检测待审批标记
                 let pending_path = dir.join("pending_approval.json");
-                if pending_path.exists()
+                let has_pending = if pending_path.exists()
                     && let Ok(content) = std::fs::read_to_string(&pending_path)
                     && let Ok(pending) =
                         serde_json::from_str::<crate::tools::shell_exec::PendingApproval>(&content)
                 {
                     pending_approvals.push(format!("⏳ 等待审批: {} ({})", pending.command, id));
-                }
+                    true
+                } else {
+                    false
+                };
+
+                // 构建状态行
+                let elapsed = calc_elapsed_best(&self.data_dir, &[id.to_string()]);
+                let status_icon = if has_pending { "⏳" } else { "🔄" };
+                let task_short = std::fs::read_to_string(dir.join("task"))
+                    .unwrap_or_default()
+                    .trim()
+                    .chars()
+                    .take(60)
+                    .collect::<String>();
+                let status_line = if has_pending {
+                    format!("{} {} {}", status_icon, id, task_short)
+                } else {
+                    format!("{} {} {} ({})", status_icon, id, task_short, elapsed)
+                };
+                status_lines.push(status_line);
             }
         }
 
@@ -441,6 +463,14 @@ impl SubAgentTool {
 
         for o in &completed_outputs {
             result.push(o.clone());
+        }
+
+        // 向终端输出结构化状态信息
+        if !status_lines.is_empty() {
+            output::send(&Message::subagent_status(status_lines.join("\n")));
+        }
+        for p in &pending_approvals {
+            output::send(&Message::awaiting_approval(p.clone()));
         }
 
         // 未完成的折叠

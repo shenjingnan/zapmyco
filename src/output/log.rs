@@ -164,7 +164,11 @@ impl Target for LogTarget {
             | MessageKind::Warning
             | MessageKind::Error
             | MessageKind::SkillLoaded
-            | MessageKind::SubAgentInfo => {
+            | MessageKind::SubAgentInfo
+            | MessageKind::PhaseTitle
+            | MessageKind::SubAgentStatus
+            | MessageKind::TaskProgress
+            | MessageKind::AwaitingApproval => {
                 self.flush_buffer();
                 self.write_log("STDERR", &self.strip_ansi(&msg.text));
             }

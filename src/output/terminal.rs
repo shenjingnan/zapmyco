@@ -170,6 +170,10 @@ mod tests {
             MessageKind::NoteInfo,
             MessageKind::SubAgentInfo,
             MessageKind::SkillLoaded,
+            MessageKind::PhaseTitle,
+            MessageKind::SubAgentStatus,
+            MessageKind::TaskProgress,
+            MessageKind::AwaitingApproval,
         ]
     }
 

@@ -342,6 +342,39 @@ pub(crate) async fn cmd_run(
                 break;
             }
 
+            // 输出任务进度
+            let completed_count = tasks
+                .iter()
+                .filter(|t| t.status == TaskStatus::Completed)
+                .count();
+            let total_count = tasks.len();
+            if total_count > 0 {
+                let progress_bar = format_progress_bar(completed_count, total_count, 20);
+                let mut progress_lines = format!(
+                    "\n📋 进度: {} {}/{}",
+                    progress_bar, completed_count, total_count
+                );
+                for task in &tasks {
+                    let icon = match task.status {
+                        TaskStatus::Completed => "✅",
+                        TaskStatus::InProgress => "🔄",
+                        TaskStatus::Pending => "⬜",
+                    };
+                    let blocked = if !task.blocked_by.is_empty() {
+                        format!(" [等待 #{}]", task.blocked_by.join(", #"))
+                    } else {
+                        String::new()
+                    };
+                    progress_lines.push_str(&format!(
+                        "\n  {} {}{}",
+                        icon,
+                        task.subject.chars().take(60).collect::<String>(),
+                        blocked
+                    ));
+                }
+                output::send(&Message::task_progress(progress_lines));
+            }
+
             let continuation = format!(
                 "请继续执行下一个可用任务。当前有 {} 个任务未完成。\
                  规则：检查 task_list 找出 blocked_by 为空的 pending 任务，\
@@ -523,6 +556,20 @@ impl Drop for AppLogGuard {
     fn drop(&mut self) {
         crate::logging::clear_session_log_dir();
     }
+}
+
+/// 生成文本进度条
+/// 格式: [████░░░░] 3/5
+fn format_progress_bar(completed: usize, total: usize, width: usize) -> String {
+    if total == 0 {
+        return "[░░░░░░░░░░]".to_string();
+    }
+    let filled = completed * width / total;
+    let empty = width - filled;
+    let bar: String = std::iter::repeat_n('█', filled)
+        .chain(std::iter::repeat_n('░', empty))
+        .collect();
+    format!("[{}]", bar)
 }
 
 #[cfg(test)]

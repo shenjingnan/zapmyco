@@ -851,23 +851,40 @@ impl AiAgent {
             blocks: None,
         });
 
+        // 上一轮 LLM 回复的第一句话，用于下一轮开始前作为阶段标题展示
+        let mut last_intent: String = String::new();
+
         for round in 0..self.max_tool_rounds {
-            output::send(&output::Message::info("\n[LLM] 🤔 思考中...".to_string()));
+            // 在 LLM 开始生成前，展示上一轮表达的意图
+            if !last_intent.is_empty() {
+                output::send(&output::Message::phase_title(last_intent.clone()));
+            }
 
             let result = self.stream_one_round(&mut on_chunk).await?;
 
-            // 流式文本与后续日志之间换行
-            output::send(&output::Message::info(String::new()));
-
-            // 输出 token 用量
-            crate::agent::executor::print_usage_line(
-                Some(round),
-                result.input_tokens,
-                result.output_tokens,
-                result.cache_read_input_tokens,
-                result.cache_creation_input_tokens,
-                result.duration_ms,
-            );
+            // 从 LLM 回复文本中提取第一句话作为下轮的阶段标题
+            let first_line = result.full_text.lines().next().unwrap_or("").trim();
+            // 忽略过短或无意义的标题（纯符号、仅语气词等）
+            let meaningful = first_line.len() > 4
+                && first_line != "..."
+                && !first_line.starts_with("---")
+                && !first_line.starts_with("```");
+            last_intent = if meaningful {
+                first_line.to_string()
+            } else {
+                // 从 tool_uses 推断意图
+                if let Some((_, first_tool, input)) = result.tool_uses.first() {
+                    let param = crate::agent::executor::format_tool_param(first_tool, input);
+                    let icon = crate::agent::executor::tool_icon(first_tool);
+                    if !param.is_empty() {
+                        format!("{} {} {}", icon, first_tool, param)
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                }
+            };
 
             // 更新 session 统计
             self.session_stats

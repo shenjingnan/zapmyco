@@ -78,6 +78,16 @@ pub enum MessageKind {
     SubAgentInfo,
     /// Skill 加载
     SkillLoaded,
+
+    // === 阶段一新增：状态展示 ===
+    /// 主 Agent 当前阶段的标题（如 "➜ 正在探索项目结构..."）
+    PhaseTitle,
+    /// SubAgent 状态行
+    SubAgentStatus,
+    /// 任务进度
+    TaskProgress,
+    /// 等待用户审批
+    AwaitingApproval,
 }
 
 // ============================================================================
@@ -376,6 +386,44 @@ impl Message {
     pub fn tool_output(text: impl Into<String>) -> Self {
         Message {
             kind: MessageKind::ToolOutput,
+            text: text.into(),
+            data: None,
+        }
+    }
+
+    // ==================== 阶段一新增：状态展示 ====================
+
+    /// 主 Agent 阶段标题
+    pub fn phase_title(text: impl Into<String>) -> Self {
+        Message {
+            kind: MessageKind::PhaseTitle,
+            text: text.into(),
+            data: None,
+        }
+    }
+
+    /// SubAgent 状态行
+    pub fn subagent_status(text: impl Into<String>) -> Self {
+        Message {
+            kind: MessageKind::SubAgentStatus,
+            text: text.into(),
+            data: None,
+        }
+    }
+
+    /// 任务进度
+    pub fn task_progress(text: impl Into<String>) -> Self {
+        Message {
+            kind: MessageKind::TaskProgress,
+            text: text.into(),
+            data: None,
+        }
+    }
+
+    /// 等待用户审批
+    pub fn awaiting_approval(text: impl Into<String>) -> Self {
+        Message {
+            kind: MessageKind::AwaitingApproval,
             text: text.into(),
             data: None,
         }
@@ -781,6 +829,10 @@ mod tests {
             MessageKind::NoteInfo,
             MessageKind::SubAgentInfo,
             MessageKind::SkillLoaded,
+            MessageKind::PhaseTitle,
+            MessageKind::SubAgentStatus,
+            MessageKind::TaskProgress,
+            MessageKind::AwaitingApproval,
         ]
     }
 
