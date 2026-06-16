@@ -435,7 +435,9 @@ pub fn sanitize_user_input(input: &str) -> String {
                 continue;
             }
         }
-        i += 1;
+        // 按字符边界前进，支持多字节 UTF-8
+        let ch = result[i..].chars().next().unwrap_or_default();
+        i += ch.len_utf8();
     }
     result
 }
