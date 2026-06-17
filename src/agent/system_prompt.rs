@@ -92,50 +92,6 @@ pub const BEHAVIORAL_GUIDANCE: &str = "\n\
     - 超时或无效的子代理直接放弃或 kill，不要阻塞主流程\n\
     - 如忘记 subagent_id，使用 list 查询";
 
-/// 规划模式指令 — 注入到 Phase 1 的用户 prompt 之前，告诉 LLM 当前只分析不执行
-pub const PLAN_INSTRUCTION: &str = "\
-<plan-mode-instruction>
-当前处于【规划阶段】——请仅进行分析、调研和方案设计。
-
-你需要完成：
-1. 仔细理解用户需求
-2. 阅读相关代码了解现状
-3. 设计实现方案（分析关键文件、变更范围、实施步骤）
-4. 在最终回复中以 markdown 格式输出完整方案
-   （方案会自动保存到 session 目录的 plan.md，无需手动写文件）
-
-## 禁止
-- 不要直接执行任何实现（write file、edit file、shell exec 等）
-- 不要使用 task_create 创建执行任务（那是执行阶段的事）
-- 只分析、调研、设计，然后输出方案
-</plan-mode-instruction>";
-
-/// 执行阶段指令模板 — 注入到 Phase 3 的用户 prompt 之前
-///
-/// 使用方式（在 cmd_run 中拼接 plan_content）：
-/// ```ignore
-/// let exec_prompt = format!("{}\n\n## 已批准方案\n{}", EXEC_INSTRUCTION, plan_content);
-/// ```
-pub const EXEC_INSTRUCTION: &str = "\
-<execution-phase-instruction>
-当前处于【执行阶段】。
-
-请严格按照已批准方案执行：
-1. 使用 task_create 创建任务并设置依赖关系
-2. 逐个完成，标记 completed
-3. 所有任务完成后输出实施总结
-</execution-phase-instruction>";
-
-/// 总结阶段指令 — 注入到 Phase 4 的用户 prompt，要求 LLM 总结本轮实施
-pub const SUMMARY_INSTRUCTION: &str = "\
-<summary-instruction>
-本轮实施已全部完成。请总结本次工作：
-
-1. 完成了哪些任务
-2. 修改/创建了哪些文件
-3. 是否有遗留问题或注意事项
-</summary-instruction>";
-
 /// 系统提示词构建器
 ///
 /// 管理系统提示词（身份定义 + 行为规范 + 工具使用规则），
@@ -437,32 +393,5 @@ mod tests {
             assert!(!shell_val.is_empty(), "Shell 值不应为空");
         }
         // 如果不包含 Shell 信息（环境未设置 $SHELL）也允许
-    }
-
-    // ---- plan 模式指令常量测试 ----
-
-    #[test]
-    fn test_plan_instruction_not_empty() {
-        assert!(!PLAN_INSTRUCTION.is_empty());
-        assert!(PLAN_INSTRUCTION.contains("规划阶段"));
-        assert!(PLAN_INSTRUCTION.contains("禁止"));
-    }
-
-    #[test]
-    fn test_exec_instruction_not_empty() {
-        assert!(!EXEC_INSTRUCTION.is_empty());
-        assert!(EXEC_INSTRUCTION.contains("执行阶段"));
-    }
-
-    #[test]
-    fn test_summary_instruction_not_empty() {
-        assert!(!SUMMARY_INSTRUCTION.is_empty());
-        assert!(SUMMARY_INSTRUCTION.contains("总结"));
-    }
-
-    #[test]
-    fn test_plan_instruction_forbids_execution() {
-        assert!(PLAN_INSTRUCTION.contains("不要直接执行"));
-        assert!(PLAN_INSTRUCTION.contains("只分析"));
     }
 }

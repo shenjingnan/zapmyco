@@ -67,7 +67,7 @@ pub(crate) async fn cmd_run(
     let all_skills = list_available_skills(&cwd);
 
     // ── Step 3: 如果指定了 --skill，完整加载 ──
-    let active_skill: Option<SkillFile> = if let Some(skill_name) = skill_name {
+    let mut active_skill: Option<SkillFile> = if let Some(skill_name) = skill_name {
         match resolve_skill(skill_name, &cwd) {
             Some(skill) => {
                 if skill.name != skill_name {
@@ -103,21 +103,35 @@ pub(crate) async fn cmd_run(
         None
     };
 
-    // ── Step 4: 组装完整 system prompt ──
-    let mut full_prompt = format!(
+    // Plan mode 自动加载内置 plan skill（未通过 --skill 指定其他 skill 时）
+    if mode == ExecutionMode::Plan && active_skill.is_none() {
+        if let Some(skill) = resolve_skill("plan", &cwd) {
+            output::send(&Message::info(format!(
+                "[Plan] 已加载内置 skill: {} — {}",
+                skill.name, skill.description,
+            )));
+            active_skill = Some(skill);
+        } else {
+            output::send(&Message::warning(
+                "[Plan] 未找到内置 plan skill，使用默认指令",
+            ));
+        }
+    }
+
+    // ── Step 4: 组装 system prompt ──
+    // 注意：system prompt 完全静态化，不包含 skill body。
+    // skill body 以 user_message 前缀形式注入（build_skill_preamble）。
+    let system_prompt_text = format!(
         "{}{}",
         system_prompt::DEFAULT_SYSTEM_PROMPT,
         system_prompt::BEHAVIORAL_GUIDANCE,
     );
-    if let Some(ref skill) = active_skill {
-        full_prompt.push_str(&format!("\n\n## Skill: {}\n\n{}", skill.name, skill.body));
-    }
 
     // ── Step 5: 构建 AiAgentOptions ──
     let mut options = build_run_options(profile, model, api_key, base_url, permission_mode);
     options.is_subagent = subagent;
     options.parent_session_id = parent_session_id.map(|s| s.to_string());
-    options.system_prompt = Some(full_prompt);
+    options.system_prompt = Some(system_prompt_text);
     options.skill_list_text = {
         let list = build_skill_list_text(&all_skills);
         if list.is_empty() { None } else { Some(list) }
@@ -310,8 +324,8 @@ pub(crate) async fn cmd_run(
         ));
 
         let plan_prompt = format!(
-            "{}\n\n## 用户需求\n{}",
-            system_prompt::PLAN_INSTRUCTION,
+            "{}请开始分析规划。\n\n## 用户需求\n{}",
+            build_skill_preamble(&active_skill),
             content,
         );
 
@@ -370,8 +384,8 @@ pub(crate) async fn cmd_run(
             let plan_response = agent
                 .chat_with_tools(
                     &format!(
-                        "{}\n\n## 用户需求\n{}\n\n## 用户反馈\n请根据以上反馈调整方案。",
-                        system_prompt::PLAN_INSTRUCTION,
+                        "{}请根据反馈调整方案。\n\n## 用户需求\n{}\n\n## 用户反馈\n请根据以上反馈调整方案。",
+                        build_skill_preamble(&active_skill),
                         content,
                     ),
                     |chunk| {
@@ -430,10 +444,8 @@ pub(crate) async fn cmd_run(
             .and_then(|p| std::fs::read_to_string(p).ok())
             .unwrap_or_default();
         let exec_prompt = format!(
-            "{}\n\n## 用户原始需求\n{}\n\n## 已批准方案\n{}",
-            system_prompt::EXEC_INSTRUCTION,
-            content,
-            plan_content,
+            "方案已获批准，请开始实施。\n\n## 用户原始需求\n{}\n\n## 已批准方案\n{}",
+            content, plan_content,
         );
 
         agent
@@ -442,9 +454,10 @@ pub(crate) async fn cmd_run(
             })
             .await?;
     } else {
-        // Base 模式：直接执行（当前行为）
+        // Base 模式：直接执行（skill body 以 user_message 前缀注入）
+        let base_prompt = format!("{}{}", build_skill_preamble(&active_skill), content,);
         let _response = agent
-            .chat_with_tools(&content, |chunk| {
+            .chat_with_tools(&base_prompt, |chunk| {
                 output::send(&Message::llm_chunk(chunk));
             })
             .await?;
@@ -511,7 +524,7 @@ pub(crate) async fn cmd_run(
     if mode == ExecutionMode::Plan && task_completed {
         output::send(&Message::info("[Plan] Phase 4 — 实施总结"));
         let summary = agent
-            .chat_with_tools(system_prompt::SUMMARY_INSTRUCTION, |chunk| {
+            .chat_with_tools("所有任务已完成，请总结本次工作。", |chunk| {
                 output::send(&Message::llm_chunk(chunk));
             })
             .await?;
@@ -602,6 +615,17 @@ pub(crate) async fn cmd_run(
         agent.finish_session(crate::agent::session_logger::ExitReason::Completed);
     }
     Ok(())
+}
+
+/// 为 user message 构建 skill body 前缀
+///
+/// skill body 以 user_message 形式注入（而非拼入 system prompt），
+/// 保持 system prompt 完全静态化以最大化 prompt cache 命中率。
+fn build_skill_preamble(skill: &Option<SkillFile>) -> String {
+    match skill {
+        Some(s) => format!("## Skill: {}\n\n{}\n\n---\n\n", s.name, s.body),
+        None => String::new(),
+    }
 }
 
 /// 构建 run 命令的 AiAgentOptions
