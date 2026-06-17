@@ -13,6 +13,7 @@ pub mod output;
 pub mod skills;
 #[doc(hidden)]
 pub mod tools;
+pub mod tui;
 
 #[cfg(test)]
 pub(crate) mod test_util {

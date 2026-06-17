@@ -124,15 +124,13 @@ impl AskUser {
             return Err("ask_user 工具只能在交互式终端中使用，当前不是终端环境。".to_string());
         }
 
-        // 转换为 prompt::SelectOption，最后一个选项标记为 custom_input
-        let last_idx = items.len() - 1;
+        // 转换为 prompt::SelectOption，组件会自动追加"自定义输入"选项
         let prompt_opts: Vec<prompt::SelectOption> = items
             .iter()
-            .enumerate()
-            .map(|(i, item)| prompt::SelectOption {
+            .map(|item| prompt::SelectOption {
                 label: &item.label,
                 description: &item.description,
-                custom_input: i == last_idx,
+                custom_input: false,
             })
             .collect();
 
