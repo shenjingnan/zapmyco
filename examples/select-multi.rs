@@ -33,11 +33,6 @@ fn main() {
             description: "安静的个人提升",
             custom_input: false,
         },
-        SelectOption {
-            label: "其他",
-            description: "自己输入爱好",
-            custom_input: true,
-        },
     ];
 
     match prompt_multi_select("你的爱好有哪些？（Space 多选，Enter 确认）", &options)

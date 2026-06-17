@@ -1,6 +1,7 @@
 //! TUI 组件共享类型定义——选项、单选结果、多选结果。
 
 /// 选择器选项
+#[derive(Clone)]
 pub struct SelectOption<'a> {
     /// 选项标签（短文本，如 "性能优化"）
     pub label: &'a str,

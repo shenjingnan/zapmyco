@@ -34,16 +34,17 @@ fn main() {
             description: "富含维生素 C",
             custom_input: false,
         },
-        SelectOption {
-            label: "其他",
-            description: "自己输入水果名",
-            custom_input: true,
-        },
     ];
 
     match prompt_single_select("你喜欢什么水果？", &options) {
         Some(SingleSelectResult::Index(i)) => println!("你选择了: {}", options[i].label),
-        Some(SingleSelectResult::Custom(s)) => println!("你输入了: {}", s),
+        Some(SingleSelectResult::Custom(s)) => {
+            if s.is_empty() {
+                println!("已取消");
+            } else {
+                println!("你输入了: {}", s);
+            }
+        }
         None => println!("已取消"),
     }
 }

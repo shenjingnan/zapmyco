@@ -7,16 +7,36 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::style::Stylize;
 
 use crate::output::{self, Message};
+use crate::tui::input::{InlineInput, InputAction};
 use crate::tui::types::{MultiSelectResult, SelectOption, SingleSelectResult};
 
 use std::io::{IsTerminal, Write};
 
+/// 自定义输入选项的标签
+const CUSTOM_LABEL: &str = "自定义输入";
+/// 自定义输入选项的描述
+const CUSTOM_DESC: &str = "自行输入内容";
+
+/// 构建包含末尾自定义输入选项的完整选项列表。
+fn with_custom_option<'a>(options: &[SelectOption<'a>]) -> Vec<SelectOption<'a>> {
+    let mut all = options.to_vec();
+    all.push(SelectOption {
+        label: CUSTOM_LABEL,
+        description: CUSTOM_DESC,
+        custom_input: true,
+    });
+    all
+}
+
 /// 显示单选选择器
+///
+/// 末尾始终自动追加一个"自定义输入"选项，允许用户自行输入内容。
 ///
 /// **快捷键**：
 /// - `j` / `↓`：向下移动
 /// - `k` / `↑`：向上移动
 /// - `1`-`9`：直接选择对应编号的选项
+/// - `0`：跳转到最后一个选项
 /// - `Enter`：确认当前选中项
 /// - `Ctrl+C`：取消
 pub fn prompt_single_select(
@@ -27,12 +47,16 @@ pub fn prompt_single_select(
         return None;
     }
 
+    // 末尾自动追加"自定义输入"选项
+    let prompt_opts = with_custom_option(options);
+    let total = prompt_opts.len();
+
     let guard = RawModeGuard::new()?;
     let mut selected: usize = 0;
-    let mut input_buf = String::new();
-    let list_height = 1 + options.len();
+    let mut input = InlineInput::new();
+    let list_height = 1 + total;
 
-    render_single_list(question, options, selected, true, None);
+    render_single_list(question, &prompt_opts, selected, true, None);
 
     loop {
         let event = match crossterm::event::read() {
@@ -40,56 +64,30 @@ pub fn prompt_single_select(
             Err(_) => continue,
         };
 
-        if options[selected].custom_input {
+        if prompt_opts[selected].custom_input {
             // ---- 内联输入模式 ----
-            match event {
-                Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
-                    ..
-                }) => {
+            match input.handle_event(&event) {
+                InputAction::Confirm(text) => {
                     clear_lines(list_height);
                     drop(guard);
-                    return if input_buf.is_empty() {
-                        Some(SingleSelectResult::Index(selected))
-                    } else {
-                        Some(SingleSelectResult::Custom(input_buf.trim().to_string()))
-                    };
+                    // 自定义选项始终返回 Custom，空字符串表示取消
+                    return Some(SingleSelectResult::Custom(text));
                 }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('c'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                }) => {
+                InputAction::Cancel => {
                     clear_lines(list_height);
                     drop(guard);
                     return None;
                 }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Backspace,
-                    ..
-                }) => {
-                    input_buf.pop();
-                    render_single_list(question, options, selected, false, Some(&input_buf));
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Up, ..
-                }) if selected > 0 => {
+                InputAction::Up if selected > 0 => {
                     selected -= 1;
-                    render_single_list(question, options, selected, false, Some(&input_buf));
+                    render_single_list(question, &prompt_opts, selected, false, Some(input.text()));
                 }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Down,
-                    ..
-                }) if selected < options.len() - 1 => {
+                InputAction::Down if selected < total - 1 => {
                     selected += 1;
-                    render_single_list(question, options, selected, false, Some(&input_buf));
+                    render_single_list(question, &prompt_opts, selected, false, Some(input.text()));
                 }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    ..
-                }) => {
-                    input_buf.push(c);
-                    render_single_list(question, options, selected, false, Some(&input_buf));
+                InputAction::Updated | InputAction::Up | InputAction::Down => {
+                    render_single_list(question, &prompt_opts, selected, false, Some(input.text()));
                 }
                 _ => {}
             }
@@ -101,11 +99,17 @@ pub fn prompt_single_select(
                     ..
                 }) => {
                     let idx = (c as usize) - ('1' as usize);
-                    if idx < options.len() {
-                        if options[idx].custom_input {
+                    if idx < total {
+                        if prompt_opts[idx].custom_input {
                             selected = idx;
-                            let preview = if input_buf.is_empty() { "" } else { &input_buf };
-                            render_single_list(question, options, selected, false, Some(preview));
+                            let preview = if input.is_empty() { "" } else { input.text() };
+                            render_single_list(
+                                question,
+                                &prompt_opts,
+                                selected,
+                                false,
+                                Some(preview),
+                            );
                             continue;
                         }
                         clear_lines(list_height);
@@ -117,11 +121,11 @@ pub fn prompt_single_select(
                     code: KeyCode::Char('0'),
                     ..
                 }) => {
-                    let idx = options.len() - 1;
-                    if options[idx].custom_input {
+                    let idx = total - 1;
+                    if prompt_opts[idx].custom_input {
                         selected = idx;
-                        let preview = if input_buf.is_empty() { "" } else { &input_buf };
-                        render_single_list(question, options, selected, false, Some(preview));
+                        let preview = if input.is_empty() { "" } else { input.text() };
+                        render_single_list(question, &prompt_opts, selected, false, Some(preview));
                         continue;
                     }
                     clear_lines(list_height);
@@ -145,7 +149,7 @@ pub fn prompt_single_select(
                     ..
                 }) if selected > 0 => {
                     selected -= 1;
-                    render_single_list(question, options, selected, false, Some(&input_buf));
+                    render_single_list(question, &prompt_opts, selected, false, Some(input.text()));
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Down,
@@ -154,13 +158,19 @@ pub fn prompt_single_select(
                 | Event::Key(KeyEvent {
                     code: KeyCode::Char('j'),
                     ..
-                }) if selected < options.len() - 1 => {
+                }) if selected < total - 1 => {
                     selected += 1;
-                    if options[selected].custom_input {
-                        let preview = if input_buf.is_empty() { "" } else { &input_buf };
-                        render_single_list(question, options, selected, false, Some(preview));
+                    if prompt_opts[selected].custom_input {
+                        let preview = if input.is_empty() { "" } else { input.text() };
+                        render_single_list(question, &prompt_opts, selected, false, Some(preview));
                     } else {
-                        render_single_list(question, options, selected, false, Some(&input_buf));
+                        render_single_list(
+                            question,
+                            &prompt_opts,
+                            selected,
+                            false,
+                            Some(input.text()),
+                        );
                     }
                 }
                 Event::Key(KeyEvent {
@@ -179,6 +189,9 @@ pub fn prompt_single_select(
 
 /// 显示多选选择器
 ///
+/// 末尾始终自动追加一个"自定义输入"选项，允许用户直接输入内容。
+/// 导航到自定义输入选项时自动进入内联输入模式，体验与单选一致。
+///
 /// **快捷键**：
 /// - `j` / `↓`：向下移动
 /// - `k` / `↑`：向上移动
@@ -191,105 +204,185 @@ pub fn prompt_multi_select(question: &str, options: &[SelectOption]) -> Option<M
         return None;
     }
 
+    let prompt_opts = with_custom_option(options);
+    let total = prompt_opts.len();
+
     let mut selected: usize = 0;
-    let mut toggled: Vec<bool> = vec![false; options.len()];
+    let mut toggled: Vec<bool> = vec![false; total];
     let mut captured_custom: Option<String> = None;
-    let list_height = 1 + options.len();
+    let mut input = InlineInput::new();
+    let list_height = 1 + total;
 
-    'outer: loop {
-        let guard = RawModeGuard::new()?;
-        render_multi_list(question, options, selected, &toggled, true);
+    let guard = RawModeGuard::new()?;
+    render_multi_list(question, &prompt_opts, selected, &toggled, true, None);
 
-        loop {
-            match crossterm::event::read() {
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Char(c @ '1'..='9'),
-                    ..
-                })) => {
-                    let idx = (c as usize) - ('1' as usize);
-                    if idx < options.len() {
-                        selected = idx;
-                        if options[selected].custom_input {
-                            clear_lines(list_height);
-                            drop(guard);
-                            let text = read_custom_input(question);
-                            return Some(MultiSelectResult {
-                                indices: toggled
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|&(ref i, &v)| v && !options[*i].custom_input)
-                                    .map(|(i, _)| i)
-                                    .collect(),
-                                custom_text: if text.is_empty() { None } else { Some(text) },
-                            });
-                        }
-                        render_multi_list(question, options, selected, &toggled, false);
-                    }
-                }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Char(' '),
-                    ..
-                })) => {
-                    if options[selected].custom_input {
-                        clear_lines(list_height);
-                        drop(guard);
-                        let text = read_custom_input(question);
-                        if text.is_empty() {
-                            captured_custom = None;
-                            toggled[selected] = false;
-                        } else {
-                            captured_custom = Some(text);
-                            toggled[selected] = true;
-                        }
-                        continue 'outer;
-                    }
-                    toggled[selected] = !toggled[selected];
-                    if selected < options.len() - 1 {
-                        selected += 1;
-                    }
-                    render_multi_list(question, options, selected, &toggled, false);
-                }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Char('c'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                })) => {
-                    clear_lines(list_height);
-                    drop(guard);
-                    return None;
-                }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Up, ..
-                }))
-                | Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Char('k'),
-                    ..
-                })) if selected > 0 => {
-                    selected -= 1;
-                    render_multi_list(question, options, selected, &toggled, false);
-                }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Down,
-                    ..
-                }))
-                | Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Char('j'),
-                    ..
-                })) if selected < options.len() - 1 => {
-                    selected += 1;
-                    render_multi_list(question, options, selected, &toggled, false);
-                }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
-                    ..
-                })) => {
+    loop {
+        let event = match crossterm::event::read() {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        if prompt_opts[selected].custom_input {
+            // ---- 内联输入模式（自定义输入选项） ----
+            match input.handle_event(&event) {
+                InputAction::Confirm(text) => {
                     clear_lines(list_height);
                     drop(guard);
 
                     let indices: Vec<usize> = toggled
                         .iter()
                         .enumerate()
-                        .filter(|&(ref i, &v)| v && !options[*i].custom_input)
+                        .filter(|&(i, &v)| v && !prompt_opts[i].custom_input)
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    let custom_text = if text.is_empty() { None } else { Some(text) };
+
+                    return Some(MultiSelectResult {
+                        indices,
+                        custom_text,
+                    });
+                }
+                InputAction::Cancel => {
+                    clear_lines(list_height);
+                    drop(guard);
+                    return None;
+                }
+                InputAction::Up if selected > 0 => {
+                    // 离开前保存输入的文本
+                    if !input.is_empty() {
+                        captured_custom = Some(input.text().to_string());
+                        toggled[selected] = true;
+                    }
+                    selected -= 1;
+                    render_multi_list(question, &prompt_opts, selected, &toggled, false, None);
+                }
+                InputAction::Down if selected < total - 1 => {
+                    // 离开前保存输入的文本
+                    if !input.is_empty() {
+                        captured_custom = Some(input.text().to_string());
+                        toggled[selected] = true;
+                    }
+                    selected += 1;
+                    render_multi_list(question, &prompt_opts, selected, &toggled, false, None);
+                }
+                InputAction::Updated => {
+                    render_multi_list(
+                        question,
+                        &prompt_opts,
+                        selected,
+                        &toggled,
+                        false,
+                        Some(input.text()),
+                    );
+                }
+                _ => {}
+            }
+        } else {
+            // ---- 普通导航模式 ----
+            match event {
+                // 数字快捷键 1-9
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c @ '1'..='9'),
+                    ..
+                }) => {
+                    let idx = (c as usize) - ('1' as usize);
+                    if idx < total {
+                        if prompt_opts[idx].custom_input {
+                            selected = idx;
+                            input.clear();
+                            render_multi_list(
+                                question,
+                                &prompt_opts,
+                                selected,
+                                &toggled,
+                                false,
+                                Some(""),
+                            );
+                            continue;
+                        }
+                        selected = idx;
+                        render_multi_list(question, &prompt_opts, selected, &toggled, false, None);
+                    }
+                }
+                // Space → 切换选中
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(' '),
+                    ..
+                }) => {
+                    toggled[selected] = !toggled[selected];
+                    if selected < total - 1 {
+                        selected += 1;
+                    }
+                    render_multi_list(question, &prompt_opts, selected, &toggled, false, None);
+                }
+                // Ctrl+C → 取消
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('c'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                }) => {
+                    clear_lines(list_height);
+                    drop(guard);
+                    return None;
+                }
+                // ↑ / k → 上移
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    ..
+                }) if selected > 0 => {
+                    selected -= 1;
+                    if prompt_opts[selected].custom_input {
+                        render_multi_list(
+                            question,
+                            &prompt_opts,
+                            selected,
+                            &toggled,
+                            false,
+                            Some(input.text()),
+                        );
+                    } else {
+                        render_multi_list(question, &prompt_opts, selected, &toggled, false, None);
+                    }
+                }
+                // ↓ / j → 下移
+                Event::Key(KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('j'),
+                    ..
+                }) if selected < total - 1 => {
+                    selected += 1;
+                    if prompt_opts[selected].custom_input {
+                        render_multi_list(
+                            question,
+                            &prompt_opts,
+                            selected,
+                            &toggled,
+                            false,
+                            Some(input.text()),
+                        );
+                    } else {
+                        render_multi_list(question, &prompt_opts, selected, &toggled, false, None);
+                    }
+                }
+                // Enter → 确认提交
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
+                    clear_lines(list_height);
+                    drop(guard);
+
+                    let indices: Vec<usize> = toggled
+                        .iter()
+                        .enumerate()
+                        .filter(|&(i, &v)| v && !prompt_opts[i].custom_input)
                         .map(|(i, _)| i)
                         .collect();
 
@@ -391,6 +484,7 @@ fn render_multi_list(
     selected: usize,
     toggled: &[bool],
     initial: bool,
+    input_preview: Option<&str>,
 ) {
     let mut stderr = std::io::stderr();
     let list_height = 1 + options.len();
@@ -401,30 +495,38 @@ fn render_multi_list(
         }
     }
 
-    writeln!(stderr, "\r{} {}", "?".green().bold(), question).ok();
+    writeln!(stderr, "\r{} {}\x1b[0K", "?".green().bold(), question).ok();
 
     for (i, opt) in options.iter().enumerate() {
         let is_sel = i == selected;
-        let checked = if toggled[i] { "✓" } else { " " };
         let prefix = if is_sel { "▸" } else { " " };
 
-        if opt.custom_input && toggled[i] {
+        if opt.custom_input && is_sel {
+            // 内联输入模式：只显示光标，隐藏 label（与单选一致）
+            let preview = input_preview.unwrap_or("");
+            if preview.is_empty() {
+                writeln!(stderr, "\r  {} █\x1b[0K", prefix).ok();
+            } else {
+                writeln!(stderr, "\r  {} {}█\x1b[0K", prefix, preview).ok();
+            }
+        } else if opt.custom_input && toggled[i] {
+            // 自定义选项已保存
+            writeln!(stderr, "\r  {} [✓] {}\x1b[0K", prefix, opt.label.green()).ok();
+        } else if opt.custom_input {
+            // 自定义选项未勾选：灰色 placeholder 样式（与单选一致）
             writeln!(
                 stderr,
-                "\r  {} [{}] {}  ─ {}  {}",
+                "\r  {} [ ] {}\x1b[0K",
                 prefix,
-                checked,
-                opt.label.green(),
-                opt.description,
-                "(Enter 后输入)".green()
+                opt.label.dark_grey()
             )
             .ok();
         } else if is_sel {
             writeln!(
                 stderr,
-                "\r  {} [{}] {}  ─ {}",
+                "\r  {} [{}] {}  ─ {}\x1b[0K",
                 prefix,
-                checked,
+                if toggled[i] { "✓" } else { " " },
                 opt.label.green(),
                 opt.description
             )
@@ -432,8 +534,11 @@ fn render_multi_list(
         } else {
             writeln!(
                 stderr,
-                "\r  {} [{}] {}  ─ {}",
-                prefix, checked, opt.label, opt.description
+                "\r  {} [{}] {}  ─ {}\x1b[0K",
+                prefix,
+                if toggled[i] { "✓" } else { " " },
+                opt.label,
+                opt.description
             )
             .ok();
         }
@@ -571,8 +676,8 @@ mod tests {
             custom_input: false,
         }];
         let toggled = [false];
-        render_multi_list("测试?", &options, 0, &toggled, true);
-        render_multi_list("测试?", &options, 0, &toggled, false);
+        render_multi_list("测试?", &options, 0, &toggled, true, None);
+        render_multi_list("测试?", &options, 0, &toggled, false, None);
     }
 
     #[test]

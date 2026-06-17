@@ -8,9 +8,12 @@
 //!
 //! - [`types`] — 共享类型定义（选项、选择结果等）
 //! - [`select`] — 单选/多选选择器实现
+//! - [`input`] — 内联输入状态机
 
+pub mod input;
 pub mod select;
 pub mod types;
 
+pub use input::{InlineInput, InputAction};
 pub use select::{prompt_multi_select, prompt_single_select};
 pub use types::{MultiSelectResult, SelectOption, SingleSelectResult};
