@@ -1193,6 +1193,7 @@ impl AiAgent {
             )));
         }
 
+        use crate::tui::ProgressTracker;
         use futures_util::StreamExt as _;
         use futures_util::stream::FuturesUnordered;
 
@@ -1206,6 +1207,21 @@ impl AiAgent {
         let mut log_lines: Vec<Option<String>> = vec![None; total];
         let mut state_updates: Vec<(String, u64)> = Vec::new();
 
+        // ---- 初始化进度显示 ----
+        let mut tracker = ProgressTracker::new();
+        let mut progress_handles: Vec<Option<crate::tui::progress::ProgressHandle>> =
+            Vec::with_capacity(total);
+        for (_, name, input) in tool_uses.iter() {
+            let icon = crate::agent::executor::tool_icon(name);
+            let param = crate::agent::executor::format_tool_param(name, input);
+            let label = format!("{} {}  {}", icon, name, param);
+            progress_handles.push(Some(tracker.add(label)));
+        }
+        // 所有条目启动 spinner，未知工具稍后标记失败
+        for h in progress_handles.iter().flatten() {
+            h.set_running(None);
+        }
+
         // 为每个工具构造一个并发执行的 future
         for (idx, (tool_use_id, name, input)) in tool_uses.iter().enumerate() {
             let handler = self
@@ -1215,6 +1231,9 @@ impl AiAgent {
 
             let Some(handler) = handler else {
                 // 未知工具直接生成错误结果，不创建 future
+                if let Some(h) = &progress_handles[idx] {
+                    h.set_failed("Unknown tool");
+                }
                 let line = format!("[工具] ❌ {}  Unknown tool (0s, 0 字符)", name);
                 output::send(&output::Message::tool_output(line.clone()));
                 results[idx] = Some(format!("[Tool error: Unknown tool: {}]", name));
@@ -1228,6 +1247,7 @@ impl AiAgent {
             let input_clone = input.clone();
             let tool_use_id_clone = tool_use_id.clone();
             let name_clone = name.clone();
+            let progress_handle = progress_handles[idx].clone();
 
             // 预读检查使用 read_file_state 的快照
             let pre_read_error: Option<String> = match name.as_str() {
@@ -1281,6 +1301,9 @@ impl AiAgent {
                 let (result_text, file_state, log_line, error_opt) =
                     if let Some(err_msg) = pre_read_error {
                         tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
+                        if let Some(h) = &progress_handle {
+                            h.set_failed(&err_msg);
+                        }
                         let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
                         (
                             format!("[Tool error: {}]", err_msg),
@@ -1316,6 +1339,9 @@ impl AiAgent {
                                     result_len = text.len(),
                                     "工具执行成功"
                                 );
+                                if let Some(h) = &progress_handle {
+                                    h.set_success(Some(&format!("{:.1}s", elapsed.as_secs_f64())));
+                                }
                                 let line = format!(
                                     "[工具] {} {}  {}  ({:.1}s, {} 字符)",
                                     icon,
@@ -1329,6 +1355,9 @@ impl AiAgent {
                             Err(e) => {
                                 tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
                                 let err_string = e.to_string();
+                                if let Some(h) = &progress_handle {
+                                    h.set_failed(&err_string);
+                                }
                                 let line = format!(
                                     "[工具] {} {}  {}  ❌ 失败: {}",
                                     icon, name_clone, param, err_string
@@ -1387,6 +1416,9 @@ impl AiAgent {
                 state_updates.push((fp, mtime));
             }
         }
+
+        // 关闭进度显示，清理终端行
+        tracker.close();
 
         // 按原始顺序统一输出，避免并发 output::send 交错
         for line in log_lines.iter().flatten() {
