@@ -334,11 +334,8 @@ pub(crate) async fn cmd_run(
             )));
         }
 
-        // Phase 2: 审批循环（最多 3 轮）
-        let mut plan_approved = false;
-        let max_retries = 3;
-
-        for attempt in 0..max_retries {
+        // Phase 2: 审批循环（无限迭代，直到用户批准或 Ctrl+C 中断）
+        loop {
             output::send(&Message::info("[Plan] Phase 2 — 请审阅方案"));
 
             let approved = inquire::Confirm::new("是否按此方案执行？")
@@ -347,118 +344,103 @@ pub(crate) async fn cmd_run(
                 .map_err(|e| e.to_string())?;
 
             if approved {
-                plan_approved = true;
                 break;
             }
 
             // 用户未批准，获取修改意见
-            if attempt < max_retries - 1 {
-                let feedback = inquire::Text::new("请输入修改意见（留空取消）：")
-                    .prompt()
-                    .map_err(|e| e.to_string())?;
+            let feedback = inquire::Text::new("请输入修改意见（留空则重新询问）：")
+                .prompt()
+                .map_err(|e| e.to_string())?;
 
-                if feedback.trim().is_empty() {
-                    output::send(&Message::info("[Plan] 已取消执行"));
-                    agent.finish_session(crate::agent::session_logger::ExitReason::Interrupted);
-                    return Ok(());
-                }
-
-                // 将反馈注入上下文，重新执行 Phase 1
-                agent.add_user_message(&format!(
-                    "[用户对方案的反馈] {}\n\n请根据以上反馈调整方案。",
-                    feedback
-                ));
-
-                output::send(&Message::info(format!(
-                    "[Plan] 收到反馈，重新规划（剩余重试: {}）",
-                    max_retries - attempt - 1
-                )));
-
-                let plan_response = agent
-                    .chat_with_tools(
-                        &format!(
-                            "{}\n\n## 用户需求\n{}\n\n## 用户反馈\n请根据以上反馈调整方案。",
-                            system_prompt::PLAN_INSTRUCTION,
-                            content,
-                        ),
-                        |chunk| {
-                            output::send(&Message::llm_chunk(chunk));
-                        },
-                    )
-                    .await?;
-
-                if let Some(ref path) = plan_path {
-                    std::fs::write(path, &plan_response).map_err(|e| e.to_string())?;
-                    output::send(&Message::info(format!(
-                        "[Plan] 方案已更新: {}",
-                        path.display()
-                    )));
-                }
-            } else {
+            if feedback.trim().is_empty() {
                 output::send(&Message::info(
-                    "[Plan] 方案修改次数过多，建议拆解需求后重新提交",
+                    "[Plan] 未收到修改意见，请提供方向或按 Ctrl+C 中断",
                 ));
-                agent.finish_session(crate::agent::session_logger::ExitReason::Interrupted);
-                return Ok(());
+                continue;
+            }
+
+            // 将反馈注入上下文，重新生成方案
+            agent.add_user_message(&format!(
+                "[用户对方案的反馈] {}\n\n请根据以上反馈调整方案。",
+                feedback
+            ));
+
+            output::send(&Message::info("[Plan] 收到反馈，继续优化方案"));
+
+            let plan_response = agent
+                .chat_with_tools(
+                    &format!(
+                        "{}\n\n## 用户需求\n{}\n\n## 用户反馈\n请根据以上反馈调整方案。",
+                        system_prompt::PLAN_INSTRUCTION,
+                        content,
+                    ),
+                    |chunk| {
+                        output::send(&Message::llm_chunk(chunk));
+                    },
+                )
+                .await?;
+
+            if let Some(ref path) = plan_path {
+                std::fs::write(path, &plan_response).map_err(|e| e.to_string())?;
+                output::send(&Message::info(format!(
+                    "[Plan] 方案已更新: {}",
+                    path.display()
+                )));
             }
         }
 
-        if plan_approved {
-            // Phase 3: 重新注册执行工具，按批准方案执行
-            output::send(&Message::info("[Plan] Phase 3 — 执行阶段（已批准方案）"));
+        // Phase 2 结束，方案已批准，进入 Phase 3 执行
 
-            // 重新注册 shell_exec
-            let (allowed_commands, denied_commands) = settings::load_settings()
-                .ok()
-                .flatten()
-                .and_then(|s| s.permissions)
-                .map(|p| (p.commands.allow, p.commands.deny))
-                .unwrap_or_default();
-            let shell_exec = if permission_mode == PermissionMode::ReadOnly {
-                shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-                    readonly_mode: true,
-                    allowed_commands: shell_exec::builtin_safe_commands(),
-                    denied_commands,
-                    skip_confirm: true,
-                    ..Default::default()
-                })
-            } else {
-                shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-                    allowed_commands,
-                    denied_commands,
-                    ..Default::default()
-                })
-            };
-            agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+        // Phase 3: 重新注册执行工具，按批准方案执行
+        output::send(&Message::info("[Plan] Phase 3 — 执行阶段（已批准方案）"));
 
-            // 重新注册 file_edit 和 file_write
-            let file_edit = file_edit::FileEdit::new(Default::default());
-            agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
-            let file_write = file_write::FileWrite::new(Default::default());
-            agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
-
-            // 注入已批准方案到执行阶段 prompt
-            let plan_content = plan_path
-                .as_ref()
-                .and_then(|p| std::fs::read_to_string(p).ok())
-                .unwrap_or_default();
-            let exec_prompt = format!(
-                "{}\n\n## 用户原始需求\n{}\n\n## 已批准方案\n{}",
-                system_prompt::EXEC_INSTRUCTION,
-                content,
-                plan_content,
-            );
-
-            agent
-                .chat_with_tools(&exec_prompt, |chunk| {
-                    output::send(&Message::llm_chunk(chunk));
-                })
-                .await?;
+        // 重新注册 shell_exec
+        let (allowed_commands, denied_commands) = settings::load_settings()
+            .ok()
+            .flatten()
+            .and_then(|s| s.permissions)
+            .map(|p| (p.commands.allow, p.commands.deny))
+            .unwrap_or_default();
+        let shell_exec = if permission_mode == PermissionMode::ReadOnly {
+            shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+                readonly_mode: true,
+                allowed_commands: shell_exec::builtin_safe_commands(),
+                denied_commands,
+                skip_confirm: true,
+                ..Default::default()
+            })
         } else {
-            output::send(&Message::info("[Plan] 方案未批准，退出"));
-            agent.finish_session(crate::agent::session_logger::ExitReason::Interrupted);
-            return Ok(());
-        }
+            shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+                allowed_commands,
+                denied_commands,
+                ..Default::default()
+            })
+        };
+        agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+
+        // 重新注册 file_edit 和 file_write
+        let file_edit = file_edit::FileEdit::new(Default::default());
+        agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
+        let file_write = file_write::FileWrite::new(Default::default());
+        agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
+
+        // 注入已批准方案到执行阶段 prompt
+        let plan_content = plan_path
+            .as_ref()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .unwrap_or_default();
+        let exec_prompt = format!(
+            "{}\n\n## 用户原始需求\n{}\n\n## 已批准方案\n{}",
+            system_prompt::EXEC_INSTRUCTION,
+            content,
+            plan_content,
+        );
+
+        agent
+            .chat_with_tools(&exec_prompt, |chunk| {
+                output::send(&Message::llm_chunk(chunk));
+            })
+            .await?;
     } else {
         // Base 模式：直接执行（当前行为）
         let _response = agent
