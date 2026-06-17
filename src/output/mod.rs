@@ -12,7 +12,30 @@ mod terminal;
 pub use log::LogTarget;
 pub use terminal::TerminalTarget;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
+
+/// 全局标志：是否静默 TerminalTarget 的视觉输出。
+/// 当 RunProgress 面板活跃时置为 true，面板结束后恢复 false。
+pub(crate) static SUPPRESS_TERMINAL: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard：在 RunProgress 活跃期间自动静默 TerminalTarget，
+/// 离开作用域（含 panic）时自动恢复。
+pub(crate) struct TerminalGuard;
+
+impl TerminalGuard {
+    /// 创建 guard 并开始静默 TerminalTarget
+    pub(crate) fn suppress() -> Self {
+        SUPPRESS_TERMINAL.store(true, Ordering::Relaxed);
+        TerminalGuard
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        SUPPRESS_TERMINAL.store(false, Ordering::Relaxed);
+    }
+}
 
 // ============================================================================
 // Message & MessageKind

@@ -127,6 +127,11 @@ pub struct ProgressHandle {
 }
 
 impl ProgressHandle {
+    /// 创建一个新的 ProgressHandle（供同模块内使用）
+    pub(crate) fn new(pb: ProgressBar, label: String) -> Self {
+        ProgressHandle { pb, label }
+    }
+
     /// 标记为执行中，启动 spinner 动画。
     ///
     /// `status` 是可选的执行状态描述，显示在 label 后的括号中。

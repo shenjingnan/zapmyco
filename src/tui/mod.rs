@@ -15,10 +15,12 @@
 
 pub mod input;
 pub mod progress;
+pub mod run_progress;
 pub mod select;
 pub mod types;
 
 pub use input::{InlineInput, InputAction};
 pub use progress::ProgressTracker;
+pub use run_progress::{CollapsedHandle, RunProgress, TaskHandle, TransientHandle};
 pub use select::{prompt_multi_select, prompt_single_select};
 pub use types::{MultiSelectResult, SelectOption, SingleSelectResult};

@@ -21,6 +21,7 @@ use crate::config::settings::{
     is_session_log_enabled, load_settings, resolve_env_ref, update_settings_model,
 };
 use crate::output;
+use crate::tui::RunProgress;
 
 /// AiAgent 配置选项
 #[derive(Debug, Default)]
@@ -827,6 +828,7 @@ impl AiAgent {
     pub async fn chat_with_tools(
         &mut self,
         input: &str,
+        progress: &RunProgress,
         mut on_chunk: impl FnMut(&str),
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
@@ -852,12 +854,9 @@ impl AiAgent {
         });
 
         for round in 0..self.max_tool_rounds {
-            output::send(&output::Message::info("\n[LLM] 🤔 思考中...".to_string()));
+            progress.set_status("[LLM] 🤔 思考中...");
 
             let result = self.stream_one_round(&mut on_chunk).await?;
-
-            // 流式文本与后续日志之间换行
-            output::send(&output::Message::info(String::new()));
 
             // 输出 token 用量
             crate::agent::executor::print_usage_line(
@@ -923,14 +922,17 @@ impl AiAgent {
 
             for batch in batches {
                 if batch.is_concurrency_safe {
-                    let (blocks, state_updates) =
-                        self.execute_tools_concurrent(&batch.items, round).await?;
+                    let (blocks, state_updates) = self
+                        .execute_tools_concurrent(&batch.items, round, progress)
+                        .await?;
                     for (fp, mtime) in state_updates {
                         self.read_file_state.insert(fp, mtime);
                     }
                     tool_result_blocks.extend(blocks);
                 } else {
-                    let blocks = self.execute_tools_serial(&batch.items, round).await?;
+                    let blocks = self
+                        .execute_tools_serial(&batch.items, round, progress)
+                        .await?;
                     tool_result_blocks.extend(blocks);
                 }
             }
@@ -943,6 +945,7 @@ impl AiAgent {
             });
 
             self.print_task_summary_if_needed().await;
+            progress.tick();
         }
 
         Err(format!(
@@ -978,6 +981,7 @@ impl AiAgent {
         &mut self,
         tool_uses: &[(String, String, serde_json::Value)],
         round: u32,
+        progress: &RunProgress,
     ) -> Result<Vec<ContentBlock>, String> {
         // 按工具类型统计并输出本轮概览
         {
@@ -1002,11 +1006,11 @@ impl AiAgent {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            output::send(&output::Message::info(format!(
-                "\n[工具] 📋 本轮 {} 个工具调用: {}",
+            progress.set_status(&format!(
+                "[工具] 📋 本轮 {} 个工具调用: {}",
                 tool_uses.len(),
                 count_summary
-            )));
+            ));
         }
 
         let mut tool_result_blocks: Vec<ContentBlock> = Vec::new();
@@ -1032,6 +1036,11 @@ impl AiAgent {
                 });
                 continue;
             };
+
+            let icon = crate::agent::executor::tool_icon(name);
+            let param = crate::agent::executor::format_tool_param(name, input);
+            let label = format!("{} {}  {}", icon, name, param);
+            let th = progress.start_item(&label);
 
             // ---- 预读检查：file_write 和 file_edit 必须先读后写 ----
             let pre_read_error: Option<String> = match name.as_str() {
@@ -1079,9 +1088,6 @@ impl AiAgent {
                 _ => None,
             };
 
-            let icon = crate::agent::executor::tool_icon(name);
-            let param = crate::agent::executor::format_tool_param(name, input);
-
             let (result_text, error_opt) = if let Some(err_msg) = pre_read_error {
                 tracing::warn!(tool = %name, error = %err_msg, "工具预读检查失败");
                 output::send(&output::Message::tool_error(
@@ -1089,6 +1095,7 @@ impl AiAgent {
                     name.clone(),
                     err_msg.clone(),
                 ));
+                progress.finish_item(&th, false, Some(&err_msg));
                 (format!("[Tool error: {}]", err_msg), Some(err_msg))
             } else {
                 match handler.execute(input).await {
@@ -1120,6 +1127,11 @@ impl AiAgent {
                             param.clone(),
                             elapsed.as_millis() as u64,
                         ));
+                        progress.finish_item(
+                            &th,
+                            true,
+                            Some(&format!("{:.1}s", elapsed.as_secs_f64())),
+                        );
                         (text, None)
                     }
                     Err(e) => {
@@ -1130,6 +1142,7 @@ impl AiAgent {
                             e.to_string(),
                         ));
                         let err_string = e.to_string();
+                        progress.finish_item(&th, false, Some(&err_string));
                         (format!("[Tool error: {}", err_string), Some(err_string))
                     }
                 }
@@ -1162,6 +1175,7 @@ impl AiAgent {
         &self,
         tool_uses: &[(String, String, serde_json::Value)],
         round: u32,
+        progress: &RunProgress,
     ) -> Result<(Vec<ContentBlock>, Vec<(String, u64)>), String> {
         // 按工具类型统计并输出本轮概览
         {
@@ -1186,14 +1200,14 @@ impl AiAgent {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            output::send(&output::Message::info(format!(
-                "\n[工具] 📋 本轮 {} 个工具调用（并行）: {}",
+            progress.set_status(&format!(
+                "[工具] 📋 本轮 {} 个工具调用（并行）: {}",
                 tool_uses.len(),
                 count_summary
-            )));
+            ));
         }
 
-        use crate::tui::ProgressTracker;
+        use crate::tui::TransientHandle;
         use futures_util::StreamExt as _;
         use futures_util::stream::FuturesUnordered;
 
@@ -1207,19 +1221,15 @@ impl AiAgent {
         let mut log_lines: Vec<Option<String>> = vec![None; total];
         let mut state_updates: Vec<(String, u64)> = Vec::new();
 
-        // ---- 初始化进度显示 ----
-        let mut tracker = ProgressTracker::new();
-        let mut progress_handles: Vec<Option<crate::tui::progress::ProgressHandle>> =
-            Vec::with_capacity(total);
+        // ---- 初始化进度显示（使用 RunProgress 临时项） ----
+        let mut transient_handles: Vec<Option<TransientHandle>> = Vec::with_capacity(total);
         for (_, name, input) in tool_uses.iter() {
             let icon = crate::agent::executor::tool_icon(name);
             let param = crate::agent::executor::format_tool_param(name, input);
             let label = format!("{} {}  {}", icon, name, param);
-            progress_handles.push(Some(tracker.add(label)));
-        }
-        // 所有条目启动 spinner，未知工具稍后标记失败
-        for h in progress_handles.iter().flatten() {
-            h.set_running(None);
+            let th = progress.start_item(&label);
+            th.handle.set_running(None);
+            transient_handles.push(Some(th));
         }
 
         // 为每个工具构造一个并发执行的 future
@@ -1231,8 +1241,8 @@ impl AiAgent {
 
             let Some(handler) = handler else {
                 // 未知工具直接生成错误结果，不创建 future
-                if let Some(h) = &progress_handles[idx] {
-                    h.set_failed("Unknown tool");
+                if let Some(h) = &transient_handles[idx] {
+                    h.handle.set_failed("Unknown tool");
                 }
                 let line = format!("[工具] ❌ {}  Unknown tool (0s, 0 字符)", name);
                 output::send(&output::Message::tool_output(line.clone()));
@@ -1247,7 +1257,7 @@ impl AiAgent {
             let input_clone = input.clone();
             let tool_use_id_clone = tool_use_id.clone();
             let name_clone = name.clone();
-            let progress_handle = progress_handles[idx].clone();
+            let th = transient_handles[idx].clone();
 
             // 预读检查使用 read_file_state 的快照
             let pre_read_error: Option<String> = match name.as_str() {
@@ -1298,79 +1308,82 @@ impl AiAgent {
             futures.push(Box::pin(async move {
                 let tool_start = Instant::now();
 
-                let (result_text, file_state, log_line, error_opt) =
-                    if let Some(err_msg) = pre_read_error {
-                        tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
-                        if let Some(h) = &progress_handle {
-                            h.set_failed(&err_msg);
-                        }
-                        let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
-                        (
-                            format!("[Tool error: {}]", err_msg),
-                            None,
-                            line,
-                            Some(err_msg),
-                        )
-                    } else {
-                        match handler.execute(&input_clone).await {
-                            Ok(text) => {
-                                let file_state = if name_clone == "file_read" {
-                                    input_clone.get("file_path").and_then(|v| v.as_str()).map(
-                                        |fp| {
-                                            let mtime = std::path::Path::new(fp)
-                                                .metadata()
-                                                .ok()
-                                                .and_then(|meta| meta.modified().ok())
-                                                .and_then(|mtime| {
-                                                    mtime.duration_since(std::time::UNIX_EPOCH).ok()
-                                                })
-                                                .map(|d| d.as_millis() as u64)
-                                                .unwrap_or(0);
-                                            (fp.to_string(), mtime)
-                                        },
-                                    )
-                                } else {
-                                    None
-                                };
-                                let elapsed = tool_start.elapsed();
-                                tracing::info!(
-                                    tool = %name_clone,
-                                    duration_ms = elapsed.as_millis() as u64,
-                                    result_len = text.len(),
-                                    "工具执行成功"
-                                );
-                                if let Some(h) = &progress_handle {
-                                    h.set_success(Some(&format!("{:.1}s", elapsed.as_secs_f64())));
-                                }
-                                let line = format!(
-                                    "[工具] {} {}  {}  ({:.1}s, {} 字符)",
-                                    icon,
-                                    name_clone,
-                                    param,
-                                    elapsed.as_secs_f64(),
-                                    text.len()
-                                );
-                                (text, file_state, line, None)
+                let (result_text, file_state, log_line, error_opt) = if let Some(err_msg) =
+                    pre_read_error
+                {
+                    tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
+                    if let Some(h) = &th {
+                        h.handle.set_failed(&err_msg);
+                    }
+                    let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
+                    (
+                        format!("[Tool error: {}]", err_msg),
+                        None,
+                        line,
+                        Some(err_msg),
+                    )
+                } else {
+                    match handler.execute(&input_clone).await {
+                        Ok(text) => {
+                            let file_state = if name_clone == "file_read" {
+                                input_clone
+                                    .get("file_path")
+                                    .and_then(|v| v.as_str())
+                                    .map(|fp| {
+                                        let mtime = std::path::Path::new(fp)
+                                            .metadata()
+                                            .ok()
+                                            .and_then(|meta| meta.modified().ok())
+                                            .and_then(|mtime| {
+                                                mtime.duration_since(std::time::UNIX_EPOCH).ok()
+                                            })
+                                            .map(|d| d.as_millis() as u64)
+                                            .unwrap_or(0);
+                                        (fp.to_string(), mtime)
+                                    })
+                            } else {
+                                None
+                            };
+                            let elapsed = tool_start.elapsed();
+                            tracing::info!(
+                                tool = %name_clone,
+                                duration_ms = elapsed.as_millis() as u64,
+                                result_len = text.len(),
+                                "工具执行成功"
+                            );
+                            if let Some(h) = &th {
+                                h.handle
+                                    .set_success(Some(&format!("{:.1}s", elapsed.as_secs_f64())));
                             }
-                            Err(e) => {
-                                tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
-                                let err_string = e.to_string();
-                                if let Some(h) = &progress_handle {
-                                    h.set_failed(&err_string);
-                                }
-                                let line = format!(
-                                    "[工具] {} {}  {}  ❌ 失败: {}",
-                                    icon, name_clone, param, err_string
-                                );
-                                (
-                                    format!("[Tool error: {}]", err_string),
-                                    None,
-                                    line,
-                                    Some(err_string),
-                                )
-                            }
+                            let line = format!(
+                                "[工具] {} {}  {}  ({:.1}s, {} 字符)",
+                                icon,
+                                name_clone,
+                                param,
+                                elapsed.as_secs_f64(),
+                                text.len()
+                            );
+                            (text, file_state, line, None)
                         }
-                    };
+                        Err(e) => {
+                            tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
+                            let err_string = e.to_string();
+                            if let Some(h) = &th {
+                                h.handle.set_failed(&err_string);
+                            }
+                            let line = format!(
+                                "[工具] {} {}  {}  ❌ 失败: {}",
+                                icon, name_clone, param, err_string
+                            );
+                            (
+                                format!("[Tool error: {}]", err_string),
+                                None,
+                                line,
+                                Some(err_string),
+                            )
+                        }
+                    }
+                };
 
                 let duration_ms = tool_start.elapsed().as_millis() as u64;
                 (
@@ -1417,10 +1430,13 @@ impl AiAgent {
             }
         }
 
-        // 关闭进度显示，清理终端行
-        tracker.close();
+        // 标记所有临时项已完成（视觉已由 future 中设置），等待 tick 自动移除
+        for th in transient_handles.iter().flatten() {
+            progress.mark_item_completed(th);
+        }
+        progress.tick();
 
-        // 按原始顺序统一输出，避免并发 output::send 交错
+        // 按原始顺序统一输出（供 LogTarget 记录）
         for line in log_lines.iter().flatten() {
             output::send(&output::Message::tool_output(line.clone()));
         }
@@ -1436,6 +1452,28 @@ impl AiAgent {
             .collect();
 
         Ok((blocks, state_updates))
+    }
+
+    /// 测试辅助：串行执行（自动创建静默 Progress 面板）
+    #[cfg(test)]
+    pub(crate) async fn execute_tools_serial_test(
+        &mut self,
+        tool_uses: &[(String, String, serde_json::Value)],
+        round: u32,
+    ) -> Result<Vec<ContentBlock>, String> {
+        let p = crate::tui::RunProgress::new();
+        self.execute_tools_serial(tool_uses, round, &p).await
+    }
+
+    /// 测试辅助：并发执行（自动创建静默 Progress 面板）
+    #[cfg(test)]
+    pub(crate) async fn execute_tools_concurrent_test(
+        &self,
+        tool_uses: &[(String, String, serde_json::Value)],
+        round: u32,
+    ) -> Result<(Vec<ContentBlock>, Vec<(String, u64)>), String> {
+        let p = crate::tui::RunProgress::new();
+        self.execute_tools_concurrent(tool_uses, round, &p).await
     }
 
     /// 构建请求参数
@@ -2945,7 +2983,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses, 0)
+                    .execute_tools_serial_test(&tool_uses, 0)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -2984,7 +3022,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses, 0)
+                    .execute_tools_serial_test(&tool_uses, 0)
                     .await
                     .expect("execute_tools should not fail");
 
@@ -3017,7 +3055,7 @@ mod tests {
                     "file_path": test_file.to_string_lossy().to_string(),
                 });
                 let _ = agent
-                    .execute_tools_serial(
+                    .execute_tools_serial_test(
                         &vec![("tu00".to_string(), "file_read".to_string(), read_input)],
                         0,
                     )
@@ -3039,7 +3077,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses, 0)
+                    .execute_tools_serial_test(&tool_uses, 0)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -3076,7 +3114,7 @@ mod tests {
                 )];
 
                 let results = agent
-                    .execute_tools_serial(&tool_uses, 0)
+                    .execute_tools_serial_test(&tool_uses, 0)
                     .await
                     .expect("execute_tools should succeed");
 
@@ -3100,7 +3138,7 @@ mod tests {
                     serde_json::json!({}),
                 )];
 
-                let result = agent.execute_tools_serial(&tool_uses, 0).await;
+                let result = agent.execute_tools_serial_test(&tool_uses, 0).await;
                 assert!(result.is_ok(), "unknown tool should not cause fatal error");
                 let blocks = result.unwrap();
                 assert_eq!(blocks.len(), 1, "should return one tool result");
@@ -3718,7 +3756,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -3743,7 +3781,7 @@ mod tests {
             rt.block_on(async {
                 let agent = make_agent_with_tools(home, &["file_read"]);
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&[], 0)
+                    .execute_tools_concurrent_test(&[], 0)
                     .await
                     .expect("empty batch should succeed");
 
@@ -3773,7 +3811,7 @@ mod tests {
                 )];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("single tool should succeed");
 
@@ -3818,7 +3856,7 @@ mod tests {
                 ];
 
                 let (blocks, _) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -3873,7 +3911,7 @@ mod tests {
                 )];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent read should succeed");
 
@@ -3918,7 +3956,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent read should succeed");
 
@@ -3967,7 +4005,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent mixed execution should succeed");
 
@@ -4013,7 +4051,7 @@ mod tests {
                     serde_json::json!({}),
                 )];
 
-                let result = agent.execute_tools_concurrent(&tool_uses, 0).await;
+                let result = agent.execute_tools_concurrent_test(&tool_uses, 0).await;
                 assert!(result.is_ok(), "unknown tool should not cause fatal error");
                 let (blocks, _) = result.unwrap();
                 assert_eq!(blocks.len(), 1, "should return one tool result");
@@ -4052,7 +4090,7 @@ mod tests {
                 ];
 
                 // 串行执行 — 不应 panic 或返回 Err
-                let result = agent.execute_tools_serial(&tool_uses, 0).await;
+                let result = agent.execute_tools_serial_test(&tool_uses, 0).await;
                 assert!(
                     result.is_ok(),
                     "serial: unknown tool mixed with known should not error"
@@ -4089,7 +4127,7 @@ mod tests {
                 );
 
                 // 并发执行 — 不应 panic 或返回 Err
-                let result = agent.execute_tools_concurrent(&tool_uses, 0).await;
+                let result = agent.execute_tools_concurrent_test(&tool_uses, 0).await;
                 assert!(
                     result.is_ok(),
                     "concurrent: unknown tool mixed with known should not error"
@@ -4140,7 +4178,7 @@ mod tests {
                 ];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should not fail even if some find nothing");
 
@@ -4195,8 +4233,10 @@ mod tests {
                     }),
                 )];
 
-                let (blocks, state_updates) =
-                    agent.execute_tools_concurrent(&tool_uses, 0).await.expect(
+                let (blocks, state_updates) = agent
+                    .execute_tools_concurrent_test(&tool_uses, 0)
+                    .await
+                    .expect(
                         "concurrent execution should not fail (pre-read check returns error msg)",
                     );
 
@@ -4235,7 +4275,7 @@ mod tests {
                 )];
 
                 let (blocks, _) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -4273,7 +4313,7 @@ mod tests {
                 ];
 
                 let (blocks, _) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should not panic on failure");
 
@@ -4305,7 +4345,7 @@ mod tests {
                 )];
 
                 let (blocks, state_updates) = agent
-                    .execute_tools_concurrent(&tool_uses, 0)
+                    .execute_tools_concurrent_test(&tool_uses, 0)
                     .await
                     .expect("concurrent execution should succeed");
 
@@ -4373,7 +4413,7 @@ mod tests {
                 // Batch 1: safe — 并发执行
                 assert!(batches[0].is_concurrency_safe);
                 let (b1_blocks, _) = agent
-                    .execute_tools_concurrent(&batches[0].items, 0)
+                    .execute_tools_concurrent_test(&batches[0].items, 0)
                     .await
                     .expect("batch 1 concurrent should succeed");
                 assert_eq!(b1_blocks.len(), 1);
@@ -4389,7 +4429,7 @@ mod tests {
                 // Batch 2: unsafe — 串行执行
                 assert!(!batches[1].is_concurrency_safe);
                 let b2_blocks = agent
-                    .execute_tools_serial(&batches[1].items, 0)
+                    .execute_tools_serial_test(&batches[1].items, 0)
                     .await
                     .expect("batch 2 serial should succeed");
                 assert_eq!(b2_blocks.len(), 1);
@@ -4405,7 +4445,7 @@ mod tests {
                 // Batch 3: safe — 并发执行
                 assert!(batches[2].is_concurrency_safe);
                 let (b3_blocks, _) = agent
-                    .execute_tools_concurrent(&batches[2].items, 0)
+                    .execute_tools_concurrent_test(&batches[2].items, 0)
                     .await
                     .expect("batch 3 concurrent should succeed");
                 assert_eq!(b3_blocks.len(), 1);
@@ -4437,7 +4477,7 @@ mod tests {
                 )];
 
                 let (read_blocks, state_updates) = agent
-                    .execute_tools_concurrent(&read_tools, 0)
+                    .execute_tools_concurrent_test(&read_tools, 0)
                     .await
                     .expect("concurrent read should succeed");
 
@@ -4469,7 +4509,7 @@ mod tests {
                 )];
 
                 let edit_blocks = agent
-                    .execute_tools_serial(&edit_tools, 0)
+                    .execute_tools_serial_test(&edit_tools, 0)
                     .await
                     .expect("serial edit should succeed after read");
 
