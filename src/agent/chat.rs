@@ -1098,7 +1098,20 @@ impl AiAgent {
                 progress.finish_item(&th, false, Some(&err_msg));
                 (format!("[Tool error: {}]", err_msg), Some(err_msg))
             } else {
-                match handler.execute(input).await {
+                // 交互式工具（如 ask_user）使用 crossterm 原始模式，
+                // 暂停 MultiProgress 动画以避免与 crossterm 冲突
+                let is_interactive = matches!(name.as_str(), "ask_user");
+                if is_interactive {
+                    progress.pause();
+                }
+
+                let result = handler.execute(input).await;
+
+                if is_interactive {
+                    progress.resume();
+                }
+
+                match result {
                     Ok(text) => {
                         // ---- 文件读取后记录状态 ----
                         if name.as_str() == "file_read"

@@ -353,6 +353,30 @@ impl RunProgress {
         result
     }
 
+    // ── 暂停/恢复（用于交互式工具执行时避免与 crossterm 冲突）──
+
+    /// 暂停所有 spinner 动画和面板刷新。
+    /// 在交互式工具（如 ask_user）执行前调用，避免与 crossterm 原始模式冲突。
+    pub fn pause(&self) {
+        self.status_bar.disable_steady_tick();
+        let inner = self.inner.lock().unwrap();
+        for item in &inner.transient {
+            item.bar.disable_steady_tick();
+        }
+    }
+
+    /// 恢复所有 spinner 动画和面板刷新。
+    /// 在交互式工具执行完成后调用。
+    pub fn resume(&self) {
+        self.status_bar
+            .enable_steady_tick(Duration::from_millis(TICK_INTERVAL_MS));
+        let inner = self.inner.lock().unwrap();
+        for item in &inner.transient {
+            item.bar
+                .enable_steady_tick(Duration::from_millis(TICK_INTERVAL_MS));
+        }
+    }
+
     // ── 清理 ──
 
     /// 关闭面板，清理所有进度行。
