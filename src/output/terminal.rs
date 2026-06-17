@@ -2,8 +2,14 @@
 //!
 //! TerminalTarget 不做格式化——消息的 text 已包含终端需要的内容和 ANSI。
 //! 只负责：根据 MessageKind 决定 text 写到 stdout 还是 stderr。
+//!
+//! 当 `PROGRESS_ACTIVE` 标志为 true 时，会跳过由 ProgressTarget 处理的
+//! 进度类消息类型（LlmThinking、LlmUsage、ToolCall、ToolResult、ToolError、ToolOutput），
+//! 避免终端重复输出。
 
-use crate::output::{Channel, Message, MessageKind, Target};
+use std::sync::atomic::Ordering;
+
+use crate::output::{Channel, Message, MessageKind, PROGRESS_ACTIVE, Target};
 
 /// 终端消息目标
 pub struct TerminalTarget;
@@ -31,6 +37,20 @@ impl Target for TerminalTarget {
 
     fn on_message(&self, msg: &Message) {
         use std::io::Write;
+
+        // 当 ProgressTarget 活跃时，跳过由它处理的进度类消息
+        if PROGRESS_ACTIVE.load(Ordering::Acquire) {
+            match msg.kind {
+                MessageKind::LlmThinking
+                | MessageKind::LlmUsage
+                | MessageKind::ToolCall
+                | MessageKind::ToolResult
+                | MessageKind::ToolError
+                | MessageKind::ToolOutput => return,
+                _ => {}
+            }
+        }
+
         match Self::channel_for(msg.kind) {
             Channel::Stdout => {
                 println!("{}", msg.text);

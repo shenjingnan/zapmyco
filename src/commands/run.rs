@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::agent::chat::{AiAgent, AiAgentOptions};
@@ -32,6 +33,7 @@ pub(crate) async fn cmd_run(
     base_url: Option<&str>,
     subagent: bool,
     parent_session_id: Option<&str>,
+    no_progress: bool,
 ) -> Result<(), String> {
     let file_path = settings::get_settings_path();
 
@@ -129,6 +131,11 @@ pub(crate) async fn cmd_run(
 
     // ── 注册应用执行日志到当前会话目录 ──
     let _app_log_guard = register_app_log(&agent);
+
+    // ── 注册进度输出目标（默认交互式终端自动启用，--no-progress 可禁用） ──
+    if !no_progress && std::io::stderr().is_terminal() {
+        output::ROUTER.add_target(Box::new(output::ProgressTarget::new()));
+    }
 
     // ── 注册 Ctrl+C 信号处理器（第一次优雅关闭，第二次强制退出） ──
     std::mem::drop(tokio::spawn(async {
@@ -524,6 +531,7 @@ mod tests {
             None,  // task_id..base_url
             false, // subagent
             None,  // parent_session_id
+            true,  // no_progress
         )
         .await;
         assert!(result.is_err());
@@ -550,6 +558,7 @@ mod tests {
             None,  // task_id..base_url
             false, // subagent
             None,  // parent_session_id
+            true,  // no_progress
         )
         .await;
         assert!(result.is_err());

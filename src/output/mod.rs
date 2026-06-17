@@ -7,10 +7,15 @@
 //! - `data`：结构化载荷，供未来 API/Web target 使用
 
 mod log;
+mod progress;
 mod terminal;
 
 pub use log::LogTarget;
+pub use progress::ProgressTarget;
 pub use terminal::TerminalTarget;
+
+/// ProgressTarget 是否活跃（TerminalTarget 检查此标志以抑制进度类消息）
+pub use progress::PROGRESS_ACTIVE;
 
 use std::sync::{LazyLock, Mutex};
 

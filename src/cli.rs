@@ -283,6 +283,9 @@ pub enum Commands {
         /// 父 agent 的 session_id（隐藏，由 SubAgent 工具自动传入）
         #[arg(long, hide = true)]
         parent_session_id: Option<String>,
+        /// 禁用进度提示显示（默认在交互式终端自动启用）
+        #[arg(long)]
+        no_progress: bool,
     },
     /// 快速记录笔记 — 灵感、待办、想法
     Note {
@@ -411,6 +414,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             base_url,
             subagent,
             parent_session_id,
+            no_progress,
         }) => {
             commands::run::cmd_run(
                 content.as_deref(),
@@ -424,6 +428,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 base_url.as_deref(),
                 subagent,
                 parent_session_id.as_deref(),
+                no_progress,
             )
             .await
         }
