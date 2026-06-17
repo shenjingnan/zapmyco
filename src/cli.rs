@@ -50,6 +50,15 @@ impl std::fmt::Display for PermissionMode {
     }
 }
 
+/// 执行模式 — 控制 agent 的执行流程
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ExecutionMode {
+    /// 计划模式：先分析规划，用户审批后执行（默认）
+    Plan,
+    /// 基础模式：收到 prompt 直接执行，不经过规划审批
+    Base,
+}
+
 /// 自定义 value parser：Tab 补全内置模型名，但接受任意字符串（不校验）
 #[derive(Clone)]
 struct ModelValueParser;
@@ -277,6 +286,9 @@ pub enum Commands {
         /// 复用指定会话的上下文历史（Tab 可补全可用会话）
         #[arg(long, value_parser = SessionIdValueParser)]
         session: Option<String>,
+        /// 执行模式: plan（先规划审批再执行，默认）, base（直接执行）
+        #[arg(long = "mode", default_value = "plan", value_enum)]
+        mode: ExecutionMode,
         /// 标记此进程为子 Agent（隐藏，由 SubAgent 工具自动传入）
         #[arg(long, hide = true)]
         subagent: bool,
@@ -406,6 +418,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             permission_mode,
             task_id,
             session,
+            mode,
             model,
             api_key,
             base_url,
@@ -419,6 +432,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 permission_mode,
                 task_id.as_deref(),
                 session.as_deref(),
+                mode,
                 model.as_deref(),
                 api_key.as_deref(),
                 base_url.as_deref(),
@@ -1215,6 +1229,38 @@ mod tests {
     // test_cmd_run_registers_subagent_tool_by_default:
     // 验证没有 --subagent 时 SubAgent 工具已注册
     // 同上，需要完整 LLM 环境
+
+    // ---- 5. --mode 参数测试 ----
+
+    #[test]
+    fn test_run_args_mode_default_plan() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "hello"]).unwrap();
+        if let Commands::Run { mode, .. } = cli.command.unwrap() {
+            assert_eq!(mode, ExecutionMode::Plan, "默认 --mode 应为 plan");
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_run_args_mode_plan() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "--mode", "plan", "hello"]).unwrap();
+        if let Commands::Run { mode, .. } = cli.command.unwrap() {
+            assert_eq!(mode, ExecutionMode::Plan);
+        } else {
+            panic!("Expected Run command");
+        }
+    }
+
+    #[test]
+    fn test_run_args_mode_base() {
+        let cli = Cli::try_parse_from(vec!["zapmyco", "run", "--mode", "base", "hello"]).unwrap();
+        if let Commands::Run { mode, .. } = cli.command.unwrap() {
+            assert_eq!(mode, ExecutionMode::Base);
+        } else {
+            panic!("Expected Run command");
+        }
+    }
 
     // ==================== --parent-session-id 测试 ====================
 

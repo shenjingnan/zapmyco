@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::agent::chat::{AiAgent, AiAgentOptions};
 use crate::agent::session_loader;
 use crate::agent::system_prompt;
-use crate::cli::PermissionMode;
+use crate::cli::{ExecutionMode, PermissionMode};
 use crate::config::settings;
 use crate::output::{self, Message};
 use crate::skills::discovery::{list_available_skills, resolve_skill};
@@ -27,6 +27,7 @@ pub(crate) async fn cmd_run(
     permission_mode: PermissionMode,
     task_id: Option<&str>,
     session: Option<&str>,
+    mode: ExecutionMode,
     model: Option<&str>,
     api_key: Option<&str>,
     base_url: Option<&str>,
@@ -298,12 +299,174 @@ pub(crate) async fn cmd_run(
         agent.inject_history(history);
     }
 
-    // ---- 第一阶段：执行用户原始输入 ----
-    let _response = agent
-        .chat_with_tools(&content, |chunk| {
-            output::send(&Message::llm_chunk(chunk));
-        })
-        .await?;
+    // ---- 第一阶段：根据执行模式执行 ----
+    if mode == ExecutionMode::Plan {
+        // Plan 模式：Phase 1 → 规划 → Phase 2 → 审批 → Phase 3 → 执行 → Phase 4 → 总结
+
+        // Phase 1: 移除写工具，限制只读分析
+        agent.remove_tools(&["file_write", "file_edit", "shell_exec"]);
+        output::send(&Message::info(
+            "[Plan] Phase 1 — 分析规划阶段（仅只读工具）",
+        ));
+
+        let plan_prompt = format!(
+            "{}\n\n## 用户需求\n{}",
+            system_prompt::PLAN_INSTRUCTION,
+            content,
+        );
+
+        let plan_response = agent
+            .chat_with_tools(&plan_prompt, |chunk| {
+                output::send(&Message::llm_chunk(chunk));
+            })
+            .await?;
+
+        // 保存方案到 session 目录
+        let plan_path = agent.session_dir().map(|d| d.join("plan.md"));
+        if let Some(ref path) = plan_path {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(path, &plan_response).map_err(|e| e.to_string())?;
+            output::send(&Message::info(format!(
+                "[Plan] 方案已保存: {}",
+                path.display()
+            )));
+        }
+
+        // Phase 2: 审批循环（最多 3 轮）
+        let mut plan_approved = false;
+        let max_retries = 3;
+
+        for attempt in 0..max_retries {
+            output::send(&Message::info("[Plan] Phase 2 — 请审阅方案"));
+
+            let approved = inquire::Confirm::new("是否按此方案执行？")
+                .with_default(true)
+                .prompt()
+                .map_err(|e| e.to_string())?;
+
+            if approved {
+                plan_approved = true;
+                break;
+            }
+
+            // 用户未批准，获取修改意见
+            if attempt < max_retries - 1 {
+                let feedback = inquire::Text::new("请输入修改意见（留空取消）：")
+                    .prompt()
+                    .map_err(|e| e.to_string())?;
+
+                if feedback.trim().is_empty() {
+                    output::send(&Message::info("[Plan] 已取消执行"));
+                    agent.finish_session(crate::agent::session_logger::ExitReason::Interrupted);
+                    return Ok(());
+                }
+
+                // 将反馈注入上下文，重新执行 Phase 1
+                agent.add_user_message(&format!(
+                    "[用户对方案的反馈] {}\n\n请根据以上反馈调整方案。",
+                    feedback
+                ));
+
+                output::send(&Message::info(format!(
+                    "[Plan] 收到反馈，重新规划（剩余重试: {}）",
+                    max_retries - attempt - 1
+                )));
+
+                let plan_response = agent
+                    .chat_with_tools(
+                        &format!(
+                            "{}\n\n## 用户需求\n{}\n\n## 用户反馈\n请根据以上反馈调整方案。",
+                            system_prompt::PLAN_INSTRUCTION,
+                            content,
+                        ),
+                        |chunk| {
+                            output::send(&Message::llm_chunk(chunk));
+                        },
+                    )
+                    .await?;
+
+                if let Some(ref path) = plan_path {
+                    std::fs::write(path, &plan_response).map_err(|e| e.to_string())?;
+                    output::send(&Message::info(format!(
+                        "[Plan] 方案已更新: {}",
+                        path.display()
+                    )));
+                }
+            } else {
+                output::send(&Message::info(
+                    "[Plan] 方案修改次数过多，建议拆解需求后重新提交",
+                ));
+                agent.finish_session(crate::agent::session_logger::ExitReason::Interrupted);
+                return Ok(());
+            }
+        }
+
+        if plan_approved {
+            // Phase 3: 重新注册执行工具，按批准方案执行
+            output::send(&Message::info("[Plan] Phase 3 — 执行阶段（已批准方案）"));
+
+            // 重新注册 shell_exec
+            let (allowed_commands, denied_commands) = settings::load_settings()
+                .ok()
+                .flatten()
+                .and_then(|s| s.permissions)
+                .map(|p| (p.commands.allow, p.commands.deny))
+                .unwrap_or_default();
+            let shell_exec = if permission_mode == PermissionMode::ReadOnly {
+                shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+                    readonly_mode: true,
+                    allowed_commands: shell_exec::builtin_safe_commands(),
+                    denied_commands,
+                    skip_confirm: true,
+                    ..Default::default()
+                })
+            } else {
+                shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+                    allowed_commands,
+                    denied_commands,
+                    ..Default::default()
+                })
+            };
+            agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+
+            // 重新注册 file_edit 和 file_write
+            let file_edit = file_edit::FileEdit::new(Default::default());
+            agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
+            let file_write = file_write::FileWrite::new(Default::default());
+            agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
+
+            // 注入已批准方案到执行阶段 prompt
+            let plan_content = plan_path
+                .as_ref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .unwrap_or_default();
+            let exec_prompt = format!(
+                "{}\n\n## 用户原始需求\n{}\n\n## 已批准方案\n{}",
+                system_prompt::EXEC_INSTRUCTION,
+                content,
+                plan_content,
+            );
+
+            agent
+                .chat_with_tools(&exec_prompt, |chunk| {
+                    output::send(&Message::llm_chunk(chunk));
+                })
+                .await?;
+        } else {
+            output::send(&Message::info("[Plan] 方案未批准，退出"));
+            agent.finish_session(crate::agent::session_logger::ExitReason::Interrupted);
+            return Ok(());
+        }
+    } else {
+        // Base 模式：直接执行（当前行为）
+        let _response = agent
+            .chat_with_tools(&content, |chunk| {
+                output::send(&Message::llm_chunk(chunk));
+            })
+            .await?;
+    }
 
     // ---- 第二阶段：任务执行循环 ----
     let mut task_completed = false;
@@ -358,6 +521,27 @@ pub(crate) async fn cmd_run(
                     user_input,
                 ));
                 task_completed = true;
+            }
+        }
+    }
+
+    // ---- Phase 4（Plan 模式）：实施总结 ----
+    if mode == ExecutionMode::Plan && task_completed {
+        output::send(&Message::info("[Plan] Phase 4 — 实施总结"));
+        let summary = agent
+            .chat_with_tools(system_prompt::SUMMARY_INSTRUCTION, |chunk| {
+                output::send(&Message::llm_chunk(chunk));
+            })
+            .await?;
+
+        // 保存总结到 session 目录
+        if let Some(dir) = agent.session_dir() {
+            let summary_path = dir.join("summary.md");
+            if std::fs::write(&summary_path, &summary).is_ok() {
+                output::send(&Message::info(format!(
+                    "[Plan] 总结已保存: {}",
+                    summary_path.display()
+                )));
             }
         }
     }
@@ -519,6 +703,7 @@ mod tests {
             PermissionMode::Full,
             None,
             None,
+            ExecutionMode::Plan,
             None,
             None,
             None,  // task_id..base_url
@@ -545,6 +730,7 @@ mod tests {
             PermissionMode::Full,
             None,
             None,
+            ExecutionMode::Plan,
             None,
             None,
             None,  // task_id..base_url
