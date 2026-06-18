@@ -8,7 +8,11 @@ pub mod chat;
 pub mod session;
 
 use axum::{
-    Router, middleware,
+    Router,
+    body::Body,
+    http::{HeaderValue, Request, header::CACHE_CONTROL},
+    middleware,
+    response::Response,
     routing::{get, post},
 };
 use std::sync::Arc;
@@ -56,8 +60,35 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
     // 静态文件（前端页面）— 使用 fallback_service 替代 nest_service
     // (axum 0.8 不允许在根路径 nesting)
+    // 独立的路由器，方便为静态文件单独配置中间件
+    let static_router = Router::new()
+        .fallback_service(ServeDir::new("web/dist"))
+        .layer(middleware::from_fn(static_file_cache_headers));
+
     Router::new()
         .merge(api_routes)
-        .fallback_service(ServeDir::new("web/dist"))
+        .merge(static_router)
         .with_state(state)
+}
+
+/// 为 HTML 响应设置 `Cache-Control: no-cache`，防止浏览器缓存 `index.html`。
+///
+/// Vite 构建时 JS/CSS 文件带有内容哈希，更新后哈希变化，浏览器会自动请求新文件。
+/// 但 `index.html` 没有哈希后缀，浏览器可能缓存旧版本导致引用旧的 CSS/JS。
+async fn static_file_cache_headers(request: Request<Body>, next: middleware::Next) -> Response {
+    let mut response = next.run(request).await;
+
+    // 仅对 HTML 响应设置 no-cache，避免浏览器缓存 index.html
+    if response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("text/html"))
+    {
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    }
+
+    response
 }
