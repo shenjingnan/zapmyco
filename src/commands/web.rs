@@ -59,7 +59,7 @@ pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Resul
     Ok(())
 }
 
-/// 解析 token：优先用 `--auth-token`，未指定则自动生成。
+/// 解析 token：优先用 `--auth-token`，未指定则不认证（本地模式安全）。
 fn resolve_token(arg: Option<&str>) -> Result<String, String> {
     if let Some(token) = arg {
         if token.is_empty() {
@@ -68,18 +68,13 @@ fn resolve_token(arg: Option<&str>) -> Result<String, String> {
         return Ok(token.to_string());
     }
 
-    // 从 settings.toml 读取
+    // 从 settings.toml 读取（将来可配置 web_auth_token 字段）
     if let Ok(_settings) = crate::config::settings::load_settings() {
-        // 将来可配置 web_auth_token 字段
+        // TODO: 支持 settings 中的 web_auth_token 字段
     }
 
-    // 自动生成
-    let token = uuid::Uuid::new_v4().to_string();
-    output::send(&Message::info(format!("🔑 自动生成认证 Token: {}", token)));
-    output::send(&Message::info(
-        "💡 使用 --auth-token <token> 设置自定义 Token".to_string(),
-    ));
-    Ok(token)
+    // 本地模式无 token（安全），远程模式需要 --auth-token
+    Ok(String::new())
 }
 
 /// 绑定端口，被占用时自动尝试下一个端口。

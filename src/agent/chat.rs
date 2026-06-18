@@ -833,7 +833,7 @@ impl AiAgent {
         &mut self,
         input: &str,
         progress: &P,
-        mut on_chunk: impl FnMut(&str),
+        mut on_chunk: impl FnMut(&str) + Send,
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
@@ -960,9 +960,9 @@ impl AiAgent {
 
     /// 执行一轮流式请求，收集文本和工具调用
     /// 执行一轮流式请求（HTTP + 事件解析）
-    async fn stream_one_round(
+    async fn stream_one_round<F: FnMut(&str)>(
         &mut self,
-        on_chunk: &mut dyn FnMut(&str),
+        on_chunk: &mut F,
     ) -> Result<crate::agent::stream::RoundResult, String> {
         let params = self.build_params(true)?;
         let start = Instant::now();

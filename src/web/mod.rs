@@ -54,12 +54,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/health", get(chat::handle_health))
         .layer(middleware::from_fn(auth_middleware));
 
-    // 静态文件（前端页面）— 开发时从 web/ 目录加载
-    // 发布时使用 rust-embed
-    let static_routes = Router::new().nest_service("/", ServeDir::new("web"));
-
+    // 静态文件（前端页面）— 使用 fallback_service 替代 nest_service
+    // (axum 0.8 不允许在根路径 nesting)
     Router::new()
         .merge(api_routes)
-        .merge(static_routes)
+        .fallback_service(ServeDir::new("web"))
         .with_state(state)
 }

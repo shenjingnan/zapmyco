@@ -193,6 +193,7 @@ pub async fn handle_chat(
     }
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<StreamEvent>();
+    let progress = WebProgress::new(tx.clone());
 
     let sessions = state.sessions.inner();
     let session_id = body
@@ -204,22 +205,66 @@ pub async fn handle_chat(
     {
         let mut sessions_map = sessions.lock().await;
         if !sessions_map.contains_key(&session_id) {
-            let agent = crate::agent::AiAgent::new(crate::agent::AiAgentOptions {
+            let approvals = crate::tools::confirm::PendingApprovals::new();
+            let asks = crate::tools::confirm::PendingAsks::new();
+
+            // 创建 AiAgent（从 settings 读取配置）
+            let mut agent = crate::agent::AiAgent::new(crate::agent::AiAgentOptions {
                 ..Default::default()
             })
             .map_err(|e| AppError::internal(format!("创建 AiAgent 失败: {}", e)))?;
 
-            let approvals = crate::tools::confirm::PendingApprovals::new();
-            let asks = crate::tools::confirm::PendingAsks::new();
+            // 注册 Web 模式工具（使用 Channel 后端）
+            agent.register_tool(crate::agent::chat::ToolHandler::AskUser(
+                crate::tools::ask_user::AskUser::with_backend(
+                    crate::tools::confirm::AskBackend::Channel(asks.clone()),
+                ),
+            ));
+
+            // 注册 shell_exec（使用 Channel 确认后端）
+            agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(
+                crate::tools::shell_exec::ShellExec::new(
+                    crate::tools::shell_exec::ShellExecOptions {
+                        confirm_backend: crate::tools::confirm::ConfirmBackend::Channel(
+                            approvals.clone(),
+                        ),
+                        ..Default::default()
+                    },
+                ),
+            ));
+
+            // 注册其他工具（使用默认配置）
+            let _ = crate::tools::web_fetch::WebFetch::new(Default::default())
+                .map(|t| agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(t)));
+            agent.register_tool(crate::agent::chat::ToolHandler::FileSearch(
+                crate::tools::file_search::FileSearch::new(Default::default()),
+            ));
+            agent.register_tool(crate::agent::chat::ToolHandler::FileFind(
+                crate::tools::file_find::FileFind::new(Default::default()),
+            ));
+            agent.register_tool(crate::agent::chat::ToolHandler::FileRead(
+                crate::tools::file_read::FileRead::new(Default::default()),
+            ));
+            agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(
+                crate::tools::file_edit::FileEdit::new(Default::default()),
+            ));
+            agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(
+                crate::tools::file_write::FileWrite::new(Default::default()),
+            ));
+
             sessions_map.insert(
                 session_id.clone(),
                 crate::web::session::Session {
                     agent,
                     last_active: std::time::Instant::now(),
-                    pending_approvals: approvals.clone(),
-                    pending_asks: asks.clone(),
-                    confirm_backend: crate::tools::confirm::ConfirmBackend::Channel(approvals),
-                    ask_backend: crate::tools::confirm::AskBackend::Channel(asks),
+                    pending_approvals: approvals,
+                    pending_asks: asks,
+                    confirm_backend: crate::tools::confirm::ConfirmBackend::Channel(
+                        crate::tools::confirm::PendingApprovals::new(),
+                    ),
+                    ask_backend: crate::tools::confirm::AskBackend::Channel(
+                        crate::tools::confirm::PendingAsks::new(),
+                    ),
                 },
             );
         }
@@ -231,19 +276,57 @@ pub async fn handle_chat(
     })
     .ok();
 
-    // 在后台执行 chat_with_tools（简化版）
+    // 在后台执行 chat_with_tools
     let tx_clone = tx.clone();
     tokio::spawn(async move {
-        tx_clone
-            .send(StreamEvent::Text {
-                content: format!("收到 prompt: {}", body.prompt),
-            })
-            .ok();
-        tx_clone
-            .send(StreamEvent::Done {
-                reason: "end_turn".to_string(),
-            })
-            .ok();
+        // 从 session 中取出 agent
+        let mut sessions_map = sessions.lock().await;
+        if let Some(session) = sessions_map.get_mut(&session_id) {
+            session.last_active = std::time::Instant::now();
+
+            // 调用 chat_with_tools
+            let result = session
+                .agent
+                .chat_with_tools(&body.prompt, &progress, |chunk| {
+                    // 流式文本块
+                    tx_clone
+                        .send(StreamEvent::TextDelta {
+                            content: chunk.to_string(),
+                        })
+                        .ok();
+                })
+                .await;
+
+            match result {
+                Ok(_final_text) => {
+                    tx_clone
+                        .send(StreamEvent::Done {
+                            reason: "end_turn".to_string(),
+                        })
+                        .ok();
+                }
+                Err(e) => {
+                    tx_clone
+                        .send(StreamEvent::Error {
+                            code: "AGENT_ERROR".to_string(),
+                            message: e,
+                        })
+                        .ok();
+                    tx_clone
+                        .send(StreamEvent::Done {
+                            reason: "error".to_string(),
+                        })
+                        .ok();
+                }
+            }
+        } else {
+            tx_clone
+                .send(StreamEvent::Error {
+                    code: "SESSION_LOST".to_string(),
+                    message: "会话已丢失".to_string(),
+                })
+                .ok();
+        }
     });
 
     // 构建 SSE 流
