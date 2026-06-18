@@ -1102,9 +1102,9 @@ impl AiAgent {
                 progress.finish_item(&th, false, Some(&err_msg));
                 (format!("[Tool error: {}]", err_msg), Some(err_msg))
             } else {
-                // 交互式工具（如 ask_user）使用 crossterm 原始模式，
+                // 交互式工具（如 ask_user、shell_exec 需确认时）使用 crossterm 原始模式，
                 // 暂停 MultiProgress 动画以避免与 crossterm 冲突
-                let is_interactive = matches!(name.as_str(), "ask_user");
+                let is_interactive = matches!(name.as_str(), "ask_user" | "shell_exec");
                 if is_interactive {
                     progress.pause();
                 }
