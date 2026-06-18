@@ -93,12 +93,16 @@ async function send() {
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        if (!line.trim()) continue;
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        // 去除 SSE data: 前缀
+        const jsonLine = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed;
+        if (jsonLine === '[DONE]') continue;
         try {
-          const event = JSON.parse(line);
+          const event = JSON.parse(jsonLine);
           handleEvent(event);
         } catch (e) {
-          console.warn('parse error:', line, e);
+          console.warn('parse error:', jsonLine, e);
         }
       }
     }
