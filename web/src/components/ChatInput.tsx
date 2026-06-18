@@ -1,3 +1,4 @@
+import { ArrowUp } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../stores/chatStore';
 
@@ -69,19 +70,7 @@ export function ChatInput({ onSend, centered }: ChatInputProps) {
           disabled={!canSend}
           className="absolute bottom-4 right-4 flex size-8 items-center justify-center rounded-xl bg-amber-700 text-white transition-colors hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-700"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 19V5" />
-            <path d="M5 12l7-7 7 7" />
-          </svg>
+          <ArrowUp size={16} />
         </button>
       </div>
     </div>

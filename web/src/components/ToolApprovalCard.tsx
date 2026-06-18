@@ -1,4 +1,4 @@
-import { CheckOutlined, CloseOutlined, EditOutlined } from '@ant-design/icons';
+import { Check, X, Pencil } from 'lucide-react';
 import { Button, Card, Input, Space } from 'antd';
 import { useState } from 'react';
 import { approveTool } from '../api/tool';
@@ -71,7 +71,7 @@ export function ToolApprovalCard({ data }: ToolApprovalCardProps) {
         <Button
           size="small"
           type="primary"
-          icon={<CheckOutlined />}
+          icon={<Check size={14} />}
           loading={loading}
           onClick={() => handleAction(true)}
         >
@@ -80,13 +80,13 @@ export function ToolApprovalCard({ data }: ToolApprovalCardProps) {
         <Button
           size="small"
           danger
-          icon={<CloseOutlined />}
+          icon={<X size={14} />}
           loading={loading}
           onClick={() => handleAction(false)}
         >
           拒绝
         </Button>
-        <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(!editing)}>
+        <Button size="small" icon={<Pencil size={14} />} onClick={() => setEditing(!editing)}>
           {editing ? '完成编辑' : '编辑'}
         </Button>
       </Space>
