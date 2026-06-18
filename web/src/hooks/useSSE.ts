@@ -120,6 +120,7 @@ export function useSSE() {
         const response = await sendChatMessage(prompt, sessionId);
         setStatus('streaming');
 
+        // biome-ignore lint/style/noNonNullAssertion: fetch body is non-null after ok check
         const reader = response.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = '';

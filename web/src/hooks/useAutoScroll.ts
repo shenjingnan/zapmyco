@@ -16,7 +16,7 @@ export function useAutoScroll(deps: unknown[]) {
     if (!userScrolledUp.current && anchorRef.current) {
       anchorRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // biome-ignore lint/correctness/useExhaustiveDependencies: dynamic deps for custom hook
   }, deps);
 
   return { anchorRef, containerRef, handleScroll };

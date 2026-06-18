@@ -27,6 +27,7 @@ export function ChatInput({ onSend, centered }: ChatInputProps) {
   }, [disabled]);
 
   // 根据内容自动调整高度
+  // biome-ignore lint/correctness/useExhaustiveDependencies: value triggers auto-resize on content change
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -49,7 +50,7 @@ export function ChatInput({ onSend, centered }: ChatInputProps) {
     }
   };
 
-  const canSend = value.trim().length > 0 && !disabled
+  const canSend = value.trim().length > 0 && !disabled;
 
   return (
     <div className={`w-full ${centered ? 'max-w-xl' : 'mx-auto max-w-[900px]'}`}>
