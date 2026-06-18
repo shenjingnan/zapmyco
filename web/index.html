@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zapmyco AI</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+  #header { padding: 12px 20px; background: #16213e; border-bottom: 1px solid #0f3460; display: flex; align-items: center; gap: 12px; }
+  #header h1 { font-size: 16px; color: #e94560; }
+  #status { font-size: 12px; color: #888; }
+  #chat { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { padding: 10px 14px; border-radius: 8px; max-width: 85%; line-height: 1.5; font-size: 14px; }
+  .msg.user { background: #0f3460; align-self: flex-end; }
+  .msg.assistant { background: #16213e; align-self: flex-start; }
+  .msg.system { background: #1a1a2e; align-self: center; font-size: 12px; color: #888; border: 1px solid #333; }
+  .msg.tool { background: #2d2d44; align-self: flex-start; font-size: 12px; font-family: monospace; }
+  .msg.tool-approval { background: #3d1a2e; align-self: center; border: 1px solid #e94560; cursor: pointer; }
+  #input-area { display: flex; padding: 12px 20px; background: #16213e; border-top: 1px solid #0f3460; gap: 8px; }
+  #input { flex: 1; padding: 10px 14px; border: 1px solid #0f3460; border-radius: 6px; background: #1a1a2e; color: #e0e0e0; font-size: 14px; outline: none; }
+  #input:focus { border-color: #e94560; }
+  #send-btn { padding: 10px 20px; background: #e94560; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  #session-id { font-size: 11px; color: #555; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>Zapmyco</h1>
+  <span id="status">● 就绪</span>
+  <span id="session-id"></span>
+</div>
+<div id="chat"></div>
+<div id="input-area">
+  <input id="input" type="text" placeholder="输入你的指令..." />
+  <button id="send-btn" onclick="send()">发送</button>
+</div>
+
+<script>
+let currentSessionId = null;
+let authToken = '';
+
+function init() {
+  const params = new URLSearchParams(window.location.search);
+  const tokenParam = params.get('token');
+  if (tokenParam) {
+    authToken = tokenParam;
+  }
+}
+
+async function send() {
+  const input = document.getElementById('input');
+  const prompt = input.value.trim();
+  if (!prompt) return;
+
+  input.value = '';
+  addMessage(prompt, 'user');
+  setBusy(true);
+
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) {
+      headers['Authorization'] = 'Bearer ' + authToken;
+    }
+
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        prompt: prompt,
+        session_id: currentSessionId,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '请求失败' }));
+      addMessage(err.message || '请求失败 (' + response.status + ')', 'system');
+      setBusy(false);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          handleEvent(event);
+        } catch (e) {
+          console.warn('parse error:', line, e);
+        }
+      }
+    }
+  } catch (e) {
+    addMessage('网络错误: ' + e.message, 'system');
+  }
+
+  setBusy(false);
+}
+
+function handleEvent(event) {
+  switch (event.type) {
+    case 'text':
+      addMessage(event.content || '', 'assistant');
+      break;
+    case 'text_delta':
+      appendToLastMessage(event.content || '', 'assistant');
+      break;
+    case 'status':
+      handleStatus(event.content || '');
+      break;
+    case 'done':
+      handleStatus('● 完成');
+      break;
+    case 'error':
+      addMessage('错误 [' + event.code + ']: ' + event.message, 'system');
+      break;
+    case 'tool_approval_required':
+      showToolApproval(event);
+      break;
+    case 'ask_user':
+      showAskUser(event);
+      break;
+  }
+}
+
+function handleStatus(text) {
+  if (text.startsWith('session_id:')) {
+    currentSessionId = text.split(':')[1].trim();
+    document.getElementById('session-id').textContent = 'ID: ' + currentSessionId.substring(0, 8) + '...';
+    return;
+  }
+  document.getElementById('status').textContent = text;
+}
+
+function addMessage(text, type) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = 'msg ' + type;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function appendToLastMessage(text, type) {
+  const chat = document.getElementById('chat');
+  const msgs = chat.querySelectorAll('.msg.' + type);
+  if (msgs.length > 0) {
+    msgs[msgs.length - 1].textContent += text;
+    chat.scrollTop = chat.scrollHeight;
+  } else {
+    addMessage(text, type);
+  }
+}
+
+function setBusy(busy) {
+  document.getElementById('send-btn').disabled = busy;
+  document.getElementById('input').disabled = busy;
+  if (!busy) document.getElementById('input').focus();
+}
+
+function showToolApproval(event) {
+  const div = document.createElement('div');
+  div.className = 'msg tool-approval';
+  div.innerHTML = '<strong>⚠️ 需要审批</strong><br>' +
+    '命令: <code>' + escHtml(event.command || '') + '</code><br>' +
+    '<button onclick="approveTool(\'' + event.id + '\', true)">✅ 允许</button> ' +
+    '<button onclick="approveTool(\'' + event.id + '\', false)">❌ 拒绝</button>';
+  document.getElementById('chat').appendChild(div);
+  div.scrollIntoView();
+}
+
+async function approveTool(id, approved) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  await fetch('/api/tool/approve', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ session_id: currentSessionId, tool_approval_id: id, approved }),
+  });
+}
+
+function showAskUser(event) {
+  const div = document.createElement('div');
+  div.className = 'msg tool-approval';
+  let html = '<strong>❓ ' + escHtml(event.question || '') + '</strong><br>';
+  if (event.options) {
+    event.options.forEach((opt, idx) => {
+      html += '<button onclick="answerAsk(\'' + event.id + '\', ' + idx + ')">' + escHtml(opt) + '</button> ';
+    });
+  }
+  div.innerHTML = html;
+  document.getElementById('chat').appendChild(div);
+  div.scrollIntoView();
+}
+
+async function answerAsk(id, idx) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  await fetch('/api/ask/respond', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ session_id: currentSessionId, ask_id: id, selected_idx: idx }),
+  });
+}
+
+function escHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>

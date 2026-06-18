@@ -13,6 +13,7 @@ use zapmyco_anthropic_ai_sdk::types::message::{
 };
 
 use crate::agent::env_info;
+use crate::agent::progress::{HandleLike, ProgressReporter};
 use crate::agent::session_logger::{SessionLogger, SessionMeta, ToolCallLogger};
 use crate::agent::system_prompt::SystemPromptBuilder;
 use crate::config::models::{
@@ -22,7 +23,6 @@ use crate::config::settings::{
     is_session_log_enabled, load_settings, resolve_env_ref, update_settings_model,
 };
 use crate::output;
-use crate::tui::RunProgress;
 
 /// AiAgent 配置选项
 #[derive(Debug, Default)]
@@ -829,10 +829,10 @@ impl AiAgent {
     ///
     /// 使用统一流式请求，在工具调用阶段实时输出 LLM 推理文本，
     /// 最终回复阶段直接使用流式文本，无需额外请求。
-    pub async fn chat_with_tools(
+    pub async fn chat_with_tools<P: ProgressReporter>(
         &mut self,
         input: &str,
-        progress: &RunProgress,
+        progress: &P,
         mut on_chunk: impl FnMut(&str),
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
@@ -927,7 +927,7 @@ impl AiAgent {
             for batch in batches {
                 if batch.is_concurrency_safe {
                     let (blocks, state_updates) = self
-                        .execute_tools_concurrent(&batch.items, round, progress)
+                        .execute_tools_concurrent::<P>(&batch.items, round, progress)
                         .await?;
                     for (fp, mtime) in state_updates {
                         self.read_file_state.insert(fp, mtime);
@@ -935,7 +935,7 @@ impl AiAgent {
                     tool_result_blocks.extend(blocks);
                 } else {
                     let blocks = self
-                        .execute_tools_serial(&batch.items, round, progress)
+                        .execute_tools_serial::<P>(&batch.items, round, progress)
                         .await?;
                     tool_result_blocks.extend(blocks);
                 }
@@ -981,11 +981,11 @@ impl AiAgent {
     }
 
     /// 串行执行工具调用列表（逐个 await），返回 ToolResult ContentBlock 列表
-    async fn execute_tools_serial(
+    async fn execute_tools_serial<P: ProgressReporter>(
         &mut self,
         tool_uses: &[(String, String, serde_json::Value)],
         round: u32,
-        progress: &RunProgress,
+        progress: &P,
     ) -> Result<Vec<ContentBlock>, String> {
         // 按工具类型统计并输出本轮概览
         {
@@ -1215,11 +1215,11 @@ impl AiAgent {
     }
 
     /// 并发执行一批安全的工具调用，返回 ToolResult ContentBlock 列表和 read_file_state 更新
-    async fn execute_tools_concurrent(
+    async fn execute_tools_concurrent<P: ProgressReporter>(
         &self,
         tool_uses: &[(String, String, serde_json::Value)],
         round: u32,
-        progress: &RunProgress,
+        progress: &P,
     ) -> Result<(Vec<ContentBlock>, Vec<(String, u64)>), String> {
         // 按工具类型统计并输出本轮概览
         {
@@ -1251,7 +1251,6 @@ impl AiAgent {
             ));
         }
 
-        use crate::tui::TransientHandle;
         use futures_util::StreamExt as _;
         use futures_util::stream::FuturesUnordered;
 
@@ -1266,13 +1265,13 @@ impl AiAgent {
         let mut state_updates: Vec<(String, u64)> = Vec::new();
 
         // ---- 初始化进度显示（使用 RunProgress 临时项） ----
-        let mut transient_handles: Vec<Option<TransientHandle>> = Vec::with_capacity(total);
+        let mut transient_handles: Vec<Option<P::Handle>> = Vec::with_capacity(total);
         for (_, name, input) in tool_uses.iter() {
             let icon = crate::agent::executor::tool_icon(name);
             let param = crate::agent::executor::format_tool_param(name, input);
             let label = format!("{} {}  {}", icon, name, param);
             let th = progress.start_item(&label);
-            th.handle.set_running(None);
+            th.set_running(None);
             transient_handles.push(Some(th));
         }
 
@@ -1289,7 +1288,7 @@ impl AiAgent {
             let Some(handler) = handler else {
                 // 未知工具直接生成错误结果，不创建 future
                 if let Some(h) = &transient_handles[idx] {
-                    h.handle.set_failed("Unknown tool");
+                    h.set_failed("Unknown tool");
                 }
                 let line = format!("[工具] ❌ {}  Unknown tool (0s, 0 字符)", name);
                 output::send(&output::Message::tool_output(line.clone()));
@@ -1368,82 +1367,79 @@ impl AiAgent {
             futures.push(Box::pin(async move {
                 let tool_start = Instant::now();
 
-                let (result_text, file_state, log_line, error_opt) = if let Some(err_msg) =
-                    pre_read_error
-                {
-                    tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
-                    if let Some(h) = &th {
-                        h.handle.set_failed(&err_msg);
-                    }
-                    let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
-                    (
-                        format!("[Tool error: {}]", err_msg),
-                        None,
-                        line,
-                        Some(err_msg),
-                    )
-                } else {
-                    match handler.execute(&input_clone).await {
-                        Ok(text) => {
-                            let file_state = if name_clone == "file_read" {
-                                input_clone
-                                    .get("file_path")
-                                    .and_then(|v| v.as_str())
-                                    .map(|fp| {
-                                        let mtime = std::path::Path::new(fp)
-                                            .metadata()
-                                            .ok()
-                                            .and_then(|meta| meta.modified().ok())
-                                            .and_then(|mtime| {
-                                                mtime.duration_since(std::time::UNIX_EPOCH).ok()
-                                            })
-                                            .map(|d| d.as_millis() as u64)
-                                            .unwrap_or(0);
-                                        (fp.to_string(), mtime)
-                                    })
-                            } else {
-                                None
-                            };
-                            let elapsed = tool_start.elapsed();
-                            tracing::info!(
-                                tool = %name_clone,
-                                duration_ms = elapsed.as_millis() as u64,
-                                result_len = text.len(),
-                                "工具执行成功"
-                            );
-                            if let Some(h) = &th {
-                                h.handle
-                                    .set_success(Some(&format!("{:.1}s", elapsed.as_secs_f64())));
-                            }
-                            let line = format!(
-                                "[工具] {} {}  {}  ({:.1}s, {} 字符)",
-                                icon,
-                                name_clone,
-                                param,
-                                elapsed.as_secs_f64(),
-                                text.len()
-                            );
-                            (text, file_state, line, None)
+                let (result_text, file_state, log_line, error_opt) =
+                    if let Some(err_msg) = pre_read_error {
+                        tracing::warn!(tool = %name_clone, error = %err_msg, "工具预读检查失败");
+                        if let Some(h) = &th {
+                            h.set_failed(&err_msg);
                         }
-                        Err(e) => {
-                            tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
-                            let err_string = e.to_string();
-                            if let Some(h) = &th {
-                                h.handle.set_failed(&err_string);
+                        let line = format!("[工具] ⚠️ {} {}  ❌ {}", icon, name_clone, err_msg);
+                        (
+                            format!("[Tool error: {}]", err_msg),
+                            None,
+                            line,
+                            Some(err_msg),
+                        )
+                    } else {
+                        match handler.execute(&input_clone).await {
+                            Ok(text) => {
+                                let file_state = if name_clone == "file_read" {
+                                    input_clone.get("file_path").and_then(|v| v.as_str()).map(
+                                        |fp| {
+                                            let mtime = std::path::Path::new(fp)
+                                                .metadata()
+                                                .ok()
+                                                .and_then(|meta| meta.modified().ok())
+                                                .and_then(|mtime| {
+                                                    mtime.duration_since(std::time::UNIX_EPOCH).ok()
+                                                })
+                                                .map(|d| d.as_millis() as u64)
+                                                .unwrap_or(0);
+                                            (fp.to_string(), mtime)
+                                        },
+                                    )
+                                } else {
+                                    None
+                                };
+                                let elapsed = tool_start.elapsed();
+                                tracing::info!(
+                                    tool = %name_clone,
+                                    duration_ms = elapsed.as_millis() as u64,
+                                    result_len = text.len(),
+                                    "工具执行成功"
+                                );
+                                if let Some(h) = &th {
+                                    h.set_success(Some(&format!("{:.1}s", elapsed.as_secs_f64())));
+                                }
+                                let line = format!(
+                                    "[工具] {} {}  {}  ({:.1}s, {} 字符)",
+                                    icon,
+                                    name_clone,
+                                    param,
+                                    elapsed.as_secs_f64(),
+                                    text.len()
+                                );
+                                (text, file_state, line, None)
                             }
-                            let line = format!(
-                                "[工具] {} {}  {}  ❌ 失败: {}",
-                                icon, name_clone, param, err_string
-                            );
-                            (
-                                format!("[Tool error: {}]", err_string),
-                                None,
-                                line,
-                                Some(err_string),
-                            )
+                            Err(e) => {
+                                tracing::warn!(tool = %name_clone, error = %e, "工具执行失败");
+                                let err_string = e.to_string();
+                                if let Some(h) = &th {
+                                    h.set_failed(&err_string);
+                                }
+                                let line = format!(
+                                    "[工具] {} {}  {}  ❌ 失败: {}",
+                                    icon, name_clone, param, err_string
+                                );
+                                (
+                                    format!("[Tool error: {}]", err_string),
+                                    None,
+                                    line,
+                                    Some(err_string),
+                                )
+                            }
                         }
-                    }
-                };
+                    };
 
                 let duration_ms = tool_start.elapsed().as_millis() as u64;
                 (
@@ -3295,7 +3291,7 @@ mod tests {
 
     #[test]
     fn test_is_concurrency_safe_ask_user() {
-        let handler = ToolHandler::AskUser(crate::tools::ask_user::AskUser);
+        let handler = ToolHandler::AskUser(crate::tools::ask_user::AskUser::new());
         let input = serde_json::json!({"question": "Continue?"});
         assert!(!handler.is_concurrency_safe(&input));
     }

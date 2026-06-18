@@ -2,6 +2,8 @@
 #[doc(hidden)]
 pub mod ask_user;
 #[doc(hidden)]
+pub mod confirm;
+#[doc(hidden)]
 pub mod file_edit;
 #[doc(hidden)]
 pub mod file_find;

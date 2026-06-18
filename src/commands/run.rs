@@ -162,7 +162,7 @@ pub(crate) async fn cmd_run(
     }));
 
     // 注册 Ask User 工具
-    let ask_user = ask_user::AskUser;
+    let ask_user = ask_user::AskUser::new();
     agent.register_tool(crate::agent::chat::ToolHandler::AskUser(ask_user));
 
     // 注册 Web Fetch 工具
@@ -1168,7 +1168,7 @@ mod run_tool_registration_tests {
         .unwrap();
 
         agent.register_tool(crate::agent::chat::ToolHandler::AskUser(
-            crate::tools::ask_user::AskUser,
+            crate::tools::ask_user::AskUser::new(),
         ));
         agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(
             crate::tools::web_fetch::WebFetch::new(Default::default()).unwrap(),
