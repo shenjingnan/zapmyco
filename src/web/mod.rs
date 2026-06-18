@@ -58,6 +58,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     // (axum 0.8 不允许在根路径 nesting)
     Router::new()
         .merge(api_routes)
-        .fallback_service(ServeDir::new("web"))
+        .fallback_service(ServeDir::new("web/dist"))
         .with_state(state)
 }

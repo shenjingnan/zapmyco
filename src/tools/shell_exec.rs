@@ -659,7 +659,7 @@ async fn prompt_confirm(
         crate::tools::confirm::ConfirmBackend::AlwaysAllow => ConfirmAction::Allow,
         crate::tools::confirm::ConfirmBackend::Channel(approvals) => {
             let id = uuid::Uuid::new_v4().to_string();
-            let rx = approvals.register(id);
+            let rx = approvals.register(id, "shell_exec", command, description);
             match rx.await {
                 Ok(decision) => {
                     if decision.approved {

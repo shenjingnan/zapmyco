@@ -205,8 +205,41 @@ pub async fn handle_chat(
     {
         let mut sessions_map = sessions.lock().await;
         if !sessions_map.contains_key(&session_id) {
-            let approvals = crate::tools::confirm::PendingApprovals::new();
-            let asks = crate::tools::confirm::PendingAsks::new();
+            let mut approvals = crate::tools::confirm::PendingApprovals::new();
+            let mut asks = crate::tools::confirm::PendingAsks::new();
+
+            // 设置 PendingApprovals 回调 — 向 SSE 流发送 tool_approval_required 事件
+            {
+                let tx_for_approval = tx.clone();
+                approvals.on_pending = Some(std::sync::Arc::new(
+                    move |id: &str, tool: &str, command: &str, description: Option<&str>| {
+                        tx_for_approval
+                            .send(StreamEvent::ToolApprovalRequired {
+                                id: id.to_string(),
+                                tool: tool.to_string(),
+                                command: command.to_string(),
+                                description: description.map(|s| s.to_string()),
+                            })
+                            .ok();
+                    },
+                ));
+            }
+
+            // 设置 PendingAsks 回调 — 向 SSE 流发送 ask_user 事件
+            {
+                let tx_for_ask = tx.clone();
+                asks.on_pending = Some(std::sync::Arc::new(
+                    move |id: &str, question: &str, options: &[String]| {
+                        tx_for_ask
+                            .send(StreamEvent::AskUser {
+                                id: id.to_string(),
+                                question: question.to_string(),
+                                options: options.to_vec(),
+                            })
+                            .ok();
+                    },
+                ));
+            }
 
             // 创建 AiAgent（从 settings 读取配置）
             let mut agent = crate::agent::AiAgent::new(crate::agent::AiAgentOptions {

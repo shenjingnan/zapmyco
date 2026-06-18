@@ -1,0 +1,17 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-surface: #1a1a2e;
+  --color-panel: #16213e;
+  --color-border: #0f3460;
+  --color-text: #e0e0e0;
+}
+
+@layer components {
+  .msg-user {
+    @apply bg-[#0f3460] self-end rounded-lg px-3.5 py-2.5 max-w-[85%];
+  }
+  .msg-assistant {
+    @apply bg-[#16213e] self-start rounded-lg px-3.5 py-2.5 max-w-[85%];
+  }
+}

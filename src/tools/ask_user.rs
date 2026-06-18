@@ -138,7 +138,8 @@ impl AskUser {
         match &self.backend {
             AskBackend::Channel(asks) => {
                 let id = uuid::Uuid::new_v4().to_string();
-                let rx = asks.register(id);
+                let labels: Vec<String> = items.iter().map(|i| i.label.clone()).collect();
+                let rx = asks.register(id, question, &labels);
                 match rx.await {
                     Ok(response) => {
                         if let Some(idx) = response.selected_idx

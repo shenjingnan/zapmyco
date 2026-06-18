@@ -5,6 +5,7 @@
 //! Web 模式：通过 `PendingApprovals` 管理器等待外部 HTTP 请求。
 
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, Mutex};
 
 /// shell_exec 的审批决策
@@ -25,14 +26,47 @@ pub struct AskUserResponse {
     pub custom_text: Option<String>,
 }
 
+/// 待审批项注册时触发的回调 — 用于向 SSE 流发送通知。
+pub type PendingApprovalCallback =
+    Arc<dyn Fn(&str, &str, &str, Option<&str>) + Send + Sync>;
+
+/// 待提问项注册时触发的回调 — 用于向 SSE 流发送通知。
+pub type PendingAskCallback =
+    Arc<dyn Fn(&str, &str, &[String]) + Send + Sync>;
+
 /// 待审批项管理器 — 用于 Web 模式。
 ///
 /// AI Agent 在执行需要用户确认的操作时，通过 `register` 注册一个
 /// oneshot channel 并阻塞等待。HTTP handler 收到用户操作后，
 /// 通过 `resolve` 发送结果，唤醒等待的 agent。
-#[derive(Debug, Clone, Default)]
 pub struct PendingApprovals {
     inner: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<ShellConfirmDecision>>>>,
+    /// 注册时的回调（可选，用于向 SSE 流发送通知）
+    pub on_pending: Option<PendingApprovalCallback>,
+}
+
+impl fmt::Debug for PendingApprovals {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingApprovals")
+            .field("pending_count", &self.inner.lock().unwrap().len())
+            .field("has_on_pending", &self.on_pending.is_some())
+            .finish()
+    }
+}
+
+impl Clone for PendingApprovals {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            on_pending: self.on_pending.clone(),
+        }
+    }
+}
+
+impl Default for PendingApprovals {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PendingApprovals {
@@ -40,14 +74,25 @@ impl PendingApprovals {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
+            on_pending: None,
         }
     }
 
     /// 注册一个待审批项，返回对应的 `Receiver`。
     /// agent 应对该 receiver 执行 `.await` 以等待结果。
-    pub fn register(&self, id: String) -> tokio::sync::oneshot::Receiver<ShellConfirmDecision> {
+    pub fn register(
+        &self,
+        id: String,
+        tool: &str,
+        command: &str,
+        description: Option<&str>,
+    ) -> tokio::sync::oneshot::Receiver<ShellConfirmDecision> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.inner.lock().unwrap().insert(id, tx);
+        self.inner.lock().unwrap().insert(id.clone(), tx);
+        // 触发回调（通知 SSE 流）
+        if let Some(ref cb) = self.on_pending {
+            cb(&id, tool, command, description);
+        }
         rx
     }
 
@@ -64,9 +109,34 @@ impl PendingApprovals {
 /// 待提问项管理器 — 用于 Web 模式。
 ///
 /// 与 `PendingApprovals` 结构相同但使用不同的消息类型。
-#[derive(Debug, Clone, Default)]
 pub struct PendingAsks {
     inner: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<AskUserResponse>>>>,
+    /// 注册时的回调（可选，用于向 SSE 流发送通知）
+    pub on_pending: Option<PendingAskCallback>,
+}
+
+impl fmt::Debug for PendingAsks {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingAsks")
+            .field("pending_count", &self.inner.lock().unwrap().len())
+            .field("has_on_pending", &self.on_pending.is_some())
+            .finish()
+    }
+}
+
+impl Clone for PendingAsks {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            on_pending: self.on_pending.clone(),
+        }
+    }
+}
+
+impl Default for PendingAsks {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PendingAsks {
@@ -74,13 +144,23 @@ impl PendingAsks {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
+            on_pending: None,
         }
     }
 
     /// 注册一个待提问项，返回对应的 `Receiver`。
-    pub fn register(&self, id: String) -> tokio::sync::oneshot::Receiver<AskUserResponse> {
+    pub fn register(
+        &self,
+        id: String,
+        question: &str,
+        options: &[String],
+    ) -> tokio::sync::oneshot::Receiver<AskUserResponse> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.inner.lock().unwrap().insert(id, tx);
+        self.inner.lock().unwrap().insert(id.clone(), tx);
+        // 触发回调（通知 SSE 流）
+        if let Some(ref cb) = self.on_pending {
+            cb(&id, question, options);
+        }
         rx
     }
 
