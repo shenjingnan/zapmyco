@@ -49,11 +49,17 @@ pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Resul
         )));
     }
 
-    // 6. 启动服务器，带优雅关闭
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|e| format!("服务器错误: {}", e))?;
+    // 6. 启动服务器，按 Ctrl+C 立即退出
+    tokio::select! {
+        result = axum::serve(listener, app) => {
+            if let Err(e) = result {
+                return Err(format!("服务器错误: {}", e));
+            }
+        }
+        _ = shutdown_signal() => {
+            info!("用户中断，正在停止 Web Server...");
+        }
+    }
 
     output::send(&Message::info("👋 Web Server 已关闭".to_string()));
     Ok(())
