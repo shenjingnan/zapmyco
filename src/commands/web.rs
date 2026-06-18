@@ -11,7 +11,7 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
-use crate::output::{self, Message};
+use crate::output::{self, Message, TerminalGuard};
 
 /// 启动 Web Server 并等待关闭信号。
 pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Result<(), String> {
@@ -52,7 +52,9 @@ pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Resul
             );
         }
     });
-    // 7. 启动服务器，按 Ctrl+C 立即退出
+    // 7. 静默终端输出 — Web 模式下所有 UI 展示走浏览器，终端只需显示服务器日志
+    let _term_guard = TerminalGuard::suppress();
+    // 8. 启动服务器，按 Ctrl+C 立即退出
     tokio::select! {
         result = axum::serve(listener, app) => {
             if let Err(e) = result {
