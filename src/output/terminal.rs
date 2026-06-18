@@ -30,6 +30,10 @@ impl Target for TerminalTarget {
     }
 
     fn on_message(&self, msg: &Message) {
+        // RunProgress 面板活跃时，静默 TerminalTarget 的视觉输出
+        if crate::output::SUPPRESS_TERMINAL.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         use std::io::Write;
         match Self::channel_for(msg.kind) {
             Channel::Stdout => {

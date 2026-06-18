@@ -168,11 +168,28 @@ pub(crate) fn format_tool_param(name: &str, input: &serde_json::Value) -> String
             .map(|s| format!("#{}", s))
             .unwrap_or_default(),
         "task_list" => String::new(),
-        "subagent" => input
-            .get("task")
-            .and_then(|v| v.as_str())
-            .map(|s| truncate_str(s, 60).to_string())
-            .unwrap_or_default(),
+        "subagent" => {
+            let action = input.get("action").and_then(|v| v.as_str()).unwrap_or("");
+            match action {
+                "spawn" => input
+                    .get("task")
+                    .and_then(|v| v.as_str())
+                    .map(|s| truncate_str(s, 60).to_string())
+                    .unwrap_or_default(),
+                "poll" => input
+                    .get("subagent_ids")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| format!("等待 {} 个 subagent 完成", arr.len()))
+                    .unwrap_or_default(),
+                "list" => "列出所有 subagent".to_string(),
+                "kill" => input
+                    .get("subagent_ids")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| format!("终止 {} 个 subagent", arr.len()))
+                    .unwrap_or_default(),
+                _ => String::new(),
+            }
+        }
         _ => String::new(),
     }
 }

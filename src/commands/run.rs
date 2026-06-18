@@ -14,12 +14,13 @@ use crate::tools::{
     ask_user, file_edit, file_find, file_read, file_search, file_write, shell_exec, skill,
     subagent, task_manager, web_fetch, web_search,
 };
+use crate::tui::RunProgress;
 
 /// 是否收到 Ctrl+C 中断信号
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
 /// run 命令 - 一次性执行 AI 任务（带工具支持）
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, unused_assignments)]
 pub(crate) async fn cmd_run(
     content: Option<&str>,
     skill_name: Option<&str>,
@@ -313,44 +314,51 @@ pub(crate) async fn cmd_run(
         agent.inject_history(history);
     }
 
-    // ---- 第一阶段：根据执行模式执行 ----
+    // ---- 第一阶段：根据执行模式执行（带 Progress 面板） ----
+    let mut task_completed = false;
+    let mut plan_first_line: Option<String> = None;
+
     if mode == ExecutionMode::Plan {
-        // Plan 模式：Phase 1 → 规划 → Phase 2 → 审批 → Phase 3 → 执行 → Phase 4 → 总结
+        // ════════════════════════════════════════════════
+        // Plan 模式
+        // ════════════════════════════════════════════════
 
-        // Phase 1: 移除写工具，限制只读分析
+        // ── Phase 1: 分析规划（Progress 面板） ──
         agent.remove_tools(&["file_write", "file_edit", "shell_exec"]);
-        output::send(&Message::info(
-            "[Plan] Phase 1 — 分析规划阶段（仅只读工具）",
-        ));
+        let mut plan_response = {
+            let _tg = crate::output::TerminalGuard::suppress();
+            let progress = RunProgress::new();
+            progress.set_status("[Plan] Phase 1 — 分析规划阶段（仅只读工具）");
 
-        let plan_prompt = format!(
-            "{}请开始分析规划。\n\n## 用户需求\n{}",
-            build_skill_preamble(&active_skill),
-            content,
-        );
+            let plan_prompt = format!(
+                "{}请开始分析规划。\n\n## 用户需求\n{}",
+                build_skill_preamble(&active_skill),
+                content,
+            );
 
-        let plan_response = agent
-            .chat_with_tools(&plan_prompt, |chunk| {
-                output::send(&Message::llm_chunk(chunk));
-            })
-            .await?;
+            let result = agent
+                .chat_with_tools(&plan_prompt, &progress, |chunk| {
+                    output::send(&Message::llm_chunk(chunk));
+                })
+                .await?;
 
-        // 保存方案到 session 目录
-        let plan_path = agent.session_dir().map(|d| d.join("plan.md"));
-        if let Some(ref path) = plan_path {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            // 保存方案到 session 目录
+            let plan_path = agent.session_dir().map(|d| d.join("plan.md"));
+            if let Some(ref path) = plan_path {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                std::fs::write(path, &result).map_err(|e| e.to_string())?;
             }
-            std::fs::write(path, &plan_response).map_err(|e| e.to_string())?;
-            output::send(&Message::info(format!(
-                "[Plan] 方案已保存: {}",
-                path.display()
-            )));
-        }
 
-        // Phase 2: 审批循环（无限迭代，直到用户批准或 Ctrl+C 中断）
+            progress.finalize();
+            result
+        };
+
+        // ── Phase 2: 审批循环（正常终端输出） ──
+        let plan_path = agent.session_dir().map(|d| d.join("plan.md"));
         loop {
-            output::send(&Message::info("[Plan] Phase 2 — 请审阅方案"));
+            println!("\n─── 📋 方案 ───\n{}\n", plan_response);
 
             let approved = inquire::Confirm::new("是否按此方案执行？")
                 .with_default(true)
@@ -358,6 +366,7 @@ pub(crate) async fn cmd_run(
                 .map_err(|e| e.to_string())?;
 
             if approved {
+                plan_first_line = plan_response.lines().next().map(|s| s.to_string());
                 break;
             }
 
@@ -367,177 +376,152 @@ pub(crate) async fn cmd_run(
                 .map_err(|e| e.to_string())?;
 
             if feedback.trim().is_empty() {
-                output::send(&Message::info(
-                    "[Plan] 未收到修改意见，请提供方向或按 Ctrl+C 中断",
-                ));
+                println!("[Plan] 未收到修改意见，请提供方向或按 Ctrl+C 中断");
                 continue;
             }
 
-            // 将反馈注入上下文，重新生成方案
             agent.add_user_message(&format!(
                 "[用户对方案的反馈] {}\n\n请根据以上反馈调整方案。",
                 feedback
             ));
 
-            output::send(&Message::info("[Plan] 收到反馈，继续优化方案"));
+            println!("[Plan] 收到反馈，继续优化方案");
 
-            let plan_response = agent
-                .chat_with_tools(
-                    &format!(
-                        "{}请根据反馈调整方案。\n\n## 用户需求\n{}\n\n## 用户反馈\n请根据以上反馈调整方案。",
-                        build_skill_preamble(&active_skill),
-                        content,
-                    ),
-                    |chunk| {
-                        output::send(&Message::llm_chunk(chunk));
-                    },
-                )
-                .await?;
+            // 临时创建 Progress 面板用于反馈优化
+            let new_plan = {
+                let _tg = crate::output::TerminalGuard::suppress();
+                let progress = RunProgress::new();
+                progress.set_status("[Plan] 收到反馈，优化方案中...");
+
+                let r = agent
+                    .chat_with_tools(
+                        &format!(
+                            "{}请根据反馈调整方案。\n\n## 用户需求\n{}\n\n## 用户反馈\n请根据以上反馈调整方案。",
+                            build_skill_preamble(&active_skill),
+                            content,
+                        ),
+                        &progress,
+                        |_chunk| {},
+                    )
+                    .await?;
+
+                progress.finalize();
+                r
+            };
 
             if let Some(ref path) = plan_path {
-                std::fs::write(path, &plan_response).map_err(|e| e.to_string())?;
-                output::send(&Message::info(format!(
-                    "[Plan] 方案已更新: {}",
-                    path.display()
-                )));
+                std::fs::write(path, &new_plan).map_err(|e| e.to_string())?;
             }
+
+            plan_response = new_plan;
         }
 
-        // Phase 2 结束，方案已批准，进入 Phase 3 执行
+        // ── Phase 3 + 任务执行 + Phase 4（Progress 面板） ──
+        {
+            let _tg = crate::output::TerminalGuard::suppress();
+            let progress = RunProgress::new();
 
-        // Phase 3: 重新注册执行工具，按批准方案执行
-        output::send(&Message::info("[Plan] Phase 3 — 执行阶段（已批准方案）"));
+            // 添加已批准的方案折叠行
+            if let Some(ref first_line) = plan_first_line {
+                progress.add_collapsed("📝 方案:", first_line);
+            }
 
-        // 重新注册 shell_exec
-        let (allowed_commands, denied_commands) = settings::load_settings()
-            .ok()
-            .flatten()
-            .and_then(|s| s.permissions)
-            .map(|p| (p.commands.allow, p.commands.deny))
-            .unwrap_or_default();
-        let shell_exec = if permission_mode == PermissionMode::ReadOnly {
-            shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-                readonly_mode: true,
-                allowed_commands: shell_exec::builtin_safe_commands(),
-                denied_commands,
-                skip_confirm: true,
-                ..Default::default()
-            })
-        } else {
-            shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
-                allowed_commands,
-                denied_commands,
-                ..Default::default()
-            })
-        };
-        agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+            // 重新注册执行工具
+            let (allowed_commands, denied_commands) = settings::load_settings()
+                .ok()
+                .flatten()
+                .and_then(|s| s.permissions)
+                .map(|p| (p.commands.allow, p.commands.deny))
+                .unwrap_or_default();
+            let shell_exec = if permission_mode == PermissionMode::ReadOnly {
+                shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+                    readonly_mode: true,
+                    allowed_commands: shell_exec::builtin_safe_commands(),
+                    denied_commands,
+                    skip_confirm: true,
+                    ..Default::default()
+                })
+            } else {
+                shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
+                    allowed_commands,
+                    denied_commands,
+                    ..Default::default()
+                })
+            };
+            agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(shell_exec));
+            let file_edit = file_edit::FileEdit::new(Default::default());
+            agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
+            let file_write = file_write::FileWrite::new(Default::default());
+            agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
 
-        // 重新注册 file_edit 和 file_write
-        let file_edit = file_edit::FileEdit::new(Default::default());
-        agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(file_edit));
-        let file_write = file_write::FileWrite::new(Default::default());
-        agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(file_write));
+            progress.set_status("[Plan] Phase 3 — 执行阶段（已批准方案）");
 
-        // 注入已批准方案到执行阶段 prompt
-        let plan_content = plan_path
-            .as_ref()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .unwrap_or_default();
-        let exec_prompt = format!(
-            "方案已获批准，请开始实施。\n\n## 用户原始需求\n{}\n\n## 已批准方案\n{}",
-            content, plan_content,
-        );
+            let plan_content = plan_path
+                .as_ref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .unwrap_or_default();
+            let exec_prompt = format!(
+                "方案已获批准，请开始实施。\n\n## 用户原始需求\n{}\n\n## 已批准方案\n{}",
+                content, plan_content,
+            );
 
-        agent
-            .chat_with_tools(&exec_prompt, |chunk| {
-                output::send(&Message::llm_chunk(chunk));
-            })
-            .await?;
-    } else {
-        // Base 模式：直接执行（skill body 以 user_message 前缀注入）
-        let base_prompt = format!("{}{}", build_skill_preamble(&active_skill), content,);
-        let _response = agent
-            .chat_with_tools(&base_prompt, |chunk| {
-                output::send(&Message::llm_chunk(chunk));
-            })
-            .await?;
-    }
+            agent
+                .chat_with_tools(&exec_prompt, &progress, |chunk| {
+                    output::send(&Message::llm_chunk(chunk));
+                })
+                .await?;
 
-    // ---- 第二阶段：任务执行循环 ----
-    let mut task_completed = false;
+            // 任务执行循环
+            task_completed = run_task_loop(&mut agent, &progress, &task_manager).await?;
 
-    loop {
-        let tasks = task_manager.list().await.map_err(|e| e.to_string())?;
-        let pending_count = tasks
-            .iter()
-            .filter(|t| t.status != TaskStatus::Completed)
-            .count();
-
-        if pending_count == 0 {
+            // Phase 4: 实施总结
             if task_completed {
-                output::send(&Message::result("\n✅ 全部任务已完成！".to_string()));
+                progress.set_status("[Plan] Phase 4 — 实施总结");
+                let summary = agent
+                    .chat_with_tools(
+                        "所有任务已完成，请总结本次工作。",
+                        &progress,
+                        |chunk| {
+                            output::send(&Message::llm_chunk(chunk));
+                        },
+                    )
+                    .await?;
+
+                if let Some(dir) = agent.session_dir() {
+                    let summary_path = dir.join("summary.md");
+                    if std::fs::write(&summary_path, &summary).is_ok() {
+                        progress
+                            .set_status(&format!("[Plan] 总结已保存: {}", summary_path.display()));
+                    }
+                }
+                if let Some(first_line) = summary.lines().next() {
+                    progress.add_collapsed("📋 总结:", first_line);
+                }
             }
-            break;
+
+            progress.finalize();
         }
+    } else {
+        // ════════════════════════════════════════════════
+        // Base 模式
+        // ════════════════════════════════════════════════
+        {
+            let _tg = crate::output::TerminalGuard::suppress();
+            let progress = RunProgress::new();
 
-        let continuation = format!(
-            "请继续执行下一个可用任务。当前有 {} 个任务未完成。\
-             规则：检查 task_list 找出 blocked_by 为空的 pending 任务，\
-             标记为 in_progress 后开始实施，完成后标记为 completed。\
-             一次只做一个任务。",
-            pending_count,
-        );
+            let base_prompt = format!("{}{}", build_skill_preamble(&active_skill), content);
+            progress.set_status("[LLM] 开始执行...");
 
-        output::send(&Message::info(format!(
-            "\n[任务执行] {} 个任务待完成",
-            pending_count,
-        )));
+            let _response = agent
+                .chat_with_tools(&base_prompt, &progress, |chunk| {
+                    output::send(&Message::llm_chunk(chunk));
+                })
+                .await?;
 
-        let result = tokio::select! {
-            result = agent.chat_with_tools(&continuation, |chunk| {
-                output::send(&Message::llm_chunk(chunk));
-            }) => Some(result),
-            _ = tokio::signal::ctrl_c() => None,
-        };
+            // 任务执行循环
+            task_completed = run_task_loop(&mut agent, &progress, &task_manager).await?;
 
-        match result {
-            Some(Ok(_)) => {
-                task_completed = true;
-            }
-            Some(Err(e)) => return Err(e),
-            None => {
-                output::send(&Message::result(String::new()));
-                let user_input =
-                    inquire::Text::new("🛑 已中断 LLM 执行。请输入补充说明以纠正执行方向：")
-                        .prompt()
-                        .map_err(|e| e.to_string())?;
-                agent.add_user_message(&format!(
-                    "[用户干预] {}\n\n请根据上述指引调整执行方向。",
-                    user_input,
-                ));
-                task_completed = true;
-            }
-        }
-    }
-
-    // ---- Phase 4（Plan 模式）：实施总结 ----
-    if mode == ExecutionMode::Plan && task_completed {
-        output::send(&Message::info("[Plan] Phase 4 — 实施总结"));
-        let summary = agent
-            .chat_with_tools("所有任务已完成，请总结本次工作。", |chunk| {
-                output::send(&Message::llm_chunk(chunk));
-            })
-            .await?;
-
-        // 保存总结到 session 目录
-        if let Some(dir) = agent.session_dir() {
-            let summary_path = dir.join("summary.md");
-            if std::fs::write(&summary_path, &summary).is_ok() {
-                output::send(&Message::info(format!(
-                    "[Plan] 总结已保存: {}",
-                    summary_path.display()
-                )));
-            }
+            progress.finalize();
         }
     }
 
@@ -600,11 +584,22 @@ pub(crate) async fn cmd_run(
                 break;
             }
 
-            agent
-                .chat_with_tools(trimmed, |chunk| {
-                    output::send(&Message::llm_chunk(chunk));
-                })
-                .await?;
+            // 每次交互创建独立的 Progress 面板
+            let result = {
+                let _tg = crate::output::TerminalGuard::suppress();
+                let progress = RunProgress::new();
+                progress.set_status("[LLM] 执行...");
+
+                let r = agent
+                    .chat_with_tools(trimmed, &progress, |chunk| {
+                        output::send(&Message::llm_chunk(chunk));
+                    })
+                    .await;
+
+                progress.finalize();
+                r
+            };
+            result?;
         }
     }
 
@@ -615,6 +610,69 @@ pub(crate) async fn cmd_run(
         agent.finish_session(crate::agent::session_logger::ExitReason::Completed);
     }
     Ok(())
+}
+
+/// 任务执行循环：从 task_manager 中读取 pending 任务，驱动 LLM 逐个执行。
+/// 返回是否有任务已完成。
+async fn run_task_loop(
+    agent: &mut AiAgent,
+    progress: &RunProgress,
+    task_manager: &std::sync::Arc<task_manager::TaskManager>,
+) -> Result<bool, String> {
+    let mut task_completed = false;
+
+    loop {
+        let tasks = task_manager.list().await.map_err(|e| e.to_string())?;
+        let pending_count = tasks
+            .iter()
+            .filter(|t| t.status != TaskStatus::Completed)
+            .count();
+
+        if pending_count == 0 {
+            if task_completed {
+                progress.set_status("✅ 全部任务已完成！");
+            }
+            break;
+        }
+
+        let continuation = format!(
+            "请继续执行下一个可用任务。当前有 {} 个任务未完成。\
+             规则：检查 task_list 找出 blocked_by 为空的 pending 任务，\
+             标记为 in_progress 后开始实施，完成后标记为 completed。\
+             一次只做一个任务。",
+            pending_count,
+        );
+
+        progress.set_status(&format!("[任务执行] {} 个任务待完成", pending_count));
+
+        let result = tokio::select! {
+            result = agent.chat_with_tools(&continuation, progress, |chunk| {
+                output::send(&Message::llm_chunk(chunk));
+            }) => Some(result),
+            _ = tokio::signal::ctrl_c() => None,
+        };
+
+        match result {
+            Some(Ok(_)) => {
+                task_completed = true;
+            }
+            Some(Err(e)) => return Err(e),
+            None => {
+                // Ctrl+C：用户干预
+                let user_input =
+                    inquire::Text::new("🛑 已中断 LLM 执行。请输入补充说明以纠正执行方向：")
+                        .prompt()
+                        .map_err(|e| e.to_string())?;
+                agent.add_user_message(&format!(
+                    "[用户干预] {}\n\n请根据上述指引调整执行方向。",
+                    user_input,
+                ));
+                task_completed = true;
+            }
+        }
+    }
+
+    Ok(task_completed)
 }
 
 /// 为 user message 构建 skill body 前缀
