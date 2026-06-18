@@ -27,12 +27,10 @@ pub struct AskUserResponse {
 }
 
 /// 待审批项注册时触发的回调 — 用于向 SSE 流发送通知。
-pub type PendingApprovalCallback =
-    Arc<dyn Fn(&str, &str, &str, Option<&str>) + Send + Sync>;
+pub type PendingApprovalCallback = Arc<dyn Fn(&str, &str, &str, Option<&str>) + Send + Sync>;
 
 /// 待提问项注册时触发的回调 — 用于向 SSE 流发送通知。
-pub type PendingAskCallback =
-    Arc<dyn Fn(&str, &str, &[String]) + Send + Sync>;
+pub type PendingAskCallback = Arc<dyn Fn(&str, &str, &[String]) + Send + Sync>;
 
 /// 待审批项管理器 — 用于 Web 模式。
 ///
