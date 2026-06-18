@@ -1,23 +1,23 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react';
 
 export function useAutoScroll(deps: unknown[]) {
-  const anchorRef = useRef<HTMLDivElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const userScrolledUp = useRef(false)
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUp = useRef(false);
 
   const handleScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
-    userScrolledUp.current = !atBottom
-  }, [])
+    const el = containerRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    userScrolledUp.current = !atBottom;
+  }, []);
 
   useEffect(() => {
     if (!userScrolledUp.current && anchorRef.current) {
-      anchorRef.current.scrollIntoView({ behavior: 'smooth' })
+      anchorRef.current.scrollIntoView({ behavior: 'smooth' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
+  }, deps);
 
-  return { anchorRef, containerRef, handleScroll }
+  return { anchorRef, containerRef, handleScroll };
 }

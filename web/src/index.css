@@ -1,17 +1,17 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @theme {
-  --color-surface: #1a1a2e;
-  --color-panel: #16213e;
-  --color-border: #0f3460;
-  --color-text: #e0e0e0;
+  --color-bg: #faf9f6; /* 页面背景 - 暖白纸张 */
+  --color-fg: #242424; /* 主要文字 - 近黑 */
+  --color-muted: #f2eee8; /* 浅灰背景 */
+  --color-muted-fg: #695e54; /* 次要文字 - 暖灰 */
+  --color-border: #dbd5cc; /* 边框 */
+  --color-user-bg: #ece1d3; /* 用户消息背景 - 浅暖色 */
+  --color-card: #f1ece6; /* 卡片背景 */
+  --color-code-bg: #e8e2d9; /* 代码块背景 */
 }
 
-@layer components {
-  .msg-user {
-    @apply bg-[#0f3460] self-end rounded-lg px-3.5 py-2.5 max-w-[85%];
-  }
-  .msg-assistant {
-    @apply bg-[#16213e] self-start rounded-lg px-3.5 py-2.5 max-w-[85%];
-  }
+body {
+  background: #faf9f6;
+  color: #242424;
 }

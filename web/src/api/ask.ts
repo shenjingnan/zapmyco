@@ -1,5 +1,5 @@
-import type { AskRespondRequest } from '../types'
-import { apiFetch } from './client'
+import type { AskRespondRequest } from '../types';
+import { apiFetch } from './client';
 
 export async function respondToAsk(
   sessionId: string,
@@ -12,9 +12,9 @@ export async function respondToAsk(
     ask_id: askId,
     selected_idx: selectedIdx,
     custom_text: customText,
-  }
+  };
   await apiFetch('/api/ask/respond', {
     method: 'POST',
     body: JSON.stringify(body),
-  })
+  });
 }

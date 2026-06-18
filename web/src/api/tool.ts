@@ -1,5 +1,5 @@
-import type { ApproveRequest } from '../types'
-import { apiFetch } from './client'
+import type { ApproveRequest } from '../types';
+import { apiFetch } from './client';
 
 export async function approveTool(
   sessionId: string,
@@ -12,9 +12,9 @@ export async function approveTool(
     tool_approval_id: toolApprovalId,
     approved,
     edited_command: editedCommand,
-  }
+  };
   await apiFetch('/api/tool/approve', {
     method: 'POST',
     body: JSON.stringify(body),
-  })
+  });
 }

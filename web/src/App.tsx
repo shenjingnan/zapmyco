@@ -1,53 +1,49 @@
-import { ConfigProvider, Layout } from 'antd'
-import { useEffect } from 'react'
-import { lightTheme } from './config/theme'
-import { ChatHeader } from './components/ChatHeader'
-import { ChatMessageList } from './components/ChatMessageList'
-import { ChatInput } from './components/ChatInput'
-import { EmptyState } from './components/EmptyState'
-import { useChatStore } from './stores/chatStore'
-import { useSSE } from './hooks/useSSE'
-import { useSession } from './hooks/useSession'
-import './App.css'
-
-const { Header, Content, Footer } = Layout
+import { ConfigProvider } from 'antd';
+import { useEffect } from 'react';
+import { ChatInput } from './components/ChatInput';
+import { ChatMessageList } from './components/ChatMessageList';
+import { EmptyState } from './components/EmptyState';
+import { warmTheme } from './config/theme';
+import { useSession } from './hooks/useSession';
+import { useSSE } from './hooks/useSSE';
+import { useChatStore } from './stores/chatStore';
+import './App.css';
 
 function App() {
-  const messages = useChatStore((s) => s.messages)
-  const storeSessionId = useChatStore((s) => s.sessionId)
-  const { sessionId, updateSessionId } = useSession()
-  const { startStream } = useSSE()
+  const messages = useChatStore((s) => s.messages);
+  const storeSessionId = useChatStore((s) => s.sessionId);
+  const { sessionId, updateSessionId } = useSession();
+  const { startStream } = useSSE();
 
   // SSE 流中返回新 session_id 时同步到 sessionStorage
   useEffect(() => {
     if (storeSessionId && storeSessionId !== sessionId) {
-      updateSessionId(storeSessionId)
+      updateSessionId(storeSessionId);
     }
-  }, [storeSessionId, sessionId, updateSessionId])
+  }, [storeSessionId, sessionId, updateSessionId]);
 
   const handleSend = (prompt: string) => {
-    startStream(prompt, storeSessionId)
-  }
+    startStream(prompt, storeSessionId);
+  };
+
+  const hasMessages = messages.length > 0;
 
   return (
-    <ConfigProvider theme={lightTheme}>
-      <Layout className="h-screen">
-        <Header className="flex items-center px-5">
-          <ChatHeader />
-        </Header>
-        <Content className="flex flex-col overflow-hidden">
-          {messages.length === 0 ? (
-            <EmptyState />
-          ) : (
+    <ConfigProvider theme={warmTheme}>
+      <div className="flex h-screen flex-col bg-bg text-fg">
+        {hasMessages ? (
+          <>
             <ChatMessageList />
-          )}
-        </Content>
-        <Footer className="!p-0">
-          <ChatInput onSend={handleSend} />
-        </Footer>
-      </Layout>
+            <div className="px-4 py-3">
+              <ChatInput onSend={handleSend} />
+            </div>
+          </>
+        ) : (
+          <EmptyState onSend={handleSend} />
+        )}
+      </div>
     </ConfigProvider>
-  )
+  );
 }
 
-export default App
+export default App;
