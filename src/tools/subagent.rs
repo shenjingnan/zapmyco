@@ -365,8 +365,9 @@ impl SubAgentTool {
                     continue;
                 }
 
-                // 死进程检测
+                // 死进程检测：仅当 exit_code 也未写入时才触发（避免竞态）
                 if !dir.join("done").exists()
+                    && !dir.join("exit_code").exists()
                     && let Ok(pid_str) = std::fs::read_to_string(dir.join("pid"))
                     && let Ok(pid) = pid_str.trim().parse::<u32>()
                     && !is_process_alive(pid)

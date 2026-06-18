@@ -1012,7 +1012,7 @@ mod tests {
         let executor = test_executor();
         // Windows 上用 C:\（所有 Windows 系统都有 C 盘）
         let result = executor
-            .execute("cd C:\\ && pwd", None, None)
+            .execute("cd /d C:\\ && pwd", None, None)
             .await
             .unwrap();
         assert!(result.contains("Exit code: 0"), "结果:\n{}", result);
