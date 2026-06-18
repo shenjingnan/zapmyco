@@ -40,7 +40,19 @@ pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Resul
     if host != "127.0.0.1" {
         output::send(&Message::info(format!("🔑 认证 Token: {}", token)));
     }
-    // 6. 启动服务器，按 Ctrl+C 立即退出
+    // 6. 尝试自动打开浏览器（无头/容器环境会自动降级为提示，不影响服务器）
+    let url = format!("http://{}:{}", host, actual_port);
+    tokio::task::spawn_blocking(move || {
+        if webbrowser::open(&url).is_ok() {
+            info!("浏览器已自动打开: {}", url);
+        } else {
+            info!(
+                "无法自动打开浏览器（无桌面环境或无默认浏览器），请手动访问: {}",
+                url
+            );
+        }
+    });
+    // 7. 启动服务器，按 Ctrl+C 立即退出
     tokio::select! {
         result = axum::serve(listener, app) => {
             if let Err(e) = result {

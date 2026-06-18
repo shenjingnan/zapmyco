@@ -42,6 +42,8 @@ yaml_serde = "0.10.4"
 ratatui = { version = "0.29", features = ["crossterm"] }
 tui-textarea = "0.7.0"
 
+webbrowser = "1"
+
 # Web Server
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "trace", "limit", "fs"] }
