@@ -18,10 +18,8 @@ pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Resul
     // 1. 确定 token
     let token = resolve_token(auth_token)?;
 
-    // 2. 绑定端口（自动 fallback）
-    let (listener, actual_port) = bind_with_fallback(&host, port)
-        .await
-        .map_err(|e| format!("端口绑定失败: {}", e))?;
+    // 2. 绑定端口（被占用时询问用户如何处理）
+    let (listener, actual_port) = resolve_port(&host, port).await?;
 
     // 3. 创建共享状态
     let shared_state = crate::web::AppState::new(token.clone());
@@ -42,13 +40,6 @@ pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Resul
     if host != "127.0.0.1" {
         output::send(&Message::info(format!("🔑 认证 Token: {}", token)));
     }
-    if actual_port != port {
-        output::send(&Message::info(format!(
-            "⚠️  端口 {} 被占用，已自动切换到 {}",
-            port, actual_port
-        )));
-    }
-
     // 6. 启动服务器，按 Ctrl+C 立即退出
     tokio::select! {
         result = axum::serve(listener, app) => {
@@ -83,19 +74,105 @@ fn resolve_token(arg: Option<&str>) -> Result<String, String> {
     Ok(String::new())
 }
 
-/// 绑定端口，被占用时自动尝试下一个端口。
-async fn bind_with_fallback(host: &str, port: u16) -> Result<(TcpListener, u16), String> {
-    for attempt in 0..10 {
+/// 尝试绑定端口，被占用时询问用户如何处理。
+async fn resolve_port(host: &str, port: u16) -> Result<(TcpListener, u16), String> {
+    // 先试一次请求的端口
+    if let Ok(listener) = TcpListener::bind(format!("{}:{}", host, port)).await {
+        return Ok((listener, port));
+    }
+
+    // 端口被占用，探测下一个可用端口（持有 listener 避免竞争）
+    let probe = bind_first_available(host, port).await;
+
+    let opt_kill = format!("使用 {} (杀掉原有进程)", port);
+    let opt_next = match probe {
+        Some((_, p)) => format!("使用 {}", p),
+        None => "使用其他端口".to_string(),
+    };
+
+    let choice = inquire::Select::new("端口被占，请选择:", vec![opt_kill.clone(), opt_next])
+        .with_vim_mode(true)
+        .prompt()
+        .map_err(|e| format!("无法选择: {}", e))?;
+
+    if choice == opt_kill {
+        // 丢弃 probe 持有的 listener
+        drop(probe);
+        kill_process_on_port(port).await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        if let Ok(listener) = TcpListener::bind(format!("{}:{}", host, port)).await {
+            return Ok((listener, port));
+        }
+        // 杀进程后仍绑不上，fallback
+        bind_fallback(host, port).await
+    } else if let Some((listener, p)) = probe {
+        output::send(&Message::info(format!(
+            "⚠️  端口 {} 被占用，已切换到 {}",
+            port, p
+        )));
+        Ok((listener, p))
+    } else {
+        bind_fallback(host, port).await
+    }
+}
+
+/// 尝试绑定端口的 fallback 序列。
+async fn bind_fallback(host: &str, port: u16) -> Result<(TcpListener, u16), String> {
+    for attempt in 1..10 {
         let p = port + attempt;
         match TcpListener::bind(format!("{}:{}", host, p)).await {
-            Ok(listener) => return Ok((listener, p)),
-            Err(_) if attempt < 9 => continue,
-            Err(e) => {
-                return Err(format!("端口 {}-{} 均不可用: {}", port, port + 9, e));
+            Ok(listener) => {
+                output::send(&Message::info(format!(
+                    "⚠️  端口 {} 被占用，已切换到 {}",
+                    port, p
+                )));
+                return Ok((listener, p));
             }
+            Err(_) => continue,
         }
     }
-    unreachable!()
+    Err(format!("端口 {}-{} 均不可用", port, port + 9))
+}
+
+/// 绑定下一个可用端口（从 port+1 开始试），返回 (listener, port)。
+async fn bind_first_available(host: &str, port: u16) -> Option<(TcpListener, u16)> {
+    for attempt in 1..10 {
+        let p = port + attempt;
+        if let Ok(listener) = TcpListener::bind(format!("{}:{}", host, p)).await {
+            return Some((listener, p));
+        }
+    }
+    None
+}
+
+/// 查找并终止占用指定端口的进程（Unix: lsof + kill）。
+async fn kill_process_on_port(port: u16) {
+    #[cfg(unix)]
+    {
+        // lsof -ti :port 查找占用端口的 PID
+        let port_str = format!(":{}", port);
+        let output = std::process::Command::new("lsof")
+            .args(["-ti", &port_str])
+            .output()
+            .ok();
+
+        if let Some(out) = output
+            && out.status.success()
+        {
+            let pids = String::from_utf8_lossy(&out.stdout);
+            for line in pids.lines() {
+                if let Ok(pid) = line.trim().parse::<i32>() {
+                    // 先 SIGTERM
+                    let _ = std::process::Command::new("kill")
+                        .args(["-TERM", &pid.to_string()])
+                        .output();
+                    info!("已终止进程 PID {}", pid);
+                }
+            }
+            // 给进程一点时间释放端口
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        }
+    }
 }
 
 /// 优雅关闭信号：Ctrl+C 或 SIGTERM（Docker stop）。
