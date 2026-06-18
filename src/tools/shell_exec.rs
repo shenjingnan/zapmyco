@@ -953,6 +953,7 @@ mod tests {
         assert!(result.contains("hello"));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[tokio::test]
     async fn test_execute_working_dir_tracks_inline_cd() {
         let executor = test_executor();
@@ -967,6 +968,25 @@ mod tests {
             result.contains("Working directory: /private/tmp")
                 || result.contains("Working directory: /tmp"),
             "Working directory 应指向 /tmp，实际: {}",
+            result
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_execute_working_dir_tracks_inline_cd() {
+        let executor = test_executor();
+        // Windows 上用 C:\（所有 Windows 系统都有 C 盘）
+        let result = executor
+            .execute("cd C:\\ && pwd", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"), "结果:\n{}", result);
+        // Working directory 应指向 C:\（不区分大小写）
+        assert!(
+            result.starts_with("Working directory: C:\\")
+                || result.starts_with("Working directory: c:\\"),
+            "Working directory 应指向 C:\\，实际: {}",
             result
         );
     }
