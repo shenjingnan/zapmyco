@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use futures_util::StreamExt;
@@ -295,6 +296,8 @@ pub struct AiAgent {
     agents_md_content: Option<String>,
     /// 可用 skill 列表文本（注入到 context_reminder）
     skill_list_text: Option<String>,
+    /// 当前工作目录（跨 shell_exec 自动跟踪保持）
+    current_dir: PathBuf,
 }
 
 impl AiAgent {
@@ -499,6 +502,7 @@ impl AiAgent {
             context_injected: false,
             agents_md_content,
             skill_list_text: options.skill_list_text,
+            current_dir: std::env::current_dir().map_err(|e| format!("获取当前目录失败: {}", e))?,
         })
     }
 
@@ -1098,14 +1102,29 @@ impl AiAgent {
                 progress.finish_item(&th, false, Some(&err_msg));
                 (format!("[Tool error: {}]", err_msg), Some(err_msg))
             } else {
-                // 交互式工具（如 ask_user）使用 crossterm 原始模式，
+                // 交互式工具（如 ask_user、shell_exec 需确认时）使用 crossterm 原始模式，
                 // 暂停 MultiProgress 动画以避免与 crossterm 冲突
-                let is_interactive = matches!(name.as_str(), "ask_user");
+                let is_interactive = matches!(name.as_str(), "ask_user" | "shell_exec");
                 if is_interactive {
                     progress.pause();
                 }
 
-                let result = handler.execute(input).await;
+                // 注入当前工作目录（shell_exec 未指定 working_directory 时）
+                let should_inject = name.as_str() == "shell_exec"
+                    && input
+                        .get("working_directory")
+                        .and_then(|v| v.as_str())
+                        .is_none_or(|s| s.is_empty());
+                let input_to_use = if should_inject {
+                    let mut cloned = input.clone();
+                    cloned["working_directory"] =
+                        serde_json::Value::String(self.current_dir.to_string_lossy().to_string());
+                    cloned
+                } else {
+                    input.clone()
+                };
+
+                let result = handler.execute(&input_to_use).await;
 
                 if is_interactive {
                     progress.resume();
@@ -1160,6 +1179,18 @@ impl AiAgent {
                     }
                 }
             };
+
+            // 更新 shell_exec 的工作目录跟踪
+            if name.as_str() == "shell_exec"
+                && let Some(path) = result_text
+                    .lines()
+                    .next()
+                    .and_then(|line| line.strip_prefix("Working directory: "))
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+            {
+                self.current_dir = PathBuf::from(path);
+            }
 
             let duration_ms = tool_start.elapsed().as_millis() as u64;
 
@@ -1245,6 +1276,9 @@ impl AiAgent {
             transient_handles.push(Some(th));
         }
 
+        // 冻结当前工作目录（供并发 shell_exec 注入）
+        let frozen_cwd = self.current_dir.clone();
+
         // 为每个工具构造一个并发执行的 future
         for (idx, (tool_use_id, name, input)) in tool_uses.iter().enumerate() {
             let handler = self
@@ -1267,7 +1301,20 @@ impl AiAgent {
 
             let icon = crate::agent::executor::tool_icon(name);
             let param = crate::agent::executor::format_tool_param(name, input);
-            let input_clone = input.clone();
+            // 注入当前工作目录（shell_exec 未指定 working_directory 时）
+            let should_inject = name.as_str() == "shell_exec"
+                && input
+                    .get("working_directory")
+                    .and_then(|v| v.as_str())
+                    .is_none_or(|s| s.is_empty());
+            let input_clone = if should_inject {
+                let mut cloned = input.clone();
+                cloned["working_directory"] =
+                    serde_json::Value::String(frozen_cwd.to_string_lossy().to_string());
+                cloned
+            } else {
+                input.clone()
+            };
             let tool_use_id_clone = tool_use_id.clone();
             let name_clone = name.clone();
             let th = transient_handles[idx].clone();

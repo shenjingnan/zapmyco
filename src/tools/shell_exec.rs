@@ -1,4 +1,6 @@
 /// shell_exec 工具 - 在本地系统执行 shell 命令并返回输出
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 
 use crate::output::{self, Message};
@@ -29,6 +31,51 @@ pub enum ShellExecError {
         /// 最大允许大小
         max: usize,
     },
+}
+
+// ---------------------------------------------------------------------------
+// CWD tracking helpers
+// ---------------------------------------------------------------------------
+
+/// 原子计数器，确保并发安全的临时文件路径
+static ZMD_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// 生成唯一临时目录路径（自动创建目录）
+fn zmd_temp_dir() -> PathBuf {
+    let pid = std::process::id();
+    let n = ZMD_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("zmd-{}-{}", pid, n));
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// 临时目录清理守卫（Drop 时自动删除）
+struct ZmdTempGuard {
+    path: Option<PathBuf>,
+}
+
+impl ZmdTempGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+}
+
+impl Drop for ZmdTempGuard {
+    fn drop(&mut self) {
+        if let Some(ref path) = self.path {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+/// 读取 CWD 文件，失败时回退到 working_directory
+fn read_cwd_file(cwd_file: &Path, working_directory: Option<&str>) -> String {
+    std::fs::read_to_string(cwd_file)
+        .map(|s| s.trim().to_string())
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| working_directory.map(|s| s.to_string()))
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +369,8 @@ impl ShellExec {
             name: "shell_exec".to_string(),
             description: Some(
                 "在本地系统执行 shell 命令并返回标准输出、标准错误和退出码。\
+                 工作目录会自动跨命令保持并显示在结果中。\
+                 不要在 command 中写 cd 来切换目录，请使用 working_directory 参数。\
                  重要: 不要使用此工具运行 cat、head、tail 命令来读取文件内容，\
                  应使用 read 工具来读取文件。"
                     .to_string(),
@@ -339,7 +388,7 @@ impl ShellExec {
                     },
                     "working_directory": {
                         "type": "string",
-                        "description": "命令执行的工作目录（绝对路径）。不指定则使用当前目录"
+                        "description": "命令执行的工作目录（绝对路径）。切换目录请使用此参数，不要在 command 前加 cd。不指定则自动使用上次执行后的工作目录"
                     }
                 },
                 "required": ["command", "description"]
@@ -354,37 +403,26 @@ impl ShellExec {
     /// * `command` - 要执行的 shell 命令
     /// * `description` - 命令执行说明（用于 LLM 自我审计）
     /// * `working_directory` - 可选的工作目录
+    ///
+    /// 返回格式（与重构前不同，首行为工作目录）：
+    /// ```text
+    /// Working directory: /path
+    ///
+    /// Exit code: 0
+    ///
+    /// --- STDOUT ---
+    /// ...
+    /// ```
     pub async fn execute(
         &self,
         command: &str,
         description: Option<&str>,
         working_directory: Option<&str>,
     ) -> Result<String, ShellExecError> {
-        // 1. 选择 shell
-        let (shell, arg_flag) = if cfg!(target_os = "windows") {
-            ("cmd.exe", "/C")
-        } else {
-            ("sh", "-c")
-        };
-
-        // 2. 构建命令
-        let mut cmd = tokio::process::Command::new(shell);
-        cmd.arg(arg_flag);
-        cmd.arg(command);
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
-
-        if let Some(dir) = working_directory {
-            cmd.current_dir(dir);
-        }
-
-        // 3. 权限检查
+        // 1. 权限检查
         if self.options.readonly_mode {
-            // 只读模式权限检查：优先于 skip_confirm
             match classify_readonly_command(command, &self.options.denied_commands) {
-                Ok(()) => {
-                    // 安全命令——直接放行
-                }
+                Ok(()) => {}
                 Err(reason) => {
                     let msg = match reason {
                         ReadonlyDenyReason::ControlOperator => format!(
@@ -421,17 +459,13 @@ impl ShellExec {
                 }
             }
         } else if !self.options.skip_confirm {
-            // 非只读模式：保持现有逻辑
-            // 3a. 安全命令 → 自动放行（匹配内置或用户自定义列表，含运行时白名单）
             if is_safe_command(
                 command,
                 &self.allowed_commands_runtime.lock().unwrap(),
                 &self.options.denied_commands,
             ) {
                 // 无需确认，直接执行
-            }
-            // 3b. 非安全命令 → 弹出确认（三选项：允许 / 始终允许 / 拒绝）
-            else {
+            } else {
                 match prompt_confirm(command, description) {
                     ConfirmAction::Deny => {
                         output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
@@ -439,10 +473,8 @@ impl ShellExec {
                     }
                     ConfirmAction::AlwaysAllow => {
                         let trimmed = command.trim();
-                        // 提取命令的第一个词作为白名单 pattern（匹配所有同命令操作）
                         let first_word = trimmed.split_whitespace().next().unwrap_or(trimmed);
 
-                        // 危险命令不允许自动加入白名单
                         if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
                             output::send(&Message::warning(format!(
                                 "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
@@ -461,7 +493,6 @@ impl ShellExec {
                                 first_word
                             )));
                         }
-                        // 更新运行时白名单（Mutex 锁立即释放）
                         if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
                             self.allowed_commands_runtime
                                 .lock()
@@ -474,21 +505,80 @@ impl ShellExec {
             }
         }
 
-        // 4. 执行带超时
+        // 2. CWD 跟踪：创建临时目录（Guard 自动清理）
+        let cwd_dir = zmd_temp_dir();
+        let _guard = ZmdTempGuard::new(cwd_dir.clone());
+        let cwd_file = cwd_dir.join("cwd");
+
+        // 3. 构建并执行命令（平台相关）
         let timeout = std::time::Duration::from_secs(self.options.timeout_secs);
 
-        let output = tokio::time::timeout(timeout, cmd.output())
-            .await
-            .map_err(|_| ShellExecError::Timeout {
-                timeout_secs: self.options.timeout_secs,
-            })?
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    ShellExecError::Io(format!("Command not found: {}", command))
-                } else {
-                    ShellExecError::Io(e.to_string())
-                }
-            })?;
+        let output = if cfg!(target_os = "windows") {
+            // Windows：写入临时 bat 文件后执行
+            let bat_file = cwd_dir.join("run.bat");
+            let bat_content = format!(
+                "@echo off\r\n\
+                 {}\r\n\
+                 set _ZMD_RC=%ERRORLEVEL%\r\n\
+                 cd >\"{}\"\r\n\
+                 exit /b %_ZMD_RC%\r\n",
+                command,
+                cwd_file.display()
+            );
+            std::fs::write(&bat_file, bat_content)
+                .map_err(|e| ShellExecError::Io(format!("写入临时脚本失败: {}", e)))?;
+
+            let mut cmd = tokio::process::Command::new("cmd.exe");
+            cmd.arg("/d").arg("/c");
+            cmd.arg(bat_file.as_os_str());
+            if let Some(dir) = working_directory {
+                cmd.current_dir(dir);
+            }
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
+
+            tokio::time::timeout(timeout, cmd.output())
+                .await
+                .map_err(|_| ShellExecError::Timeout {
+                    timeout_secs: self.options.timeout_secs,
+                })?
+                .map_err(|e| {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        ShellExecError::Io(format!("Command not found: {}", command))
+                    } else {
+                        ShellExecError::Io(e.to_string())
+                    }
+                })?
+        } else {
+            // Unix：注入 pwd -P 到命令中
+            let tracked_cmd = format!(
+                "{}; _ZMD_RC=$?; pwd -P > {}; exit $_ZMD_RC",
+                command,
+                cwd_file.display()
+            );
+
+            let mut cmd = tokio::process::Command::new("sh");
+            cmd.arg("-c");
+            cmd.arg(&tracked_cmd);
+            if let Some(dir) = working_directory {
+                cmd.current_dir(dir);
+            }
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
+
+            tokio::time::timeout(timeout, cmd.output())
+                .await
+                .map_err(|_| ShellExecError::Timeout {
+                    timeout_secs: self.options.timeout_secs,
+                })?
+                .map_err(|e| {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        ShellExecError::Io(format!("Command not found: {}", command))
+                    } else {
+                        ShellExecError::Io(e.to_string())
+                    }
+                })?
+        };
 
         // 4. 转换输出
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -503,10 +593,13 @@ impl ShellExec {
             });
         }
 
-        // 6. 格式化输出
+        // 6. 读取实际工作目录
+        let actual_cwd = read_cwd_file(&cwd_file, working_directory);
+
+        // 7. 格式化输出（首行为工作目录）
         let exit_code = output.status.code();
 
-        let mut result = String::new();
+        let mut result = format!("Working directory: {}\n\n", actual_cwd);
         result.push_str(&format!(
             "Exit code: {}\n\n",
             exit_code
@@ -843,6 +936,100 @@ mod tests {
                 // IO 错误也合理
             }
         }
+    }
+
+    // ---- Working directory tracking tests ----
+
+    #[tokio::test]
+    async fn test_execute_result_starts_with_working_dir() {
+        let executor = test_executor();
+        let result = executor.execute("echo hello", None, None).await.unwrap();
+        assert!(
+            result.starts_with("Working directory: "),
+            "结果应以 Working directory: 开头，实际为: {}",
+            result
+        );
+        assert!(result.contains("Exit code: 0"));
+        assert!(result.contains("hello"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[tokio::test]
+    async fn test_execute_working_dir_tracks_inline_cd() {
+        let executor = test_executor();
+        // 在 Unix 上，cd /tmp 后续 pwd -P 应捕获到 /tmp
+        let result = executor
+            .execute("cd /tmp && pwd", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"), "结果:\n{}", result);
+        // Working directory 应包含 /tmp（pwd -P 解析真实路径，忽略符号链接）
+        assert!(
+            result.contains("Working directory: /private/tmp")
+                || result.contains("Working directory: /tmp"),
+            "Working directory 应指向 /tmp，实际: {}",
+            result
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_execute_working_dir_tracks_inline_cd() {
+        let executor = test_executor();
+        // Windows 上用 C:\（所有 Windows 系统都有 C 盘）
+        let result = executor
+            .execute("cd C:\\ && pwd", None, None)
+            .await
+            .unwrap();
+        assert!(result.contains("Exit code: 0"), "结果:\n{}", result);
+        // Working directory 应指向 C:\（不区分大小写）
+        assert!(
+            result.starts_with("Working directory: C:\\")
+                || result.starts_with("Working directory: c:\\"),
+            "Working directory 应指向 C:\\，实际: {}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_working_dir_with_exit() {
+        let executor = test_executor();
+        // exit 终止 shell，pwd 不运行 → fallback 到 unknown
+        let result = executor.execute("exit 42", None, None).await.unwrap();
+        assert!(result.contains("Exit code: 42"), "结果:\n{}", result);
+        assert!(
+            result.starts_with("Working directory: "),
+            "结果应以 Working directory: 开头: {}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_working_dir_false_then_pwd() {
+        let executor = test_executor();
+        // false 失败，但 ; 后的 pwd -P 应仍运行
+        let result = executor.execute("false", None, None).await.unwrap();
+        assert!(result.contains("Exit code: 1"), "结果:\n{}", result);
+        assert!(
+            result.starts_with("Working directory: "),
+            "结果应以 Working directory: 开头: {}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_working_dir_respects_param() {
+        let executor = test_executor();
+        let tmp = std::env::temp_dir();
+        let result = executor.execute("pwd", None, tmp.to_str()).await.unwrap();
+        assert!(result.contains("Exit code: 0"));
+        // 由于 pwd -P 可能解析符号链接（/var → /private/var），
+        // 不精确匹配，只验证包含 Working directory:
+        assert!(
+            result.starts_with("Working directory: "),
+            "结果应以 Working directory: 开头: {}",
+            result
+        );
     }
 }
 

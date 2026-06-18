@@ -303,6 +303,21 @@ pub enum Commands {
     },
     /// 将 zapmyco 升级到最新版本
     Upgrade,
+    /// 启动 TUI 聊天演示界面（基于 ratatui，支持多行输入）
+    Demo {
+        /// 指定模型配置档
+        #[arg(long)]
+        profile: Option<String>,
+        /// 指定 AI 模型名称（Tab 可补全内置模型名）
+        #[arg(long, value_parser = ModelValueParser)]
+        model: Option<String>,
+        /// 指定 API Key（覆盖 settings.toml 和环境变量）
+        #[arg(long = "api-key")]
+        api_key: Option<String>,
+        /// 指定 API 基础地址（Tab 可补全内置供应商地址）
+        #[arg(long = "base-url", value_parser = BaseUrlValueParser)]
+        base_url: Option<String>,
+    },
     /// 生成 shell 补全脚本
     #[command(hide = true)]
     Completion {
@@ -442,6 +457,20 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             .await
         }
         Some(Commands::Upgrade) => commands::upgrade::cmd_upgrade().await,
+        Some(Commands::Demo {
+            profile,
+            model,
+            api_key,
+            base_url,
+        }) => {
+            commands::demo::cmd_demo(
+                profile.as_deref(),
+                model.as_deref(),
+                api_key.as_deref(),
+                base_url.as_deref(),
+            )
+            .await
+        }
         Some(Commands::Completion { shell }) => {
             crate::commands::completion::cmd_completion(shell, &mut std::io::stdout());
             Ok(())

@@ -54,6 +54,13 @@ pub const BEHAVIORAL_GUIDANCE: &str = "\n\
     - 文件操作前必须先通过 file_read 读取文件内容。\
     - 使用工具时请注意安全。\
     \n\
+    ## Shell 命令规范\n\
+    \n\
+    - 工作目录会自动跨命令跟踪并显示在结果中。不需要在命令中写 `cd` 来切换目录。\
+    - 需要在其他目录执行时，请使用 `shell_exec` 工具的 `working_directory` 参数。\
+    - 有顺序依赖的多个命令请用 `&&` 合并为一条命令（如 `cargo fmt && cargo test`），\
+      不要分多次工具调用。\
+    \n\
     ## 任务执行策略\n\
     \n\
     当使用 task_create 创建任务后，请按以下步骤执行：\
