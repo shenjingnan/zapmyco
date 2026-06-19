@@ -305,10 +305,13 @@ impl SubAgentTool {
 
                 let (stdout, stderr, exit_code) = match timed_out {
                     Ok(Ok(status)) => {
-                        // 子进程正常退出，读取已收集的输出
+                        let code = status.code().unwrap_or(-1);
+                        // 立即写入 exit_code，防止 poll 的死进程检测在异步读取管道期间抢写 -9
+                        if !dir_clone.join("done").exists() {
+                            write_file(&dir_clone.join("exit_code"), &code.to_string())?;
+                        }
                         let stdout = read_stdout(stdout_handle).await;
                         let stderr = read_stderr(stderr_handle).await;
-                        let code = status.code().unwrap_or(-1);
                         (stdout, stderr, code.to_string())
                     }
                     Ok(Err(e)) => {
