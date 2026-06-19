@@ -265,14 +265,13 @@ impl TaskManager {
         let lock_path = self.lock_path();
 
         let file = tokio::task::spawn_blocking(move || {
-            use fs4::fs_std::FileExt;
             let file = std::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
                 .truncate(false)
                 .read(true)
                 .open(&lock_path)?;
-            file.lock_exclusive()?;
+            file.lock()?;
             Ok::<_, TaskError>(file)
         })
         .await
