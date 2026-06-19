@@ -29,6 +29,15 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: 构建 Web 前端（供 cargo publish 打包嵌入）
+        run: |
+          cd web && pnpm install --frozen-lockfile && pnpm build
+
       - name: 运行 release-plz（创建 tag + 发布到 crates.io）
         id: release
         uses: release-plz/action@v0.5
