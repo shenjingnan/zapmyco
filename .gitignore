@@ -6,7 +6,7 @@ node_modules/
 *.lcov
 
 # Build output
-dist
+/dist
 
 # OpenManual cache
 docs/.cache/
