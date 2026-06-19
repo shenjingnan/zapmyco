@@ -409,6 +409,56 @@ impl Default for RunProgress {
     }
 }
 
+// ── ProgressReporter trait 实现 ──
+
+/// 为 ProgressHandle 实现 HandleLike trait。
+/// 使得 TrackerHandle（ProgressHandle 的包装）可以直接通过 trait 方法控制状态。
+impl crate::agent::progress::HandleLike for TransientHandle {
+    fn set_running(&self, status: Option<&str>) {
+        self.handle.set_running(status);
+    }
+
+    fn set_success(&self, summary: Option<&str>) {
+        self.handle.set_success(summary);
+    }
+
+    fn set_failed(&self, error: &str) {
+        self.handle.set_failed(error);
+    }
+}
+
+impl crate::agent::progress::ProgressReporter for RunProgress {
+    type Handle = TransientHandle;
+
+    fn set_status(&self, text: &str) {
+        self.set_status(text);
+    }
+
+    fn start_item(&self, label: &str) -> TransientHandle {
+        self.start_item(label)
+    }
+
+    fn finish_item(&self, handle: &TransientHandle, success: bool, summary: Option<&str>) {
+        self.finish_item(handle, success, summary);
+    }
+
+    fn mark_item_completed(&self, handle: &TransientHandle) {
+        self.mark_item_completed(handle);
+    }
+
+    fn tick(&self) {
+        self.tick();
+    }
+
+    fn pause(&self) {
+        self.pause();
+    }
+
+    fn resume(&self) {
+        self.resume();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
