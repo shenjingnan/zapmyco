@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react'
-import { AskUserCard } from '../components/AskUserCard'
-import { useChatStore } from '../stores/chatStore'
+import type { Meta, StoryObj } from '@storybook/react';
+import { AskUserCard } from '../components/AskUserCard';
+import { useChatStore } from '../stores/chatStore';
 
 const meta: Meta<typeof AskUserCard> = {
   title: 'Components/AskUserCard',
@@ -12,14 +12,14 @@ const meta: Meta<typeof AskUserCard> = {
         status: 'waiting',
         messages: [],
         currentAssistantText: '',
-      })
-      return <Story />
+      });
+      return <Story />;
     },
   ],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof AskUserCard>
+export default meta;
+type Story = StoryObj<typeof AskUserCard>;
 
 export const Default: Story = {
   name: '默认（三选项）',
@@ -30,7 +30,7 @@ export const Default: Story = {
       options: ['React', 'Vue', 'Svelte'],
     },
   },
-}
+};
 
 export const TwoOptions: Story = {
   name: '两个选项',
@@ -41,7 +41,7 @@ export const TwoOptions: Story = {
       options: ['继续', '取消'],
     },
   },
-}
+};
 
 export const ManyOptions: Story = {
   name: '多个选项',
@@ -52,7 +52,7 @@ export const ManyOptions: Story = {
       options: ['深色模式', '浅色模式', '跟随系统', '暖色调', '冷色调'],
     },
   },
-}
+};
 
 export const Answered: Story = {
   name: '已回答',
@@ -68,11 +68,11 @@ export const Answered: Story = {
       useChatStore.setState({
         status: 'streaming',
         sessionId: 'test-session',
-      })
-      return <Story />
+      });
+      return <Story />;
     },
   ],
-}
+};
 
 export const NoSession: Story = {
   name: '无 Session',
@@ -88,8 +88,8 @@ export const NoSession: Story = {
       useChatStore.setState({
         sessionId: null,
         status: 'waiting',
-      })
-      return <Story />
+      });
+      return <Story />;
     },
   ],
-}
+};
