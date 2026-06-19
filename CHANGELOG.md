@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## [0.41.0](https://github.com/shenjingnan/zapmyco/compare/v0.40.0...v0.41.0) - 2026-06-19
+
+### Added
+
+- *(web)* 将 Web 前端构建产物嵌入 Rust 二进制文件 ([#459](https://github.com/shenjingnan/zapmyco/pull/459))
+- *(shell-exec)* 实现工作目录自动跟踪并修复审批确认无限循环 ([#457](https://github.com/shenjingnan/zapmyco/pull/457))
+- *(tui)* 实现 RunProgress 动态面板展示组件，改造 run 命令终端输出 ([#456](https://github.com/shenjingnan/zapmyco/pull/456))
+- *(tui)* 添加基于 indicatif 的多条目进度显示组件 ([#455](https://github.com/shenjingnan/zapmyco/pull/455))
+- *(plan)* 移除审批阶段 max_retries 限制，改为无限迭代 ([#452](https://github.com/shenjingnan/zapmyco/pull/452))
+- *(cli)* 添加 --mode plan/base 执行模式，实现规划-审批-执行-总结四阶段流程 ([#450](https://github.com/shenjingnan/zapmyco/pull/450))
+- *(session-log)* P2 实现 — events.log 用户交互记录 + ZAPMYCO\_LOG 日志级别 ([#445](https://github.com/shenjingnan/zapmyco/pull/445))
+- *(session-log)* P1 实现 — SessionStats + SubAgent 关联 + session\_loader 兼容 ([#444](https://github.com/shenjingnan/zapmyco/pull/444))
+- *(session-log)* 添加 session.json 元数据和 panic hook 增强会话日志 ([#443](https://github.com/shenjingnan/zapmyco/pull/443))
+- *(logging)* 为 session 目录添加 app.log 应用执行日志 ([#442](https://github.com/shenjingnan/zapmyco/pull/442))
+- *(shell-exec)* 增加始终允许选项，优化用户授权体验 ([#441](https://github.com/shenjingnan/zapmyco/pull/441))
+- *(permission)* ReadOnly 模式下 shell_exec 降级 + SubAgent 权限继承 ([#440](https://github.com/shenjingnan/zapmyco/pull/440))
+- *(agent)* 将 conversation 全面更名为 session ([#439](https://github.com/shenjingnan/zapmyco/pull/439))
+- *(agent)* 添加工具调用日志记录功能 ([#438](https://github.com/shenjingnan/zapmyco/pull/438))
+- *(run)* 每次 zapmyco run 创建会话子目录并记录终端输出 ([#435](https://github.com/shenjingnan/zapmyco/pull/435))
+
+### Fixed
+
+- *(ci)* 修复 Windows CI 上 test_poll_returns_completed_after_wait 竞态条件失败 ([#458](https://github.com/shenjingnan/zapmyco/pull/458))
+
+### Other
+
+- *(tui)* 提取 InlineInput 共享组件，统一单选/多选自定义输入行为 ([#454](https://github.com/shenjingnan/zapmyco/pull/454))
+- *(skill)* 将 skill body 改为 user_message 注入，plan mode 提示词迁移到 SKILL.md ([#453](https://github.com/shenjingnan/zapmyco/pull/453))
+
 ## [0.40.0](https://github.com/shenjingnan/zapmyco/compare/v0.39.1...v0.40.0) - 2026-06-11
 
 ### Other

@@ -1,22 +1,22 @@
 #!/bin/sh
-# Pre-commit hook for Rust 项目
+# Pre-commit hook for Rust + Web 项目
 # 安装: git config core.hooksPath .githooks
 
 set -e
 
-echo "🔍 运行格式检查..."
+echo "🔍 运行 Rust 格式检查..."
 cargo fmt --check 2>/dev/null || {
   echo "⚠️  代码格式有误，请运行: cargo fmt"
   exit 1
 }
 
-echo "🔍 运行 Lint 检查..."
+echo "🔍 运行 Rust Lint 检查..."
 cargo clippy -- -D warnings 2>/dev/null || {
   echo "⚠️  存在 clippy 错误"
   exit 1
 }
 
-echo "🔍 运行测试..."
+echo "🔍 运行 Rust 测试..."
 cargo test -- --test-threads=1 2>/dev/null || {
   echo "⚠️  测试未通过"
   exit 1
@@ -27,5 +27,22 @@ typos . 2>/dev/null || {
   echo "⚠️  存在拼写错误"
   exit 1
 }
+
+# Web 前端检查（仅在 web/ 目录存在且有 node_modules 时运行）
+if [ -d "web/node_modules" ]; then
+  echo "🔍 运行 Web Biome 检查..."
+  (cd web && pnpm check) 2>/dev/null || {
+    echo "⚠️  Biome 检查未通过，请运行: cd web && pnpm check"
+    exit 1
+  }
+
+  echo "🔍 运行 Web TypeScript 检查..."
+  (cd web && pnpm typecheck) 2>/dev/null || {
+    echo "⚠️  TypeScript 检查未通过，请运行: cd web && pnpm typecheck"
+    exit 1
+  }
+else
+  echo "📝 跳过 Web 前端检查（web/node_modules 不存在）"
+fi
 
 echo "✅ 所有检查通过"

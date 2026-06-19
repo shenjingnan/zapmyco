@@ -14,6 +14,7 @@ pub mod skills;
 #[doc(hidden)]
 pub mod tools;
 pub mod tui;
+pub mod web;
 
 #[cfg(test)]
 pub(crate) mod test_util {
