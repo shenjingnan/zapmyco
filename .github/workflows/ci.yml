@@ -21,6 +21,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.node-version
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build web frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+        working-directory: web
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
