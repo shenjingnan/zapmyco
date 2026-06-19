@@ -300,6 +300,8 @@ pub struct ShellExecOptions {
     /// - 不匹配的命令直接返回拒绝消息，不弹确认框
     /// - allowed_commands 在此模式下被忽略
     pub readonly_mode: bool,
+    /// 确认后端（默认 Terminal）
+    pub confirm_backend: crate::tools::confirm::ConfirmBackend,
 }
 
 impl Default for ShellExecOptions {
@@ -311,6 +313,7 @@ impl Default for ShellExecOptions {
             allowed_commands: Vec::new(),
             denied_commands: Vec::new(),
             readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::default(),
         }
     }
 }
@@ -466,7 +469,7 @@ impl ShellExec {
             ) {
                 // 无需确认，直接执行
             } else {
-                match prompt_confirm(command, description) {
+                match prompt_confirm(command, description, &self.options.confirm_backend).await {
                     ConfirmAction::Deny => {
                         output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
                         return Ok("Command not executed (cancelled by user)".to_string());
@@ -643,50 +646,77 @@ enum ConfirmAction {
 
 /// 提示用户确认是否执行命令
 ///
-/// 使用共享的 SelectPrompt 组件显示三个选项：允许 / 始终允许 / 拒绝。
-/// 非 TTY 环境下默认拒绝执行。
-fn prompt_confirm(command: &str, description: Option<&str>) -> ConfirmAction {
-    use std::io::IsTerminal;
+/// 根据 `backend` 配置决定确认方式：
+/// - `Terminal`：使用共享的 SelectPrompt 组件（现有行为）
+/// - `AlwaysAllow`：直接允许
+/// - `Channel`：通过 PendingApprovals 等待 HTTP 请求注入结果
+async fn prompt_confirm(
+    command: &str,
+    description: Option<&str>,
+    backend: &crate::tools::confirm::ConfirmBackend,
+) -> ConfirmAction {
+    match backend {
+        crate::tools::confirm::ConfirmBackend::AlwaysAllow => ConfirmAction::Allow,
+        crate::tools::confirm::ConfirmBackend::Channel(approvals) => {
+            let id = uuid::Uuid::new_v4().to_string();
+            let rx = approvals.register(id, "shell_exec", command, description);
+            match rx.await {
+                Ok(decision) => {
+                    if decision.approved {
+                        ConfirmAction::Allow
+                    } else {
+                        ConfirmAction::Deny
+                    }
+                }
+                Err(_) => ConfirmAction::Deny,
+            }
+        }
+        crate::tools::confirm::ConfirmBackend::Terminal => {
+            use std::io::IsTerminal;
 
-    if !std::io::stdin().is_terminal() {
-        return ConfirmAction::Deny;
-    }
+            if !std::io::stdin().is_terminal() {
+                return ConfirmAction::Deny;
+            }
 
-    output::send(&Message::info(String::new()));
-    output::send(&Message::info("[工具] ⚠️  准备执行命令:".to_string()));
-    if let Some(desc) = description {
-        let truncated = if desc.len() > 100 {
-            format!("{}...", &desc[..100])
-        } else {
-            desc.to_string()
-        };
-        output::send(&Message::info(format!("  └ 描述: {}", truncated)));
-    }
-    output::send(&Message::info(format!("  └ 命令: {}", command)));
+            output::send(&Message::info(String::new()));
+            output::send(&Message::info("[工具] ⚠️  准备执行命令:".to_string()));
+            if let Some(desc) = description {
+                let truncated = if desc.len() > 100 {
+                    format!("{}...", &desc[..100])
+                } else {
+                    desc.to_string()
+                };
+                output::send(&Message::info(format!("  └ 描述: {}", truncated)));
+            }
+            output::send(&Message::info(format!("  └ 命令: {}", command)));
 
-    let question = "是否确认执行？";
-    let options = [
-        crate::tools::prompt::SelectOption {
-            label: "允许",
-            description: "执行该命令",
-            custom_input: false,
-        },
-        crate::tools::prompt::SelectOption {
-            label: "始终允许",
-            description: "将该命令加入白名单并自动执行",
-            custom_input: false,
-        },
-        crate::tools::prompt::SelectOption {
-            label: "拒绝",
-            description: "取消执行该命令",
-            custom_input: false,
-        },
-    ];
+            let question = "是否确认执行？";
+            let options = [
+                crate::tools::prompt::SelectOption {
+                    label: "允许",
+                    description: "执行该命令",
+                    custom_input: false,
+                },
+                crate::tools::prompt::SelectOption {
+                    label: "始终允许",
+                    description: "将该命令加入白名单并自动执行",
+                    custom_input: false,
+                },
+                crate::tools::prompt::SelectOption {
+                    label: "拒绝",
+                    description: "取消执行该命令",
+                    custom_input: false,
+                },
+            ];
 
-    match crate::tools::prompt::prompt_single_select(question, &options) {
-        Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
-        Some(crate::tools::prompt::SingleSelectResult::Index(1)) => ConfirmAction::AlwaysAllow,
-        _ => ConfirmAction::Deny,
+            match crate::tools::prompt::prompt_single_select(question, &options) {
+                Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
+                Some(crate::tools::prompt::SingleSelectResult::Index(1)) => {
+                    ConfirmAction::AlwaysAllow
+                }
+                _ => ConfirmAction::Deny,
+            }
+        }
     }
 }
 
@@ -707,6 +737,7 @@ mod tests {
             denied_commands: vec![],
             allowed_commands: Vec::new(),
             readonly_mode: false,
+            confirm_backend: Default::default(),
         })
     }
 
@@ -848,6 +879,7 @@ mod tests {
             denied_commands: vec![],
             allowed_commands: Vec::new(),
             readonly_mode: false,
+            confirm_backend: Default::default(),
         });
 
         let result = executor.execute("sleep 10", None, None).await;
@@ -869,6 +901,7 @@ mod tests {
             denied_commands: vec![],
             allowed_commands: Vec::new(),
             readonly_mode: false,
+            confirm_backend: Default::default(),
         });
 
         // 生成超过 100 字符的输出
@@ -908,6 +941,7 @@ mod tests {
             denied_commands: vec![],
             allowed_commands: Vec::new(),
             readonly_mode: false,
+            confirm_backend: Default::default(),
         });
         assert_eq!(executor.options.timeout_secs, 60);
         assert_eq!(executor.options.output_max_chars, 50_000);
@@ -978,7 +1012,7 @@ mod tests {
         let executor = test_executor();
         // Windows 上用 C:\（所有 Windows 系统都有 C 盘）
         let result = executor
-            .execute("cd C:\\ && pwd", None, None)
+            .execute("cd /d C:\\ && pwd", None, None)
             .await
             .unwrap();
         assert!(result.contains("Exit code: 0"), "结果:\n{}", result);
@@ -1835,15 +1869,17 @@ mod always_allow_tests {
 
     // ── 非 TTY 下 prompt_confirm 行为 ──
 
-    #[test]
-    fn test_prompt_confirm_non_tty_returns_deny() {
-        let result = prompt_confirm("echo hello", None);
+    #[tokio::test]
+    async fn test_prompt_confirm_non_tty_returns_deny() {
+        let backend = crate::tools::confirm::ConfirmBackend::Terminal;
+        let result = prompt_confirm("echo hello", None, &backend).await;
         assert!(matches!(result, ConfirmAction::Deny));
     }
 
-    #[test]
-    fn test_prompt_confirm_non_tty_with_description() {
-        let result = prompt_confirm("echo hello", Some("测试命令"));
+    #[tokio::test]
+    async fn test_prompt_confirm_non_tty_with_description() {
+        let backend = crate::tools::confirm::ConfirmBackend::Terminal;
+        let result = prompt_confirm("echo hello", Some("测试命令"), &backend).await;
         assert!(matches!(result, ConfirmAction::Deny));
     }
 
@@ -1900,6 +1936,7 @@ mod always_allow_tests {
             timeout_secs: 5,
             output_max_chars: 10_000,
             readonly_mode: false,
+            confirm_backend: Default::default(),
         });
 
         executor
@@ -1925,6 +1962,7 @@ mod always_allow_tests {
             timeout_secs: 5,
             output_max_chars: 10_000,
             readonly_mode: false,
+            confirm_backend: Default::default(),
         });
 
         executor
@@ -1983,6 +2021,7 @@ mod always_allow_tests {
             timeout_secs: 5,
             output_max_chars: 10_000,
             readonly_mode: false,
+            confirm_backend: Default::default(),
         });
 
         // deny 优先 → is_safe_command 返回 false → 非 TTY 下 prompt_confirm 返回 Deny
@@ -2001,6 +2040,7 @@ mod always_allow_tests {
             timeout_secs: 5,
             output_max_chars: 10_000,
             readonly_mode: false,
+            confirm_backend: Default::default(),
         });
 
         executor
@@ -2029,6 +2069,7 @@ mod always_allow_tests {
             skip_confirm: true,
             timeout_secs: 5,
             output_max_chars: 10_000,
+            ..Default::default()
         });
         let r = executor.execute("git status", None, None).await.unwrap();
         assert!(r.contains("[ReadOnly] 命令被拒绝"));
@@ -2043,6 +2084,7 @@ mod always_allow_tests {
             skip_confirm: true,
             timeout_secs: 5,
             output_max_chars: 10_000,
+            ..Default::default()
         });
         let r = executor.execute("pwd", None, None).await.unwrap();
         assert!(r.contains("Exit code: 0"));
@@ -2271,6 +2313,7 @@ mod readonly_execute_tests {
             skip_confirm: true,
             timeout_secs: 5,
             output_max_chars: 10_000,
+            ..Default::default()
         })
     }
 
@@ -2362,6 +2405,7 @@ mod readonly_execute_tests {
             skip_confirm: true,
             timeout_secs: 5,
             output_max_chars: 10_000,
+            ..Default::default()
         });
         let r = executor.execute("ls -la", None, None).await.unwrap();
         assert!(r.contains("[ReadOnly] 命令被拒绝"));
@@ -2377,6 +2421,7 @@ mod readonly_execute_tests {
             skip_confirm: true,
             timeout_secs: 5,
             output_max_chars: 10_000,
+            ..Default::default()
         });
         let r = executor.execute("rm -rf /", None, None).await.unwrap();
         assert!(
@@ -2403,6 +2448,7 @@ mod readonly_execute_tests {
             skip_confirm: true,
             timeout_secs: 5,
             output_max_chars: 10_000,
+            ..Default::default()
         });
         let r = executor.execute("pwd", None, None).await.unwrap();
         assert!(
@@ -2421,6 +2467,7 @@ mod readonly_execute_tests {
             skip_confirm: false,
             timeout_secs: 5,
             output_max_chars: 10_000,
+            ..Default::default()
         });
         let r = executor.execute("rm -rf /", None, None).await.unwrap();
         assert!(

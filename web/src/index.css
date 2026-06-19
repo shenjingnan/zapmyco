@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #faf9f6; /* 页面背景 - 暖白纸张 */
+  --color-fg: #242424; /* 主要文字 - 近黑 */
+  --color-muted: #f2eee8; /* 浅灰背景 */
+  --color-muted-fg: #695e54; /* 次要文字 - 暖灰 */
+  --color-border: #dbd5cc; /* 边框 */
+  --color-user-bg: #ece1d3; /* 用户消息背景 - 浅暖色 */
+  --color-card: #f1ece6; /* 卡片背景 */
+  --color-code-bg: #e8e2d9; /* 代码块背景 */
+}
+
+body {
+  background: #faf9f6;
+  color: #242424;
+}

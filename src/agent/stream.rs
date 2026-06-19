@@ -50,9 +50,9 @@ pub(crate) struct RoundResult {
 }
 
 /// 处理流式事件序列，返回解析结果（纯逻辑，可单元测试）
-pub(crate) async fn process_stream_events(
+pub(crate) async fn process_stream_events<F: FnMut(&str)>(
     events: impl Stream<Item = Result<StreamEvent, String>>,
-    on_chunk: &mut dyn FnMut(&str),
+    on_chunk: &mut F,
 ) -> Result<RoundResult, String> {
     let mut state = StreamParseState::Idle;
     let mut full_text = String::new();

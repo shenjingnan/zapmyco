@@ -7,6 +7,7 @@ use std::io::IsTerminal;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 
 use crate::agent::session_logger;
+use crate::tools::confirm::AskBackend;
 use crate::tools::prompt;
 
 /// 内部选项项，用于 JSON 解析中转
@@ -17,9 +18,23 @@ struct OptionItem {
 }
 
 /// ask_user 工具
-pub struct AskUser;
+#[derive(Clone, Default)]
+pub struct AskUser {
+    /// 提问后端（默认 Terminal）
+    pub backend: AskBackend,
+}
 
 impl AskUser {
+    /// 使用默认后端（Terminal）创建 AskUser
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 使用指定后端创建 AskUser
+    pub fn with_backend(backend: AskBackend) -> Self {
+        Self { backend }
+    }
+
     /// 返回 Anthropic Tool 定义
     pub fn tool_definition() -> Tool {
         Tool {
@@ -114,83 +129,120 @@ impl AskUser {
 
     /// 执行 ask_user 工具
     ///
-    /// 在交互式终端中用共享的 SelectPrompt 组件显示选项，等待用户选择后返回结果。
-    /// 支持 j/k、↑/↓ 导航，1-9 快捷键和 Enter 确认。
+    /// 根据 `backend` 配置决定交互方式：
+    /// - `Terminal`：在交互式终端中用共享的 SelectPrompt 组件（现有行为）
+    /// - `Channel`：通过 PendingAsks 等待 HTTP 请求注入用户回答
     pub async fn execute(&self, input: &Value) -> Result<String, String> {
         let (question, items, multi_select) = Self::parse_and_validate_input(input)?;
 
-        // 检查是否为交互式终端
-        if !std::io::stdin().is_terminal() {
-            return Err("ask_user 工具只能在交互式终端中使用，当前不是终端环境。".to_string());
-        }
-
-        // 转换为 prompt::SelectOption，组件会自动追加"自定义输入"选项
-        let prompt_opts: Vec<prompt::SelectOption> = items
-            .iter()
-            .map(|item| prompt::SelectOption {
-                label: &item.label,
-                description: &item.description,
-                custom_input: false,
-            })
-            .collect();
-
-        if multi_select {
-            match prompt::prompt_multi_select(question, &prompt_opts) {
-                Some(result) => {
-                    let mut parts: Vec<String> = Vec::new();
-                    if !result.indices.is_empty() {
-                        let labels: Vec<&str> = result
-                            .indices
-                            .iter()
-                            .map(|&i| items[i].label.as_str())
-                            .collect();
-                        parts.push(labels.join(", "));
-                    }
-                    if let Some(text) = &result.custom_text
-                        && !text.is_empty()
-                    {
-                        if !parts.is_empty() {
-                            parts.push(format!("自定义输入: {}", text));
-                        } else {
-                            parts.push(text.clone());
+        match &self.backend {
+            AskBackend::Channel(asks) => {
+                let id = uuid::Uuid::new_v4().to_string();
+                let labels: Vec<String> = items.iter().map(|i| i.label.clone()).collect();
+                let rx = asks.register(id, question, &labels);
+                match rx.await {
+                    Ok(response) => {
+                        if let Some(idx) = response.selected_idx
+                            && idx < items.len()
+                        {
+                            let result_str = format!("用户选择了: {}", items[idx].label);
+                            session_logger::log_user_event(&result_str);
+                            return Ok(result_str);
                         }
-                    }
-                    let result_str = if parts.is_empty() {
-                        "[用户取消了选择]".to_string()
-                    } else {
-                        format!("用户选择了: {}", parts.join("，"))
-                    };
-                    session_logger::log_user_event(&session_logger::sanitize_user_input(
-                        &result_str,
-                    ));
-                    Ok(result_str)
-                }
-                None => {
-                    session_logger::log_user_event("[用户取消了选择]");
-                    Ok("[用户取消了选择]".to_string())
-                }
-            }
-        } else {
-            match prompt::prompt_single_select(question, &prompt_opts) {
-                Some(prompt::SingleSelectResult::Index(idx)) => {
-                    let result_str = format!("用户选择了: {}", items[idx].label);
-                    session_logger::log_user_event(&result_str);
-                    Ok(result_str)
-                }
-                Some(prompt::SingleSelectResult::Custom(text)) => {
-                    if text.is_empty() {
+                        if let Some(text) = &response.custom_text
+                            && !text.is_empty()
+                        {
+                            let sanitized = session_logger::sanitize_user_input(text);
+                            let result_str = format!("用户输入: {}", sanitized);
+                            session_logger::log_user_event(&result_str);
+                            return Ok(result_str);
+                        }
                         session_logger::log_user_event("[用户取消了选择]");
                         Ok("[用户取消了选择]".to_string())
-                    } else {
-                        let sanitized = session_logger::sanitize_user_input(&text);
-                        let result_str = format!("用户输入: {}", sanitized);
-                        session_logger::log_user_event(&result_str);
-                        Ok(result_str)
+                    }
+                    Err(_) => {
+                        session_logger::log_user_event("[ask_user 通道已关闭]");
+                        Ok("[用户取消了选择]".to_string())
                     }
                 }
-                None => {
-                    session_logger::log_user_event("[用户取消了选择]");
-                    Ok("[用户取消了选择]".to_string())
+            }
+            AskBackend::Terminal => {
+                // 检查是否为交互式终端
+                if !std::io::stdin().is_terminal() {
+                    return Err(
+                        "ask_user 工具只能在交互式终端中使用，当前不是终端环境。".to_string()
+                    );
+                }
+
+                // 转换为 prompt::SelectOption，组件会自动追加"自定义输入"选项
+                let prompt_opts: Vec<prompt::SelectOption> = items
+                    .iter()
+                    .map(|item| prompt::SelectOption {
+                        label: &item.label,
+                        description: &item.description,
+                        custom_input: false,
+                    })
+                    .collect();
+
+                if multi_select {
+                    match prompt::prompt_multi_select(question, &prompt_opts) {
+                        Some(result) => {
+                            let mut parts: Vec<String> = Vec::new();
+                            if !result.indices.is_empty() {
+                                let labels: Vec<&str> = result
+                                    .indices
+                                    .iter()
+                                    .map(|&i| items[i].label.as_str())
+                                    .collect();
+                                parts.push(labels.join(", "));
+                            }
+                            if let Some(text) = &result.custom_text
+                                && !text.is_empty()
+                            {
+                                if !parts.is_empty() {
+                                    parts.push(format!("自定义输入: {}", text));
+                                } else {
+                                    parts.push(text.clone());
+                                }
+                            }
+                            let result_str = if parts.is_empty() {
+                                "[用户取消了选择]".to_string()
+                            } else {
+                                format!("用户选择了: {}", parts.join("，"))
+                            };
+                            session_logger::log_user_event(&session_logger::sanitize_user_input(
+                                &result_str,
+                            ));
+                            Ok(result_str)
+                        }
+                        None => {
+                            session_logger::log_user_event("[用户取消了选择]");
+                            Ok("[用户取消了选择]".to_string())
+                        }
+                    }
+                } else {
+                    match prompt::prompt_single_select(question, &prompt_opts) {
+                        Some(prompt::SingleSelectResult::Index(idx)) => {
+                            let result_str = format!("用户选择了: {}", items[idx].label);
+                            session_logger::log_user_event(&result_str);
+                            Ok(result_str)
+                        }
+                        Some(prompt::SingleSelectResult::Custom(text)) => {
+                            if text.is_empty() {
+                                session_logger::log_user_event("[用户取消了选择]");
+                                Ok("[用户取消了选择]".to_string())
+                            } else {
+                                let sanitized = session_logger::sanitize_user_input(&text);
+                                let result_str = format!("用户输入: {}", sanitized);
+                                session_logger::log_user_event(&result_str);
+                                Ok(result_str)
+                            }
+                        }
+                        None => {
+                            session_logger::log_user_event("[用户取消了选择]");
+                            Ok("[用户取消了选择]".to_string())
+                        }
+                    }
                 }
             }
         }
@@ -269,7 +321,7 @@ mod tests {
     #[test]
     fn test_non_terminal_environment() {
         // 在非 TTY 环境下应该返回错误
-        let tool = AskUser;
+        let tool = AskUser::new();
         let input = json!({
             "question": "测试?",
             "options": [{"label": "A", "description": "desc A"}]
@@ -354,7 +406,7 @@ mod tests {
 
     #[test]
     fn test_execute_multi_select_non_tty() {
-        let tool = AskUser;
+        let tool = AskUser::new();
         let input = json!({
             "question": "测试?",
             "options": [

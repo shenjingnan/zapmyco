@@ -318,6 +318,18 @@ pub enum Commands {
         #[arg(long = "base-url", value_parser = BaseUrlValueParser)]
         base_url: Option<String>,
     },
+    /// 启动 Web UI 服务器
+    Web {
+        /// 监听端口（默认 8080）
+        #[arg(long, default_value = "8080")]
+        port: u16,
+        /// 监听地址（默认 127.0.0.1）
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Web 认证 Token（不传则自动生成并打印，也可在 settings.toml 中配置）
+        #[arg(long)]
+        auth_token: Option<String>,
+    },
     /// 生成 shell 补全脚本
     #[command(hide = true)]
     Completion {
@@ -457,6 +469,11 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             .await
         }
         Some(Commands::Upgrade) => commands::upgrade::cmd_upgrade().await,
+        Some(Commands::Web {
+            port,
+            host,
+            auth_token,
+        }) => commands::web::cmd_web(port, host, auth_token.as_deref()).await,
         Some(Commands::Demo {
             profile,
             model,
