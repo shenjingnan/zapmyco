@@ -15,6 +15,13 @@ use crate::output::{self, Message, TerminalGuard};
 
 /// 启动 Web Server 并等待关闭信号。
 pub async fn cmd_web(port: u16, host: String, auth_token: Option<&str>) -> Result<(), String> {
+    // 0. 检查前端资源是否已嵌入
+    if !crate::web::has_embedded_assets() {
+        output::send(&Message::warning(
+            "Web 前端未嵌入二进制，请先构建前端：cd web && pnpm install && pnpm build",
+        ));
+    }
+
     // 1. 确定 token
     let token = resolve_token(auth_token)?;
 

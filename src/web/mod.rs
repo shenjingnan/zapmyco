@@ -10,15 +10,76 @@ pub mod session;
 use axum::{
     Router,
     body::Body,
-    http::{HeaderValue, Request, header::CACHE_CONTROL},
+    http::{HeaderValue, header::CACHE_CONTROL},
     middleware,
     response::Response,
     routing::{get, post},
 };
+use rust_embed::RustEmbed;
 use std::sync::Arc;
-use tower_http::services::ServeDir;
 
 use crate::web::session::SessionManager;
+
+/// 通过 rust-embed 在编译时嵌入 `web/dist/` 目录的前端静态资源。
+#[derive(RustEmbed)]
+#[folder = "web/dist"]
+struct Assets;
+
+/// 为 SPA 路由提供最佳匹配逻辑：
+/// 1. 精确匹配请求路径；
+/// 2. 如果路径不含扩展名（如 `/chat`），fallback 到 `index.html`（SPA 路由）；
+/// 3. 如果路径含扩展名但找不到资源，返回 404。
+async fn handle_embedded(uri: axum::http::Uri) -> Result<Response<Body>, axum::http::StatusCode> {
+    let path = uri.path().trim_start_matches('/');
+
+    // SPA 路由：空路径或不含扩展名 → index.html
+    let asset_path = if path.is_empty() || !path.contains('.') {
+        "index.html"
+    } else {
+        path
+    };
+
+    let asset = Assets::get(asset_path).ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    let content_type = mime_type_for_path(asset_path);
+    let body = Body::from(asset.data.to_vec());
+
+    let mut response = Response::builder()
+        .header("content-type", content_type)
+        .body(body)
+        .unwrap();
+
+    // HTML 资源不缓存，确保 Vite 构建后浏览器获取最新版本
+    if asset_path == "index.html" {
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    }
+
+    Ok(response)
+}
+
+/// 根据文件扩展名返回 MIME 类型。
+fn mime_type_for_path(path: &str) -> &'static str {
+    let ext = path.rsplit('.').next().unwrap_or("");
+    match ext {
+        "html" => "text/html",
+        "js" => "text/javascript",
+        "css" => "text/css",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "ico" => "image/x-icon",
+        "woff2" => "font/woff2",
+        "json" => "application/json",
+        "map" => "application/json",
+        _ => "application/octet-stream",
+    }
+}
+
+/// 检查 Web 前端资源是否已嵌入二进制。
+pub fn has_embedded_assets() -> bool {
+    Assets::get("index.html").is_some()
+}
 
 /// 全局应用状态
 pub struct AppState {
@@ -58,37 +119,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/health", get(chat::handle_health))
         .layer(middleware::from_fn(auth_middleware));
 
-    // 静态文件（前端页面）— 使用 fallback_service 替代 nest_service
-    // (axum 0.8 不允许在根路径 nesting)
-    // 独立的路由器，方便为静态文件单独配置中间件
-    let static_router = Router::new()
-        .fallback_service(ServeDir::new("web/dist"))
-        .layer(middleware::from_fn(static_file_cache_headers));
+    // 静态文件（前端页面）— 使用 rust-embed 在编译时嵌入 web/dist/
+    let static_router = Router::new().fallback(get(handle_embedded));
 
     Router::new()
         .merge(api_routes)
         .merge(static_router)
         .with_state(state)
-}
-
-/// 为 HTML 响应设置 `Cache-Control: no-cache`，防止浏览器缓存 `index.html`。
-///
-/// Vite 构建时 JS/CSS 文件带有内容哈希，更新后哈希变化，浏览器会自动请求新文件。
-/// 但 `index.html` 没有哈希后缀，浏览器可能缓存旧版本导致引用旧的 CSS/JS。
-async fn static_file_cache_headers(request: Request<Body>, next: middleware::Next) -> Response {
-    let mut response = next.run(request).await;
-
-    // 仅对 HTML 响应设置 no-cache，避免浏览器缓存 index.html
-    if response
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.contains("text/html"))
-    {
-        response
-            .headers_mut()
-            .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    }
-
-    response
 }
