@@ -96,7 +96,9 @@ impl SessionManager {
     ) -> bool {
         let approvals = {
             let sessions = self.sessions.lock().await;
-            sessions.get(session_id).map(|s| s.pending_approvals.clone())
+            sessions
+                .get(session_id)
+                .map(|s| s.pending_approvals.clone())
         };
         if let Some(approvals) = approvals {
             approvals.resolve(tool_approval_id, decision)
