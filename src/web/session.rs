@@ -14,8 +14,8 @@ use crate::tools::confirm::{
 
 /// Web 模式下的会话状态
 pub struct Session {
-    /// AI Agent 实例
-    pub agent: AiAgent,
+    /// AI Agent 实例（Option 以便临时取出执行，避免长占锁）
+    pub agent: Option<AiAgent>,
     /// 最近活动时间（用于超时清理）
     pub last_active: Instant,
     /// 工具审批 channel
@@ -75,7 +75,7 @@ impl SessionManager {
         let asks = PendingAsks::new();
 
         let session = Session {
-            agent: agent_factory(),
+            agent: Some(agent_factory()),
             last_active: Instant::now(),
             pending_approvals: approvals.clone(),
             pending_asks: asks.clone(),
@@ -94,11 +94,12 @@ impl SessionManager {
         tool_approval_id: &str,
         decision: ShellConfirmDecision,
     ) -> bool {
-        let sessions = self.sessions.lock().await;
-        if let Some(session) = sessions.get(session_id) {
-            session
-                .pending_approvals
-                .resolve(tool_approval_id, decision)
+        let approvals = {
+            let sessions = self.sessions.lock().await;
+            sessions.get(session_id).map(|s| s.pending_approvals.clone())
+        };
+        if let Some(approvals) = approvals {
+            approvals.resolve(tool_approval_id, decision)
         } else {
             false
         }
@@ -111,9 +112,12 @@ impl SessionManager {
         ask_id: &str,
         response: AskUserResponse,
     ) -> bool {
-        let sessions = self.sessions.lock().await;
-        if let Some(session) = sessions.get(session_id) {
-            session.pending_asks.resolve(ask_id, response)
+        let asks = {
+            let sessions = self.sessions.lock().await;
+            sessions.get(session_id).map(|s| s.pending_asks.clone())
+        };
+        if let Some(asks) = asks {
+            asks.resolve(ask_id, response)
         } else {
             false
         }

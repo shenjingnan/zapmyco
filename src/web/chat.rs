@@ -288,7 +288,7 @@ pub async fn handle_chat(
             sessions_map.insert(
                 session_id.clone(),
                 crate::web::session::Session {
-                    agent,
+                    agent: Some(agent),
                     last_active: std::time::Instant::now(),
                     pending_approvals: approvals,
                     pending_asks: asks,
@@ -312,14 +312,21 @@ pub async fn handle_chat(
     // 在后台执行 chat_with_tools
     let tx_clone = tx.clone();
     tokio::spawn(async move {
-        // 从 session 中取出 agent
-        let mut sessions_map = sessions.lock().await;
-        if let Some(session) = sessions_map.get_mut(&session_id) {
-            session.last_active = std::time::Instant::now();
+        // 从 session 中取出 agent，释放锁后再执行（避免 ask_user 死锁）
+        let mut agent = {
+            let mut sessions_map = sessions.lock().await;
+            sessions_map
+                .get_mut(&session_id)
+                .and_then(|s| {
+                    s.last_active = std::time::Instant::now();
+                    s.agent.take()
+                })
+        };
+        // 释放锁 — 此时 handle_ask_respond / handle_approve 可以正常获取锁
 
+        let result = if let Some(agent) = agent.as_mut() {
             // 调用 chat_with_tools
-            let result = session
-                .agent
+            agent
                 .chat_with_tools(&body.prompt, &progress, |chunk| {
                     // 流式文本块
                     tx_clone
@@ -328,30 +335,7 @@ pub async fn handle_chat(
                         })
                         .ok();
                 })
-                .await;
-
-            match result {
-                Ok(_final_text) => {
-                    tx_clone
-                        .send(StreamEvent::Done {
-                            reason: "end_turn".to_string(),
-                        })
-                        .ok();
-                }
-                Err(e) => {
-                    tx_clone
-                        .send(StreamEvent::Error {
-                            code: "AGENT_ERROR".to_string(),
-                            message: e,
-                        })
-                        .ok();
-                    tx_clone
-                        .send(StreamEvent::Done {
-                            reason: "error".to_string(),
-                        })
-                        .ok();
-                }
-            }
+                .await
         } else {
             tx_clone
                 .send(StreamEvent::Error {
@@ -359,6 +343,39 @@ pub async fn handle_chat(
                     message: "会话已丢失".to_string(),
                 })
                 .ok();
+            return;
+        };
+
+        // 把 agent 放回 session
+        {
+            let mut sessions_map = sessions.lock().await;
+            if let Some(session) = sessions_map.get_mut(&session_id) {
+                session.agent = agent;
+                session.last_active = std::time::Instant::now();
+            }
+        }
+
+        match result {
+            Ok(_final_text) => {
+                tx_clone
+                    .send(StreamEvent::Done {
+                        reason: "end_turn".to_string(),
+                    })
+                    .ok();
+            }
+            Err(e) => {
+                tx_clone
+                    .send(StreamEvent::Error {
+                        code: "AGENT_ERROR".to_string(),
+                        message: e,
+                    })
+                    .ok();
+                tx_clone
+                    .send(StreamEvent::Done {
+                        reason: "error".to_string(),
+                    })
+                    .ok();
+            }
         }
     });
 
