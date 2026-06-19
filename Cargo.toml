@@ -65,7 +65,7 @@ async-stream = "0.3"
 tempfile = "3"
 wiremock = "0.6.5"
 libc = "0.2"
-rand = "0.8"
+rand = "0.9"
 
 # The profile that 'dist' will build with
 [profile.dist]
