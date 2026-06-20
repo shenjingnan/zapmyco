@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.42.2](https://github.com/shenjingnan/zapmyco/compare/v0.42.1...v0.42.2) - 2026-06-20
+
+### Added
+
+- *(web)* 集成 shadcn/ui Textarea 组件并优化 ChatInput 性能 ([#473](https://github.com/shenjingnan/zapmyco/pull/473))
+
+### Other
+
+- update web dist for publish [skip ci]
+
 ## [0.42.1](https://github.com/shenjingnan/zapmyco/compare/v0.42.0...v0.42.1) - 2026-06-20
 
 ### Added
