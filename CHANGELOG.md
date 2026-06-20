@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.42.1](https://github.com/shenjingnan/zapmyco/compare/v0.42.0...v0.42.1) - 2026-06-20
+
+### Added
+
+- *(web)* 添加 RawMessagePanel 原始消息面板组件 ([#469](https://github.com/shenjingnan/zapmyco/pull/469))
+
+### Other
+
+- update web dist for publish [skip ci]
+
 ## [0.42.0](https://github.com/shenjingnan/zapmyco/compare/v0.41.0...v0.42.0) - 2026-06-19
 
 ### Added
