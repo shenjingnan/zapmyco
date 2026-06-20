@@ -139,6 +139,13 @@ jobs:
       - name: Install dependencies
         run: |
           ${{ matrix.packages_install }}
+      # 自定义：下载预构建的 Web 前端产物
+      # build.rs 会在编译时使用 web/dist/ 中的文件嵌入二进制
+      - name: Download web frontend
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web/dist/
       - name: Build artifacts
         run: |
           # Actually do builds and make zips and whatnot
