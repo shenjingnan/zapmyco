@@ -1,7 +1,8 @@
-import { Button, Card, Space } from 'antd';
+import { Button, Card } from 'antd';
 import { useState } from 'react';
 import { respondToAsk } from '../api/ask';
 import { useChatStore } from '../stores/chatStore';
+import { ChatInput } from './ChatInput';
 import type { AskUserData } from '../types';
 
 interface AskUserCardProps {
@@ -29,7 +30,7 @@ export function AskUserCard({ data }: AskUserCardProps) {
     return (
       <Card
         size="small"
-        className="self-center max-w-[85%] w-full"
+        className="self-center max-w-[85%] w-full !rounded-xl"
         style={{ borderLeft: '3px solid #695e54' }}
       >
         <div className="text-xs text-muted-fg">已回答</div>
@@ -41,17 +42,26 @@ export function AskUserCard({ data }: AskUserCardProps) {
   return (
     <Card
       size="small"
-      className="self-center max-w-[85%] w-full"
+      className="self-center max-w-[85%] w-full !rounded-xl"
       style={{ borderLeft: '3px solid #695e54' }}
-      title={<span className="text-xs">❓ {data.question}</span>}
+      title={<span>❓ {data.question}</span>}
     >
-      <Space wrap>
+      <div className="flex flex-col gap-3">
         {data.options.map((opt, idx) => (
-          <Button key={opt} size="small" loading={loading} onClick={() => handleSelect(idx)}>
-            {opt}
+          <Button key={opt} block loading={loading} onClick={() => handleSelect(idx)} className="!rounded-xl !justify-start">
+            {idx + 1}. {opt}
           </Button>
         ))}
-      </Space>
+        <ChatInput
+          compact
+          placeholder="输入自定义内容..."
+          disabled={loading}
+          onSend={async (text) => {
+            if (!sessionId) return;
+            await respondToAsk(sessionId, data.id, undefined, text);
+          }}
+        />
+      </div>
     </Card>
   );
 }

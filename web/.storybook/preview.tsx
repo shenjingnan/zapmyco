@@ -2,7 +2,7 @@ import type { Preview } from '@storybook/react-vite'
 import { ConfigProvider } from 'antd'
 import { warmTheme } from '../src/config/theme'
 import React from 'react'
-import '../src/App.css'
+import '../src/index.css'
 
 const preview: Preview = {
   decorators: [

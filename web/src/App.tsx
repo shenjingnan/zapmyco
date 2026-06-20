@@ -36,7 +36,7 @@ function App() {
           {hasMessages ? (
             <>
               <ChatMessageList />
-              <div className="px-4 py-3">
+              <div className="mx-auto w-full max-w-[900px] px-4 py-3">
                 <ChatInput onSend={handleSend} />
               </div>
             </>
