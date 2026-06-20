@@ -23,6 +23,10 @@ include = [
     "/web/dist/**/*",
 ]
 
+[package.metadata.dist]
+# 允许自定义 release.yml（已添加 build-web job 用于构建前端产物）
+allow-dirty = true
+
 [dependencies]
 clap = { version = "4", features = ["derive", "string"] }
 clap_complete = "4"
