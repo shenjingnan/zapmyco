@@ -9,10 +9,16 @@ interface ChatInputProps {
   compact?: boolean;
 }
 
-export function ChatInput({ onSend, placeholder, disabled: forceDisabled, compact }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  placeholder,
+  disabled: forceDisabled,
+  compact,
+}: ChatInputProps) {
   const [value, setValue] = useState('');
   const status = useChatStore((s) => s.status);
-  const disabled = forceDisabled ?? (status === 'connecting' || status === 'streaming' || status === 'waiting');
+  const disabled =
+    forceDisabled ?? (status === 'connecting' || status === 'streaming' || status === 'waiting');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {

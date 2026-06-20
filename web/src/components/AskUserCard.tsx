@@ -1,9 +1,9 @@
-import { Button, Card } from 'antd';
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { respondToAsk } from '../api/ask';
 import { useChatStore } from '../stores/chatStore';
-import { ChatInput } from './ChatInput';
 import type { AskUserData } from '../types';
+import { ChatInput } from './ChatInput';
 
 interface AskUserCardProps {
   data: AskUserData;
@@ -28,29 +28,36 @@ export function AskUserCard({ data }: AskUserCardProps) {
 
   if (status !== 'waiting') {
     return (
-      <Card
-        size="small"
-        className="self-center max-w-[85%] w-full !rounded-xl"
+      <div
+        className="self-center max-w-[85%] w-full rounded-xl border border-border bg-white p-4"
         style={{ borderLeft: '3px solid #695e54' }}
       >
         <div className="text-xs text-muted-fg">已回答</div>
         <p className="mt-1 text-sm">{data.question}</p>
-      </Card>
+      </div>
     );
   }
 
   return (
-    <Card
-      size="small"
-      className="self-center max-w-[85%] w-full !rounded-xl"
+    <div
+      className="self-center max-w-[85%] w-full rounded-xl border border-border bg-white p-4"
       style={{ borderLeft: '3px solid #695e54' }}
-      title={<span>❓ {data.question}</span>}
     >
+      <div className="mb-3 text-sm font-medium">❓ {data.question}</div>
       <div className="flex flex-col gap-3">
         {data.options.map((opt, idx) => (
-          <Button key={opt} block loading={loading} onClick={() => handleSelect(idx)} className="!rounded-xl !justify-start">
-            {idx + 1}. {opt}
-          </Button>
+          <button
+            key={opt}
+            type="button"
+            disabled={loading}
+            onClick={() => handleSelect(idx)}
+            className="flex w-full items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-left text-sm text-fg transition-colors hover:border-amber-600/30 hover:bg-amber-50/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading && <Loader2 className="size-4 animate-spin" />}
+            <span>
+              {idx + 1}. {opt}
+            </span>
+          </button>
         ))}
         <ChatInput
           compact
@@ -62,6 +69,6 @@ export function AskUserCard({ data }: AskUserCardProps) {
           }}
         />
       </div>
-    </Card>
+    </div>
   );
 }
