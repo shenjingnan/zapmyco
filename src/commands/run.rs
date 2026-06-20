@@ -339,7 +339,7 @@ pub(crate) async fn cmd_run(
             let result = agent
                 .chat_with_tools(&plan_prompt, &progress, |chunk| {
                     output::send(&Message::llm_chunk(chunk));
-                })
+                }, |_| {})
                 .await?;
 
             // 保存方案到 session 目录
@@ -402,6 +402,7 @@ pub(crate) async fn cmd_run(
                         ),
                         &progress,
                         |_chunk| {},
+                        |_| {},
                     )
                     .await?;
 
@@ -468,7 +469,7 @@ pub(crate) async fn cmd_run(
             agent
                 .chat_with_tools(&exec_prompt, &progress, |chunk| {
                     output::send(&Message::llm_chunk(chunk));
-                })
+                }, |_| {})
                 .await?;
 
             // 任务执行循环
@@ -484,6 +485,7 @@ pub(crate) async fn cmd_run(
                         |chunk| {
                             output::send(&Message::llm_chunk(chunk));
                         },
+                        |_| {},
                     )
                     .await?;
 
@@ -515,7 +517,7 @@ pub(crate) async fn cmd_run(
             let _response = agent
                 .chat_with_tools(&base_prompt, &progress, |chunk| {
                     output::send(&Message::llm_chunk(chunk));
-                })
+                }, |_| {})
                 .await?;
 
             // 任务执行循环
@@ -593,7 +595,7 @@ pub(crate) async fn cmd_run(
                 let r = agent
                     .chat_with_tools(trimmed, &progress, |chunk| {
                         output::send(&Message::llm_chunk(chunk));
-                    })
+                    }, |_| {})
                     .await;
 
                 progress.finalize();
@@ -648,7 +650,7 @@ async fn run_task_loop(
         let result = tokio::select! {
             result = agent.chat_with_tools(&continuation, progress, |chunk| {
                 output::send(&Message::llm_chunk(chunk));
-            }) => Some(result),
+            }, |_| {}) => Some(result),
             _ = tokio::signal::ctrl_c() => None,
         };
 

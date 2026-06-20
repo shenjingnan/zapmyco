@@ -64,6 +64,8 @@ pub enum StreamEvent {
     Text { content: String },
     #[serde(rename = "text_delta")]
     TextDelta { content: String },
+    #[serde(rename = "thinking_delta")]
+    ThinkingDelta { content: String },
     #[serde(rename = "status")]
     Status { content: String },
     #[serde(rename = "tool_call")]
@@ -325,14 +327,26 @@ pub async fn handle_chat(
         let result = if let Some(agent) = agent.as_mut() {
             // 调用 chat_with_tools
             agent
-                .chat_with_tools(&body.prompt, &progress, |chunk| {
-                    // 流式文本块
-                    tx_clone
-                        .send(StreamEvent::TextDelta {
-                            content: chunk.to_string(),
-                        })
-                        .ok();
-                })
+                .chat_with_tools(
+                    &body.prompt,
+                    &progress,
+                    |chunk| {
+                        // 流式文本块
+                        tx_clone
+                            .send(StreamEvent::TextDelta {
+                                content: chunk.to_string(),
+                            })
+                            .ok();
+                    },
+                    |thinking_chunk| {
+                        // 流式 thinking 块
+                        tx_clone
+                            .send(StreamEvent::ThinkingDelta {
+                                content: thinking_chunk.to_string(),
+                            })
+                            .ok();
+                    },
+                )
                 .await
         } else {
             tx_clone

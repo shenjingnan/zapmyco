@@ -14,10 +14,13 @@ interface ChatState {
   sessionId: string | null;
   status: ChatStatus;
   currentAssistantText: string;
+  currentThinking: string;
   rawEvents: RawAgentEvent[];
 
   appendMessage: (msg: ChatMessage) => void;
   updateAssistantText: (delta: string) => void;
+  appendToCurrentThinking: (text: string) => void;
+  clearCurrentThinking: () => void;
   setSessionId: (id: string) => void;
   setStatus: (status: ChatStatus) => void;
   addToolApproval: (data: ToolApprovalData) => void;
@@ -35,6 +38,7 @@ const initialState = {
   sessionId: null,
   status: 'idle' as ChatStatus,
   currentAssistantText: '',
+  currentThinking: '',
   rawEvents: [],
 };
 
@@ -51,6 +55,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   updateAssistantText: (delta) =>
     set((state) => ({ currentAssistantText: state.currentAssistantText + delta })),
+
+  appendToCurrentThinking: (text) =>
+    set((state) => ({ currentThinking: state.currentThinking + text })),
+
+  clearCurrentThinking: () => set({ currentThinking: '' }),
 
   setSessionId: (id) => set({ sessionId: id }),
 
@@ -99,17 +108,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   finalizeAssistantMessage: () => {
-    const { currentAssistantText } = get();
-    if (!currentAssistantText) return;
+    const { currentAssistantText, currentThinking } = get();
+    if (!currentAssistantText && !currentThinking) return;
     const msg: ChatMessage = {
       id: nextId(),
       role: 'assistant',
-      content: currentAssistantText,
+      content: currentAssistantText || '',
       timestamp: Date.now(),
+      thinking: currentThinking || undefined,
     };
     set((state) => ({
       messages: [...state.messages, msg],
       currentAssistantText: '',
+      currentThinking: '',
     }));
   },
 

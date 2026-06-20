@@ -12,7 +12,7 @@ impl TerminalTarget {
     /// 根据 MessageKind 决定终端输出通道
     pub(crate) fn channel_for(kind: MessageKind) -> Channel {
         match kind {
-            MessageKind::LlmChunk => Channel::Stream,
+            MessageKind::LlmChunk | MessageKind::LlmThinkingDelta => Channel::Stream,
             MessageKind::ResultLine
             | MessageKind::ResultBlock
             | MessageKind::TaskDone

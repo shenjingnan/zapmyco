@@ -57,6 +57,8 @@ pub enum MessageKind {
     LlmThinking,
     /// LLM 流式文本片段（Stream 通道，不换行）
     LlmChunk,
+    /// LLM 流式 thinking 内容（Stream 通道，不换行，灰色渲染）
+    LlmThinkingDelta,
     /// Token 用量
     LlmUsage,
 
@@ -362,6 +364,16 @@ impl Message {
         Message {
             kind: MessageKind::LlmChunk,
             text: text.into(),
+            data: None,
+        }
+    }
+
+    /// 创建 thinking delta 消息，text 中包含 ANSI 灰色转义码
+    pub fn llm_thinking_delta(text: &str) -> Self {
+        let rendered = format!("\x1b[2m\u{2394} {}\x1b[0m", text);
+        Message {
+            kind: MessageKind::LlmThinkingDelta,
+            text: rendered,
             data: None,
         }
     }
@@ -787,6 +799,7 @@ mod tests {
         vec![
             MessageKind::LlmThinking,
             MessageKind::LlmChunk,
+            MessageKind::LlmThinkingDelta,
             MessageKind::LlmUsage,
             MessageKind::ToolCall,
             MessageKind::ToolResult,
