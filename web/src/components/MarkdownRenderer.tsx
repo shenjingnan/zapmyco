@@ -11,13 +11,13 @@ const components: Components = {
     const isInline = !className;
     if (isInline) {
       return (
-        <code className="rounded bg-code-bg px-1 py-0.5 text-sm text-fg" {...props}>
+        <code className="rounded bg-muted px-1 py-0.5 text-sm text-foreground" {...props}>
           {children}
         </code>
       );
     }
     return (
-      <pre className="overflow-x-auto rounded bg-code-bg p-3 text-sm text-fg">
+      <pre className="overflow-x-auto rounded bg-muted p-3 text-sm text-foreground">
         <code className={className} {...props}>
           {children}
         </code>
@@ -29,7 +29,7 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="text-amber-700 underline hover:text-amber-600"
+      className="text-primary underline underline-offset-2 hover:text-primary/80"
       {...props}
     >
       {children}
@@ -41,11 +41,13 @@ const components: Components = {
     </div>
   ),
   th: ({ children }) => (
-    <th className="border border-border bg-muted px-3 py-1.5 text-left font-medium text-fg">
+    <th className="border border-border bg-muted px-3 py-1.5 text-left font-medium text-foreground">
       {children}
     </th>
   ),
-  td: ({ children }) => <td className="border border-border px-3 py-1.5 text-fg">{children}</td>,
+  td: ({ children }) => (
+    <td className="border border-border px-3 py-1.5 text-foreground">{children}</td>
+  ),
 };
 
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {

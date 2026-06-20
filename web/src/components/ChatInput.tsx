@@ -1,5 +1,6 @@
 import { ArrowUp } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { useChatStore } from '../stores/chatStore';
 
 interface ChatInputProps {
@@ -70,16 +71,17 @@ export function ChatInput({
         placeholder={placeholder ?? (status === 'waiting' ? '等待操作确认...' : '欢迎回来！')}
         disabled={disabled}
         rows={1}
-        className={`w-full resize-none rounded-xl border border-border bg-white p-4 text-fg outline-none transition-colors placeholder:text-muted-fg/50 focus:border-amber-600/30 focus:ring-2 focus:ring-amber-600/10 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? 'min-h-[56px]' : 'min-h-[152px]'}`}
+        className={`w-full resize-none rounded-xl border border-border bg-background p-4 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/10 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? 'min-h-[56px]' : 'min-h-[152px]'}`}
       />
-      <button
+      <Button
         type="button"
         onClick={handleSend}
         disabled={!canSend}
-        className="absolute bottom-4 right-4 flex size-8 items-center justify-center rounded-xl bg-amber-700 text-white transition-colors hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-700"
+        size="icon"
+        className="absolute bottom-4 right-4"
       >
-        <ArrowUp size={16} />
-      </button>
+        <ArrowUp />
+      </Button>
     </div>
   );
 }

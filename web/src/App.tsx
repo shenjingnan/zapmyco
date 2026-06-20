@@ -6,7 +6,6 @@ import { RawMessagePanel } from './components/RawMessagePanel';
 import { useSession } from './hooks/useSession';
 import { useSSE } from './hooks/useSSE';
 import { useChatStore } from './stores/chatStore';
-import './App.css';
 
 function App() {
   const messages = useChatStore((s) => s.messages);
@@ -28,7 +27,7 @@ function App() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="flex h-screen flex-row bg-bg text-fg">
+    <div className="flex h-screen flex-row bg-background text-foreground">
       <div className="flex min-w-0 flex-1 flex-col">
         {hasMessages ? (
           <>

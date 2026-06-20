@@ -1,5 +1,6 @@
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { respondToAsk } from '../api/ask';
 import { useChatStore } from '../stores/chatStore';
 import type { AskUserData } from '../types';
@@ -29,10 +30,10 @@ export function AskUserCard({ data }: AskUserCardProps) {
   if (status !== 'waiting') {
     return (
       <div
-        className="self-center max-w-[85%] w-full rounded-xl border border-border bg-white p-4"
-        style={{ borderLeft: '3px solid #695e54' }}
+        className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4"
+        style={{ borderLeft: '3px solid #a1a1aa' }}
       >
-        <div className="text-xs text-muted-fg">已回答</div>
+        <div className="text-xs text-muted-foreground">已回答</div>
         <p className="mt-1 text-sm">{data.question}</p>
       </div>
     );
@@ -40,24 +41,25 @@ export function AskUserCard({ data }: AskUserCardProps) {
 
   return (
     <div
-      className="self-center max-w-[85%] w-full rounded-xl border border-border bg-white p-4"
-      style={{ borderLeft: '3px solid #695e54' }}
+      className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4"
+      style={{ borderLeft: '3px solid #a1a1aa' }}
     >
-      <div className="mb-3 text-sm font-medium">❓ {data.question}</div>
+      <div className="mb-3 text-sm font-medium">{data.question}</div>
       <div className="flex flex-col gap-3">
         {data.options.map((opt, idx) => (
-          <button
+          <Button
             key={opt}
             type="button"
             disabled={loading}
             onClick={() => handleSelect(idx)}
-            className="flex w-full items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-left text-sm text-fg transition-colors hover:border-amber-600/30 hover:bg-amber-50/50 disabled:cursor-not-allowed disabled:opacity-50"
+            variant="outline"
+            className="justify-start"
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
             <span>
               {idx + 1}. {opt}
             </span>
-          </button>
+          </Button>
         ))}
         <ChatInput
           compact

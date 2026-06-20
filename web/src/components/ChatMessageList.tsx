@@ -22,7 +22,7 @@ export function ChatMessageList() {
         {currentAssistantText && (
           <div className="max-w-[85%] self-start" style={{ whiteSpace: 'pre-wrap' }}>
             {currentAssistantText}
-            <span className="ml-0.5 animate-pulse text-muted-fg">▊</span>
+            <span className="ml-0.5 animate-pulse text-muted-foreground">▊</span>
           </div>
         )}
 
