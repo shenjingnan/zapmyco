@@ -23,6 +23,7 @@ include = [
     "/web/dist/**/*",
 ]
 
+
 [dependencies]
 clap = { version = "4", features = ["derive", "string"] }
 clap_complete = "4"

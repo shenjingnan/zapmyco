@@ -34,20 +34,9 @@ jobs:
         with:
           version: latest
 
-      - name: 构建 Web 前端（供 cargo publish 打包嵌入）
+      - name: 构建 Web 前端（供 crates.io 打包嵌入）
         run: |
           cd web && pnpm install --frozen-lockfile && pnpm build
-
-      - name: 提交并推送构建产物（确保远程存在，供 release-plz API 创建 tag）
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f web/dist/
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update web dist for publish [skip ci]"
-            git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}
-            git push origin HEAD:main
-          fi
 
       - name: 运行 release-plz（创建 tag + 发布到 crates.io）
         id: release
