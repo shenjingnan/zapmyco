@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import type { ChatMessage as ChatMessageType } from '../types';
 import { AskUserCard } from './AskUserCard';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ThinkingBlock } from './ThinkingBlock';
 import { ToolApprovalCard } from './ToolApprovalCard';
 
 interface ChatMessageProps {
@@ -28,6 +29,7 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
     case 'assistant':
       return (
         <div className="max-w-[85%] self-start">
+          {message.thinking && <ThinkingBlock content={message.thinking} />}
           {message.content ? <MarkdownRenderer content={message.content} /> : '...'}
         </div>
       );

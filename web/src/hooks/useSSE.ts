@@ -22,6 +22,7 @@ export function useSSE() {
   const abortRef = useRef<AbortController | null>(null);
   const appendMessage = useChatStore((s) => s.appendMessage);
   const updateAssistantText = useChatStore((s) => s.updateAssistantText);
+  const appendToCurrentThinking = useChatStore((s) => s.appendToCurrentThinking);
   const setStatus = useChatStore((s) => s.setStatus);
   const setSessionId = useChatStore((s) => s.setSessionId);
   const addToolApproval = useChatStore((s) => s.addToolApproval);
@@ -43,6 +44,9 @@ export function useSSE() {
           break;
         case 'text_delta':
           updateAssistantText(event.content);
+          break;
+        case 'thinking_delta':
+          appendToCurrentThinking(event.content);
           break;
         case 'status':
           if (event.content.startsWith('session_id:')) {
@@ -90,6 +94,7 @@ export function useSSE() {
     [
       appendMessage,
       updateAssistantText,
+      appendToCurrentThinking,
       setStatus,
       setSessionId,
       addToolApproval,

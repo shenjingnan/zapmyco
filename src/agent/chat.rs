@@ -51,6 +51,8 @@ pub struct AiAgentOptions {
     pub is_subagent: bool,
     /// 父 agent 的 session_id
     pub parent_session_id: Option<String>,
+    /// 是否启用 Extended Thinking（默认启用，None/Some(true)=启用）
+    pub thinking_enabled: Option<bool>,
 }
 
 const DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic";
@@ -296,6 +298,8 @@ pub struct AiAgent {
     agents_md_content: Option<String>,
     /// 可用 skill 列表文本（注入到 context_reminder）
     skill_list_text: Option<String>,
+    /// 是否启用 Extended Thinking
+    thinking_enabled: bool,
     /// 当前工作目录（跨 shell_exec 自动跟踪保持）
     current_dir: PathBuf,
 }
@@ -502,6 +506,7 @@ impl AiAgent {
             context_injected: false,
             agents_md_content,
             skill_list_text: options.skill_list_text,
+            thinking_enabled: options.thinking_enabled.unwrap_or(true),
             current_dir: std::env::current_dir().map_err(|e| format!("获取当前目录失败: {}", e))?,
         })
     }
@@ -662,6 +667,12 @@ impl AiAgent {
                 StreamEvent::Error { error } => {
                     return Err(format!("API 错误: {} - {}", error.type_, error.message));
                 }
+                StreamEvent::ContentBlockDelta {
+                    delta: ContentBlockDelta::ThinkingDelta { thinking },
+                    ..
+                } => {
+                    crate::output::send(&crate::output::Message::llm_thinking_delta(&thinking));
+                }
                 _ => {}
             }
         }
@@ -717,6 +728,7 @@ impl AiAgent {
                         text: full_content.clone(),
                         citations: None,
                     }],
+                    thinking: None,
                     input_tokens: resp_input_tokens,
                     output_tokens: resp_output_tokens,
                     cache_read_input_tokens: resp_cache_read_input_tokens,
@@ -834,6 +846,7 @@ impl AiAgent {
         input: &str,
         progress: &P,
         mut on_chunk: impl FnMut(&str) + Send,
+        mut on_thinking_chunk: impl FnMut(&str) + Send,
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
@@ -860,7 +873,9 @@ impl AiAgent {
         for round in 0..self.max_tool_rounds {
             progress.set_status("[LLM] 🤔 思考中...");
 
-            let result = self.stream_one_round(&mut on_chunk).await?;
+            let result = self
+                .stream_one_round(&mut on_chunk, &mut on_thinking_chunk)
+                .await?;
 
             // 输出 token 用量
             crate::agent::executor::print_usage_line(
@@ -960,9 +975,10 @@ impl AiAgent {
 
     /// 执行一轮流式请求，收集文本和工具调用
     /// 执行一轮流式请求（HTTP + 事件解析）
-    async fn stream_one_round<F: FnMut(&str)>(
+    async fn stream_one_round<F: FnMut(&str), G: FnMut(&str)>(
         &mut self,
         on_chunk: &mut F,
+        on_thinking_chunk: &mut G,
     ) -> Result<crate::agent::stream::RoundResult, String> {
         let params = self.build_params(true)?;
         let start = Instant::now();
@@ -975,7 +991,8 @@ impl AiAgent {
 
         let event_stream = stream.map(|r| r.map_err(|e| format!("流式读取失败: {}", e)));
         let mut result =
-            crate::agent::stream::process_stream_events(event_stream, on_chunk).await?;
+            crate::agent::stream::process_stream_events(event_stream, on_chunk, on_thinking_chunk)
+                .await?;
         result.duration_ms = start.elapsed().as_millis() as u64;
         Ok(result)
     }
@@ -1569,6 +1586,15 @@ impl AiAgent {
         if !self.tools.is_empty() {
             let tool_defs: Vec<Tool> = self.tools.iter().map(|t| t.tool_definition()).collect();
             params = params.with_tools(tool_defs);
+        }
+
+        // 启用 Extended Thinking
+        if self.thinking_enabled {
+            use zapmyco_anthropic_ai_sdk::types::message::{Thinking, ThinkingType};
+            params = params.with_thinking(Thinking {
+                budget_tokens: 1024,
+                type_: ThinkingType::Enabled,
+            });
         }
 
         Ok(params)
@@ -2909,6 +2935,7 @@ mod tests {
                     text: "你好".to_string(),
                     citations: None,
                 }],
+                thinking: None,
                 input_tokens: 10,
                 output_tokens: 5,
                 cache_read_input_tokens: None,
@@ -2956,6 +2983,7 @@ mod tests {
                     name: "file_find".to_string(),
                     input: serde_json::json!({"pattern": "*.rs"}),
                 }],
+                thinking: None,
                 input_tokens: 10,
                 output_tokens: 15,
                 cache_read_input_tokens: None,
@@ -5209,6 +5237,7 @@ mod tests {
                     text: "Here's the content of main.rs".to_string(),
                     citations: None,
                 }],
+                thinking: None,
                 input_tokens: 80,
                 output_tokens: 20,
                 cache_read_input_tokens: None,
@@ -5389,6 +5418,92 @@ enabled = false
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_readonly(false);
         std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    // ==================== AiAgentOptions / Thinking 测试 ====================
+
+    // ── C1-C3: thinking_enabled 选项 ──
+
+    #[test]
+    fn test_thinking_enabled_default() {
+        let options = AiAgentOptions::default();
+        assert_eq!(options.thinking_enabled, None);
+    }
+
+    #[test]
+    fn test_thinking_enabled_explicit_on() {
+        let options = AiAgentOptions {
+            thinking_enabled: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(options.thinking_enabled, Some(true));
+    }
+
+    #[test]
+    fn test_thinking_enabled_explicit_off() {
+        let options = AiAgentOptions {
+            thinking_enabled: Some(false),
+            ..Default::default()
+        };
+        assert_eq!(options.thinking_enabled, Some(false));
+    }
+
+    // ── C4: blocks 序列化验证 ──
+    #[test]
+    fn test_thinking_block_serialized_in_message() {
+        use zapmyco_anthropic_ai_sdk::types::message::{ContentBlock, Message, Role};
+        let blocks = vec![
+            ContentBlock::Thinking {
+                thinking: "I am reasoning about this...".to_string(),
+                signature: String::new(),
+            },
+            ContentBlock::Text {
+                text: "Here is the answer.".to_string(),
+                citations: None,
+            },
+        ];
+        let msg = Message::new_blocks(Role::Assistant, blocks);
+        let json = serde_json::to_value(&msg).expect("serialization should succeed");
+
+        let content = json["content"].as_array().expect("content should be array");
+        assert_eq!(content[0]["type"], "thinking");
+        assert_eq!(content[0]["thinking"], "I am reasoning about this...");
+        assert_eq!(content[1]["type"], "text");
+        assert_eq!(content[1]["text"], "Here is the answer.");
+    }
+
+    // ── C5: 跨轮 blocks 传递 ──
+    #[test]
+    fn test_thinking_blocks_preserved_across_rounds() {
+        use crate::agent::chat::ConversationMessage;
+        use zapmyco_anthropic_ai_sdk::types::message::{ContentBlock, Message, Role};
+
+        let round1_blocks = vec![
+            ContentBlock::Thinking {
+                thinking: "I need to search.".to_string(),
+                signature: String::new(),
+            },
+            ContentBlock::ToolUse {
+                id: "tu_1".to_string(),
+                name: "web_search".to_string(),
+                input: serde_json::json!({"q": "hello"}),
+            },
+        ];
+
+        let mut messages: Vec<ConversationMessage> = Vec::new();
+        messages.push(ConversationMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            blocks: Some(round1_blocks.clone()),
+        });
+
+        let msg = Message::new_blocks(Role::Assistant, round1_blocks);
+        let json = serde_json::to_value(&msg).expect("serialization should succeed");
+        let content = json["content"].as_array().expect("content should be array");
+
+        assert_eq!(content[0]["type"], "thinking");
+        assert_eq!(content[0]["thinking"], "I need to search.");
+        assert_eq!(content[1]["type"], "tool_use");
     }
 
     // ==================== SessionStats 测试 ====================

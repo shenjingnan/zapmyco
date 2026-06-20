@@ -89,3 +89,39 @@ describe('SSE event dispatch logic', () => {
     expect(state.status).toBe('waiting')
   })
 })
+
+describe('thinking SSE events', () => {
+  beforeEach(() => {
+    useChatStore.setState({
+      messages: [],
+      currentAssistantText: '',
+      currentThinking: '',
+    })
+  })
+
+  it('dispatches thinking_delta to currentThinking (E1)', () => {
+    useChatStore.getState().appendToCurrentThinking('reasoning step')
+    expect(useChatStore.getState().currentThinking).toBe('reasoning step')
+  })
+
+  it('interleaves thinking_delta and text_delta (E2)', () => {
+    const store = useChatStore.getState()
+    store.appendToCurrentThinking('thinking step 1')
+    store.updateAssistantText('text part 1')
+    store.appendToCurrentThinking('thinking step 2')
+    store.updateAssistantText('text part 2')
+    const state = useChatStore.getState()
+    expect(state.currentThinking).toBe('thinking step 1thinking step 2')
+    expect(state.currentAssistantText).toBe('text part 1text part 2')
+  })
+
+  it('finalizes thinking on done (E3)', () => {
+    const store = useChatStore.getState()
+    store.updateAssistantText('Final answer')
+    store.appendToCurrentThinking('My reasoning')
+    store.finalizeAssistantMessage()
+    const state = useChatStore.getState()
+    expect(state.messages[0].thinking).toBe('My reasoning')
+    expect(state.currentThinking).toBe('')
+  })
+})

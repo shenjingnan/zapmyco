@@ -1,11 +1,17 @@
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useChatStore } from '../stores/chatStore';
 import { ChatMessage } from './ChatMessage';
+import { ThinkingBlock } from './ThinkingBlock';
 
 export function ChatMessageList() {
   const messages = useChatStore((s) => s.messages);
   const currentAssistantText = useChatStore((s) => s.currentAssistantText);
-  const { anchorRef, containerRef, handleScroll } = useAutoScroll([messages, currentAssistantText]);
+  const currentThinking = useChatStore((s) => s.currentThinking);
+  const { anchorRef, containerRef, handleScroll } = useAutoScroll([
+    messages,
+    currentAssistantText,
+    currentThinking,
+  ]);
 
   return (
     <div
@@ -17,6 +23,9 @@ export function ChatMessageList() {
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
+
+        {/* 正在流式输出的 thinking */}
+        {currentThinking && <ThinkingBlock content={currentThinking} isStreaming />}
 
         {/* 正在流式输出的临时消息 */}
         {currentAssistantText && (

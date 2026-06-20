@@ -18,6 +18,11 @@ enum StreamParseState {
         name: String,
         input_buffer: String,
     },
+    /// 正在收集 thinking 内容（ThinkingDelta）
+    ThinkingBlock {
+        buffer: String,
+        signature: Option<String>,
+    },
 }
 
 /// 一轮流式请求的结果
@@ -37,6 +42,8 @@ pub(crate) struct RoundResult {
     pub cache_read_input_tokens: Option<u32>,
     /// cache creation tokens
     pub cache_creation_input_tokens: Option<u32>,
+    /// Thinking 内容（模型思考过程）
+    pub thinking: Option<String>,
     /// API 耗时（毫秒）
     pub duration_ms: u64,
     /// 模型名称
@@ -50,9 +57,10 @@ pub(crate) struct RoundResult {
 }
 
 /// 处理流式事件序列，返回解析结果（纯逻辑，可单元测试）
-pub(crate) async fn process_stream_events<F: FnMut(&str)>(
+pub(crate) async fn process_stream_events<F: FnMut(&str), G: FnMut(&str)>(
     events: impl Stream<Item = Result<StreamEvent, String>>,
     on_chunk: &mut F,
+    on_thinking_chunk: &mut G,
 ) -> Result<RoundResult, String> {
     let mut state = StreamParseState::Idle;
     let mut full_text = String::new();
@@ -62,6 +70,7 @@ pub(crate) async fn process_stream_events<F: FnMut(&str)>(
     let mut output_tokens = 0u32;
     let mut cache_read = None;
     let mut cache_create = None;
+    let mut thinking = None;
     let mut model = String::new();
 
     let mut stream = std::pin::pin!(events);
@@ -99,6 +108,18 @@ pub(crate) async fn process_stream_events<F: FnMut(&str)>(
                         };
                     }
                 }
+                ContentBlock::Thinking {
+                    thinking: th,
+                    signature,
+                } => {
+                    state = StreamParseState::ThinkingBlock {
+                        buffer: th.clone(),
+                        signature: Some(signature),
+                    };
+                    if !th.is_empty() {
+                        on_thinking_chunk(&th);
+                    }
+                }
                 _ => {}
             },
             StreamEvent::ContentBlockDelta { delta, .. } => match delta {
@@ -115,23 +136,43 @@ pub(crate) async fn process_stream_events<F: FnMut(&str)>(
                         input_buffer.push_str(&partial_json);
                     }
                 }
+                ContentBlockDelta::ThinkingDelta { thinking: th } => {
+                    if let StreamParseState::ThinkingBlock { ref mut buffer, .. } = state {
+                        buffer.push_str(&th);
+                        on_thinking_chunk(&th);
+                    }
+                }
+                ContentBlockDelta::SignatureDelta { signature } => {
+                    if let StreamParseState::ThinkingBlock {
+                        signature: ref mut sig,
+                        ..
+                    } = state
+                    {
+                        *sig = Some(signature);
+                    }
+                }
                 _ => {}
             },
             StreamEvent::ContentBlockStop { .. } => {
-                if let StreamParseState::ToolUseBlock {
-                    id,
-                    name,
-                    input_buffer,
-                } = std::mem::replace(&mut state, StreamParseState::Idle)
-                {
-                    let input: serde_json::Value = serde_json::from_str(&input_buffer)
-                        .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
-                    blocks.push(ContentBlock::ToolUse {
-                        id: id.clone(),
-                        name: name.clone(),
-                        input: input.clone(),
-                    });
-                    tool_uses.push((id, name, input));
+                match std::mem::replace(&mut state, StreamParseState::Idle) {
+                    StreamParseState::ToolUseBlock {
+                        id,
+                        name,
+                        input_buffer,
+                    } => {
+                        let input: serde_json::Value = serde_json::from_str(&input_buffer)
+                            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+                        blocks.push(ContentBlock::ToolUse {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: input.clone(),
+                        });
+                        tool_uses.push((id, name, input));
+                    }
+                    StreamParseState::ThinkingBlock { buffer, .. } if !buffer.is_empty() => {
+                        thinking = Some(buffer);
+                    }
+                    _ => {}
                 }
             }
             StreamEvent::MessageDelta { usage: Some(u), .. } => {
@@ -149,21 +190,30 @@ pub(crate) async fn process_stream_events<F: FnMut(&str)>(
         }
     }
 
-    // 在 blocks 开头插入 Text block（如果存在文本内容）
-    if !full_text.is_empty() {
-        blocks.insert(
-            0,
-            ContentBlock::Text {
+    // 重建 blocks（thinking 在 text 之前）
+    if !full_text.is_empty() || thinking.is_some() {
+        let mut ordered = Vec::new();
+        if let Some(ref t) = thinking {
+            ordered.push(ContentBlock::Thinking {
+                thinking: t.clone(),
+                signature: String::new(),
+            });
+        }
+        if !full_text.is_empty() {
+            ordered.push(ContentBlock::Text {
                 text: full_text.clone(),
                 citations: None,
-            },
-        );
+            });
+        }
+        ordered.append(&mut blocks);
+        blocks = ordered;
     }
 
     Ok(RoundResult {
         full_text,
         tool_uses,
         blocks,
+        thinking,
         input_tokens,
         output_tokens,
         cache_read_input_tokens: cache_read,
@@ -297,6 +347,46 @@ mod tests {
         }
     }
 
+    // ── thinking 事件辅助构造器 ──
+
+    fn thinking_start() -> StreamEvent {
+        StreamEvent::ContentBlockStart {
+            index: 0,
+            content_block: ContentBlock::Thinking {
+                thinking: String::new(),
+                signature: String::new(),
+            },
+        }
+    }
+
+    fn thinking_start_with_content(content: &str) -> StreamEvent {
+        StreamEvent::ContentBlockStart {
+            index: 0,
+            content_block: ContentBlock::Thinking {
+                thinking: content.to_string(),
+                signature: "test_sig".to_string(),
+            },
+        }
+    }
+
+    fn thinking_delta(text: &str) -> StreamEvent {
+        StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentBlockDelta::ThinkingDelta {
+                thinking: text.to_string(),
+            },
+        }
+    }
+
+    fn signature_delta(sig: &str) -> StreamEvent {
+        StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentBlockDelta::SignatureDelta {
+                signature: sig.to_string(),
+            },
+        }
+    }
+
     #[tokio::test]
     async fn test_process_stream_events_plain_text() {
         let events = vec![
@@ -308,9 +398,13 @@ mod tests {
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut chunks = String::new();
-        let result = process_stream_events(stream, &mut |chunk| {
-            chunks.push_str(chunk);
-        })
+        let result = process_stream_events(
+            stream,
+            &mut |chunk| {
+                chunks.push_str(chunk);
+            },
+            &mut |_| {},
+        )
         .await
         .expect("process_stream_events should succeed");
 
@@ -337,7 +431,7 @@ mod tests {
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut chunks = String::new();
-        let result = process_stream_events(stream, &mut |c| chunks.push_str(c))
+        let result = process_stream_events(stream, &mut |c| chunks.push_str(c), &mut |_| {})
             .await
             .expect("should succeed");
 
@@ -359,7 +453,7 @@ mod tests {
             msg_stop(),
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
-        let result = process_stream_events(stream, &mut |_| {})
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
             .await
             .expect("should succeed");
 
@@ -382,14 +476,13 @@ mod tests {
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut chunks = String::new();
-        let result = process_stream_events(stream, &mut |c| chunks.push_str(c))
+        let result = process_stream_events(stream, &mut |c| chunks.push_str(c), &mut |_| {})
             .await
             .expect("should succeed");
 
         assert_eq!(chunks, "Let me search...");
         assert_eq!(result.full_text, "Let me search...");
         assert_eq!(result.tool_uses.len(), 1);
-        // blocks 应包含 text + tool_use
         assert!(result.blocks.len() >= 2);
     }
 
@@ -408,7 +501,7 @@ mod tests {
             msg_stop(),
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
-        let result = process_stream_events(stream, &mut |_| {})
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
             .await
             .expect("should succeed");
 
@@ -429,7 +522,7 @@ mod tests {
             msg_stop(),
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
-        let result = process_stream_events(stream, &mut |_| {})
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
             .await
             .expect("should succeed");
 
@@ -440,7 +533,7 @@ mod tests {
     async fn test_process_stream_events_error_event() {
         let events = vec![msg_start(10), error_event("rate limit", "rate_limit_error")];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
-        let result = process_stream_events(stream, &mut |_| {}).await;
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {}).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("rate limit"));
     }
@@ -450,9 +543,245 @@ mod tests {
         let events: Vec<Result<StreamEvent, String>> =
             vec![Ok(msg_start(10)), Err("connection reset".to_string())];
         let stream = stream::iter(events);
-        let result = process_stream_events(stream, &mut |_| {}).await;
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {}).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("connection reset"));
+    }
+
+    // ── 新增 thinking 测试 ──
+
+    #[tokio::test]
+    async fn test_thinking_plus_text() {
+        let events = vec![
+            msg_start(10),
+            thinking_start(),
+            thinking_delta("Let me think about this..."),
+            thinking_delta("I need to be careful."),
+            signature_delta("sig_abc"),
+            block_stop(),
+            text_delta("The answer is 42."),
+            msg_delta(15, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let mut chunks = String::new();
+        let mut thinking_chunks = Vec::new();
+        let result = process_stream_events(stream, &mut |c| chunks.push_str(c), &mut |c| {
+            thinking_chunks.push(c.to_string())
+        })
+        .await
+        .expect("should succeed");
+
+        assert_eq!(
+            result.thinking.as_deref(),
+            Some("Let me think about this...I need to be careful.")
+        );
+        assert_eq!(result.full_text, "The answer is 42.");
+        assert_eq!(chunks, "The answer is 42.");
+        assert_eq!(
+            thinking_chunks,
+            vec!["Let me think about this...", "I need to be careful."]
+        );
+        assert_eq!(result.blocks.len(), 2);
+        assert!(matches!(result.blocks[0], ContentBlock::Thinking { .. }));
+        assert!(matches!(result.blocks[1], ContentBlock::Text { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_thinking_plus_text_tool_use() {
+        let events = vec![
+            msg_start(10),
+            thinking_start(),
+            thinking_delta("I need to search."),
+            signature_delta("sig_xyz"),
+            block_stop(),
+            text_delta("Let me search..."),
+            tool_use_start("tu_1", "web_search"),
+            json_delta(r#"{"q":"hello"}"#),
+            block_stop(),
+            msg_delta(15, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
+            .await
+            .expect("should succeed");
+
+        assert_eq!(result.thinking.as_deref(), Some("I need to search."));
+        assert_eq!(result.tool_uses.len(), 1);
+        assert_eq!(result.blocks.len(), 3);
+        assert!(matches!(result.blocks[0], ContentBlock::Thinking { .. }));
+        assert!(matches!(result.blocks[1], ContentBlock::Text { .. }));
+        assert!(matches!(result.blocks[2], ContentBlock::ToolUse { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_thinking_plus_multiple_tool_uses() {
+        let events = vec![
+            msg_start(10),
+            thinking_start(),
+            thinking_delta("I need to search and fetch."),
+            signature_delta("sig_multi"),
+            block_stop(),
+            text_delta("Running tools..."),
+            tool_use_start("tu_1", "web_search"),
+            json_delta(r#"{"q":"hello"}"#),
+            block_stop(),
+            tool_use_start("tu_2", "web_fetch"),
+            json_delta(r#"{"url":"example.com"}"#),
+            block_stop(),
+            msg_delta(15, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
+            .await
+            .expect("should succeed");
+
+        assert_eq!(
+            result.thinking.as_deref(),
+            Some("I need to search and fetch.")
+        );
+        assert_eq!(result.tool_uses.len(), 2);
+        // blocks: [Thinking, Text, ToolUse, ToolUse]
+        assert_eq!(result.blocks.len(), 4);
+        assert!(matches!(result.blocks[0], ContentBlock::Thinking { .. }));
+        assert!(matches!(result.blocks[1], ContentBlock::Text { .. }));
+        assert!(matches!(result.blocks[2], ContentBlock::ToolUse { .. }));
+        assert!(matches!(result.blocks[3], ContentBlock::ToolUse { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_thinking_complete_in_start() {
+        let events = vec![
+            msg_start(10),
+            thinking_start_with_content("Already thought."),
+            block_stop(),
+            text_delta("Done."),
+            msg_delta(5, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let mut thinking_chunks = Vec::new();
+        let result = process_stream_events(stream, &mut |_| {}, &mut |c| {
+            thinking_chunks.push(c.to_string())
+        })
+        .await
+        .expect("should succeed");
+
+        assert_eq!(result.thinking.as_deref(), Some("Already thought."));
+        assert_eq!(thinking_chunks, vec!["Already thought."]);
+    }
+
+    #[tokio::test]
+    async fn test_thinking_empty() {
+        let events = vec![
+            msg_start(10),
+            thinking_start(),
+            block_stop(),
+            text_delta("No thinking here."),
+            msg_delta(5, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
+            .await
+            .expect("should succeed");
+
+        assert!(result.thinking.is_none());
+        assert_eq!(result.full_text, "No thinking here.");
+    }
+
+    #[tokio::test]
+    async fn test_thinking_interrupted_by_error() {
+        let events = vec![
+            msg_start(10),
+            thinking_start(),
+            thinking_delta("I was thinking..."),
+            error_event("rate limit", "rate_limit_error"),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {}).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_thinking_large_content() {
+        let chunk_size = 10_000;
+        let total_size = 100_000;
+        let mut events = vec![msg_start(10), thinking_start()];
+        let mut all_content = String::new();
+        for _ in (0..total_size).step_by(chunk_size) {
+            let chunk = "a".repeat(chunk_size);
+            all_content.push_str(&chunk);
+            events.push(thinking_delta(&chunk));
+        }
+        events.push(signature_delta("large_sig"));
+        events.push(block_stop());
+        events.push(text_delta("done."));
+        events.push(msg_delta(5, None, None));
+        events.push(msg_stop());
+
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let mut received = 0usize;
+        let result = process_stream_events(stream, &mut |_| {}, &mut |c| received += c.len())
+            .await
+            .expect("large thinking should succeed");
+
+        assert_eq!(result.thinking.as_deref(), Some(all_content.as_str()));
+        assert_eq!(received, total_size);
+        assert_eq!(result.thinking.unwrap().len(), total_size);
+    }
+
+    #[tokio::test]
+    async fn test_signature_delta_without_thinking_block() {
+        let events = vec![
+            msg_start(10),
+            text_delta("Hello"),
+            StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentBlockDelta::SignatureDelta {
+                    signature: "orphan_sig".to_string(),
+                },
+            },
+            msg_delta(5, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
+            .await
+            .expect("should not panic on orphan signature_delta");
+
+        assert_eq!(result.full_text, "Hello");
+        assert!(result.thinking.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_thinking_chinese_content() {
+        let events = vec![
+            msg_start(10),
+            thinking_start(),
+            thinking_delta("让我仔细思考这个问题..."),
+            thinking_delta("首先需要分析边界条件。"),
+            signature_delta("cn_sig"),
+            block_stop(),
+            text_delta("答案是 42。"),
+            msg_delta(5, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let mut thinking_chunks = Vec::new();
+        let result = process_stream_events(stream, &mut |_| {}, &mut |c| {
+            thinking_chunks.push(c.to_string())
+        })
+        .await
+        .expect("chinese thinking should succeed");
+
+        assert_eq!(
+            result.thinking.as_deref(),
+            Some("让我仔细思考这个问题...首先需要分析边界条件。")
+        );
+        assert_eq!(thinking_chunks[0].chars().count(), 13);
     }
 }
 
@@ -465,6 +794,7 @@ fn test_round_result_http_fields_default_none() {
         full_text: String::new(),
         tool_uses: vec![],
         blocks: vec![],
+        thinking: None,
         input_tokens: 0,
         output_tokens: 0,
         cache_read_input_tokens: None,
@@ -487,6 +817,7 @@ fn test_round_result_http_fields_with_values() {
         full_text: "test".to_string(),
         tool_uses: vec![],
         blocks: vec![],
+        thinking: None,
         input_tokens: 10,
         output_tokens: 5,
         cache_read_input_tokens: None,

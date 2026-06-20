@@ -132,7 +132,7 @@ impl Target for LogTarget {
     fn on_message(&self, msg: &Message) {
         match msg.kind {
             // 流式输出——缓冲到完整行再写入
-            MessageKind::LlmChunk => {
+            MessageKind::LlmChunk | MessageKind::LlmThinkingDelta => {
                 let clean = self.strip_ansi(&msg.text);
                 if clean.is_empty() {
                     return;

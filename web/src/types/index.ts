@@ -10,6 +10,11 @@ export interface SSETextDeltaEvent {
   content: string;
 }
 
+export interface SSEThinkingDeltaEvent {
+  type: 'thinking_delta';
+  content: string;
+}
+
 export interface SSEStatusEvent {
   type: 'status';
   content: string;
@@ -63,6 +68,7 @@ export interface SSEErrorEvent {
 export type SSEEvent =
   | SSETextEvent
   | SSETextDeltaEvent
+  | SSEThinkingDeltaEvent
   | SSEStatusEvent
   | SSEToolCallEvent
   | SSEToolProgressEvent
@@ -110,6 +116,7 @@ export interface ChatMessage {
   approvalData?: ToolApprovalData;
   askData?: AskUserData;
   errorData?: ErrorData;
+  thinking?: string;
 }
 
 // ── API 请求/响应类型 ──

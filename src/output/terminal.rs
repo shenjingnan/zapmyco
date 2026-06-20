@@ -12,7 +12,7 @@ impl TerminalTarget {
     /// 根据 MessageKind 决定终端输出通道
     pub(crate) fn channel_for(kind: MessageKind) -> Channel {
         match kind {
-            MessageKind::LlmChunk => Channel::Stream,
+            MessageKind::LlmChunk | MessageKind::LlmThinkingDelta => Channel::Stream,
             MessageKind::ResultLine
             | MessageKind::ResultBlock
             | MessageKind::TaskDone
@@ -157,6 +157,7 @@ mod tests {
         vec![
             MessageKind::LlmThinking,
             MessageKind::LlmChunk,
+            MessageKind::LlmThinkingDelta,
             MessageKind::LlmUsage,
             MessageKind::ToolCall,
             MessageKind::ToolResult,
@@ -349,5 +350,48 @@ mod tests {
         let upgrade_data = msgs[11].data.as_ref().unwrap();
         assert_eq!(upgrade_data["from"], "0.38");
         assert_eq!(upgrade_data["to"], "0.39");
+    }
+
+    // ============================================================================
+    // Phase 3: LlmThinkingDelta
+    // ============================================================================
+
+    #[test]
+    fn test_channel_for_thinking_delta() {
+        assert_eq!(
+            TerminalTarget::channel_for(MessageKind::LlmThinkingDelta),
+            Channel::Stream
+        );
+    }
+
+    #[test]
+    fn test_llm_thinking_delta_message_format() {
+        let msg = Message::llm_thinking_delta("test thinking");
+        assert_eq!(msg.kind, MessageKind::LlmThinkingDelta);
+        assert!(msg.text.starts_with("\x1b[2m\u{2394} "));
+        assert!(msg.text.ends_with("\x1b[0m"));
+        assert!(msg.text.contains("test thinking"));
+    }
+
+    #[test]
+    fn test_log_target_strips_ansi_from_thinking() {
+        let dir = TempDir::new().unwrap();
+        let log_path = dir.path().join("test.log");
+        let target = LogTarget::new(&log_path).unwrap();
+        let msg = Message::llm_thinking_delta("hello 世界");
+        target.on_message(&msg);
+        drop(target);
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        assert!(
+            !content.contains("\x1b[2m"),
+            "ANSI dim code should be stripped"
+        );
+        assert!(
+            !content.contains("\x1b[0m"),
+            "ANSI reset code should be stripped"
+        );
+        assert!(content.contains("hello 世界"));
+        assert!(content.contains('\u{2394}'));
     }
 }
