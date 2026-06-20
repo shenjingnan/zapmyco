@@ -25,7 +25,7 @@ include = [
 
 [package.metadata.dist]
 # 允许自定义 release.yml（已添加 build-web job 用于构建前端产物）
-allow-dirty = true
+allow-dirty = ["ci"]
 
 [dependencies]
 clap = { version = "4", features = ["derive", "string"] }
