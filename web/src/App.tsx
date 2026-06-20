@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { ChatInput } from './components/ChatInput';
 import { ChatMessageList } from './components/ChatMessageList';
 import { EmptyState } from './components/EmptyState';
+import { RawMessagePanel } from './components/RawMessagePanel';
 import { warmTheme } from './config/theme';
 import { useSession } from './hooks/useSession';
 import { useSSE } from './hooks/useSSE';
@@ -30,17 +31,20 @@ function App() {
 
   return (
     <ConfigProvider theme={warmTheme}>
-      <div className="flex h-screen flex-col bg-bg text-fg">
-        {hasMessages ? (
-          <>
-            <ChatMessageList />
-            <div className="px-4 py-3">
-              <ChatInput onSend={handleSend} />
-            </div>
-          </>
-        ) : (
-          <EmptyState onSend={handleSend} />
-        )}
+      <div className="flex h-screen flex-row bg-bg text-fg">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {hasMessages ? (
+            <>
+              <ChatMessageList />
+              <div className="px-4 py-3">
+                <ChatInput onSend={handleSend} />
+              </div>
+            </>
+          ) : (
+            <EmptyState onSend={handleSend} />
+          )}
+        </div>
+        <RawMessagePanel />
       </div>
     </ConfigProvider>
   );

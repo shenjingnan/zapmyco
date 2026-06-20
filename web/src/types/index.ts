@@ -94,6 +94,13 @@ export interface ErrorData {
   message: string;
 }
 
+export interface RawAgentEvent {
+  id: string;
+  type: string;
+  data: string;
+  timestamp: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
