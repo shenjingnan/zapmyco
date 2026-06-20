@@ -34,7 +34,6 @@ export function AskUserCard({ data }: AskUserCardProps) {
     return (
       <div
         className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4"
-        style={{ borderLeft: '3px solid #a1a1aa' }}
       >
         <div className="text-xs text-muted-foreground">已回答</div>
         <p className="mt-1 text-sm">{data.question}</p>
@@ -48,10 +47,7 @@ export function AskUserCard({ data }: AskUserCardProps) {
   }
 
   return (
-    <div
-      className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4"
-      style={{ borderLeft: '3px solid #a1a1aa' }}
-    >
+    <div className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4">
       <div className="mb-3 text-sm font-medium">{data.question}</div>
       <div className="flex flex-col gap-3">
         {data.options.map((opt, idx) => (
