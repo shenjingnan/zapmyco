@@ -1,5 +1,7 @@
 import { ArrowUp } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { useChatStore } from '../stores/chatStore';
 
 interface ChatInputProps {
@@ -15,11 +17,12 @@ export function ChatInput({
   disabled: forceDisabled,
   compact,
 }: ChatInputProps) {
-  const [value, setValue] = useState('');
+  const [hasContent, setHasContent] = useState(false);
   const status = useChatStore((s) => s.status);
   const disabled =
     forceDisabled ?? (status === 'connecting' || status === 'streaming' || status === 'waiting');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const rafRef = useRef(0);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -34,21 +37,37 @@ export function ChatInput({
     prevDisabled.current = disabled;
   }, [disabled]);
 
-  // 根据内容自动调整高度
-  // biome-ignore lint/correctness/useExhaustiveDependencies: value triggers auto-resize on content change
-  useEffect(() => {
+  // 自动调整高度
+  const autoResize = () => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
+  };
 
   const handleSend = () => {
-    const trimmed = value.trim();
+    const el = textareaRef.current;
+    if (!el) return;
+    const trimmed = el.value.trim();
     if (!trimmed || disabled) return;
     onSend(trimmed);
-    setValue('');
-    textareaRef.current?.focus();
+    el.value = '';
+    setHasContent(false);
+    autoResize();
+    el.focus();
+  };
+
+  const handleInput = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    setHasContent(el.value.trim().length > 0);
+
+    // 推迟 resize 到下一帧，避免输入时强制读取布局
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    });
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -58,28 +77,29 @@ export function ChatInput({
     }
   };
 
-  const canSend = value.trim().length > 0 && !disabled;
+  const canSend = hasContent && !disabled;
 
   return (
     <div className="relative w-full">
-      <textarea
+      <Textarea
         ref={textareaRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        defaultValue=""
+        onInput={handleInput}
         onKeyDown={handleKeyDown}
         placeholder={placeholder ?? (status === 'waiting' ? '等待操作确认...' : '欢迎回来！')}
         disabled={disabled}
         rows={1}
-        className={`w-full resize-none rounded-xl border border-border bg-white p-4 text-fg outline-none transition-colors placeholder:text-muted-fg/50 focus:border-amber-600/30 focus:ring-2 focus:ring-amber-600/10 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? 'min-h-[56px]' : 'min-h-[152px]'}`}
+        className={`resize-none rounded-xl bg-background p-4 placeholder:text-muted-foreground/50 focus-visible:ring-ring/10 ${compact ? 'min-h-[56px]' : 'min-h-[152px]'}`}
       />
-      <button
+      <Button
         type="button"
         onClick={handleSend}
         disabled={!canSend}
-        className="absolute bottom-4 right-4 flex size-8 items-center justify-center rounded-xl bg-amber-700 text-white transition-colors hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-700"
+        size="icon"
+        className="absolute bottom-3 right-4 transition-none"
       >
-        <ArrowUp size={16} />
-      </button>
+        <ArrowUp />
+      </Button>
     </div>
   );
 }
