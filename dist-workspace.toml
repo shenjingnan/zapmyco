@@ -15,5 +15,7 @@ targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-da
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = false
+# 允许自定义 CI 工作流（已添加 build-web job）
+allow-dirty = ["ci"]
 # Whether CI should trigger releases with dispatches instead of tag pushes
 dispatch-releases = false
