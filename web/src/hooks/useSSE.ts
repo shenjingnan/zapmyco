@@ -3,21 +3,17 @@ import { sendChatMessage } from '../api/chat';
 import { useChatStore } from '../stores/chatStore';
 import type { SSEEvent } from '../types';
 
-function isSSEData(line: string): boolean {
-  return line.startsWith('data: ');
-}
-
-function parseSSELine(line: string): SSEEvent | null {
+function parseRawSSELine(line: string): { event: SSEEvent; raw: string } | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
-  const jsonStr = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed;
-  if (jsonStr === '[DONE]') return null;
+  const raw = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed;
+  if (raw === '[DONE]') return null;
 
   try {
-    return JSON.parse(jsonStr) as SSEEvent;
+    return { event: JSON.parse(raw) as SSEEvent, raw };
   } catch {
-    console.warn('SSE parse error:', jsonStr);
+    console.warn('SSE parse error:', raw);
     return null;
   }
 }
@@ -32,6 +28,7 @@ export function useSSE() {
   const addAskUser = useChatStore((s) => s.addAskUser);
   const addError = useChatStore((s) => s.addError);
   const finalizeAssistantMessage = useChatStore((s) => s.finalizeAssistantMessage);
+  const addRawEvent = useChatStore((s) => s.addRawEvent);
 
   const dispatchEvent = useCallback(
     (event: SSEEvent) => {
@@ -134,21 +131,22 @@ export function useSSE() {
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (!isSSEData(line) && line.trim()) {
-              // 也可能是直接用 JSON 行的格式
-              const event = parseSSELine(line);
-              if (event) dispatchEvent(event);
-            } else if (isSSEData(line)) {
-              const event = parseSSELine(line);
-              if (event) dispatchEvent(event);
+            if (!line.trim()) continue;
+            const result = parseRawSSELine(line);
+            if (result) {
+              dispatchEvent(result.event);
+              addRawEvent({ type: result.event.type, data: result.raw });
             }
           }
         }
 
         // 处理最后 buffer 中剩余的内容
         if (buffer.trim()) {
-          const event = parseSSELine(buffer);
-          if (event) dispatchEvent(event);
+          const result = parseRawSSELine(buffer);
+          if (result) {
+            dispatchEvent(result.event);
+            addRawEvent({ type: result.event.type, data: result.raw });
+          }
         }
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
@@ -161,7 +159,7 @@ export function useSSE() {
         });
       }
     },
-    [appendMessage, setStatus, addError, dispatchEvent],
+    [appendMessage, setStatus, addError, dispatchEvent, addRawEvent],
   );
 
   const abort = useCallback(() => {

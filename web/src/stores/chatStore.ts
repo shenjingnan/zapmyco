@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { AskUserData, ChatMessage, ErrorData, ToolApprovalData } from '../types';
+import type {
+  AskUserData,
+  ChatMessage,
+  ErrorData,
+  RawAgentEvent,
+  ToolApprovalData,
+} from '../types';
 
 export type ChatStatus = 'idle' | 'connecting' | 'streaming' | 'waiting' | 'done' | 'error';
 
@@ -8,6 +14,7 @@ interface ChatState {
   sessionId: string | null;
   status: ChatStatus;
   currentAssistantText: string;
+  rawEvents: RawAgentEvent[];
 
   appendMessage: (msg: ChatMessage) => void;
   updateAssistantText: (delta: string) => void;
@@ -17,6 +24,8 @@ interface ChatState {
   addAskUser: (data: AskUserData) => void;
   addError: (data: ErrorData) => void;
   finalizeAssistantMessage: () => void;
+  addRawEvent: (event: { type: string; data: string }) => void;
+  clearRawEvents: () => void;
   reset: () => void;
 }
 
@@ -25,6 +34,7 @@ const initialState = {
   sessionId: null,
   status: 'idle' as ChatStatus,
   currentAssistantText: '',
+  rawEvents: [],
 };
 
 let msgIdCounter = 0;
@@ -94,4 +104,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   reset: () => set(initialState),
+
+  addRawEvent: (event) =>
+    set((state) => {
+      const rawEvent: RawAgentEvent = {
+        id: `raw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: event.type,
+        data: event.data,
+        timestamp: Date.now(),
+      };
+      const rawEvents = [...state.rawEvents, rawEvent];
+      // 保留最多 500 条
+      if (rawEvents.length > 500) {
+        rawEvents.splice(0, rawEvents.length - 500);
+      }
+      return { rawEvents };
+    }),
+  clearRawEvents: () => set({ rawEvents: [] }),
 }));

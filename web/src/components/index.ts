@@ -4,4 +4,5 @@ export { ChatMessage } from './ChatMessage';
 export { ChatMessageList } from './ChatMessageList';
 export { EmptyState } from './EmptyState';
 export { MarkdownRenderer } from './MarkdownRenderer';
+export { RawMessagePanel } from './RawMessagePanel';
 export { ToolApprovalCard } from './ToolApprovalCard';
