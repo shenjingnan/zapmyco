@@ -15,8 +15,11 @@ export function AskUserCard({ data }: AskUserCardProps) {
   const sessionId = useChatStore((s) => s.sessionId);
   const status = useChatStore((s) => s.status);
 
+  const setAskUserAnswer = useChatStore((s) => s.setAskUserAnswer);
+
   const handleSelect = async (idx: number) => {
     if (!sessionId) return;
+    setAskUserAnswer(data.id, data.options[idx]);
     setLoading(true);
     try {
       await respondToAsk(sessionId, data.id, idx);
@@ -35,6 +38,11 @@ export function AskUserCard({ data }: AskUserCardProps) {
       >
         <div className="text-xs text-muted-foreground">已回答</div>
         <p className="mt-1 text-sm">{data.question}</p>
+        {data.answer && (
+          <div className="mt-2 rounded-md bg-muted px-3 py-2 text-sm">
+            {data.answer}
+          </div>
+        )}
       </div>
     );
   }
@@ -67,6 +75,7 @@ export function AskUserCard({ data }: AskUserCardProps) {
           disabled={loading}
           onSend={async (text) => {
             if (!sessionId) return;
+            setAskUserAnswer(data.id, text);
             await respondToAsk(sessionId, data.id, undefined, text);
           }}
         />

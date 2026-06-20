@@ -61,6 +61,7 @@ export const Answered: Story = {
       id: 'ask_4',
       question: '你午餐想吃什么？',
       options: ['中餐', '西餐', '日料'],
+      answer: '中餐',
     },
   },
   decorators: [

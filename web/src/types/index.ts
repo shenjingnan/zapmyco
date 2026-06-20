@@ -87,6 +87,7 @@ export interface AskUserData {
   id: string;
   question: string;
   options: string[];
+  answer?: string;
 }
 
 export interface ErrorData {

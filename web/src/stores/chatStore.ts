@@ -22,6 +22,7 @@ interface ChatState {
   setStatus: (status: ChatStatus) => void;
   addToolApproval: (data: ToolApprovalData) => void;
   addAskUser: (data: AskUserData) => void;
+  setAskUserAnswer: (askId: string, answer: string) => void;
   addError: (data: ErrorData) => void;
   finalizeAssistantMessage: () => void;
   addRawEvent: (event: { type: string; data: string }) => void;
@@ -74,6 +75,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
     set((state) => ({ messages: [...state.messages, msg], status: 'waiting' }));
   },
+
+  setAskUserAnswer: (askId, answer) =>
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.askData?.id === askId
+          ? { ...msg, askData: { ...msg.askData, answer } }
+          : msg,
+      ),
+    })),
 
   addError: (data) => {
     const msg: ChatMessage = {
