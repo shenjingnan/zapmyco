@@ -23,7 +23,7 @@ include = [
     "/web/dist/**/*",
 ]
 
-[package.metadata.dist]
+[workspace.metadata.dist]
 # 允许自定义 release.yml（已添加 build-web job 用于构建前端产物）
 allow-dirty = ["ci"]
 
