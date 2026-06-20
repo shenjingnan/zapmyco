@@ -5417,6 +5417,83 @@ enabled = false
         std::fs::set_permissions(path, perms).unwrap();
     }
 
+    // ==================== AiAgentOptions / Thinking 测试 ====================
+
+    // ── C1-C3: thinking_enabled 选项 ──
+
+    #[test]
+    fn test_thinking_enabled_default() {
+        let options = AiAgentOptions::default();
+        assert_eq!(options.thinking_enabled, None);
+    }
+
+    #[test]
+    fn test_thinking_enabled_explicit_off() {
+        let options = AiAgentOptions {
+            thinking_enabled: Some(false),
+            ..Default::default()
+        };
+        assert_eq!(options.thinking_enabled, Some(false));
+    }
+
+    // ── C4: blocks 序列化验证 ──
+    #[test]
+    fn test_thinking_block_serialized_in_message() {
+        use zapmyco_anthropic_ai_sdk::types::message::{ContentBlock, Message, Role};
+        let blocks = vec![
+            ContentBlock::Thinking {
+                thinking: "I am reasoning about this...".to_string(),
+                signature: String::new(),
+            },
+            ContentBlock::Text {
+                text: "Here is the answer.".to_string(),
+                citations: None,
+            },
+        ];
+        let msg = Message::new_blocks(Role::Assistant, blocks);
+        let json = serde_json::to_value(&msg).expect("serialization should succeed");
+
+        let content = json["content"].as_array().expect("content should be array");
+        assert_eq!(content[0]["type"], "thinking");
+        assert_eq!(content[0]["thinking"], "I am reasoning about this...");
+        assert_eq!(content[1]["type"], "text");
+        assert_eq!(content[1]["text"], "Here is the answer.");
+    }
+
+    // ── C5: 跨轮 blocks 传递 ──
+    #[test]
+    fn test_thinking_blocks_preserved_across_rounds() {
+        use crate::agent::chat::ConversationMessage;
+        use zapmyco_anthropic_ai_sdk::types::message::{ContentBlock, Message, Role};
+
+        let round1_blocks = vec![
+            ContentBlock::Thinking {
+                thinking: "I need to search.".to_string(),
+                signature: String::new(),
+            },
+            ContentBlock::ToolUse {
+                id: "tu_1".to_string(),
+                name: "web_search".to_string(),
+                input: serde_json::json!({"q": "hello"}),
+            },
+        ];
+
+        let mut messages: Vec<ConversationMessage> = Vec::new();
+        messages.push(ConversationMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            blocks: Some(round1_blocks.clone()),
+        });
+
+        let msg = Message::new_blocks(Role::Assistant, round1_blocks);
+        let json = serde_json::to_value(&msg).expect("serialization should succeed");
+        let content = json["content"].as_array().expect("content should be array");
+
+        assert_eq!(content[0]["type"], "thinking");
+        assert_eq!(content[0]["thinking"], "I need to search.");
+        assert_eq!(content[1]["type"], "tool_use");
+    }
+
     // ==================== SessionStats 测试 ====================
 
     #[test]

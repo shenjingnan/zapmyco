@@ -98,3 +98,56 @@ describe('chatStore', () => {
     expect(state.status).toBe('idle')
   })
 })
+
+describe('thinking state', () => {
+  beforeEach(() => {
+    useChatStore.setState({
+      messages: [],
+      currentAssistantText: '',
+      currentThinking: '',
+    })
+  })
+
+  it('appends to currentThinking (S1)', () => {
+    const store = useChatStore.getState()
+    store.appendToCurrentThinking('Let me think')
+    store.appendToCurrentThinking(' about this')
+    expect(useChatStore.getState().currentThinking).toBe('Let me think about this')
+  })
+
+  it('clears currentThinking (S2)', () => {
+    useChatStore.getState().appendToCurrentThinking('some thought')
+    useChatStore.getState().clearCurrentThinking()
+    expect(useChatStore.getState().currentThinking).toBe('')
+  })
+
+  it('finalizes message with thinking (S3)', () => {
+    const store = useChatStore.getState()
+    store.updateAssistantText('Final answer')
+    store.appendToCurrentThinking('My reasoning')
+    store.finalizeAssistantMessage()
+    const state = useChatStore.getState()
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0].content).toBe('Final answer')
+    expect(state.messages[0].thinking).toBe('My reasoning')
+    expect(state.currentThinking).toBe('')
+  })
+
+  it('does not interfere with text accumulation (S5)', () => {
+    const store = useChatStore.getState()
+    store.appendToCurrentThinking('thinking...')
+    store.updateAssistantText('text...')
+    expect(useChatStore.getState().currentThinking).toBe('thinking...')
+    expect(useChatStore.getState().currentAssistantText).toBe('text...')
+  })
+
+  it('clears thinking when sending new message (S6)', () => {
+    const store = useChatStore.getState()
+    store.appendToCurrentThinking('previous thought')
+    store.updateAssistantText('previous answer')
+    useChatStore.setState({ currentThinking: '', currentAssistantText: '' })
+    const state = useChatStore.getState()
+    expect(state.currentThinking).toBe('')
+    expect(state.currentAssistantText).toBe('')
+  })
+})
