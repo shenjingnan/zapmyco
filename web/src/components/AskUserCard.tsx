@@ -32,15 +32,11 @@ export function AskUserCard({ data }: AskUserCardProps) {
 
   if (status !== 'waiting') {
     return (
-      <div
-        className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4"
-      >
+      <div className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4">
         <div className="text-xs text-muted-foreground">已回答</div>
         <p className="mt-1 text-sm">{data.question}</p>
         {data.answer && (
-          <div className="mt-2 rounded-md bg-muted px-3 py-2 text-sm">
-            {data.answer}
-          </div>
+          <div className="mt-2 rounded-md bg-muted px-3 py-2 text-sm">{data.answer}</div>
         )}
       </div>
     );
