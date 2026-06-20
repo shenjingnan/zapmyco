@@ -108,7 +108,10 @@ pub(crate) async fn process_stream_events<F: FnMut(&str), G: FnMut(&str)>(
                         };
                     }
                 }
-                ContentBlock::Thinking { thinking: th, signature } => {
+                ContentBlock::Thinking {
+                    thinking: th,
+                    signature,
+                } => {
                     state = StreamParseState::ThinkingBlock {
                         buffer: th.clone(),
                         signature: Some(signature),
@@ -141,7 +144,8 @@ pub(crate) async fn process_stream_events<F: FnMut(&str), G: FnMut(&str)>(
                 }
                 ContentBlockDelta::SignatureDelta { signature } => {
                     if let StreamParseState::ThinkingBlock {
-                        signature: ref mut sig, ..
+                        signature: ref mut sig,
+                        ..
                     } = state
                     {
                         *sig = Some(signature);
@@ -394,9 +398,13 @@ mod tests {
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut chunks = String::new();
-        let result = process_stream_events(stream, &mut |chunk| {
-            chunks.push_str(chunk);
-        }, &mut |_| {})
+        let result = process_stream_events(
+            stream,
+            &mut |chunk| {
+                chunks.push_str(chunk);
+            },
+            &mut |_| {},
+        )
         .await
         .expect("process_stream_events should succeed");
 
@@ -558,11 +566,9 @@ mod tests {
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut chunks = String::new();
         let mut thinking_chunks = Vec::new();
-        let result = process_stream_events(
-            stream,
-            &mut |c| chunks.push_str(c),
-            &mut |c| thinking_chunks.push(c.to_string()),
-        )
+        let result = process_stream_events(stream, &mut |c| chunks.push_str(c), &mut |c| {
+            thinking_chunks.push(c.to_string())
+        })
         .await
         .expect("should succeed");
 
@@ -632,7 +638,10 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(result.thinking.as_deref(), Some("I need to search and fetch."));
+        assert_eq!(
+            result.thinking.as_deref(),
+            Some("I need to search and fetch.")
+        );
         assert_eq!(result.tool_uses.len(), 2);
         // blocks: [Thinking, Text, ToolUse, ToolUse]
         assert_eq!(result.blocks.len(), 4);
@@ -654,11 +663,9 @@ mod tests {
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut thinking_chunks = Vec::new();
-        let result = process_stream_events(
-            stream,
-            &mut |_| {},
-            &mut |c| thinking_chunks.push(c.to_string()),
-        )
+        let result = process_stream_events(stream, &mut |_| {}, &mut |c| {
+            thinking_chunks.push(c.to_string())
+        })
         .await
         .expect("should succeed");
 
@@ -717,13 +724,9 @@ mod tests {
 
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut received = 0usize;
-        let result = process_stream_events(
-            stream,
-            &mut |_| {},
-            &mut |c| received += c.len(),
-        )
-        .await
-        .expect("large thinking should succeed");
+        let result = process_stream_events(stream, &mut |_| {}, &mut |c| received += c.len())
+            .await
+            .expect("large thinking should succeed");
 
         assert_eq!(result.thinking.as_deref(), Some(all_content.as_str()));
         assert_eq!(received, total_size);
@@ -768,11 +771,9 @@ mod tests {
         ];
         let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
         let mut thinking_chunks = Vec::new();
-        let result = process_stream_events(
-            stream,
-            &mut |_| {},
-            &mut |c| thinking_chunks.push(c.to_string()),
-        )
+        let result = process_stream_events(stream, &mut |_| {}, &mut |c| {
+            thinking_chunks.push(c.to_string())
+        })
         .await
         .expect("chinese thinking should succeed");
 

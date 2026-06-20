@@ -1,5 +1,5 @@
+import { Brain, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Brain } from 'lucide-react';
 
 interface ThinkingBlockProps {
   content: string;
@@ -12,6 +12,7 @@ export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
   return (
     <div className="border-l-2 border-zinc-300 dark:border-zinc-600 pl-3 my-2">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
       >

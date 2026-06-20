@@ -94,6 +94,7 @@ export function useSSE() {
     [
       appendMessage,
       updateAssistantText,
+      appendToCurrentThinking,
       setStatus,
       setSessionId,
       addToolApproval,

@@ -88,9 +88,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setAskUserAnswer: (askId, answer) =>
     set((state) => ({
       messages: state.messages.map((msg) =>
-        msg.askData?.id === askId
-          ? { ...msg, askData: { ...msg.askData, answer } }
-          : msg,
+        msg.askData?.id === askId ? { ...msg, askData: { ...msg.askData, answer } } : msg,
       ),
     })),
 

@@ -873,7 +873,9 @@ impl AiAgent {
         for round in 0..self.max_tool_rounds {
             progress.set_status("[LLM] 🤔 思考中...");
 
-            let result = self.stream_one_round(&mut on_chunk, &mut on_thinking_chunk).await?;
+            let result = self
+                .stream_one_round(&mut on_chunk, &mut on_thinking_chunk)
+                .await?;
 
             // 输出 token 用量
             crate::agent::executor::print_usage_line(
@@ -989,7 +991,8 @@ impl AiAgent {
 
         let event_stream = stream.map(|r| r.map_err(|e| format!("流式读取失败: {}", e)));
         let mut result =
-            crate::agent::stream::process_stream_events(event_stream, on_chunk, on_thinking_chunk).await?;
+            crate::agent::stream::process_stream_events(event_stream, on_chunk, on_thinking_chunk)
+                .await?;
         result.duration_ms = start.elapsed().as_millis() as u64;
         Ok(result)
     }

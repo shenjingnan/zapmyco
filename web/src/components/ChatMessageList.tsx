@@ -7,7 +7,11 @@ export function ChatMessageList() {
   const messages = useChatStore((s) => s.messages);
   const currentAssistantText = useChatStore((s) => s.currentAssistantText);
   const currentThinking = useChatStore((s) => s.currentThinking);
-  const { anchorRef, containerRef, handleScroll } = useAutoScroll([messages, currentAssistantText, currentThinking]);
+  const { anchorRef, containerRef, handleScroll } = useAutoScroll([
+    messages,
+    currentAssistantText,
+    currentThinking,
+  ]);
 
   return (
     <div

@@ -383,8 +383,14 @@ mod tests {
         drop(target);
 
         let content = std::fs::read_to_string(&log_path).unwrap();
-        assert!(!content.contains("\x1b[2m"), "ANSI dim code should be stripped");
-        assert!(!content.contains("\x1b[0m"), "ANSI reset code should be stripped");
+        assert!(
+            !content.contains("\x1b[2m"),
+            "ANSI dim code should be stripped"
+        );
+        assert!(
+            !content.contains("\x1b[0m"),
+            "ANSI reset code should be stripped"
+        );
         assert!(content.contains("hello 世界"));
         assert!(content.contains('\u{2394}'));
     }
