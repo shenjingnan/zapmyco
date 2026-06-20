@@ -5428,6 +5428,15 @@ enabled = false
     }
 
     #[test]
+    fn test_thinking_enabled_explicit_on() {
+        let options = AiAgentOptions {
+            thinking_enabled: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(options.thinking_enabled, Some(true));
+    }
+
+    #[test]
     fn test_thinking_enabled_explicit_off() {
         let options = AiAgentOptions {
             thinking_enabled: Some(false),

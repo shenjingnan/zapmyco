@@ -610,6 +610,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_thinking_plus_multiple_tool_uses() {
+        let events = vec![
+            msg_start(10),
+            thinking_start(),
+            thinking_delta("I need to search and fetch."),
+            signature_delta("sig_multi"),
+            block_stop(),
+            text_delta("Running tools..."),
+            tool_use_start("tu_1", "web_search"),
+            json_delta(r#"{"q":"hello"}"#),
+            block_stop(),
+            tool_use_start("tu_2", "web_fetch"),
+            json_delta(r#"{"url":"example.com"}"#),
+            block_stop(),
+            msg_delta(15, None, None),
+            msg_stop(),
+        ];
+        let stream = stream::iter(events.into_iter().map(Ok::<_, String>));
+        let result = process_stream_events(stream, &mut |_| {}, &mut |_| {})
+            .await
+            .expect("should succeed");
+
+        assert_eq!(result.thinking.as_deref(), Some("I need to search and fetch."));
+        assert_eq!(result.tool_uses.len(), 2);
+        // blocks: [Thinking, Text, ToolUse, ToolUse]
+        assert_eq!(result.blocks.len(), 4);
+        assert!(matches!(result.blocks[0], ContentBlock::Thinking { .. }));
+        assert!(matches!(result.blocks[1], ContentBlock::Text { .. }));
+        assert!(matches!(result.blocks[2], ContentBlock::ToolUse { .. }));
+        assert!(matches!(result.blocks[3], ContentBlock::ToolUse { .. }));
+    }
+
+    #[tokio::test]
     async fn test_thinking_complete_in_start() {
         let events = vec![
             msg_start(10),
