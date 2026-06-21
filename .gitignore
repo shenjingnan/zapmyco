@@ -34,6 +34,9 @@ settings.local.json
 .env.*
 !.env.example
 
+# Lefthook local overrides
+lefthook-local.yml
+
 # Logs
 *.log
 .vercel

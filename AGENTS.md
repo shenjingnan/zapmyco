@@ -43,6 +43,13 @@ cargo clippy -- -D warnings         # 严格 Lint 检查
 cargo test                          # 测试
 cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1  # 完整检查
 
+# Git 钩子 (Lefthook)
+lefthook run pre-commit --all-files  # 运行所有 pre-commit 检查
+lefthook run pre-push               # 运行 pre-push 检查
+lefthook run commit-msg <file>      # 校验 commit 信息格式
+lefthook validate                   # 验证 lefthook.yml 配置
+lefthook install                    # 重新安装 Git 钩子
+
 # 构建
 cargo build                         # 调试构建
 cargo build --release               # 发布构建
@@ -137,7 +144,7 @@ cargo tarpaulin                     # 需要 cargo-tarpaulin
 
 ## 关键规则
 
-1. **提交前检查**: 确保 `cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1` 全部通过
+1. **提交前检查**: 由 lefthook 自动执行 `cargo fmt --check && cargo clippy -- -D warnings && cargo test -- --test-threads=1 && typos .`，也可手动运行 `lefthook run pre-commit --all-files`
 2. **类型安全**: 避免不必要的 `unwrap()`，优先使用 `?` 或模式匹配
 3. **文档更新**: 新功能需更新相关文档
 4. **测试覆盖**: 新代码需要有对应的测试
@@ -149,7 +156,7 @@ cargo tarpaulin                     # 需要 cargo-tarpaulin
 | ---------- | ------------------------ |
 | `/build`   | 构建项目（release）      |
 | `/test`    | 运行测试                 |
-| `/check`   | 完整代码质量检查         |
+| `/check`   | 完整代码质量检查（由 lefthook 执行） |
 | `/lint`    | Lint 检查                |
 | `/release` | 创建发布                 |
 | `/spellcheck` | 拼写检查             |
