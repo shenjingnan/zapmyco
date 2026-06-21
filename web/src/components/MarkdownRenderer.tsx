@@ -2,6 +2,7 @@ import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './CodeBlock';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 
 interface MarkdownRendererProps {
   content: string;
@@ -30,19 +31,12 @@ const components: Components = {
       {children}
     </a>
   ),
-  table: ({ children }) => (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse border border-border text-sm">{children}</table>
-    </div>
-  ),
-  th: ({ children }) => (
-    <th className="border border-border bg-muted px-3 py-1.5 text-left font-medium text-foreground">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td className="border border-border px-3 py-1.5 text-foreground">{children}</td>
-  ),
+  table: ({ children }) => <Table>{children}</Table>,
+  thead: ({ children }) => <TableHeader>{children}</TableHeader>,
+  tbody: ({ children }) => <TableBody>{children}</TableBody>,
+  tr: ({ children }) => <TableRow>{children}</TableRow>,
+  th: ({ children }) => <TableHead>{children}</TableHead>,
+  td: ({ children }) => <TableCell>{children}</TableCell>,
 };
 
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
