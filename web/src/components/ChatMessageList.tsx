@@ -1,6 +1,7 @@
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useChatStore } from '../stores/chatStore';
 import { ChatMessage } from './ChatMessage';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBlock } from './ThinkingBlock';
 
 export function ChatMessageList() {
@@ -29,9 +30,8 @@ export function ChatMessageList() {
 
         {/* 正在流式输出的临时消息 */}
         {currentAssistantText && (
-          <div className="max-w-[85%] self-start" style={{ whiteSpace: 'pre-wrap' }}>
-            {currentAssistantText}
-            <span className="ml-0.5 animate-pulse text-muted-foreground">▊</span>
+          <div className="max-w-[85%] self-start">
+            <MarkdownRenderer content={currentAssistantText} />
           </div>
         )}
 
