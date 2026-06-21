@@ -41,8 +41,9 @@ const components: Components = {
   ul: ({ children }) => <ul className="my-3 ml-5 list-disc [&>li]:mt-1.5">{children}</ul>,
   ol: ({ children }) => <ol className="my-3 ml-5 list-decimal [&>li]:mt-1.5">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  code: ({ className, children, inline, ...props }) => {
-    if (inline) {
+  code: ({ className, children, ...props }) => {
+    const isInline = !className;
+    if (isInline) {
       return (
         <code className="rounded bg-muted px-1 py-0.5 text-sm text-foreground" {...props}>
           {children}
