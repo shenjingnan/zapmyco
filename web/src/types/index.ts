@@ -65,6 +65,11 @@ export interface SSEErrorEvent {
   message: string;
 }
 
+export interface SSECurrentDirEvent {
+  type: 'current_dir';
+  path: string;
+}
+
 export type SSEEvent =
   | SSETextEvent
   | SSETextDeltaEvent
@@ -76,7 +81,8 @@ export type SSEEvent =
   | SSEToolApprovalRequiredEvent
   | SSEAskUserEvent
   | SSEDoneEvent
-  | SSEErrorEvent;
+  | SSEErrorEvent
+  | SSECurrentDirEvent;
 
 // ── 聊天消息类型 ──
 

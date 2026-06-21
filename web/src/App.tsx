@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { ChatInput } from './components/ChatInput';
 import { ChatMessageList } from './components/ChatMessageList';
+import { CwdIndicator } from './components/CwdIndicator';
 import { EmptyState } from './components/EmptyState';
 import { RawMessagePanel } from './components/RawMessagePanel';
 import { useSession } from './hooks/useSession';
@@ -32,8 +33,11 @@ function App() {
         {hasMessages ? (
           <>
             <ChatMessageList />
-            <div className="mx-auto w-full max-w-[900px] px-4 py-3">
-              <ChatInput onSend={handleSend} />
+            <div className="mx-auto w-full max-w-[900px] px-4">
+              <CwdIndicator />
+              <div className="py-3">
+                <ChatInput onSend={handleSend} />
+              </div>
             </div>
           </>
         ) : (

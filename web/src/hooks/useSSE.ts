@@ -29,6 +29,7 @@ export function useSSE() {
   const addAskUser = useChatStore((s) => s.addAskUser);
   const addError = useChatStore((s) => s.addError);
   const finalizeAssistantMessage = useChatStore((s) => s.finalizeAssistantMessage);
+  const setCurrentDir = useChatStore((s) => s.setCurrentDir);
   const addRawEvent = useChatStore((s) => s.addRawEvent);
 
   const dispatchEvent = useCallback(
@@ -89,6 +90,9 @@ export function useSSE() {
         case 'error':
           addError({ code: event.code, message: event.message });
           break;
+        case 'current_dir':
+          setCurrentDir(event.path);
+          break;
       }
     },
     [
@@ -101,6 +105,7 @@ export function useSSE() {
       addAskUser,
       addError,
       finalizeAssistantMessage,
+      setCurrentDir,
     ],
   );
 
