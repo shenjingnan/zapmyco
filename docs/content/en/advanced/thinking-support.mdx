@@ -1,0 +1,106 @@
+---
+title: Thinking Content Parsing & Display
+description: Support for receiving, parsing, and displaying LLM thinking content (e.g., DeepSeek)
+---
+
+## Overview
+
+Models like DeepSeek return `type="thinking"` ContentBlocks in their Anthropic-compatible SSE streams, containing the model's internal reasoning process before generating the final response. This feature enables Zapmyco to receive, parse, and visually display this thinking content.
+
+### Design Principles
+
+| Principle | Description |
+|-----------|-------------|
+| **Minimal Changes** | No SDK modifications, no new dependencies |
+| **Enabled by Default** | `thinking` parameter is on without user configuration |
+| **Backward Compatible** | Behavior is unchanged when the model doesn't return thinking |
+| **Zero Configuration** | Users see thinking content without any setup |
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Request["Request Phase"]
+        BP["build_params()\nwith_thinking({type: enabled})"]
+    end
+
+    subgraph Parse["Parse Phase"]
+        PSE["process_stream_events()\nThinkingDelta → buffer\nContentBlockStop → finalize"]
+        RR["RoundResult\n· thinking: Option<String>\n· full_text\n· tool_uses"]
+    end
+
+    subgraph Terminal["Terminal Display"]
+        OMOD["output/mod.rs\nMessage::llm_thinking_delta()"]
+        OTERM["output/terminal.rs\nchannel_for → Channel::Stream\neeprint! + flush"]
+    end
+
+    subgraph Web["Web Display"]
+        WC["web/chat.rs\nSSE thinking_delta event"]
+        WH["hooks/useSSE.ts\ndispatch thinking_delta"]
+        WS["stores/chatStore.ts\ncurrentThinking"]
+        WUI["ThinkingBlock.tsx\ncollapsible display"]
+    end
+
+    BP --> |HTTP SSE| PSE
+    PSE --> RR
+    RR --> |on_thinking_chunk| OMOD --> OTERM
+    RR --> |on_thinking_chunk| WC --> WH --> WS --> WUI
+```
+
+Thinking parsing occurs in the streaming event processing layer. `ThinkingDelta` events from the SSE stream are captured in real-time and pushed to terminal and Web frontends through a callback chain:
+
+```mermaid
+sequenceDiagram
+    participant Client as zapmyco
+    participant API as DeepSeek API
+    participant Parser as process_stream_events
+
+    Client->>API: POST /messages<br/>thinking={type:"enabled"}
+
+    API->>Parser: message_start
+    API->>Parser: content_block_start (type=thinking)
+
+    loop thinking_delta
+        API->>Parser: content_block_delta (type=thinking_delta)
+        Note over Parser: buffer += thinking<br/>on_thinking_chunk(text)
+    end
+
+    API->>Parser: content_block_delta (type=signature_delta)
+    API->>Parser: content_block_stop
+    Note over Parser: thinking = buffer
+
+    API->>Parser: content_block_start (type=text)
+    API->>Parser: content_block_delta (type=text_delta)
+    API->>Parser: content_block_stop
+
+    API->>Parser: message_delta + message_stop
+    Note over Parser: RoundResult { thinking, full_text, blocks }
+```
+
+## Key Design Decisions
+
+### 1. `on_thinking_chunk` Callback Propagation
+
+The `on_thinking_chunk` callback penetrates from the top-level request handler down to the innermost stream parser, passing through 3 layers. Each `ThinkingDelta` event triggers the callback immediately, ensuring real-time display of thinking content in the frontend.
+
+### 2. Thinking Block Position in `blocks`
+
+When rebuilding the message `blocks` list, the thinking block is placed before the text block. This preserves the semantic order and allows the frontend to naturally display thinking before the response.
+
+### 3. Terminal Rendering with Dim Effect
+
+Terminal output uses ANSI `\x1b[2m` (dim effect) for thinking content, prefixed with `⎔` to indicate "model is thinking". Output is rendered in real-time via `eprint!` + flush.
+
+### 4. Collapsible Web Display
+
+The Web frontend uses a collapsible ThinkingBlock component, collapsed by default. Users can click to expand and view the full thinking content. A pulsing animation indicator is shown during streaming.
+
+## Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| Model doesn't return thinking | `RoundResult.thinking` is None, behavior unchanged |
+| Empty thinking content | No thinking block displayed |
+| Full thinking in ContentBlockStart | Callback triggered immediately, frontend receives normally |
+| Multi-turn conversations | `ContentBlock::Thinking` preserved in blocks, API handles normally |
+| Model doesn't support thinking parameter | Can be disabled via `AiAgentOptions.thinking_enabled` |

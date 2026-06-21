@@ -135,7 +135,7 @@ Once enabled, type `zapmyco` and press Tab to see all available subcommands.
 
 ## Built-in Models
 
-ZapMyCo ships with **22 models from 8 vendors**. Below are the flagship models from each provider. For the full list, see the [built-in models documentation](https://docs.zapmyco.com/guide/models):
+Zapmyco ships with **22 models from 8 vendors**. Below are the flagship models from each provider. For the full list, see the [built-in models documentation](https://docs.zapmyco.com/guide/models):
 
 | Model | Vendor | Context Window |
 |-------|--------|----------------|

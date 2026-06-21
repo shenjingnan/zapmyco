@@ -2,7 +2,7 @@
 title: 配置文件参考
 ---
 
-`.zapmyco/settings.toml` 是 ZapMyCo 核心配置文件，**必须存在**才能运行 AI 相关命令。
+`.zapmyco/settings.toml` 是 Zapmyco 核心配置文件，**必须存在**才能运行 AI 相关命令。
 
 > - macOS/Linux: `~/.zapmyco/settings.toml`
 > - Windows: `%USERPROFILE%\.zapmyco\settings.toml`
@@ -105,13 +105,13 @@ zapmyco run --profile advanced '你的问题'
 apiKey = "${env.DEEPSEEK_API_KEY}"
 ```
 
-运行时 ZapMyCo 会自动将 `${env.DEEPSEEK_API_KEY}` 替换为环境变量 `DEEPSEEK_API_KEY` 的值。
+运行时 Zapmyco 会自动将 `${env.DEEPSEEK_API_KEY}` 替换为环境变量 `DEEPSEEK_API_KEY` 的值。
 
 > 使用 `zapmyco settings` 查看配置时，环境变量引用会原样显示（不会脱敏），而明文密钥会被脱敏：`sk-***abcd`。
 
 ## 内置模型列表
 
-ZapMyCo 内置了 8 个供应商共 22 个模型，全部支持 Anthropic Messages API 格式：
+Zapmyco 内置了 8 个供应商共 22 个模型，全部支持 Anthropic Messages API 格式：
 
 | 供应商 | 模型数 | 代表模型 |
 |--------|:------:|----------|
@@ -128,7 +128,7 @@ ZapMyCo 内置了 8 个供应商共 22 个模型，全部支持 Anthropic Messag
 
 ## 配置优先级
 
-ZapMyCo 按以下顺序确定最终使用的配置（高优先级覆盖低优先级）：
+Zapmyco 按以下顺序确定最终使用的配置（高优先级覆盖低优先级）：
 
 1. **CLI 显式参数**（如 `--profile`）
 2. **settings.toml** 中的值
@@ -147,7 +147,7 @@ ZapMyCo 按以下顺序确定最终使用的配置（高优先级覆盖低优先
 
 ### 为什么选择 TOML 而不是 JSON 或 YAML？
 
-ZapMyCo 最早使用 JSON 作为配置格式，在 v0.23.0 迁移到了 TOML，主要考虑：
+Zapmyco 最早使用 JSON 作为配置格式，在 v0.23.0 迁移到了 TOML，主要考虑：
 
 | 对比项 | JSON | YAML | TOML |
 |--------|:----:|:----:|:----:|

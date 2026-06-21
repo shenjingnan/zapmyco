@@ -2,7 +2,7 @@
 title: Built-in Models
 ---
 
-ZapMyCo comes with 22 models from 8 providers, all accessible via the Anthropic Messages API format.
+Zapmyco comes with 22 models from 8 providers, all accessible via the Anthropic Messages API format.
 
 You can reference model names directly in the `[llm.models]` section of `settings.toml`. You can combine models from different providers to achieve the best results. **Note: Each model's provider requires its corresponding API Key to be configured.**
 
@@ -218,7 +218,7 @@ While writing API Keys directly in `settings.toml` is simple, it poses a securit
 apiKey = "${env.DEEPSEEK_API_KEY}"
 ```
 
-At runtime, ZapMyCo automatically replaces `${env.DEEPSEEK_API_KEY}` with the value of the `DEEPSEEK_API_KEY` environment variable.
+At runtime, Zapmyco automatically replaces `${env.DEEPSEEK_API_KEY}` with the value of the `DEEPSEEK_API_KEY` environment variable.
 
 ### Benefits
 

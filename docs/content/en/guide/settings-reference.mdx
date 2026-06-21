@@ -2,7 +2,7 @@
 title: Configuration File Reference
 ---
 
-`.zapmyco/settings.toml` is ZapMyCo's core configuration file. It **must exist** for AI-related commands to run.
+`.zapmyco/settings.toml` is Zapmyco's core configuration file. It **must exist** for AI-related commands to run.
 
 > - macOS/Linux: `~/.zapmyco/settings.toml`
 > - Windows: `%USERPROFILE%\.zapmyco\settings.toml`
@@ -105,13 +105,13 @@ Configuration files can reference environment variables directly to avoid storin
 apiKey = "${env.DEEPSEEK_API_KEY}"
 ```
 
-At runtime, ZapMyCo automatically replaces `${env.DEEPSEEK_API_KEY}` with the value of the `DEEPSEEK_API_KEY` environment variable.
+At runtime, Zapmyco automatically replaces `${env.DEEPSEEK_API_KEY}` with the value of the `DEEPSEEK_API_KEY` environment variable.
 
 > When viewing configuration with `zapmyco settings`, environment variable references are displayed as-is (not redacted), while plaintext keys are redacted: `sk-***abcd`.
 
 ## Built-in Model List
 
-ZapMyCo comes with 22 models from 8 providers, all supporting the Anthropic Messages API format:
+Zapmyco comes with 22 models from 8 providers, all supporting the Anthropic Messages API format:
 
 | Provider | Models | Representative Model |
 |----------|:------:|---------------------|
@@ -128,7 +128,7 @@ View the complete list and details: [Built-in Models](/guide/models)
 
 ## Configuration Priority
 
-ZapMyCo determines the final effective configuration in the following order (higher priority overrides lower):
+Zapmyco determines the final effective configuration in the following order (higher priority overrides lower):
 
 1. **CLI explicit parameters** (e.g., `--profile`)
 2. **settings.toml** values
@@ -147,7 +147,7 @@ ZapMyCo determines the final effective configuration in the following order (hig
 
 ### Why TOML instead of JSON or YAML?
 
-ZapMyCo originally used JSON as its configuration format and migrated to TOML in v0.23.0, based on the following considerations:
+Zapmyco originally used JSON as its configuration format and migrated to TOML in v0.23.0, based on the following considerations:
 
 | Comparison | JSON | YAML | TOML |
 |------------|:----:|:----:|:----:|

@@ -1,9 +1,9 @@
 ---
 title: 系统提示词设计
-description: ZapMyCo 系统提示词的分层架构、静态化策略和 KV Cache 优化
+description: Zapmyco 系统提示词的分层架构、静态化策略和 KV Cache 优化
 ---
 
-ZapMyCo 的系统提示词采用**完全静态化**设计——身份定义、行为规范、工具使用规则全部合并为一段编译期常量，确保 DeepSeek 前缀缓存可跨会话最大复用。
+Zapmyco 的系统提示词采用**完全静态化**设计——身份定义、行为规范、工具使用规则全部合并为一段编译期常量，确保 DeepSeek 前缀缓存可跨会话最大复用。
 
 本文展示系统提示词的完整内容，并介绍 KV Cache 优化策略和 AGENTS.md 自定义机制。
 
