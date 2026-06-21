@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.42.4](https://github.com/shenjingnan/zapmyco/compare/v0.42.3...v0.42.4) - 2026-06-21
+
+### Other
+
+- 使用 lefthook 替换自定义 git hooks ([#480](https://github.com/shenjingnan/zapmyco/pull/480))
+
 ## [0.42.3](https://github.com/shenjingnan/zapmyco/compare/v0.42.2...v0.42.3) - 2026-06-20
 
 ### Other
