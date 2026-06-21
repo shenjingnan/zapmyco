@@ -2,6 +2,7 @@ export { AskUserCard } from './AskUserCard';
 export { ChatInput } from './ChatInput';
 export { ChatMessage } from './ChatMessage';
 export { ChatMessageList } from './ChatMessageList';
+export { CodeBlock } from './CodeBlock';
 export { EmptyState } from './EmptyState';
 export { MarkdownRenderer } from './MarkdownRenderer';
 export { RawMessagePanel } from './RawMessagePanel';
