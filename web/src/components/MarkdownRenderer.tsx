@@ -1,6 +1,7 @@
 import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { CodeBlock } from './CodeBlock';
 
 interface MarkdownRendererProps {
   content: string;
@@ -16,13 +17,7 @@ const components: Components = {
         </code>
       );
     }
-    return (
-      <pre className="overflow-x-auto rounded bg-muted p-3 text-sm text-foreground">
-        <code className={className} {...props}>
-          {children}
-        </code>
-      </pre>
-    );
+    return <CodeBlock className={className}>{children}</CodeBlock>;
   },
   a: ({ children, href, ...props }) => (
     <a
