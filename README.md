@@ -136,7 +136,7 @@ zapmyco completion powershell | Out-String | Invoke-Expression
 
 ## 内置模型
 
-ZapMyCo 内置了 **8 个供应商共 22 个模型**，完整列表如下，也可参阅 [内置模型文档](https://docs.zapmyco.com/guide/models)：
+Zapmyco 内置了 **8 个供应商共 22 个模型**，完整列表如下，也可参阅 [内置模型文档](https://docs.zapmyco.com/guide/models)：
 
 | 模型 | 供应商 | 上下文窗口 |
 |------|--------|-----------|

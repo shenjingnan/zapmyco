@@ -1,5 +1,5 @@
 #!/bin/sh
-# ZapMyCo 安装脚本
+# Zapmyco 安装脚本
 # 用法: curl -fsSL https://zapmyco.com/install.sh | sh
 #
 # 注意：此脚本将自动转向 cargo-dist 生成的官方安装器，

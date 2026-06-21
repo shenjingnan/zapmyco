@@ -2,7 +2,7 @@
 title: 内置模型
 ---
 
-ZapMyCo 内置了 8 个供应商共 22 个模型，全部支持通过 Anthropic Messages API 格式调用。
+Zapmyco 内置了 8 个供应商共 22 个模型，全部支持通过 Anthropic Messages API 格式调用。
 
 在 `settings.toml` 的 `[llm.models]` 中直接引用模型名称即可使用。你可以组合不同供应商的模型，以达到最佳效果。**注意：每个模型所属的供应商都需要配置对应的 API Key。**
 
@@ -218,7 +218,7 @@ fast = "llama3.2"
 apiKey = "${env.DEEPSEEK_API_KEY}"
 ```
 
-运行时 ZapMyCo 会自动将 `${env.DEEPSEEK_API_KEY}` 替换为环境变量 `DEEPSEEK_API_KEY` 的值。
+运行时 Zapmyco 会自动将 `${env.DEEPSEEK_API_KEY}` 替换为环境变量 `DEEPSEEK_API_KEY` 的值。
 
 ### 好处
 
