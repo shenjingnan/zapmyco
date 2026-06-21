@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.42.3](https://github.com/shenjingnan/zapmyco/compare/v0.42.2...v0.42.3) - 2026-06-20
+
+### Other
+
+- 停止在 Git 中跟踪 web/dist/ ([#476](https://github.com/shenjingnan/zapmyco/pull/476))
+
 ## [0.42.2](https://github.com/shenjingnan/zapmyco/compare/v0.42.1...v0.42.2) - 2026-06-20
 
 ### Added
