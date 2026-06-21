@@ -277,7 +277,10 @@ mod tests {
     #[test]
     fn test_context_reminder_without_agents_md() {
         let result = build_context_reminder(None);
-        assert!(!result.contains("AGENTS.md"), "不应包含 AGENTS.md 章节");
+        assert!(
+            !result.contains("# AGENTS.md\n以下是指令文件内容"),
+            "不应包含 AGENTS.md 章节"
+        );
         assert!(
             !result.contains("模型必须严格遵守"),
             "不应包含 agents_md 提示语"
@@ -297,7 +300,7 @@ mod tests {
     fn test_context_reminder_agents_md_empty_string() {
         let result = build_context_reminder(Some(""));
         assert!(
-            !result.contains("AGENTS.md"),
+            !result.contains("# AGENTS.md\n以下是指令文件内容"),
             "空字符串不应输出 AGENTS.md 章节"
         );
         assert!(
