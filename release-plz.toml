@@ -10,6 +10,7 @@ git_tag_enable = true
 git_tag_name = "v{{ version }}"
 changelog_update = true
 changelog_path = "CHANGELOG.md"
+publish_allow_dirty = true
 
 [[package]]
 name = "zapmyco-anthropic-ai-sdk"
