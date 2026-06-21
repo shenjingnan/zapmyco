@@ -103,15 +103,13 @@ export function CodeBlock({ className, children }: CodeBlockProps) {
     }
   }, [codeText]);
 
-  const displayLang = lang === 'text' ? '' : lang;
-
   return (
     <div className="group/codeblock my-3 overflow-hidden rounded-xl border border-border bg-[var(--shiki-background,#f6f8fa)] dark:bg-[var(--shiki-background,#24292f)]">
       {/* 标题栏 */}
       <div className="flex items-center justify-between border-b border-border/50 bg-muted/30 px-4 py-1.5">
-        {displayLang ? (
-          <Badge variant="secondary" className="font-mono text-[10px] uppercase tracking-wider">
-            {displayLang}
+        {lang ? (
+          <Badge variant="secondary" className="font-mono text-[10px] tracking-wider">
+            {lang}
           </Badge>
         ) : (
           <span />

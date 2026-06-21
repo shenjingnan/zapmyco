@@ -60,6 +60,19 @@ export const Table: Story = {
   },
 };
 
+export const TableWithLineBreaks: Story = {
+  name: '表格（换行内容）',
+  args: {
+    content: [
+      '| 项目 | 描述 |',
+      '|------|------|',
+      '| ZapMyCo | 基于 AI 的命令行工具 <br>支持交互式 LLM 聊天 <br>基于 Rust 实现 |',
+      '| Storybook | 组件开发环境 <br>支持热更新和调试 |',
+      '| shadcn/ui | 基于 Radix UI <br>提供无障碍组件 <br>高度可定制 |',
+    ].join('\n'),
+  },
+};
+
 export const MixedContent: Story = {
   name: '混合内容',
   args: {
