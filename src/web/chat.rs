@@ -95,6 +95,8 @@ pub enum StreamEvent {
     Done { reason: String },
     #[serde(rename = "error")]
     Error { code: String, message: String },
+    #[serde(rename = "current_dir")]
+    CurrentDir { path: String },
 }
 
 /// Web 模式的进度上报器 — 将进度事件通过 channel 发送到 HTTP 流。
@@ -181,6 +183,14 @@ impl ProgressReporter for WebProgress {
     fn pause(&self) {}
 
     fn resume(&self) {}
+
+    fn set_cwd(&self, path: &str) {
+        self.tx
+            .send(StreamEvent::CurrentDir {
+                path: path.to_string(),
+            })
+            .ok();
+    }
 }
 
 // ── Handler ──
@@ -325,6 +335,13 @@ pub async fn handle_chat(
         // 释放锁 — 此时 handle_ask_respond / handle_approve 可以正常获取锁
 
         let result = if let Some(agent) = agent.as_mut() {
+            // 发送初始工作目录
+            tx_clone
+                .send(StreamEvent::CurrentDir {
+                    path: agent.current_dir().to_string_lossy().to_string(),
+                })
+                .ok();
+
             // 调用 chat_with_tools
             agent
                 .chat_with_tools(

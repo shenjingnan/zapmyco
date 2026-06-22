@@ -1207,6 +1207,7 @@ impl AiAgent {
                     .filter(|p| !p.is_empty())
             {
                 self.current_dir = PathBuf::from(path);
+                progress.set_cwd(path);
             }
 
             let duration_ms = tool_start.elapsed().as_millis() as u64;
@@ -1625,6 +1626,11 @@ impl AiAgent {
     /// 获取当前会话 ID（如果日志已启用）
     pub fn session_id(&self) -> Option<&str> {
         self.logger.as_ref().map(|l| l.session_id())
+    }
+
+    /// 获取当前工作目录。
+    pub fn current_dir(&self) -> &PathBuf {
+        &self.current_dir
     }
 
     /// 获取当前会话的 session 目录路径

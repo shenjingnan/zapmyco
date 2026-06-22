@@ -51,4 +51,7 @@ pub trait ProgressReporter: Send + Sync {
     fn pause(&self);
     /// 恢复 spinner 动画（终端模式启用 tick，Web 模式空操作）。
     fn resume(&self);
+
+    /// 上报当前工作目录变化（默认空操作，仅 Web 模式使用）。
+    fn set_cwd(&self, _path: &str) {}
 }
