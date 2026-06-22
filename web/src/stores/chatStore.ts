@@ -16,6 +16,7 @@ interface ChatState {
   currentAssistantText: string;
   currentThinking: string;
   rawEvents: RawAgentEvent[];
+  currentDir: string;
 
   appendMessage: (msg: ChatMessage) => void;
   updateAssistantText: (delta: string) => void;
@@ -30,6 +31,7 @@ interface ChatState {
   finalizeAssistantMessage: () => void;
   addRawEvent: (event: { type: string; data: string }) => void;
   clearRawEvents: () => void;
+  setCurrentDir: (path: string) => void;
   reset: () => void;
 }
 
@@ -40,6 +42,7 @@ const initialState = {
   currentAssistantText: '',
   currentThinking: '',
   rawEvents: [],
+  currentDir: '',
 };
 
 let msgIdCounter = 0;
@@ -140,4 +143,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { rawEvents };
     }),
   clearRawEvents: () => set({ rawEvents: [] }),
+  setCurrentDir: (path) => set({ currentDir: path }),
 }));
