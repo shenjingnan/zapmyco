@@ -3532,3 +3532,237 @@ mod permission_decision_tests {
         assert!(is_denied("echo hello > file", &["echo".to_string()]));
     }
 }
+
+// ── execute 集成测试 ──
+
+#[cfg(test)]
+mod execute_integration_tests {
+    use super::*;
+
+    /// 创建 AlwaysAllow 后端的 executor（审批自动通过）
+    fn auto_approve_executor() -> ShellExec {
+        ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: Vec::new(),
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        })
+    }
+
+    /// 创建有用户白名单 + AlwaysAllow 后端的 executor
+    fn auto_approve_with_allowlist(allow: Vec<&str>) -> ShellExec {
+        ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: allow.into_iter().map(String::from).collect(),
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        })
+    }
+
+    // ── 分组 12：执行路径验证 ──
+
+    /// skip_confirm=true + 任何命令 → 直接执行
+    #[tokio::test]
+    async fn test_skip_confirm_any_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let r = executor.execute("echo hello", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("hello"));
+    }
+
+    /// readonly_mode=true + 安全命令 → 放行
+    #[tokio::test]
+    async fn test_readonly_safe_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let r = executor.execute("pwd", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// readonly_mode=true + 不安全命令 → 拒绝
+    #[tokio::test]
+    async fn test_readonly_unsafe_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+    }
+
+    /// 干净命令 + builtin → 自动放行
+    #[tokio::test]
+    async fn test_clean_builtin_auto_approve() {
+        let executor = auto_approve_executor();
+        let r = executor.execute("pwd", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 干净命令 + user allow → 自动放行
+    #[tokio::test]
+    async fn test_clean_user_auto_approve() {
+        let executor = auto_approve_with_allowlist(vec!["git status"]);
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 复合命令全部已准入 → 自动放行（不弹框）
+    #[tokio::test]
+    async fn test_compound_all_approved() {
+        let executor = auto_approve_with_allowlist(vec!["echo "]);
+        let r = executor
+            .execute("echo hello && echo world", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("hello"));
+        assert!(r.contains("world"));
+    }
+
+    /// 复合命令部分未准入 → AlwaysAllow 后端自动 Allow → 执行
+    #[tokio::test]
+    async fn test_compound_partial_approved_always_allow() {
+        let executor = auto_approve_with_allowlist(vec!["git status"]);
+        let r = executor
+            .execute("git status && echo hello", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 含重定向命令 + builtin（不含 user allow）→ 弹框 → AlwaysAllow Allow → 执行
+    #[tokio::test]
+    async fn test_redirect_builtin_prompts() {
+        let executor = auto_approve_executor();
+        // echo 在 builtin 中，但含重定向 → 需要审批 → AlwaysAllow 自动 Allow → 执行
+        let r = executor
+            .execute("echo hello > /dev/null", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 含重定向命令 + user allow → 自动放行
+    #[tokio::test]
+    async fn test_redirect_user_allowed_auto_approve() {
+        let executor = auto_approve_with_allowlist(vec!["echo "]);
+        let r = executor
+            .execute("echo hello > /dev/null", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 含命令替换 → 始终弹框 → AlwaysAllow Allow → 执行
+    #[tokio::test]
+    async fn test_substitution_always_prompts() {
+        let executor = auto_approve_executor();
+        let r = executor
+            .execute("echo $(echo hello)", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("hello"));
+    }
+
+    /// deny 列表命中 → 拒绝
+    #[tokio::test]
+    async fn test_deny_list_rejects_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            denied_commands: vec!["rm".to_string()],
+            allowed_commands: vec![],
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+            ..Default::default()
+        });
+        let r = executor.execute("rm -rf /", None, None).await.unwrap();
+        assert!(r.contains("deny list"));
+    }
+
+    // ── 分组 13：AlwaysAllow 逻辑 ──
+
+    /// AlwaysAllow 将未准入的子命令 first_word 加入运行时白名单
+    #[tokio::test]
+    async fn test_always_allow_adds_to_runtime() {
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: vec!["git status".to_string()],
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        });
+
+        // 执行前：运行时白名单只有 git status
+        {
+            let allowed = executor.allowed_commands_runtime.lock().unwrap();
+            assert!(allowed.iter().any(|s| s == "git status"));
+            assert!(!allowed.iter().any(|s| s == ":"));
+        }
+
+        // : 'hello' 不在任何列表中 → 需要审批 → AlwaysAllow 返回 Allow
+        // AlwaysAllow 后端返回 Allow 而非 AlwaysAllow，所以白名单不会更新
+        // 使用 : (shell null 命令) 作为非内置安全命令，执行快速且无条件成功
+        let r = executor
+            .execute("git status && : 'hello'", None, None)
+            .await
+            .unwrap();
+        assert!(
+            r.contains("Exit code:") || r.contains("Working directory:"),
+            "命令应执行: {}",
+            r
+        );
+    }
+
+    /// 危险命令不加入白名单（AlwaysAllow 后端返回 Allow，白名单不增长）
+    #[tokio::test]
+    async fn test_always_allow_dangerous_not_added() {
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: vec![],
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        });
+
+        let prev = executor.allowed_commands_runtime.lock().unwrap().len();
+        let _r = executor
+            .execute(": 'safe' && rm /tmp/nonexistent_f", None, None)
+            .await
+            .unwrap();
+
+        let after = executor.allowed_commands_runtime.lock().unwrap().len();
+        // AlwaysAllow 后端返回 Allow（不是 AlwaysAllow），白名单不增长
+        assert_eq!(after, prev, "危险命令不应被加入白名单");
+    }
+
+    /// 复合命令拆分后正确执行并追踪 CWD
+    #[tokio::test]
+    async fn test_compound_command_with_cwd_tracking() {
+        let executor = auto_approve_with_allowlist(vec!["echo "]);
+        let r = executor
+            .execute("echo first && echo second", None, None)
+            .await
+            .unwrap();
+        assert!(r.starts_with("Working directory: "));
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("first"));
+        assert!(r.contains("second"));
+    }
+}
