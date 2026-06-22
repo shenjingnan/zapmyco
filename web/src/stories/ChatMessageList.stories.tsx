@@ -1,7 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { ChatMessageList } from '../components/ChatMessageList';
 import { useChatStore } from '../stores/chatStore';
-import { mockAssistantWithThinking, mockMixedMessages, mockUserMessage } from './mockData';
+import {
+  mockApprovalMessage,
+  mockAssistantMessage,
+  mockAssistantWithThinking,
+  mockMixedMessages,
+  mockSecondApprovalMessage,
+  mockUserMessage,
+} from './mockData';
+import { MockApiProvider } from './mockFetch';
 
 const meta: Meta<typeof ChatMessageList> = {
   title: 'Components/ChatMessageList',
@@ -93,6 +101,30 @@ export const StreamingFull: Story = {
         currentAssistantText: '这是一个 AI 驱动的命令行工具。它提供交互式 LLM 聊天会话功能。',
       });
       return <Story />;
+    },
+  ],
+};
+
+export const MultipleApprovals: Story = {
+  name: '多个审批排队',
+  decorators: [
+    (Story) => {
+      useChatStore.setState({
+        sessionId: 'test-session',
+        status: 'waiting',
+        messages: [mockUserMessage, mockAssistantMessage, mockApprovalMessage],
+        approvalQueue: mockSecondApprovalMessage.approvalData
+          ? [mockSecondApprovalMessage.approvalData]
+          : [],
+        resolvedApprovalIds: [],
+        currentAssistantText: '',
+        currentThinking: '',
+      });
+      return (
+        <MockApiProvider>
+          <Story />
+        </MockApiProvider>
+      );
     },
   ],
 };
