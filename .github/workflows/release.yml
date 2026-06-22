@@ -97,7 +97,7 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: web/package.json
       - uses: actions/setup-node@v4
