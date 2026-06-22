@@ -7,9 +7,9 @@ export function CwdIndicator() {
   if (!currentDir) return null;
 
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-1.5 text-xs text-foreground/80">
-      <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="truncate font-mono" title={currentDir}>
+    <div className="flex items-center gap-1.5">
+      <Folder className="size-3 shrink-0" />
+      <span className="max-w-[400px] truncate font-mono" title={currentDir}>
         {currentDir}
       </span>
     </div>

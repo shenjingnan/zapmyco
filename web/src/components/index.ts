@@ -7,4 +7,5 @@ export { CwdIndicator } from './CwdIndicator';
 export { EmptyState } from './EmptyState';
 export { MarkdownRenderer } from './MarkdownRenderer';
 export { RawMessagePanel } from './RawMessagePanel';
+export { StatusBar } from './StatusBar';
 export { ToolApprovalCard } from './ToolApprovalCard';
