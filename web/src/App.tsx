@@ -3,6 +3,7 @@ import { ChatInput } from './components/ChatInput';
 import { ChatMessageList } from './components/ChatMessageList';
 import { EmptyState } from './components/EmptyState';
 import { RawMessagePanel } from './components/RawMessagePanel';
+import { StatusBar } from './components/StatusBar';
 import { useSession } from './hooks/useSession';
 import { useSSE } from './hooks/useSSE';
 import { useChatStore } from './stores/chatStore';
@@ -27,20 +28,25 @@ function App() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="flex h-screen flex-row bg-background text-foreground">
-      <div className="flex min-w-0 flex-1 flex-col">
-        {hasMessages ? (
-          <>
-            <ChatMessageList />
-            <div className="mx-auto w-full max-w-[900px] px-4 py-3">
-              <ChatInput onSend={handleSend} />
-            </div>
-          </>
-        ) : (
-          <EmptyState onSend={handleSend} />
-        )}
+    <div className="flex h-screen flex-col bg-background text-foreground">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-row">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {hasMessages ? (
+            <>
+              <ChatMessageList />
+              <div className="mx-auto w-full max-w-[900px] px-4">
+                <div className="py-3">
+                  <ChatInput onSend={handleSend} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <EmptyState onSend={handleSend} />
+          )}
+        </div>
+        <RawMessagePanel />
       </div>
-      <RawMessagePanel />
+      <StatusBar />
     </div>
   );
 }
