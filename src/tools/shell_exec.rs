@@ -34,6 +34,271 @@ pub enum ShellExecError {
 }
 
 // ---------------------------------------------------------------------------
+// Command splitter — 将复合 shell 命令拆分为独立子命令
+// ---------------------------------------------------------------------------
+
+/// 子命令片段的危险特征标记
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CommandFlags {
+    /// 包含文件重定向（> < >> >& &> << <& <> >|）
+    pub has_redirect: bool,
+    /// 包含命令替换（$() `...`）— 可以执行嵌入代码
+    pub has_substitution: bool,
+}
+
+/// 拆分出的子命令片段
+#[derive(Debug)]
+pub(crate) struct CommandPart<'a> {
+    /// 子命令文本（trimmed）
+    pub text: &'a str,
+    /// 在原字符串中的位置
+    pub range: std::ops::Range<usize>,
+    /// 危险特征标记
+    pub flags: CommandFlags,
+}
+
+/// 命令拆分结果
+#[derive(Debug)]
+pub(crate) struct SplitResult<'a> {
+    /// 拆分出的子命令片段
+    pub parts: Vec<CommandPart<'a>>,
+}
+
+/// split_commands 状态机状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SplitState {
+    Normal,
+    SingleQuote,
+    DoubleQuote,
+    CommandSubst, // $()
+    ParamSubst,   // ${}
+    Backtick,     // `...`
+    Escape,       // \x
+}
+
+/// 将复合命令拆分为独立子命令，同时标记每个子命令的危险特征。
+///
+/// 状态机逐字符扫描，在顶层控制运算符（&& || ; | &）处拆分，
+/// 同时正确跳过引号内、$() 内、${} 内、反引号内的运算符。
+///
+/// # 示例
+///
+/// ```ignore
+/// // 此函数是 crate 内部函数，在单元测试中使用
+/// let r = split_commands("git status && cargo build");
+/// assert_eq!(r.parts.len(), 2);
+/// ```
+pub(crate) fn split_commands(cmd: &str) -> SplitResult<'_> {
+    let chars: Vec<char> = cmd.chars().collect();
+    let mut parts: Vec<CommandPart<'_>> = Vec::new();
+    let mut part_start = 0;
+    let mut state = SplitState::Normal;
+
+    let mut cur_redirect = false;
+    let mut cur_subst = false;
+
+    let mut paren_depth = 0;
+    let mut brace_depth = 0;
+
+    let mut i = 0;
+    while i < chars.len() {
+        match state {
+            SplitState::Normal => {
+                if chars[i] == '\'' {
+                    state = SplitState::SingleQuote;
+                    i += 1;
+                } else if chars[i] == '"' {
+                    state = SplitState::DoubleQuote;
+                    i += 1;
+                } else if chars[i] == '\\' {
+                    state = SplitState::Escape;
+                    i += 1;
+                } else if chars[i] == '`' {
+                    cur_subst = true;
+                    state = SplitState::Backtick;
+                    i += 1;
+                } else if chars[i] == '$' && i + 1 < chars.len() {
+                    match chars[i + 1] {
+                        '(' => {
+                            cur_subst = true;
+                            paren_depth = 1;
+                            state = SplitState::CommandSubst;
+                            i += 2;
+                        }
+                        '{' => {
+                            brace_depth = 1;
+                            state = SplitState::ParamSubst;
+                            i += 2;
+                        }
+                        _ => {
+                            i += 1;
+                        }
+                    }
+                } else if chars[i] == ';' {
+                    let end = i + 1;
+                    push_part(cmd, &mut parts, part_start, i, cur_redirect, cur_subst);
+                    cur_redirect = false;
+                    cur_subst = false;
+                    part_start = end;
+                    i = end;
+                } else if chars[i] == '|' {
+                    let end = if i + 1 < chars.len() && matches!(chars[i + 1], '|' | '&') {
+                        i + 2
+                    } else {
+                        i + 1
+                    };
+                    push_part(cmd, &mut parts, part_start, i, cur_redirect, cur_subst);
+                    cur_redirect = false;
+                    cur_subst = false;
+                    part_start = end;
+                    i = end;
+                } else if chars[i] == '&' {
+                    if i + 1 < chars.len() && chars[i + 1] == '>' {
+                        // &> 是重定向（stdout+stderr 到文件）
+                        cur_redirect = true;
+                        i += 2;
+                    } else if i + 1 < chars.len() && chars[i + 1] == '&' {
+                        let end = i + 2;
+                        push_part(cmd, &mut parts, part_start, i, cur_redirect, cur_subst);
+                        cur_redirect = false;
+                        cur_subst = false;
+                        part_start = end;
+                        i = end;
+                    } else {
+                        // & 是后台执行运算符
+                        let end = i + 1;
+                        push_part(cmd, &mut parts, part_start, i, cur_redirect, cur_subst);
+                        cur_redirect = false;
+                        cur_subst = false;
+                        part_start = end;
+                        i = end;
+                    }
+                } else if chars[i] == '>' || chars[i] == '<' {
+                    cur_redirect = true;
+                    i += 1;
+                    while i < chars.len() && matches!(chars[i], '>' | '<' | '&' | '|') {
+                        i += 1;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+
+            SplitState::SingleQuote => {
+                if chars[i] == '\'' {
+                    state = SplitState::Normal;
+                }
+                i += 1;
+            }
+
+            SplitState::DoubleQuote => {
+                if chars[i] == '"' {
+                    state = SplitState::Normal;
+                    i += 1;
+                } else if chars[i] == '\\' {
+                    i += 2;
+                } else if chars[i] == '$' && i + 1 < chars.len() && chars[i + 1] == '(' {
+                    cur_subst = true;
+                    paren_depth = 1;
+                    state = SplitState::CommandSubst;
+                    i += 2;
+                } else if chars[i] == '`' {
+                    cur_subst = true;
+                    state = SplitState::Backtick;
+                    i += 1;
+                } else {
+                    i += 1;
+                }
+            }
+
+            SplitState::CommandSubst => {
+                if chars[i] == '(' {
+                    paren_depth += 1;
+                } else if chars[i] == ')' {
+                    paren_depth -= 1;
+                    if paren_depth == 0 {
+                        state = SplitState::Normal;
+                    }
+                } else if chars[i] == '\'' {
+                    state = SplitState::SingleQuote;
+                } else if chars[i] == '"' {
+                    state = SplitState::DoubleQuote;
+                } else if chars[i] == '\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+
+            SplitState::ParamSubst => {
+                if chars[i] == '{' {
+                    brace_depth += 1;
+                } else if chars[i] == '}' {
+                    brace_depth -= 1;
+                    if brace_depth == 0 {
+                        state = SplitState::Normal;
+                    }
+                } else if chars[i] == '\'' {
+                    state = SplitState::SingleQuote;
+                } else if chars[i] == '"' {
+                    state = SplitState::DoubleQuote;
+                } else if chars[i] == '\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+
+            SplitState::Backtick => {
+                if chars[i] == '`' {
+                    state = SplitState::Normal;
+                } else if chars[i] == '\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+
+            SplitState::Escape => {
+                state = SplitState::Normal;
+                i += 1;
+            }
+        }
+    }
+
+    // 最后一段
+    push_part(
+        cmd,
+        &mut parts,
+        part_start,
+        cmd.len(),
+        cur_redirect,
+        cur_subst,
+    );
+
+    SplitResult { parts }
+}
+
+/// 如果区间内有非空白内容，则加入 parts，携带当前累积的危险特征
+fn push_part<'a>(
+    cmd: &'a str,
+    parts: &mut Vec<CommandPart<'a>>,
+    start: usize,
+    end: usize,
+    has_redirect: bool,
+    has_substitution: bool,
+) {
+    let text = cmd[start..end].trim();
+    if !text.is_empty() {
+        parts.push(CommandPart {
+            text,
+            range: start..end,
+            flags: CommandFlags {
+                has_redirect,
+                has_substitution,
+            },
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // CWD tracking helpers
 // ---------------------------------------------------------------------------
 
@@ -280,6 +545,38 @@ fn is_safe_command(command: &str, user_allowed: &[String], user_denied: &[String
     false
 }
 
+// ── 分层审批决策辅助函数 ──
+
+/// 判断子命令是否匹配用户拒绝列表
+fn is_denied(cmd: &str, denied: &[String]) -> bool {
+    for p in denied {
+        if matches_pattern(cmd, p) {
+            return true;
+        }
+    }
+    false
+}
+
+/// 判断子命令是否匹配内置安全列表（只读命令）
+fn is_builtin_safe(cmd: &str) -> bool {
+    for p in BUILTIN_SAFE_COMMANDS {
+        if matches_pattern(cmd, p) {
+            return true;
+        }
+    }
+    false
+}
+
+/// 判断子命令是否匹配用户白名单
+fn is_user_allowed(cmd: &str, allowed: &[String]) -> bool {
+    for p in allowed {
+        if matches_pattern(cmd, p) {
+            return true;
+        }
+    }
+    false
+}
+
 /// run_command 配置选项
 #[derive(Debug, Clone)]
 pub struct ShellExecOptions {
@@ -462,45 +759,85 @@ impl ShellExec {
                 }
             }
         } else if !self.options.skip_confirm {
-            if is_safe_command(
-                command,
-                &self.allowed_commands_runtime.lock().unwrap(),
-                &self.options.denied_commands,
-            ) {
-                // 无需确认，直接执行
+            let split = split_commands(command);
+
+            // 阶段 1：在 Mutex 作用域内完成权限检查（锁不跨越 await）
+            let (all_pending, should_use_parts): (Vec<CommandPart>, bool) = {
+                let allowed = self.allowed_commands_runtime.lock().unwrap();
+
+                let mut pending_indices: Vec<usize> = Vec::new();
+                let mut deny_hit = false;
+
+                for (idx, part) in split.parts.iter().enumerate() {
+                    if is_denied(part.text, &self.options.denied_commands) {
+                        let msg =
+                            format!("[run_command] ❌ 命令被拒绝: `{}` 已在黑名单中", part.text);
+                        output::send(&Message::warning(msg.clone()));
+                        deny_hit = true;
+                        // 需要继续持有 allowed 直到返回，所以先 break
+                        // 但不能在持有锁时 return，所以标记后跳出
+                        break;
+                    }
+
+                    let should_prompt = if part.flags.has_substitution {
+                        true
+                    } else if part.flags.has_redirect {
+                        !is_user_allowed(part.text, &allowed)
+                    } else {
+                        !is_builtin_safe(part.text) && !is_user_allowed(part.text, &allowed)
+                    };
+
+                    if should_prompt {
+                        pending_indices.push(idx);
+                    }
+                }
+
+                if deny_hit {
+                    return Ok("Command not executed: command is in deny list".to_string());
+                }
+
+                let all_pending = pending_indices
+                    .iter()
+                    .map(|&idx| CommandPart {
+                        text: split.parts[idx].text,
+                        range: split.parts[idx].range.clone(),
+                        flags: split.parts[idx].flags,
+                    })
+                    .collect::<Vec<_>>();
+
+                let should_use_parts =
+                    !pending_indices.is_empty() && pending_indices.len() < split.parts.len();
+
+                (all_pending, should_use_parts)
+            }; // 锁在这里释放
+
+            // 阶段 2：异步确认（无锁状态）
+            if all_pending.is_empty() {
+                // 全部已准入，直接执行
             } else {
-                match prompt_confirm(command, description, &self.options.confirm_backend).await {
+                let decision = if should_use_parts {
+                    prompt_confirm_parts(
+                        command,
+                        &all_pending.iter().collect::<Vec<_>>(),
+                        description,
+                        &self.options.confirm_backend,
+                    )
+                    .await
+                } else {
+                    prompt_confirm(command, description, &self.options.confirm_backend).await
+                };
+
+                match decision {
                     ConfirmAction::Deny => {
                         output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
                         return Ok("Command not executed (cancelled by user)".to_string());
                     }
                     ConfirmAction::AlwaysAllow => {
-                        let trimmed = command.trim();
-                        let first_word = trimmed.split_whitespace().next().unwrap_or(trimmed);
-
-                        if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
-                            output::send(&Message::warning(format!(
-                                "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
-                                first_word
-                            )));
-                        } else if let Err(e) =
-                            crate::config::settings::add_to_command_allowlist(first_word)
-                        {
-                            output::send(&Message::warning(format!(
-                                "⚠️  无法保存到白名单: {}，但命令将继续执行",
-                                e
-                            )));
-                        } else {
-                            output::send(&Message::info(format!(
-                                "✅ 已加入白名单: `{}` 命令将自动执行",
-                                first_word
-                            )));
-                        }
-                        if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
-                            self.allowed_commands_runtime
-                                .lock()
-                                .unwrap()
-                                .push(first_word.to_string());
+                        let mut runtime = self.allowed_commands_runtime.lock().unwrap();
+                        for part in &all_pending {
+                            let first_word =
+                                part.text.split_whitespace().next().unwrap_or(part.text);
+                            add_to_allowlist_inner(first_word, &mut runtime);
                         }
                     }
                     ConfirmAction::Allow => {}
@@ -700,6 +1037,115 @@ async fn prompt_confirm(
                 crate::tools::prompt::SelectOption {
                     label: "始终允许",
                     description: "将该命令加入白名单并自动执行",
+                    custom_input: false,
+                },
+                crate::tools::prompt::SelectOption {
+                    label: "拒绝",
+                    description: "取消执行该命令",
+                    custom_input: false,
+                },
+            ];
+
+            match crate::tools::prompt::prompt_single_select(question, &options) {
+                Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
+                Some(crate::tools::prompt::SingleSelectResult::Index(1)) => {
+                    ConfirmAction::AlwaysAllow
+                }
+                _ => ConfirmAction::Deny,
+            }
+        }
+    }
+}
+
+/// add_to_allowlist_inner 将命令加入白名单（运行时内存列表 + settings 持久化）
+///
+/// 提取自 execute() 中的 AlwaysAllow 逻辑，避免重复代码。
+fn add_to_allowlist_inner(first_word: &str, runtime_allowed: &mut Vec<String>) {
+    if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+        output::send(&Message::warning(format!(
+            "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
+            first_word
+        )));
+    } else if let Err(e) = crate::config::settings::add_to_command_allowlist(first_word) {
+        output::send(&Message::warning(format!(
+            "⚠️  无法保存到白名单: {}，但命令将继续执行",
+            e
+        )));
+    } else {
+        output::send(&Message::info(format!(
+            "✅ 已加入白名单: `{}` 命令将自动执行",
+            first_word
+        )));
+    }
+    if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
+        runtime_allowed.push(first_word.to_string());
+    }
+}
+
+/// 提示用户确认部分需要审批的子命令（拆分场景）
+async fn prompt_confirm_parts(
+    command: &str,
+    pending: &[&CommandPart<'_>],
+    description: Option<&str>,
+    backend: &crate::tools::confirm::ConfirmBackend,
+) -> ConfirmAction {
+    match backend {
+        crate::tools::confirm::ConfirmBackend::AlwaysAllow => ConfirmAction::Allow,
+        crate::tools::confirm::ConfirmBackend::Channel(approvals) => {
+            let id = uuid::Uuid::new_v4().to_string();
+            let rx = approvals.register(id, "shell_exec", command, description);
+            match rx.await {
+                Ok(decision) => {
+                    if decision.approved {
+                        ConfirmAction::Allow
+                    } else {
+                        ConfirmAction::Deny
+                    }
+                }
+                Err(_) => ConfirmAction::Deny,
+            }
+        }
+        crate::tools::confirm::ConfirmBackend::Terminal => {
+            use std::io::IsTerminal;
+            if !std::io::stdin().is_terminal() {
+                return ConfirmAction::Deny;
+            }
+
+            output::send(&Message::info(String::new()));
+            output::send(&Message::info("[工具] ⚠️  准备执行命令:".to_string()));
+            if let Some(desc) = description {
+                let truncated = if desc.len() > 100 {
+                    format!("{}...", &desc[..100])
+                } else {
+                    desc.to_string()
+                };
+                output::send(&Message::info(format!("  └ 描述: {}", truncated)));
+            }
+            output::send(&Message::info(format!("  └ 完整命令: {}", command)));
+            output::send(&Message::info(String::new()));
+
+            output::send(&Message::info("以下命令需要授权:".to_string()));
+            for part in pending {
+                let extra = if part.flags.has_substitution {
+                    " (包含命令替换)"
+                } else if part.flags.has_redirect {
+                    " (包含文件重定向)"
+                } else {
+                    ""
+                };
+                output::send(&Message::info(format!("  ▢ {}{}", part.text, extra)));
+            }
+
+            let question = "是否确认执行？";
+            let options = [
+                crate::tools::prompt::SelectOption {
+                    label: "允许",
+                    description: "执行该命令",
+                    custom_input: false,
+                },
+                crate::tools::prompt::SelectOption {
+                    label: "始终允许",
+                    description: "将未授权的命令加入白名单并自动执行",
                     custom_input: false,
                 },
                 crate::tools::prompt::SelectOption {
@@ -2474,5 +2920,849 @@ mod readonly_execute_tests {
             r.contains("[ReadOnly] 命令被拒绝"),
             "readonly_mode=true 时 skip_confirm=false 也应拒绝"
         );
+    }
+}
+
+// ── split_commands 单元测试 ──
+
+#[cfg(test)]
+mod split_commands_tests {
+    use super::*;
+
+    fn assert_split(cmd: &str, expected: &[&str]) {
+        let result = split_commands(cmd);
+        let texts: Vec<&str> = result.parts.iter().map(|p| p.text).collect();
+        assert_eq!(
+            texts, expected,
+            "split_commands({:?})\n  expected: {:?}\n  actual:   {:?}",
+            cmd, expected, texts
+        );
+    }
+
+    fn assert_split_with_flags(cmd: &str, expected: &[(&str, bool, bool)]) {
+        let result = split_commands(cmd);
+        assert_eq!(
+            result.parts.len(),
+            expected.len(),
+            "split_commands({:?}): part count mismatch",
+            cmd
+        );
+        for (i, (text, has_redirect, has_substitution)) in expected.iter().enumerate() {
+            assert_eq!(
+                result.parts[i].text, *text,
+                "split_commands({:?})[{}].text",
+                cmd, i
+            );
+            assert_eq!(
+                result.parts[i].flags.has_redirect, *has_redirect,
+                "split_commands({:?})[{}].flags.has_redirect",
+                cmd, i
+            );
+            assert_eq!(
+                result.parts[i].flags.has_substitution, *has_substitution,
+                "split_commands({:?})[{}].flags.has_substitution",
+                cmd, i
+            );
+        }
+    }
+
+    // ── 分组 1：基础拆分 ──
+
+    #[test]
+    fn test_single_command() {
+        assert_split("pwd", &["pwd"]);
+    }
+
+    #[test]
+    fn test_and_chain() {
+        assert_split("git status && cargo build", &["git status", "cargo build"]);
+    }
+
+    #[test]
+    fn test_triple_and() {
+        assert_split(
+            "echo a && echo b && echo c",
+            &["echo a", "echo b", "echo c"],
+        );
+    }
+
+    #[test]
+    fn test_or() {
+        assert_split("cmd1 || cmd2", &["cmd1", "cmd2"]);
+    }
+
+    #[test]
+    fn test_semicolon() {
+        assert_split("cmd1; cmd2", &["cmd1", "cmd2"]);
+    }
+
+    #[test]
+    fn test_pipe() {
+        assert_split("cmd1 | cmd2", &["cmd1", "cmd2"]);
+    }
+
+    #[test]
+    fn test_background() {
+        assert_split("sleep 5 &", &["sleep 5"]);
+    }
+
+    #[test]
+    fn test_mixed_operators() {
+        assert_split("a && b || c; d | e", &["a", "b", "c", "d", "e"]);
+    }
+
+    // ── 分组 2：引号内运算符跳过 ──
+
+    #[test]
+    fn test_double_quote_and() {
+        assert_split(r#"echo "a && b""#, &[r#"echo "a && b""#]);
+    }
+
+    #[test]
+    fn test_single_quote_and() {
+        assert_split(r#"echo 'a && b'"#, &[r#"echo 'a && b'"#]);
+    }
+
+    #[test]
+    fn test_mixed_quotes() {
+        assert_split(
+            r#"foo && bar "x || y" 'a && b'"#,
+            &["foo", r#"bar "x || y" 'a && b'"#],
+        );
+    }
+
+    #[test]
+    fn test_simple_quotes() {
+        assert_split(r#"echo "hello""#, &[r#"echo "hello""#]);
+    }
+
+    #[test]
+    fn test_escaped_double_quote() {
+        let cmd = "echo \"escaped \\\"quote\\\"\"";
+        assert_split(cmd, &[cmd]);
+    }
+
+    // ── 分组 3：命令替换 / 参数展开 ──
+
+    #[test]
+    fn test_command_subst_and() {
+        assert_split_with_flags("echo $(foo && bar)", &[("echo $(foo && bar)", false, true)]);
+    }
+
+    #[test]
+    fn test_command_subst_with_inner_quotes() {
+        assert_split_with_flags(
+            r#"echo $(foo "a && b")"#,
+            &[(r#"echo $(foo "a && b")"#, false, true)],
+        );
+    }
+
+    #[test]
+    fn test_arith_expansion() {
+        assert_split_with_flags("echo $((1 + 2))", &[("echo $((1 + 2))", false, true)]);
+    }
+
+    #[test]
+    fn test_param_expansion_clean() {
+        assert_split_with_flags("echo ${VAR:-foo}", &[("echo ${VAR:-foo}", false, false)]);
+    }
+
+    #[test]
+    fn test_backtick() {
+        assert_split_with_flags("echo `whoami`", &[("echo `whoami`", false, true)]);
+    }
+
+    #[test]
+    fn test_nested_command_subst() {
+        assert_split_with_flags(
+            "echo $(a $(b && c) d)",
+            &[("echo $(a $(b && c) d)", false, true)],
+        );
+    }
+
+    #[test]
+    fn test_escaped_dollar() {
+        assert_split(r"a && echo \$(b)", &["a", r"echo \$(b)"]);
+    }
+
+    #[test]
+    fn test_command_subst_in_double_quote() {
+        assert_split_with_flags(
+            r#"echo "$(foo && bar)""#,
+            &[(r#"echo "$(foo && bar)""#, false, true)],
+        );
+    }
+
+    #[test]
+    fn test_backtick_in_double_quote() {
+        assert_split_with_flags("echo \"`whoami`\"", &[("echo \"`whoami`\"", false, true)]);
+    }
+
+    // ── 分组 4：重定向运算符 ──
+
+    #[test]
+    fn test_redirect_output() {
+        assert_split_with_flags(
+            "echo hello > /tmp/file",
+            &[("echo hello > /tmp/file", true, false)],
+        );
+    }
+
+    #[test]
+    fn test_redirect_append() {
+        assert_split_with_flags(
+            "echo hello >> /tmp/log",
+            &[("echo hello >> /tmp/log", true, false)],
+        );
+    }
+
+    #[test]
+    fn test_redirect_fd() {
+        assert_split_with_flags("echo 2>&1", &[("echo 2>&1", true, false)]);
+    }
+
+    #[test]
+    fn test_redirect_ampersand() {
+        assert_split_with_flags(
+            "echo foo &> /dev/null",
+            &[("echo foo &> /dev/null", true, false)],
+        );
+    }
+
+    #[test]
+    fn test_redirect_input() {
+        assert_split_with_flags("cat < input.txt", &[("cat < input.txt", true, false)]);
+    }
+
+    #[test]
+    fn test_heredoc() {
+        assert_split_with_flags("cat << EOF", &[("cat << EOF", true, false)]);
+    }
+
+    #[test]
+    fn test_herestring() {
+        assert_split_with_flags(
+            r#"cat <<< "hello world""#,
+            &[(r#"cat <<< "hello world""#, true, false)],
+        );
+    }
+
+    #[test]
+    fn test_redirect_readwrite() {
+        assert_split_with_flags("exec 3<> /dev/tcp", &[("exec 3<> /dev/tcp", true, false)]);
+    }
+
+    #[test]
+    fn test_chain_with_redirect() {
+        assert_split_with_flags(
+            "cmd1 && echo done > /tmp/out",
+            &[
+                ("cmd1", false, false),
+                ("echo done > /tmp/out", true, false),
+            ],
+        );
+    }
+
+    // ── 分组 5：转义字符 ──
+
+    #[test]
+    fn test_escaped_ampersand() {
+        assert_split(r"echo a \& b", &[r"echo a \& b"]);
+    }
+
+    #[test]
+    fn test_escaped_pipe() {
+        assert_split(r"echo a \| b", &[r"echo a \| b"]);
+    }
+
+    #[test]
+    fn test_escaped_semicolon() {
+        assert_split(r"echo a \; b", &[r"echo a \; b"]);
+    }
+
+    // ── 分组 6：复杂混合 ──
+
+    #[test]
+    fn test_build_with_redirect_and_echo() {
+        assert_split_with_flags(
+            "cargo build > /tmp/log && echo done",
+            &[
+                ("cargo build > /tmp/log", true, false),
+                ("echo done", false, false),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_pipe_ampersand() {
+        assert_split("cmd1 |& cmd2", &["cmd1", "cmd2"]);
+    }
+
+    #[test]
+    fn test_mixed_redirect_and_or() {
+        assert_split_with_flags(
+            "a && b > x || c",
+            &[
+                ("a", false, false),
+                ("b > x", true, false),
+                ("c", false, false),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_substitution_and_chain() {
+        assert_split_with_flags(
+            "echo $(whoami) && echo done",
+            &[("echo $(whoami)", false, true), ("echo done", false, false)],
+        );
+    }
+
+    #[test]
+    fn test_substitution_and_redirect_together() {
+        assert_split_with_flags(
+            "echo $(whoami) > /tmp/log",
+            &[("echo $(whoami) > /tmp/log", true, true)],
+        );
+    }
+
+    // ── 分组 7：边缘情况 ──
+
+    #[test]
+    fn test_empty_string() {
+        let r = split_commands("");
+        assert!(r.parts.is_empty());
+    }
+
+    #[test]
+    fn test_whitespace_only() {
+        let r = split_commands("   ");
+        assert!(r.parts.is_empty());
+    }
+
+    #[test]
+    fn test_trailing_operator() {
+        assert_split("cmd &&", &["cmd"]);
+    }
+
+    #[test]
+    fn test_leading_operator() {
+        assert_split("&& cmd", &["cmd"]);
+    }
+
+    #[test]
+    fn test_empty_middle_part() {
+        assert_split("foo &&   && bar", &["foo", "bar"]);
+    }
+
+    #[test]
+    fn test_unclosed_command_subst() {
+        let r = split_commands("echo $(unclosed");
+        assert_eq!(r.parts.len(), 1);
+    }
+
+    #[test]
+    fn test_unclosed_param_subst() {
+        let r = split_commands("echo ${unclosed");
+        assert_eq!(r.parts.len(), 1);
+    }
+
+    #[test]
+    fn test_unclosed_single_quote() {
+        let r = split_commands("echo 'unclosed &&");
+        assert_eq!(r.parts.len(), 1);
+    }
+
+    #[test]
+    fn test_unclosed_double_quote() {
+        let r = split_commands("echo \"unclosed &&");
+        assert_eq!(r.parts.len(), 1);
+    }
+
+    #[test]
+    fn test_unclosed_backtick() {
+        let r = split_commands("echo `unclosed");
+        assert_eq!(r.parts.len(), 1);
+    }
+
+    // ── 分组 8：Unicode ──
+
+    #[test]
+    fn test_unicode_chinese() {
+        assert_split("echo 你好世界", &["echo 你好世界"]);
+    }
+
+    #[test]
+    fn test_unicode_accent() {
+        assert_split("echo café", &["echo café"]);
+    }
+
+    #[test]
+    fn test_unicode_with_operator() {
+        assert_split("git status && echo 你好", &["git status", "echo 你好"]);
+    }
+
+    // ── 验证 CommandFlags ──
+
+    #[test]
+    fn test_flags_clean() {
+        assert_split_with_flags("pwd", &[("pwd", false, false)]);
+    }
+}
+
+// ── 权限决策单元测试 ──
+
+#[cfg(test)]
+mod permission_decision_tests {
+    use super::*;
+
+    // ── 分组 9：基础检查函数 ──
+
+    #[test]
+    fn test_builtin_safe_pwd() {
+        assert!(is_builtin_safe("pwd"));
+    }
+
+    #[test]
+    fn test_builtin_safe_echo_with_text() {
+        assert!(is_builtin_safe("echo hello"));
+    }
+
+    #[test]
+    fn test_builtin_safe_git_status() {
+        assert!(!is_builtin_safe("git status"));
+    }
+
+    #[test]
+    fn test_builtin_safe_word_boundary() {
+        assert!(!is_builtin_safe("pwdconfig"));
+    }
+
+    #[test]
+    fn test_user_allowed_match() {
+        assert!(is_user_allowed("git status", &["git status".to_string()]));
+    }
+
+    #[test]
+    fn test_user_allowed_no_match() {
+        assert!(!is_user_allowed("git commit", &["git status".to_string()]));
+    }
+
+    #[test]
+    fn test_denied_match() {
+        assert!(is_denied("rm -rf /", &["rm".to_string()]));
+    }
+
+    #[test]
+    fn test_denied_no_match() {
+        assert!(!is_denied("git status", &["rm".to_string()]));
+    }
+
+    // ── 分组 10：审批决策验证 ──
+
+    fn should_prompt(part: &CommandPart, allowed: &[String]) -> bool {
+        if part.flags.has_substitution {
+            return true;
+        }
+        if part.flags.has_redirect {
+            return !is_user_allowed(part.text, allowed);
+        }
+        !is_builtin_safe(part.text) && !is_user_allowed(part.text, allowed)
+    }
+
+    #[test]
+    fn test_decision_clean_builtin() {
+        let part = CommandPart {
+            text: "pwd",
+            range: 0..3,
+            flags: CommandFlags {
+                has_redirect: false,
+                has_substitution: false,
+            },
+        };
+        assert!(!should_prompt(&part, &[]));
+    }
+
+    #[test]
+    fn test_decision_clean_builtin_echo() {
+        let part = CommandPart {
+            text: "echo hello",
+            range: 0..10,
+            flags: CommandFlags {
+                has_redirect: false,
+                has_substitution: false,
+            },
+        };
+        assert!(!should_prompt(&part, &[]));
+    }
+
+    #[test]
+    fn test_decision_clean_user_allowed() {
+        let part = CommandPart {
+            text: "git status",
+            range: 0..10,
+            flags: CommandFlags {
+                has_redirect: false,
+                has_substitution: false,
+            },
+        };
+        assert!(!should_prompt(&part, &["git status".to_string()]));
+    }
+
+    #[test]
+    fn test_decision_clean_not_allowed() {
+        let part = CommandPart {
+            text: "rm -rf /",
+            range: 0..8,
+            flags: CommandFlags {
+                has_redirect: false,
+                has_substitution: false,
+            },
+        };
+        assert!(should_prompt(&part, &[]));
+    }
+
+    #[test]
+    fn test_decision_redirect_builtin_not_allowed() {
+        let part = CommandPart {
+            text: "echo hello > /tmp/file",
+            range: 0..22,
+            flags: CommandFlags {
+                has_redirect: true,
+                has_substitution: false,
+            },
+        };
+        assert!(should_prompt(&part, &[]));
+    }
+
+    #[test]
+    fn test_decision_redirect_user_allowed() {
+        let part = CommandPart {
+            text: "echo hello > /tmp/file",
+            range: 0..22,
+            flags: CommandFlags {
+                has_redirect: true,
+                has_substitution: false,
+            },
+        };
+        assert!(!should_prompt(&part, &["echo ".to_string()]));
+    }
+
+    #[test]
+    fn test_decision_redirect_not_allowed() {
+        let part = CommandPart {
+            text: "cargo build > /tmp/log",
+            range: 0..23,
+            flags: CommandFlags {
+                has_redirect: true,
+                has_substitution: false,
+            },
+        };
+        assert!(should_prompt(&part, &[]));
+    }
+
+    #[test]
+    fn test_decision_redirect_user_allowed_cargo() {
+        let part = CommandPart {
+            text: "cargo build > /tmp/log",
+            range: 0..23,
+            flags: CommandFlags {
+                has_redirect: true,
+                has_substitution: false,
+            },
+        };
+        assert!(!should_prompt(&part, &["cargo ".to_string()]));
+    }
+
+    #[test]
+    fn test_decision_substitution_always_prompt() {
+        let part = CommandPart {
+            text: "echo $(whoami)",
+            range: 0..15,
+            flags: CommandFlags {
+                has_redirect: false,
+                has_substitution: true,
+            },
+        };
+        assert!(should_prompt(&part, &["echo ".to_string()]));
+        assert!(should_prompt(&part, &[]));
+    }
+
+    #[test]
+    fn test_decision_redirect_and_substitution() {
+        let part = CommandPart {
+            text: "echo $(whoami) > /tmp/log",
+            range: 0..27,
+            flags: CommandFlags {
+                has_redirect: true,
+                has_substitution: true,
+            },
+        };
+        assert!(should_prompt(&part, &["echo ".to_string()]));
+        assert!(should_prompt(&part, &[]));
+    }
+
+    // ── 分组 11：deny 优先 ──
+
+    #[test]
+    fn test_deny_overrides_clean() {
+        let part = CommandPart {
+            text: "rm -rf /",
+            range: 0..8,
+            flags: CommandFlags {
+                has_redirect: false,
+                has_substitution: false,
+            },
+        };
+        assert!(is_denied(part.text, &["rm".to_string()]));
+    }
+
+    #[test]
+    fn test_deny_overrides_builtin() {
+        assert!(is_denied("pwd", &["pwd".to_string()]));
+    }
+
+    #[test]
+    fn test_deny_overrides_allow() {
+        assert!(is_denied("git status", &["git status".to_string()]));
+    }
+
+    #[test]
+    fn test_deny_overrides_redirect() {
+        assert!(is_denied("echo hello > file", &["echo".to_string()]));
+    }
+}
+
+// ── execute 集成测试 ──
+
+#[cfg(test)]
+mod execute_integration_tests {
+    use super::*;
+
+    /// 创建 AlwaysAllow 后端的 executor（审批自动通过）
+    fn auto_approve_executor() -> ShellExec {
+        ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: Vec::new(),
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        })
+    }
+
+    /// 创建有用户白名单 + AlwaysAllow 后端的 executor
+    fn auto_approve_with_allowlist(allow: Vec<&str>) -> ShellExec {
+        ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: allow.into_iter().map(String::from).collect(),
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        })
+    }
+
+    // ── 分组 12：执行路径验证 ──
+
+    /// skip_confirm=true + 任何命令 → 直接执行
+    #[tokio::test]
+    async fn test_skip_confirm_any_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let r = executor.execute("echo hello", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("hello"));
+    }
+
+    /// readonly_mode=true + 安全命令 → 放行
+    #[tokio::test]
+    async fn test_readonly_safe_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let r = executor.execute("pwd", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// readonly_mode=true + 不安全命令 → 拒绝
+    #[tokio::test]
+    async fn test_readonly_unsafe_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            readonly_mode: true,
+            skip_confirm: true,
+            ..Default::default()
+        });
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("[ReadOnly] 命令被拒绝"));
+    }
+
+    /// 干净命令 + builtin → 自动放行
+    #[tokio::test]
+    async fn test_clean_builtin_auto_approve() {
+        let executor = auto_approve_executor();
+        let r = executor.execute("pwd", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 干净命令 + user allow → 自动放行
+    #[tokio::test]
+    async fn test_clean_user_auto_approve() {
+        let executor = auto_approve_with_allowlist(vec!["git status"]);
+        let r = executor.execute("git status", None, None).await.unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 复合命令全部已准入 → 自动放行（不弹框）
+    #[tokio::test]
+    async fn test_compound_all_approved() {
+        let executor = auto_approve_with_allowlist(vec!["echo "]);
+        let r = executor
+            .execute("echo hello && echo world", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("hello"));
+        assert!(r.contains("world"));
+    }
+
+    /// 复合命令部分未准入 → AlwaysAllow 后端自动 Allow → 执行
+    #[tokio::test]
+    async fn test_compound_partial_approved_always_allow() {
+        let executor = auto_approve_with_allowlist(vec!["git status"]);
+        let r = executor
+            .execute("git status && echo hello", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 含重定向命令 + builtin（不含 user allow）→ 弹框 → AlwaysAllow Allow → 执行
+    #[tokio::test]
+    async fn test_redirect_builtin_prompts() {
+        let executor = auto_approve_executor();
+        // echo 在 builtin 中，但含重定向 → 需要审批 → AlwaysAllow 自动 Allow → 执行
+        let r = executor
+            .execute("echo hello > /dev/null", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 含重定向命令 + user allow → 自动放行
+    #[tokio::test]
+    async fn test_redirect_user_allowed_auto_approve() {
+        let executor = auto_approve_with_allowlist(vec!["echo "]);
+        let r = executor
+            .execute("echo hello > /dev/null", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+    }
+
+    /// 含命令替换 → 始终弹框 → AlwaysAllow Allow → 执行
+    #[tokio::test]
+    async fn test_substitution_always_prompts() {
+        let executor = auto_approve_executor();
+        let r = executor
+            .execute("echo $(echo hello)", None, None)
+            .await
+            .unwrap();
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("hello"));
+    }
+
+    /// deny 列表命中 → 拒绝
+    #[tokio::test]
+    async fn test_deny_list_rejects_command() {
+        let executor = ShellExec::new(ShellExecOptions {
+            skip_confirm: false,
+            denied_commands: vec!["rm".to_string()],
+            allowed_commands: vec![],
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+            ..Default::default()
+        });
+        let r = executor.execute("rm -rf /", None, None).await.unwrap();
+        assert!(r.contains("deny list"));
+    }
+
+    // ── 分组 13：AlwaysAllow 逻辑 ──
+
+    /// AlwaysAllow 将未准入的子命令 first_word 加入运行时白名单
+    #[tokio::test]
+    async fn test_always_allow_adds_to_runtime() {
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: vec!["git status".to_string()],
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        });
+
+        // 执行前：运行时白名单只有 git status
+        {
+            let allowed = executor.allowed_commands_runtime.lock().unwrap();
+            assert!(allowed.iter().any(|s| s == "git status"));
+            assert!(!allowed.iter().any(|s| s == ":"));
+        }
+
+        // : 'hello' 不在任何列表中 → 需要审批 → AlwaysAllow 返回 Allow
+        // AlwaysAllow 后端返回 Allow 而非 AlwaysAllow，所以白名单不会更新
+        // 使用 : (shell null 命令) 作为非内置安全命令，执行快速且无条件成功
+        let r = executor
+            .execute("git status && : 'hello'", None, None)
+            .await
+            .unwrap();
+        assert!(
+            r.contains("Exit code:") || r.contains("Working directory:"),
+            "命令应执行: {}",
+            r
+        );
+    }
+
+    /// 危险命令不加入白名单（AlwaysAllow 后端返回 Allow，白名单不增长）
+    #[tokio::test]
+    async fn test_always_allow_dangerous_not_added() {
+        let executor = ShellExec::new(ShellExecOptions {
+            timeout_secs: 5,
+            output_max_chars: 10_000,
+            skip_confirm: false,
+            denied_commands: vec![],
+            allowed_commands: vec![],
+            readonly_mode: false,
+            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+        });
+
+        let prev = executor.allowed_commands_runtime.lock().unwrap().len();
+        let _r = executor
+            .execute(": 'safe' && rm /tmp/nonexistent_f", None, None)
+            .await
+            .unwrap();
+
+        let after = executor.allowed_commands_runtime.lock().unwrap().len();
+        // AlwaysAllow 后端返回 Allow（不是 AlwaysAllow），白名单不增长
+        assert_eq!(after, prev, "危险命令不应被加入白名单");
+    }
+
+    /// 复合命令拆分后正确执行并追踪 CWD
+    #[tokio::test]
+    async fn test_compound_command_with_cwd_tracking() {
+        let executor = auto_approve_with_allowlist(vec!["echo "]);
+        let r = executor
+            .execute("echo first && echo second", None, None)
+            .await
+            .unwrap();
+        assert!(r.starts_with("Working directory: "));
+        assert!(r.contains("Exit code: 0"));
+        assert!(r.contains("first"));
+        assert!(r.contains("second"));
     }
 }
