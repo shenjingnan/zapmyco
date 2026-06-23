@@ -1,0 +1,359 @@
+---
+title: 命令执行安全机制
+description: 深入理解 zapmyco 如何保障 AI 执行命令的安全性
+---
+
+AI Agent 可以执行任意 shell 命令，这是一把双刃剑——能力越强，安全责任越大。
+zapmyco 设计了**三层安全模型**，在安全性和交互流畅度之间找到平衡。
+
+## 三层安全模型
+
+```mermaid
+flowchart TD
+    C["命令请求"] --> L1{"第一层<br/>内置安全列表"}
+    L1 -->|"✅ 匹配"| ALLOW["自动放行"]
+    L1 -->|"❌ 未命中"| L2{"第二层<br/>用户白名单 / 黑名单"}
+    L2 -->|"deny 匹配"| DENY["拒绝"]
+    L2 -->|"allow 匹配"| ALLOW
+    L2 -->|"均未命中"| L3{"第三层<br/>运行时逐子命令审批"}
+    L3 -->|"全部已准入"| ALLOW
+    L3 -->|"部分未准入"| CONFIRM{"弹框审批"}
+    CONFIRM -->|"允许"| ALLOW
+    CONFIRM -->|"始终允许"| ADD["加入白名单"] --> ALLOW
+    CONFIRM -->|"拒绝"| CANCEL["取消"]
+
+    style ALLOW fill:#d4edda,color:#155724
+    style DENY fill:#f8d7da,color:#721c24
+    style CANCEL fill:#f8d7da,color:#721c24
+    style CONFIRM fill:#fff3cd,color:#856404
+```
+
+每一层都是**累加检查**的：命中了上层就直接放行或拒绝，不命中才流到下一层。
+
+---
+
+## 第一层：内置安全列表
+
+编译期定义的绝对安全命令列表，只包含**纯读取系统状态**的命令。
+
+| 类别 | 命令 | 说明 |
+|------|------|------|
+| | `pwd` | 打印工作目录 |
+| | `whoami` | 打印当前用户名 |
+| 通用 | `true` | 无操作，返回 0 |
+| | `false` | 无操作，返回 1 |
+| | `echo` | 输出文本（需带参数，裸 `echo` 不放行） |
+| | `printf` | 格式化输出（需带参数） |
+| | `cd` | 改变工作目录 |
+| | `uname` | 系统信息 |
+| | `hostname` | 主机名 |
+| | `uptime` | 系统运行时间 |
+| | `arch` | 硬件架构 |
+| 系统信息 | `which` | 定位命令路径（需带参数） |
+| | `id` | 用户身份信息 |
+| | `logname` | 登录用户名 |
+| | `tty` | 终端设备名 |
+| | `cal` | 显示日历 |
+| | `seq` | 生成数字序列（需带参数） |
+| 系统配置 | `getconf` | 系统配置变量（需带参数） |
+| | `pathchk` | 路径名检查（需带参数） |
+| | `basename` | 从路径中提取文件名（需带参数） |
+| 路径操作 | `dirname` | 从路径中提取目录名（需带参数） |
+| | `realpath` | 解析为绝对路径（需带参数） |
+| 目录列表 | `ls` | 列出目录内容 |
+| 日期时间 | `date` | 查看当前日期时间 |
+
+**Windows 额外支持的命令：**
+
+| 命令 | 说明 |
+|------|------|
+| `ver` | 显示 Windows 版本 |
+| `systeminfo` | 显示系统信息 |
+| `dir` | 列出目录 |
+| `date /t` | 显示日期（`/t` 表示只查看不设置） |
+| `time /t` | 显示时间（`/t` 表示只查看不设置） |
+| `vol` | 显示卷标 |
+
+**匹配规则：** 命令以列表中某个条目的前缀匹配。例如 `ls` 放行 `ls` 和 `ls -la`，但不放行 `lsblk`。
+
+> 内置列表的设计原则是"宁可漏放（回到确认流程）也不错放"。
+> 如需扩展，请在第二层配置用户白名单。
+
+---
+
+## 第二层：用户白名单 / 黑名单
+
+在 `~/.zapmyco/settings.toml` 中配置：
+
+```toml
+[permissions.commands]
+# 白名单：匹配的命令自动放行
+allow = [
+    "git status",
+    "cargo check",
+    "cargo clippy",
+]
+
+# 黑名单：匹配的命令自动拒绝（优先于白名单）
+deny = [
+    "rm -rf",
+    "sudo",
+]
+```
+
+- `allow` 中的命令匹配后跳过所有审批
+- `deny` 中的命令匹配后直接拒绝，即使也在 `allow` 中
+- 匹配规则与内置列表相同（前缀匹配）
+
+---
+
+## 第三层：运行时审批（核心）
+
+这是最值得关注的一层——它解决了传统审批系统的核心痛点。
+
+### 复合命令拆分
+
+AI 经常生成链式命令，例如 `git status && cargo check && cargo test`。
+传统系统要么整条拒绝，要么整条弹框。
+
+zapmyco 的**命令拆分器**（`split_commands`）使用状态机逐字符扫描，
+在顶层控制运算符处将命令拆分为独立子命令：
+
+```mermaid
+flowchart LR
+    INPUT["git status && cargo check && cargo test"]
+    SPLIT["命令拆分器"]
+    P1["git status"]
+    P2["cargo check"]
+    P3["cargo test"]
+
+    INPUT --> SPLIT
+    SPLIT --> P1
+    SPLIT --> P2
+    SPLIT --> P3
+```
+
+拆分器正确跳过以下语法内的运算符：
+
+| 语法 | 示例 | 是否拆分 |
+|------|------|:--------:|
+| 单引号 `'...'` | `echo 'a && b'` | ❌ 不拆分 |
+| 双引号 `"..."` | `echo "a && b"` | ❌ 不拆分 |
+| 命令替换 `$(...)` | `echo $(foo && bar)` | ❌ 不拆分 |
+| 参数展开 `${...}` | `echo ${VAR:-foo}` | ❌ 不拆分 |
+| 转义字符 `\` | `echo a \& b` | ❌ 不拆分 |
+
+### 重定向运算符的识别
+
+`>` `<` `>>` `>&` `&>` `<<` `<<<` `<>` 等复合重定向符号被正确识别为一个整体，
+不会错误拆分：
+
+```mermaid
+flowchart LR
+    A["echo 2>&1"]
+    B["echo foo &> /dev/null"]
+    C["exec 3<> /dev/tcp"]
+    A1["1 part<br/>has_redirect=true"]
+    B1["1 part<br/>has_redirect=true"]
+    C1["1 part<br/>has_redirect=true"]
+
+    A --> A1
+    B --> B1
+    C --> C1
+```
+
+### 审批决策流程
+
+拆分后的每个子命令独立走审批决策，决策逻辑如下：
+
+```mermaid
+flowchart TD
+    SUB["子命令"] --> FLAGS{"危险特征判断"}
+    FLAGS -->|"含命令替换 $()"| SUB_PROMPT["⚠️ 始终弹框"]
+    FLAGS -->|"含重定向 > <"| REDIR{"用户白名单？"}
+    REDIR -->|"✅ 命中"| ALLOW["自动放行"]
+    REDIR -->|"❌ 未命中"| SUB_PROMPT
+    FLAGS -->|"干净命令"| CLEAN{"内置或用户白名单？"}
+    CLEAN -->|"✅ 命中"| ALLOW
+    CLEAN -->|"❌ 未命中"| SUB_PROMPT
+
+    style ALLOW fill:#d4edda,color:#155724
+    style SUB_PROMPT fill:#fff3cd,color:#856404
+```
+
+为什么这么分级：
+
+| 特征 | 示例 | 风险 | 内置列表 | 用户白名单 |
+|------|------|:----:|:---------:|:----------:|
+| 干净 | `cargo check` | 低 | 不放行 | 可放行 |
+| 重定向 `>` `<` | `echo hello > file` | 中 | **不放行** | 可放行 |
+| 命令替换 `$()` `` ` `` | `echo $(whoami)` | 高 | **不放行** | **不放行** |
+
+- **重定向**只是修改 I/O 流向，命令本身的危险性不变。
+  如果你信任 `cargo build`，`cargo build > /tmp/log` 也应该值得信任。
+- **命令替换**会执行嵌入代码。`echo $(rm -rf /)` 和 `echo hello` 完全不同，
+  所以即使命令在白名单中也必须弹框。
+
+### 混合审批
+
+这是最终的用户体验效果：
+
+```mermaid
+flowchart TD
+    C["cargo build > /tmp/log && echo done"]
+    S["split_commands()"]
+    P1["cargo build > /tmp/log<br/>has_redirect=true"]
+    P2["echo done<br/>clean"]
+
+    C --> S
+    S --> P1
+    S --> P2
+
+    P1 --> R1{"用户白名单？"}
+    P2 --> R2{"内置列表？"}
+
+    R1 -->|"❌ 未命中"| P1P["⚠️ 弹框"]
+    R2 -->|"✅ echo 在列表中"| P2A["✅ 自动放行"]
+
+    style P2A fill:#d4edda,color:#155724
+    style P1P fill:#fff3cd,color:#856404
+```
+
+部分命令已准入时，**只弹未准入的部分**：
+
+```
+⚠️ 准备执行命令:
+  完整命令: cargo build > /tmp/log && echo done
+
+以下命令需要授权:
+  ▢ cargo build > /tmp/log  (包含文件重定向)
+
+以下命令已在白名单中（自动放行）:
+  ✓ echo done
+
+[允许] [始终允许] [拒绝]
+```
+
+全部未准入时，显示完整命令：
+
+```
+⚠️ 准备执行命令:
+  完整命令: git status && cargo check
+[允许] [始终允许] [拒绝]
+```
+
+全部已准入时，不弹任何框，静默执行。
+
+---
+
+## 三种交互模式
+
+```mermaid
+flowchart LR
+    subgraph Terminal["终端模式"]
+        T1["crossterm 选择菜单"]
+        T2["允许 / 始终允许 / 拒绝"]
+    end
+    subgraph Web["Web 模式"]
+        W1["SSE 推送审批事件"]
+        W2["前端审批卡片"]
+        W3["HTTP 异步返回结果"]
+    end
+    subgraph NonTTY["非交互环境"]
+        N1["非 TTY（管道/CI）"]
+        N2["默认拒绝"]
+    end
+
+    Terminal --> T1 --> T2
+    Web --> W1 --> W2 --> W3
+    NonTTY --> N1 --> N2
+```
+
+### 终端模式（TTY）
+
+交互式终端中弹出三个选项的选择菜单：
+
+- **允许** — 单次执行
+- **始终允许** — 加入白名单后执行（危险命令被阻止加入）
+- **拒绝** — 取消执行
+
+### Web 模式
+
+通过 SSE（Server-Sent Events）向后端发送 `tool_approval_required` 事件，
+前端展示审批卡片，结果通过 `POST /api/tool/approve` 异步返回。
+
+### 非交互环境
+
+管道、CI、重定向等非 TTY 环境：**默认拒绝所有需要审批的命令**。这是安全设计。
+
+---
+
+## 执行路径
+
+安全审批**只影响是否执行，不影响如何执行**。
+命令原样透传给系统 shell：
+
+```mermaid
+flowchart LR
+    subgraph Before["审批系统改造前"]
+        CMD1["foo && bar"]
+        CHECK1["contains_shell_control()"]
+        REJECT1["检测到 & 整条拒绝 ❌"]
+        CMD1 --> CHECK1 --> REJECT1
+    end
+    subgraph After["审批系统改造后"]
+        CMD2["foo && bar"]
+        SPLIT2["split_commands()"]
+        P1["foo ✅ 白名单"]
+        P2["bar ⚠️ 审批"]
+        EXEC["sh -c 'foo && bar'"]
+        CMD2 --> SPLIT2
+        SPLIT2 --> P1
+        SPLIT2 --> P2
+        P1 --> EXEC
+        P2 -->|允许| EXEC
+    end
+```
+
+```
+Unix:     sh -c "<原命令>; _ZMD_RC=$?; pwd -P > ...; exit $_ZMD_RC"
+Windows:  cmd.exe /d /c "<写入临时 bat 文件>"
+```
+
+> 这就是为什么我们说**"只改审批路径，不改执行路径"**。
+
+---
+
+## 安全最佳实践
+
+1. **从小权限开始**
+   默认只有内置安全列表放行，其他全审批。先这样用一段时间，观察 AI 的行为模式。
+
+2. **常用只读命令用内置列表就够了**
+   `pwd` `ls` `echo` `date` 等已在列表中，无需重复配置。
+
+3. **白名单只放行你信任的命令**
+   `git status` `cargo check` 这类只读检查命令是好的候选。
+   `rm` `sudo` 等危险命令被系统阻止加入白名单。
+
+4. **有重定向的命令谨慎放行**
+   虽然用户白名单可以放行重定向命令（如 `echo > file`），
+   但建议只在明确信任该命令时配置。
+
+5. **定期审查白名单**
+   ```bash
+   cat ~/.zapmyco/settings.toml | grep -A 20 "\[permissions"
+   ```
+
+---
+
+## 技术原理（可选）
+
+如果关心实现细节：
+
+- 命令拆分器 `split_commands()` 使用状态机逐字符扫描，O(n) 复杂度
+- 6 种扫描状态：Normal / SingleQuote / DoubleQuote / CommandSubst / ParamSubst / Backtick / Escape
+- 括号计数器和花括号计数器处理 `$()` 和 `${}` 嵌套
+- 拆分器在任何异常输入下都不 panic（未闭合引号、未闭合 `$(`、空字符串等）
+- **拆分器出错的最坏情况**：子命令未正确拆分 → 白名单不匹配 → 触发审批 → 安全降级为"需要用户确认"
+  → **fail-safe**：永远不会绕过安全检查

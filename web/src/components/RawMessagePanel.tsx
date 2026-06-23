@@ -53,7 +53,7 @@ export function RawMessagePanel() {
   }, [rawEvents]);
 
   return (
-    <div className="flex h-screen w-[380px] flex-shrink-0 flex-col border-l border-border bg-card">
+    <div className="flex min-h-0 w-[380px] flex-shrink-0 flex-col border-l border-border bg-card">
       {/* 头部 */}
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-baseline gap-2">

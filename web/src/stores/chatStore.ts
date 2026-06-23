@@ -16,6 +16,11 @@ interface ChatState {
   currentAssistantText: string;
   currentThinking: string;
   rawEvents: RawAgentEvent[];
+  currentDir: string;
+  approvalQueue: ToolApprovalData[];
+  resolvedApprovalIds: string[];
+  askQueue: AskUserData[];
+  resolvedAskIds: string[];
 
   appendMessage: (msg: ChatMessage) => void;
   updateAssistantText: (delta: string) => void;
@@ -30,7 +35,10 @@ interface ChatState {
   finalizeAssistantMessage: () => void;
   addRawEvent: (event: { type: string; data: string }) => void;
   clearRawEvents: () => void;
+  setCurrentDir: (path: string) => void;
   reset: () => void;
+  resolveApproval: (id: string) => void;
+  resolveAsk: (id: string) => void;
 }
 
 const initialState = {
@@ -40,6 +48,11 @@ const initialState = {
   currentAssistantText: '',
   currentThinking: '',
   rawEvents: [],
+  currentDir: '',
+  approvalQueue: [],
+  resolvedApprovalIds: [],
+  askQueue: [],
+  resolvedAskIds: [],
 };
 
 let msgIdCounter = 0;
@@ -66,23 +79,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setStatus: (status) => set({ status }),
 
   addToolApproval: (data) => {
-    const msg: ChatMessage = {
-      id: nextId(),
-      role: 'approval',
-      timestamp: Date.now(),
-      approvalData: data,
-    };
-    set((state) => ({ messages: [...state.messages, msg], status: 'waiting' }));
+    const state = get();
+    const hasPending = state.messages.some(
+      (m) =>
+        m.role === 'approval' &&
+        m.approvalData &&
+        !state.resolvedApprovalIds.includes(m.approvalData.id),
+    );
+    if (hasPending) {
+      set({ approvalQueue: [...state.approvalQueue, data] });
+    } else {
+      const msg: ChatMessage = {
+        id: nextId(),
+        role: 'approval',
+        timestamp: Date.now(),
+        approvalData: data,
+      };
+      set({ messages: [...state.messages, msg], status: 'waiting' });
+    }
   },
 
   addAskUser: (data) => {
-    const msg: ChatMessage = {
-      id: nextId(),
-      role: 'ask',
-      timestamp: Date.now(),
-      askData: data,
-    };
-    set((state) => ({ messages: [...state.messages, msg], status: 'waiting' }));
+    const state = get();
+    const hasPending = state.messages.some(
+      (m) => m.role === 'ask' && m.askData && !state.resolvedAskIds.includes(m.askData.id),
+    );
+    if (hasPending) {
+      set({ askQueue: [...state.askQueue, data] });
+    } else {
+      const msg: ChatMessage = {
+        id: nextId(),
+        role: 'ask',
+        timestamp: Date.now(),
+        askData: data,
+      };
+      set({ messages: [...state.messages, msg], status: 'waiting' });
+    }
   },
 
   setAskUserAnswer: (askId, answer) =>
@@ -91,6 +123,50 @@ export const useChatStore = create<ChatState>((set, get) => ({
         msg.askData?.id === askId ? { ...msg, askData: { ...msg.askData, answer } } : msg,
       ),
     })),
+
+  resolveApproval: (id) => {
+    const state = get();
+    const newResolved = [...state.resolvedApprovalIds, id];
+    if (state.approvalQueue.length > 0) {
+      const [next, ...rest] = state.approvalQueue;
+      const msg: ChatMessage = {
+        id: nextId(),
+        role: 'approval',
+        timestamp: Date.now(),
+        approvalData: next,
+      };
+      set({
+        messages: [...state.messages, msg],
+        resolvedApprovalIds: newResolved,
+        approvalQueue: rest,
+        status: 'waiting',
+      });
+    } else {
+      set({ resolvedApprovalIds: newResolved });
+    }
+  },
+
+  resolveAsk: (id) => {
+    const state = get();
+    const newResolved = [...state.resolvedAskIds, id];
+    if (state.askQueue.length > 0) {
+      const [next, ...rest] = state.askQueue;
+      const msg: ChatMessage = {
+        id: nextId(),
+        role: 'ask',
+        timestamp: Date.now(),
+        askData: next,
+      };
+      set({
+        messages: [...state.messages, msg],
+        resolvedAskIds: newResolved,
+        askQueue: rest,
+        status: 'waiting',
+      });
+    } else {
+      set({ resolvedAskIds: newResolved });
+    }
+  },
 
   addError: (data) => {
     const msg: ChatMessage = {
@@ -140,4 +216,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { rawEvents };
     }),
   clearRawEvents: () => set({ rawEvents: [] }),
+  setCurrentDir: (path) => set({ currentDir: path }),
 }));
