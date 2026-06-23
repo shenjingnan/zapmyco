@@ -110,6 +110,18 @@ export const mockErrorMessage: ChatMessage = {
   },
 };
 
+export const mockSecondApprovalMessage: ChatMessage = {
+  id: 'msg_approval_3',
+  role: 'approval',
+  timestamp: Date.now() - 5000,
+  approvalData: {
+    id: 'tool_3',
+    tool: 'bash',
+    command: 'git push origin main --force',
+    description: '强制推送当前分支到远程仓库',
+  },
+};
+
 export const mockMixedMessages: ChatMessage[] = [
   mockUserMessage,
   mockAssistantWithThinking,

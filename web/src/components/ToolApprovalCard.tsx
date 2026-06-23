@@ -15,7 +15,8 @@ export function ToolApprovalCard({ data }: ToolApprovalCardProps) {
   const [editing, setEditing] = useState(false);
   const [editedCmd, setEditedCmd] = useState(data.command);
   const sessionId = useChatStore((s) => s.sessionId);
-  const status = useChatStore((s) => s.status);
+  const resolvedApprovalIds = useChatStore((s) => s.resolvedApprovalIds);
+  const resolveApproval = useChatStore((s) => s.resolveApproval);
 
   const handleAction = async (approved: boolean) => {
     if (!sessionId) return;
@@ -27,6 +28,7 @@ export function ToolApprovalCard({ data }: ToolApprovalCardProps) {
         approved,
         approved && editedCmd !== data.command ? editedCmd : undefined,
       );
+      resolveApproval(data.id);
     } catch {
       // 错误已在 client.ts 中处理
     } finally {
@@ -35,7 +37,7 @@ export function ToolApprovalCard({ data }: ToolApprovalCardProps) {
   };
 
   // 如果已经处理过，不再显示操作按钮
-  if (status !== 'waiting') {
+  if (resolvedApprovalIds.includes(data.id)) {
     return (
       <div
         className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4"
