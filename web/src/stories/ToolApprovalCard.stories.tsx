@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { ToolApprovalCard } from '../components/ToolApprovalCard';
 import { useChatStore } from '../stores/chatStore';
+import { MockApiProvider } from './mockFetch';
 
 const meta: Meta<typeof ToolApprovalCard> = {
   title: 'Components/ToolApprovalCard',
@@ -9,9 +10,12 @@ const meta: Meta<typeof ToolApprovalCard> = {
     (Story) => {
       useChatStore.setState({
         sessionId: 'test-session',
-        status: 'waiting',
       });
-      return <Story />;
+      return (
+        <MockApiProvider>
+          <Story />
+        </MockApiProvider>
+      );
     },
   ],
 };
@@ -45,7 +49,7 @@ export const Processed: Story = {
     (Story) => {
       useChatStore.setState({
         sessionId: 'test-session',
-        status: 'streaming',
+        resolvedApprovalIds: ['tool_2'],
       });
       return <Story />;
     },
@@ -101,7 +105,6 @@ export const NoSession: Story = {
     (Story) => {
       useChatStore.setState({
         sessionId: null,
-        status: 'waiting',
       });
       return <Story />;
     },

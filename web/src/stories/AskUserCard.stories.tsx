@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { AskUserCard } from '../components/AskUserCard';
 import { useChatStore } from '../stores/chatStore';
+import { MockApiProvider } from './mockFetch';
 
 const meta: Meta<typeof AskUserCard> = {
   title: 'Components/AskUserCard',
@@ -9,11 +10,14 @@ const meta: Meta<typeof AskUserCard> = {
     (Story) => {
       useChatStore.setState({
         sessionId: 'test-session',
-        status: 'waiting',
         messages: [],
         currentAssistantText: '',
       });
-      return <Story />;
+      return (
+        <MockApiProvider>
+          <Story />
+        </MockApiProvider>
+      );
     },
   ],
 };
@@ -67,8 +71,8 @@ export const Answered: Story = {
   decorators: [
     (Story) => {
       useChatStore.setState({
-        status: 'streaming',
         sessionId: 'test-session',
+        resolvedAskIds: ['ask_4'],
       });
       return <Story />;
     },
@@ -88,7 +92,6 @@ export const NoSession: Story = {
     (Story) => {
       useChatStore.setState({
         sessionId: null,
-        status: 'waiting',
       });
       return <Story />;
     },

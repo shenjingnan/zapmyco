@@ -13,7 +13,8 @@ interface AskUserCardProps {
 export function AskUserCard({ data }: AskUserCardProps) {
   const [loading, setLoading] = useState(false);
   const sessionId = useChatStore((s) => s.sessionId);
-  const status = useChatStore((s) => s.status);
+  const resolvedAskIds = useChatStore((s) => s.resolvedAskIds);
+  const resolveAsk = useChatStore((s) => s.resolveAsk);
 
   const setAskUserAnswer = useChatStore((s) => s.setAskUserAnswer);
 
@@ -23,6 +24,7 @@ export function AskUserCard({ data }: AskUserCardProps) {
     setLoading(true);
     try {
       await respondToAsk(sessionId, data.id, idx);
+      resolveAsk(data.id);
     } catch {
       // 错误已在 client.ts 中处理
     } finally {
@@ -30,7 +32,7 @@ export function AskUserCard({ data }: AskUserCardProps) {
     }
   };
 
-  if (status !== 'waiting') {
+  if (resolvedAskIds.includes(data.id)) {
     return (
       <div className="self-center max-w-[85%] w-full rounded-xl border border-border bg-card p-4">
         <div className="text-xs text-muted-foreground">已回答</div>
@@ -68,7 +70,12 @@ export function AskUserCard({ data }: AskUserCardProps) {
           onSend={async (text) => {
             if (!sessionId) return;
             setAskUserAnswer(data.id, text);
-            await respondToAsk(sessionId, data.id, undefined, text);
+            try {
+              await respondToAsk(sessionId, data.id, undefined, text);
+              resolveAsk(data.id);
+            } catch {
+              // 错误已在 client.ts 中处理
+            }
           }}
         />
       </div>
