@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.43.0](https://github.com/shenjingnan/zapmyco/compare/v0.42.4...v0.43.0) - 2026-06-23
+
+### Added
+
+- *(web)* 添加底部状态栏组件，整合当前工作目录指示器 ([#485](https://github.com/shenjingnan/zapmyco/pull/485))
+- *(shell_exec)* 复合命令逐子命令独立权限审批 ([#486](https://github.com/shenjingnan/zapmyco/pull/486))
+
+### Other
+
+- *(deps)* bump time from 0.3.49 to 0.3.51 ([#490](https://github.com/shenjingnan/zapmyco/pull/490))
+
 ## [0.42.4](https://github.com/shenjingnan/zapmyco/compare/v0.42.3...v0.42.4) - 2026-06-21
 
 ### Other
