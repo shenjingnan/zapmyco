@@ -16,6 +16,7 @@ interface ChatState {
   currentAssistantText: string;
   currentThinking: string;
   rawEvents: RawAgentEvent[];
+  currentDir: string;
   approvalQueue: ToolApprovalData[];
   resolvedApprovalIds: string[];
   askQueue: AskUserData[];
@@ -34,6 +35,7 @@ interface ChatState {
   finalizeAssistantMessage: () => void;
   addRawEvent: (event: { type: string; data: string }) => void;
   clearRawEvents: () => void;
+  setCurrentDir: (path: string) => void;
   reset: () => void;
   resolveApproval: (id: string) => void;
   resolveAsk: (id: string) => void;
@@ -46,6 +48,7 @@ const initialState = {
   currentAssistantText: '',
   currentThinking: '',
   rawEvents: [],
+  currentDir: '',
   approvalQueue: [],
   resolvedApprovalIds: [],
   askQueue: [],
@@ -213,4 +216,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { rawEvents };
     }),
   clearRawEvents: () => set({ rawEvents: [] }),
+  setCurrentDir: (path) => set({ currentDir: path }),
 }));
