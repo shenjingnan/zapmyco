@@ -370,7 +370,7 @@ impl Message {
 
     /// 创建 thinking delta 消息，text 中包含 ANSI 灰色转义码
     pub fn llm_thinking_delta(text: &str) -> Self {
-        let rendered = format!("\x1b[2m\u{2394} {}\x1b[0m", text);
+        let rendered = format!("\x1b[2m{}\x1b[0m", text);
         Message {
             kind: MessageKind::LlmThinkingDelta,
             text: rendered,
