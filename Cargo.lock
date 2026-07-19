@@ -3766,10 +3766,11 @@ dependencies = [
 
 [[package]]
 name = "zapmyco"
-version = "0.42.4"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "async-trait",
  "axum",
  "chrono",
  "clap",
