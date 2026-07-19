@@ -2112,7 +2112,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_agent_model_getter() {
         run_with_temp_home(|home| {
             create_test_settings(home, "[llm]\n");

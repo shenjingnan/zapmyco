@@ -675,7 +675,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_settings_show_subcommand() {
         run_with_temp_home(|home| {
             let settings_dir = home.join(".zapmyco");
@@ -742,7 +741,6 @@ mod tests {
         );
     }
 
-    #[test]
     // —————— cmd_note 命令测试 ——————
     #[test]
     fn test_cmd_note_add_and_list() {
