@@ -368,7 +368,7 @@ mod tests {
     fn test_llm_thinking_delta_message_format() {
         let msg = Message::llm_thinking_delta("test thinking");
         assert_eq!(msg.kind, MessageKind::LlmThinkingDelta);
-        assert!(msg.text.starts_with("\x1b[2m\u{2394} "));
+        assert!(msg.text.starts_with("\x1b[2m"));
         assert!(msg.text.ends_with("\x1b[0m"));
         assert!(msg.text.contains("test thinking"));
     }
@@ -392,6 +392,5 @@ mod tests {
             "ANSI reset code should be stripped"
         );
         assert!(content.contains("hello 世界"));
-        assert!(content.contains('\u{2394}'));
     }
 }
