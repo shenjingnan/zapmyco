@@ -274,6 +274,9 @@ pub enum Commands {
         /// 复用指定会话的任务列表（不传则创建新会话）
         #[arg(long = "task-id")]
         task_id: Option<String>,
+        /// 使用旧版 AiAgent 执行路径（默认使用 Core 层）
+        #[arg(long)]
+        legacy: bool,
         /// 指定 AI 模型名称（Tab 可补全内置模型名）
         #[arg(long, value_parser = ModelValueParser)]
         model: Option<String>,
@@ -477,22 +480,37 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             base_url,
             subagent,
             parent_session_id,
+            legacy,
         }) => {
-            commands::run::cmd_run(
-                content.as_deref(),
-                skill.as_deref(),
-                profile.as_deref(),
-                permission_mode,
-                task_id.as_deref(),
-                session.as_deref(),
-                mode,
-                model.as_deref(),
-                api_key.as_deref(),
-                base_url.as_deref(),
-                subagent,
-                parent_session_id.as_deref(),
-            )
-            .await
+            if legacy {
+                commands::run::cmd_run(
+                    content.as_deref(),
+                    skill.as_deref(),
+                    profile.as_deref(),
+                    permission_mode,
+                    task_id.as_deref(),
+                    session.as_deref(),
+                    mode,
+                    model.as_deref(),
+                    api_key.as_deref(),
+                    base_url.as_deref(),
+                    subagent,
+                    parent_session_id.as_deref(),
+                )
+                .await
+            } else {
+                commands::core_run::cmd_core_run(
+                    content.as_deref(),
+                    skill.as_deref(),
+                    profile.as_deref(),
+                    permission_mode,
+                    mode,
+                    model.as_deref(),
+                    api_key.as_deref(),
+                    base_url.as_deref(),
+                )
+                .await
+            }
         }
         Some(Commands::CoreRun {
             content,
