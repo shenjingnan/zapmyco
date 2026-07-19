@@ -31,6 +31,7 @@ mod types;
 
 // ── 重新导出所有公共类型 ──
 
+pub use adapters::{LegacyToolAdapter, core_event_handler, from_tool_handlers};
 pub use agent_config::AgentConfig;
 pub use agent_error::AgentError;
 pub use agent_event::AgentEvent;

@@ -78,15 +78,25 @@ pub fn from_tool_handlers(handlers: Vec<ToolHandler>) -> Vec<Box<dyn AgentTool>>
 // core_event_handler — 将 AgentEvent 映射到现有的 output::send()
 // ============================================================================
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// 全局状态：是否已经输出过 thinking 内容（用于在 thinking → 回复 之间插换行）
+static HAS_THINKING: AtomicBool = AtomicBool::new(false);
+
 /// 消费一个 AgentEvent，通过现有的 output::send() 渲染到终端
 ///
 /// 放在 tokio::spawn 的任务中，或直接在 agent_loop 调用后在事件循环中调用。
 pub fn core_event_handler(event: &AgentEvent) {
     match event {
         AgentEvent::TextChunk { delta } => {
+            // 如果之前有 thinking 内容，在第一个文本块前插换行
+            if HAS_THINKING.swap(false, Ordering::Relaxed) {
+                output::send(&Message::info(String::new()));
+            }
             output::send(&Message::llm_chunk(delta));
         }
         AgentEvent::ThinkingChunk { delta } => {
+            HAS_THINKING.store(true, Ordering::Relaxed);
             output::send(&Message::llm_thinking_delta(delta));
         }
         AgentEvent::ToolInvocationStarted { name, input, .. } => {
