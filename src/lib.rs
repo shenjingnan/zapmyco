@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod cli;
 pub mod config;
+pub mod core;
 pub mod datetime;
 pub use agent::env_info;
 pub mod commands;
