@@ -117,7 +117,7 @@ impl ToolHandler {
         }
     }
 
-    async fn execute(&self, input: &serde_json::Value) -> Result<String, String> {
+    pub(crate) async fn execute(&self, input: &serde_json::Value) -> Result<String, String> {
         match self {
             ToolHandler::AskUser(asker) => asker.execute(input).await,
             ToolHandler::WebFetch(fetcher) => {
