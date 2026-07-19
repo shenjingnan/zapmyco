@@ -1,4 +1,5 @@
-// Phase 2 将使用部分函数
+// 核心重构过渡期：适配器层（src/core/adapters.rs）的 API 已导出但尚未被 commands/run 调用。
+// 待后续迁移阶段启用后，可移除本 allow。
 #![allow(dead_code)]
 
 pub mod agent;
