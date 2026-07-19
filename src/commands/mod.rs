@@ -1,4 +1,6 @@
 pub mod completion;
+pub mod config_resolver;
+pub mod core_run;
 pub mod demo;
 pub mod init;
 pub mod note;
