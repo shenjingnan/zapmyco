@@ -121,6 +121,11 @@ pub async fn agent_loop(
         }
 
         // ── 执行所有工具调用 ──
+        // 先收集所有工具结果，再合并为一条消息（Anthropic API 要求同一轮的
+        // 所有 tool_result 必须在同一条 user 消息中）
+        let mut tool_result_blocks = Vec::new();
+        let mut combined_content = String::new();
+
         for (tool_id, tool_name, tool_input) in &round.tool_uses {
             send_event(
                 &event_tx,
@@ -137,7 +142,6 @@ pub async fn agent_loop(
                 None => Err(format!("未知工具: {}", tool_name)),
             };
 
-            // 构建工具结果消息（携带 tool_use_id 的结构化内容）
             let (output, is_error) = match &result {
                 Ok(text) => (text.clone(), false),
                 Err(e) => (format!("错误: {}", e), true),
@@ -152,16 +156,23 @@ pub async fn agent_loop(
             )
             .await;
 
-            messages.push(ConversationMessage::with_blocks(
-                Role::Tool,
-                &output,
-                vec![MessageBlock::ToolResult {
-                    id: tool_id.clone(),
-                    content: output.clone(),
-                    is_error,
-                }],
-            ));
+            tool_result_blocks.push(MessageBlock::ToolResult {
+                id: tool_id.clone(),
+                content: output.clone(),
+                is_error,
+            });
+            if !combined_content.is_empty() {
+                combined_content.push('\n');
+            }
+            combined_content.push_str(&output);
         }
+
+        // 所有工具结果合并为一条消息
+        messages.push(ConversationMessage::with_blocks(
+            Role::Tool,
+            &combined_content,
+            tool_result_blocks,
+        ));
 
         send_event(
             &event_tx,

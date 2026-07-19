@@ -106,9 +106,10 @@ pub fn core_event_handler(event: &AgentEvent) {
         AgentEvent::ToolInvocationFinished { id: _, result } => {
             match result {
                 Ok(text) => {
-                    // 显示工具执行成功（仅预览前 200 字符）
+                    // 显示工具执行成功（仅预览前 200 字符，安全处理 UTF-8 边界）
                     let preview = if text.len() > 200 {
-                        format!("{} ...", &text[..200])
+                        let truncated: String = text.chars().take(200).collect();
+                        format!("{} ...", truncated)
                     } else {
                         text.clone()
                     };

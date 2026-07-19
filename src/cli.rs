@@ -314,6 +314,9 @@ pub enum Commands {
         /// 限制 agent 的操作权限
         #[arg(long = "permission-mode", default_value = "full", value_enum)]
         permission_mode: PermissionMode,
+        /// 执行模式: plan（先规划审批再执行）, base（直接执行，默认）
+        #[arg(long = "mode", default_value = "base", value_enum)]
+        mode: ExecutionMode,
         /// 指定 AI 模型名称
         #[arg(long, value_parser = ModelValueParser)]
         model: Option<String>,
@@ -496,6 +499,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             skill,
             profile,
             permission_mode,
+            mode,
             model,
             api_key,
             base_url,
@@ -505,6 +509,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 skill.as_deref(),
                 profile.as_deref(),
                 permission_mode,
+                mode,
                 model.as_deref(),
                 api_key.as_deref(),
                 base_url.as_deref(),
