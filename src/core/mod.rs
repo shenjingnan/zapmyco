@@ -19,7 +19,9 @@
 //! | `agent_config` | AgentConfig 结构体 |
 //! | `agent_error` | AgentError 错误类型 |
 //! | `agent_loop` | 核心循环函数 |
+//! | `adapters` | 现有系统适配器（ToolHandler → AgentTool, 事件 → 输出） |
 
+mod adapters;
 mod agent_config;
 mod agent_error;
 mod agent_event;
