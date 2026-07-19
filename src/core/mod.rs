@@ -13,19 +13,25 @@
 //!
 //! | 模块 | 说明 |
 //! |------|------|
-//! | `types` | 基础数据类型（Role, ConversationMessage） |
+//! | `types` | 基础数据类型（Role, ConversationMessage, MessageBlock） |
 //! | `agent_tool` | AgentTool trait |
 //! | `agent_event` | AgentEvent 枚举 |
 //! | `agent_config` | AgentConfig 结构体 |
+//! | `agent_error` | AgentError 错误类型 |
+//! | `agent_loop` | 核心循环函数 |
 
 mod agent_config;
+mod agent_error;
 mod agent_event;
+mod agent_loop;
 mod agent_tool;
 mod types;
 
 // ── 重新导出所有公共类型 ──
 
 pub use agent_config::AgentConfig;
+pub use agent_error::AgentError;
 pub use agent_event::AgentEvent;
+pub use agent_loop::agent_loop;
 pub use agent_tool::AgentTool;
-pub use types::{ConversationMessage, Role};
+pub use types::{ConversationMessage, MessageBlock, Role};
