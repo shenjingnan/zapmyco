@@ -4598,6 +4598,7 @@ dependencies = [
  "wiremock",
  "yaml_serde",
  "zapmyco-anthropic-ai-sdk",
+ "zapmyco-core",
  "zapmyco-grep",
 ]
 
@@ -4617,6 +4618,18 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "zapmyco-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "serde_json",
+ "tokio",
+ "wiremock",
+ "zapmyco-anthropic-ai-sdk",
 ]
 
 [[package]]

@@ -15,7 +15,7 @@ use zapmyco_anthropic_ai_sdk::types::message::{
     RequiredMessageParams, StreamEvent, Tool,
 };
 
-use crate::core::{AgentConfig, AgentError, AgentEvent, ConversationMessage, MessageBlock, Role};
+use crate::{AgentConfig, AgentError, AgentEvent, ConversationMessage, MessageBlock, Role};
 
 // ============================================================================
 // 公共 API
@@ -205,6 +205,7 @@ struct RoundOutput {
     tool_uses: Vec<(String, String, Value)>,
     input_tokens: u32,
     output_tokens: u32,
+    #[allow(dead_code)]
     thinking: Option<String>,
 }
 
@@ -405,6 +406,7 @@ async fn send_event(tx: &mpsc::Sender<AgentEvent>, event: AgentEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AgentTool;
     use async_trait::async_trait;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -657,7 +659,7 @@ mod tests {
     struct EchoTool;
 
     #[async_trait]
-    impl crate::core::AgentTool for EchoTool {
+    impl AgentTool for EchoTool {
         fn name(&self) -> &str {
             "echo"
         }

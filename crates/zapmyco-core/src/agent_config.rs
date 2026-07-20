@@ -3,7 +3,7 @@
 //! `AgentConfig` 包含 Agent 运行所需的所有参数，
 //! 通过依赖注入方式传入 Core 层，不读取任何外部配置。
 
-use crate::core::AgentTool;
+use crate::AgentTool;
 
 /// Agent 运行配置
 ///
