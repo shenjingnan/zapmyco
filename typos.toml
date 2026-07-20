@@ -5,4 +5,4 @@ alue = "alue"
 helo = "helo"
 
 [files]
-extend-exclude = ["web/dist/**"]
+extend-exclude = ["web/dist/**", "CHANGELOG.md"]
