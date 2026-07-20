@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.44.0](https://github.com/shenjingnan/zapmyco/compare/v0.43.0...v0.44.0) - 2026-07-20
+
+### Added
+
+- *(core)* 实现 Core 层四阶段 + Core 路径 Base 模式 ([#506](https://github.com/shenjingnan/zapmyco/pull/506))
+
+### Fixed
+
+- *(test)* 修复 Windows 平台 subagent 测试因 sleep 命令不可用而失败 ([#509](https://github.com/shenjingnan/zapmyco/pull/509))
+
+### Other
+
+- *(deps)* bump ignore from 0.4.26 to 0.4.28 ([#508](https://github.com/shenjingnan/zapmyco/pull/508))
+- *(deps)* bump tower-http from 0.6.11 to 0.7.0 ([#493](https://github.com/shenjingnan/zapmyco/pull/493))
+- *(deps)* bump time from 0.3.51 to 0.3.53 ([#498](https://github.com/shenjingnan/zapmyco/pull/498))
+- *(deps)* bump clap_complete from 4.6.5 to 4.6.7 ([#499](https://github.com/shenjingnan/zapmyco/pull/499))
+- *(deps)* bump indicatif from 0.18.4 to 0.18.6 ([#500](https://github.com/shenjingnan/zapmyco/pull/500))
+- *(deps)* bump uuid from 1.23.3 to 1.24.0 ([#504](https://github.com/shenjingnan/zapmyco/pull/504))
+- *(deps)* bump rust-embed from 8.11.0 to 8.12.0 ([#503](https://github.com/shenjingnan/zapmyco/pull/503))
+- *(deps)* bump ignore from 0.4.26 to 0.4.28 ([#505](https://github.com/shenjingnan/zapmyco/pull/505))
+- *(deps)* bump anyhow from 1.0.102 to 1.0.104 ([#497](https://github.com/shenjingnan/zapmyco/pull/497))
+
 ## [0.43.0](https://github.com/shenjingnan/zapmyco/compare/v0.42.4...v0.43.0) - 2026-06-23
 
 ### Added
