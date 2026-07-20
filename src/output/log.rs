@@ -706,12 +706,11 @@ mod tests {
 
     #[test]
     fn test_stress_random_interleaving() {
-        use rand::Rng;
+        use rand::RngExt;
         let (target, dir) = setup_log();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..500 {
-            // `gen_range` 是完整方法名（非保留字 `gen`），Rust 2024 中有效
-            match rng.gen_range(0..5) {
+            match rng.random_range(0..5) {
                 0 => {
                     target.on_message(&Message::llm_chunk(format!(
                         "chunk{}",
