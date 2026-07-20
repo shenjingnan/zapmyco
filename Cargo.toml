@@ -7,7 +7,7 @@ members = [
 
 [package]
 name = "zapmyco"
-version = "0.43.0"
+version = "0.44.0"
 edition = "2024"
 rust-version = "1.95"
 description = "An AI-powered CLI tool for interactive chat with LLMs"
@@ -56,7 +56,7 @@ webbrowser = "1"
 
 # Web Server
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors", "trace", "limit", "fs"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "limit", "fs"] }
 rust-embed = "8"
 uuid = { version = "1", features = ["v4"] }
 tokio-stream = "0.1"

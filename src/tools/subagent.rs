@@ -263,7 +263,31 @@ impl SubAgentTool {
             let result = async {
                 // 测试模式：test_binary 有值时直接执行
                 #[cfg(test)]
+                #[cfg(not(windows))]
                 let (binary, args) = if let Some(ref tb) = test_bin {
+                    (tb.clone(), vec![task_owned.clone()])
+                } else {
+                    build_command(
+                        &task_owned,
+                        true,
+                        skill_owned.as_deref(),
+                        permission_mode,
+                        parent_session_id.as_deref(),
+                    )?
+                };
+                // Windows test mode: 仅 sleep 用 ping 替代（sleep/timeout 均不可靠）
+                #[cfg(test)]
+                #[cfg(windows)]
+                let (binary, args) = if test_bin.as_deref() == Some("sleep") {
+                    let secs: u64 = task_owned.parse().unwrap_or(1);
+                    (
+                        "cmd".to_string(),
+                        vec![
+                            "/C".to_string(),
+                            format!("ping -n {} 127.0.0.1 > nul", secs + 1),
+                        ],
+                    )
+                } else if let Some(ref tb) = test_bin {
                     (tb.clone(), vec![task_owned.clone()])
                 } else {
                     build_command(
@@ -283,13 +307,15 @@ impl SubAgentTool {
                     parent_session_id.as_deref(),
                 )?;
 
-                let mut child = Command::new(&binary)
-                    .args(&args)
-                    .stdin(std::process::Stdio::null())
+                let mut cmd = Command::new(&binary);
+                cmd.args(&args)
                     .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()
-                    .map_err(|e| format!("启动子进程失败: {}", e))?;
+                    .stderr(std::process::Stdio::piped());
+                // 测试模式下不重定向 stdin：Windows timeout 不支持 null stdin
+                if !cfg!(test) {
+                    cmd.stdin(std::process::Stdio::null());
+                }
+                let mut child = cmd.spawn().map_err(|e| format!("启动子进程失败: {}", e))?;
 
                 // 写入 PID（kill 和死进程检测依赖）
                 let pid = child.id().unwrap_or(0);
