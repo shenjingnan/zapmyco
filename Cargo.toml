@@ -7,7 +7,7 @@ members = [
 
 [package]
 name = "zapmyco"
-version = "0.44.0"
+version = "0.44.1"
 edition = "2024"
 rust-version = "1.95"
 description = "An AI-powered CLI tool for interactive chat with LLMs"
@@ -67,7 +67,7 @@ async-trait = "0.1"
 tempfile = "3"
 wiremock = "0.6.5"
 libc = "0.2"
-rand = "0.9"
+rand = "0.10"
 
 # The profile that 'dist' will build with
 [profile.dist]
