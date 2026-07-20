@@ -76,7 +76,10 @@ jobs:
           tool: cargo-tarpaulin
 
       - name: Generate coverage report
-        run: cargo tarpaulin --out lcov --output-dir coverage -- --test-threads=1
+        # --skip test_chat_with_tools_partition_integration:
+        # 该测试在 tarpaulin 插桩下会触发 glibc double-free，
+        # 但在常规 cargo test 中完全正常，此处仅为生成覆盖率报告而跳过。
+        run: cargo tarpaulin --out lcov --output-dir coverage -- --test-threads=1 --skip test_chat_with_tools_partition_integration
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
