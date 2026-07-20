@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.44.1](https://github.com/shenjingnan/zapmyco/compare/v0.44.0...v0.44.1) - 2026-07-20
+
+### Other
+
+- *(deps)* bump ratatui from 0.29.0 to 0.30.2 ([#491](https://github.com/shenjingnan/zapmyco/pull/491))
+
 ## [0.44.0](https://github.com/shenjingnan/zapmyco/compare/v0.43.0...v0.44.0) - 2026-07-20
 
 ### Added
