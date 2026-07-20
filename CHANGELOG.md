@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.44.2](https://github.com/shenjingnan/zapmyco/compare/v0.44.1...v0.44.2) - 2026-07-20
+
+### Other
+
+- *(deps)* bump toml from 1.1.2+spec-1.1.0 to 1.1.3+spec-1.1.0 ([#516](https://github.com/shenjingnan/zapmyco/pull/516))
+- *(deps)* bump serde from 1.0.228 to 1.0.229 ([#518](https://github.com/shenjingnan/zapmyco/pull/518))
+- *(deps)* bump anyhow from 1.0.102 to 1.0.104 ([#520](https://github.com/shenjingnan/zapmyco/pull/520))
+- *(deps)* bump futures-util from 0.3.32 to 0.3.33 ([#519](https://github.com/shenjingnan/zapmyco/pull/519))
+- *(deps)* bump clap_complete from 4.6.5 to 4.6.7 ([#517](https://github.com/shenjingnan/zapmyco/pull/517))
+- *(deps)* bump indicatif from 0.18.4 to 0.18.6 ([#515](https://github.com/shenjingnan/zapmyco/pull/515))
+- *(deps)* bump time from 0.3.49 to 0.3.54 ([#514](https://github.com/shenjingnan/zapmyco/pull/514))
+- *(deps)* bump serde_json from 1.0.150 to 1.0.151 ([#513](https://github.com/shenjingnan/zapmyco/pull/513))
+- *(deps)* bump tokio from 1.52.3 to 1.53.0 ([#512](https://github.com/shenjingnan/zapmyco/pull/512))
+- *(deps)* bump rand from 0.9.4 to 0.10.1 ([#492](https://github.com/shenjingnan/zapmyco/pull/492))
+
 ## [0.44.1](https://github.com/shenjingnan/zapmyco/compare/v0.44.0...v0.44.1) - 2026-07-20
 
 ### Other
