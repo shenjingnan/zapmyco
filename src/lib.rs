@@ -1,11 +1,10 @@
-// 核心重构过渡期：适配器层（src/core/adapters.rs）的 API 已导出但尚未被 commands/run 调用。
-// 待后续迁移阶段启用后，可移除本 allow。
+// 全局 dead_code 抑制：旧 AiAgent 系统迁移完成前，部分字段/函数暂未使用。
 #![allow(dead_code)]
 
+pub mod adapters;
 pub mod agent;
 pub mod cli;
 pub mod config;
-pub mod core;
 pub mod datetime;
 pub use agent::env_info;
 pub mod commands;

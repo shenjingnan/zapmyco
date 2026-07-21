@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::agent::chat::ToolHandler;
-use crate::core::{AgentEvent, AgentTool};
 use crate::output::{self, Message};
+use zapmyco_core::{AgentEvent, AgentTool};
 
 // ============================================================================
 // LegacyToolAdapter — 将现有 ToolHandler 包装为 AgentTool
@@ -18,15 +18,6 @@ use crate::output::{self, Message};
 /// 将现有 `ToolHandler` 包装为 `AgentTool` trait 实现
 ///
 /// 这样所有 16 种现有工具都可以通过 Core 层使用，无需重写。
-///
-/// # 示例
-///
-/// ```ignore
-/// let tools: Vec<Box<dyn AgentTool>> = vec![
-///     Box::new(LegacyToolAdapter::new(ToolHandler::FileRead(FileRead::new()))),
-///     Box::new(LegacyToolAdapter::new(ToolHandler::WebFetch(WebFetch::new()))),
-/// ];
-/// ```
 pub struct LegacyToolAdapter {
     inner: ToolHandler,
     cached_name: String,
@@ -80,16 +71,13 @@ pub fn from_tool_handlers(handlers: Vec<ToolHandler>) -> Vec<Box<dyn AgentTool>>
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// 全局状态：是否已经输出过 thinking 内容（用于在 thinking → 回复 之间插换行）
+/// 全局状态：是否已经输出过 thinking 内容
 static HAS_THINKING: AtomicBool = AtomicBool::new(false);
 
 /// 消费一个 AgentEvent，通过现有的 output::send() 渲染到终端
-///
-/// 放在 tokio::spawn 的任务中，或直接在 agent_loop 调用后在事件循环中调用。
 pub fn core_event_handler(event: &AgentEvent) {
     match event {
         AgentEvent::TextChunk { delta } => {
-            // 如果之前有 thinking 内容，在第一个文本块前插换行
             if HAS_THINKING.swap(false, Ordering::Relaxed) {
                 output::send(&Message::info(String::new()));
             }
@@ -103,23 +91,20 @@ pub fn core_event_handler(event: &AgentEvent) {
             let params = format_tool_params(name, input);
             output::send(&Message::tool_call("", name, vec![params]));
         }
-        AgentEvent::ToolInvocationFinished { id: _, result } => {
-            match result {
-                Ok(text) => {
-                    // 显示工具执行成功（仅预览前 200 字符，安全处理 UTF-8 边界）
-                    let preview = if text.len() > 200 {
-                        let truncated: String = text.chars().take(200).collect();
-                        format!("{} ...", truncated)
-                    } else {
-                        text.clone()
-                    };
-                    output::send(&Message::info(format!("  ✅ {}", preview)));
-                }
-                Err(e) => {
-                    output::send(&Message::error(format!("  ❌ {}", e)));
-                }
+        AgentEvent::ToolInvocationFinished { id: _, result } => match result {
+            Ok(text) => {
+                let preview = if text.len() > 200 {
+                    let truncated: String = text.chars().take(200).collect();
+                    format!("{} ...", truncated)
+                } else {
+                    text.clone()
+                };
+                output::send(&Message::info(format!("  ✅ {}", preview)));
             }
-        }
+            Err(e) => {
+                output::send(&Message::error(format!("  ❌ {}", e)));
+            }
+        },
         AgentEvent::TurnFinished { tool_calls_count } => {
             if *tool_calls_count > 0 {
                 output::send(&Message::info(format!(
@@ -210,10 +195,6 @@ fn format_tool_params(name: &str, input: &Value) -> String {
     }
 }
 
-// ============================================================================
-// 测试
-// ============================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,52 +211,42 @@ mod tests {
         ))
     }
 
-    /// 验证 LegacyToolAdapter 可以包装 FileRead 工具
     #[test]
     fn test_adapter_file_read() {
         let adapter = LegacyToolAdapter::new(make_file_read());
-
         assert_eq!(adapter.name(), "file_read");
         assert!(!adapter.description().is_empty());
-
         let schema = adapter.input_schema();
         assert_eq!(schema["type"], "object");
         assert!(schema.get("properties").is_some());
     }
 
-    /// 验证 LegacyToolAdapter 可以包装 ShellExec 工具
     #[test]
     fn test_adapter_shell_exec() {
         let tool = crate::tools::shell_exec::ShellExec::new(
             crate::tools::shell_exec::ShellExecOptions::default(),
         );
         let adapter = LegacyToolAdapter::new(ToolHandler::ShellExec(tool));
-
         assert_eq!(adapter.name(), "shell_exec");
         assert!(!adapter.description().is_empty());
     }
 
-    /// 验证 LegacyToolAdapter 可以包装 FileWrite 工具
     #[test]
     fn test_adapter_file_write() {
         let adapter = LegacyToolAdapter::new(make_file_write());
-
         assert_eq!(adapter.name(), "file_write");
         assert!(!adapter.description().is_empty());
     }
 
-    /// 验证 from_tool_handlers 批量转换
     #[test]
     fn test_from_tool_handlers() {
         let handlers = vec![make_file_read(), make_file_write()];
-
         let tools = from_tool_handlers(handlers);
         assert_eq!(tools.len(), 2);
         assert_eq!(tools[0].name(), "file_read");
         assert_eq!(tools[1].name(), "file_write");
     }
 
-    /// 验证 format_tool_params
     #[test]
     fn test_format_params() {
         let input = serde_json::json!({"file_path": "/tmp/test.txt"});
@@ -297,14 +268,11 @@ mod tests {
         assert_eq!(result, "https://example.com");
     }
 
-    /// 验证 core_event_handler 不会 panic
     #[test]
     fn test_event_handler_text_chunk() {
         let event = AgentEvent::TextChunk {
             delta: "hello".to_string(),
         };
-        // 当前 output 需要 ROUTER 有 target，测试中可能已注册
-        // 我们只是验证不会 panic
         core_event_handler(&event);
     }
 

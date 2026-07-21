@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
+use crate::adapters::{core_event_handler, from_tool_handlers};
 use crate::agent::chat::ToolHandler;
 use crate::cli::{ExecutionMode, PermissionMode};
-use crate::core::{AgentConfig, agent_loop, core_event_handler, from_tool_handlers};
 use crate::output::{self, Message};
 use crate::skills::discovery::{list_available_skills, resolve_skill};
 use crate::skills::loader::{build_skill_list_text, compute_denied_tools};
@@ -18,6 +18,7 @@ use crate::tools::{
     ask_user, file_edit, file_find, file_read, file_search, file_write, shell_exec, skill,
     subagent, task_manager, web_fetch, web_search,
 };
+use zapmyco_core::{AgentConfig, agent_loop};
 
 use super::config_resolver::{ResolvedLlmConfig, resolve_llm_config};
 
@@ -114,7 +115,7 @@ pub(crate) async fn cmd_core_run(
     );
 
     // ── Step 6: 构建 Core 配置 ──
-    let make_config = |tools: Vec<Box<dyn crate::core::AgentTool>>| -> Arc<AgentConfig> {
+    let make_config = |tools: Vec<Box<dyn zapmyco_core::AgentTool>>| -> Arc<AgentConfig> {
         Arc::new(
             AgentConfig::new(&resolved.model, &resolved.api_key, &resolved.base_url)
                 .with_max_tokens(resolved.max_tokens)
@@ -222,7 +223,7 @@ async fn run_plan(
 
         output::send(&Message::info("[Plan] 收到反馈，优化方案中..."));
 
-        messages.push(crate::core::ConversationMessage::user(format!(
+        messages.push(zapmyco_core::ConversationMessage::user(format!(
             "[用户对方案的反馈] {}\n\n请根据以上反馈调整方案。",
             feedback
         )));
@@ -275,7 +276,7 @@ async fn run_plan(
 /// 运行 agent_loop 并收集完整输出文本
 async fn run_agent_with_output(
     config: Arc<AgentConfig>,
-    messages: &mut Vec<crate::core::ConversationMessage>,
+    messages: &mut Vec<zapmyco_core::ConversationMessage>,
     input: &str,
 ) -> Result<String, String> {
     let (event_tx, mut event_rx) = mpsc::channel(256);
@@ -305,7 +306,7 @@ async fn run_agent_with_output(
 /// 任务执行循环：读取 task_manager 中 pending 任务，驱动 LLM 逐个执行
 async fn run_task_loop_core(
     config: Arc<AgentConfig>,
-    messages: &mut Vec<crate::core::ConversationMessage>,
+    messages: &mut Vec<zapmyco_core::ConversationMessage>,
     task_manager: std::sync::Arc<task_manager::TaskManager>,
 ) -> Result<(), String> {
     let mut task_completed = false;

@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use zapmyco::core::*;
+use zapmyco_core::*;
 
 #[tokio::main]
 async fn main() -> Result<(), AgentError> {
