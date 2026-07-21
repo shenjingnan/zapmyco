@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.45.0](https://github.com/shenjingnan/zapmyco/compare/v0.44.2...v0.45.0) - 2026-07-21
+
+### Added
+
+- *(core)* 提取 zapmyco-core 为独立 crate ([#523](https://github.com/shenjingnan/zapmyco/pull/523))
+
 ## [0.44.2](https://github.com/shenjingnan/zapmyco/compare/v0.44.1...v0.44.2) - 2026-07-20
 
 ### Other
