@@ -2,19 +2,25 @@
   "name": "zapmyco-docs",
   "private": true,
   "scripts": {
-    "dev": "rm -rf .cache && openmanual dev",
-    "build": "rm -rf .cache && rm -rf dist && openmanual build",
-    "start": "npx -y serve dist -p 3000"
+    "dev": "tangly dev --no-open",
+    "build": "tangly build",
+    "check": "tangly check",
+    "start": "tangly preview"
   },
   "dependencies": {
-    "openmanual": "^0.17.0"
+    "@tanglydocs/schema": "^0.2.1",
+    "@tanglydocs/theme-ui": "^0.3.0",
+    "mermaid": "^11.16.1",
+    "tangly": "^0.2.4"
   },
   "devDependencies": {
-    "typescript": "^6.0.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.0"
   },
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "sharp"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

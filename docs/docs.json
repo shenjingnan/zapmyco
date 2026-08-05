@@ -1,0 +1,138 @@
+{
+  "$schema": "https://tangly.dev/schema/docs.json",
+  "name": "Zapmyco",
+  "description": "A Rust-based AI-powered CLI tool",
+  "siteUrl": "https://docs.zapmyco.com",
+  "theme": "tang",
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo-text.svg",
+    "dark": "/logo-text-dark.svg",
+    "href": "/"
+  },
+  "appearance": {
+    "default": "system",
+    "readingTime": true,
+    "readingProgress": true
+  },
+  "footer": {
+    "lastUpdated": true,
+    "repo": "https://github.com/shenjingnan/zapmyco",
+    "editUrl": "https://github.com/shenjingnan/zapmyco/edit/main/docs/{path}",
+    "socials": {
+      "github": "https://github.com/shenjingnan/zapmyco"
+    },
+    "links": [
+      {
+        "header": "指南",
+        "items": [
+          { "label": "快速开始", "href": "/guide/installation" },
+          { "label": "AI 代理", "href": "/guide/ai-agent" },
+          { "label": "架构说明", "href": "/advanced/architecture" },
+          { "label": "Skill", "href": "/skill/overview" },
+          { "label": "参与贡献", "href": "/community/contributing" }
+        ]
+      },
+      {
+        "header": "参考手册",
+        "items": [
+          { "label": "命令参考", "href": "/commands/overview" },
+          { "label": "内置工具", "href": "/built-in/ask_user" },
+          { "label": "更新日志", "href": "https://github.com/shenjingnan/zapmyco/releases" }
+        ]
+      },
+      {
+        "header": "资源",
+        "items": [
+          { "label": "GitHub", "href": "https://github.com/shenjingnan/zapmyco" },
+          { "label": "发布流程", "href": "/advanced/release-flow" },
+          { "label": "系统提示词设计", "href": "/advanced/system-prompt" }
+        ]
+      }
+    ]
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "指南",
+        "groups": [
+          {
+            "group": "快速开始",
+            "pages": [
+              "guide/installation",
+              "guide/ai-agent",
+              "guide/built-in-tools",
+              "guide/command-security",
+              "guide/file-edit",
+              "guide/models",
+              "guide/settings-reference"
+            ]
+          },
+          {
+            "group": "进阶",
+            "pages": [
+              "advanced/architecture",
+              "advanced/design-decisions",
+              "advanced/output-system",
+              "advanced/release-flow",
+              "advanced/system-prompt",
+              "advanced/thinking-support",
+              "advanced/zapmyco-core"
+            ]
+          },
+          {
+            "group": "Skill",
+            "pages": ["skill/overview", "skill/writing", "skill/loading"]
+          },
+          {
+            "group": "社区",
+            "pages": ["community/contributing"]
+          }
+        ]
+      },
+      {
+        "tab": "参考手册",
+        "groups": [
+          {
+            "group": "命令",
+            "pages": [
+              "commands/overview",
+              "commands/init",
+              "commands/run",
+              "commands/note",
+              "commands/settings",
+              "commands/config",
+              "commands/upgrade",
+              "commands/uninstall"
+            ]
+          },
+          {
+            "group": "内置工具",
+            "pages": [
+              "built-in/ask_user",
+              "built-in/file_edit",
+              "built-in/file_find",
+              "built-in/file_read",
+              "built-in/file_search",
+              "built-in/file_write",
+              "built-in/shell_exec",
+              "built-in/skill",
+              "built-in/subagent",
+              "built-in/task_create",
+              "built-in/task_get",
+              "built-in/task_list",
+              "built-in/task_update",
+              "built-in/web_fetch",
+              "built-in/web_search"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        { "anchor": "GitHub", "href": "https://github.com/shenjingnan/zapmyco", "icon": "github" }
+      ]
+    }
+  }
+}
