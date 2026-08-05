@@ -2,7 +2,6 @@
 #![allow(dead_code)]
 
 pub mod adapters;
-pub mod agent;
 pub mod agents_md;
 pub mod cli;
 pub mod commands;
