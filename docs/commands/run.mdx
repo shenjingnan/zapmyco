@@ -26,6 +26,7 @@ zapmyco run --profile advanced 重构这个模块
 | `--session <id>` | 否 | 复用指定会话上下文 |
 | `--task-id <id>` | 否 | 复用指定会话的任务列表 |
 | `--permission-mode <mode>` | 否 | 限制 agent 操作权限 |
+| `--mode <mode>` | 否 | 执行模式：`base`（默认）/ `plan` |
 
 > \* 既没有 `<content>` 也没有 `--skill` 时会报错。
 
@@ -177,6 +178,27 @@ zapmyco run --permission-mode read-write '重构 src/utils.rs'
 
 # 完全权限：默认，不需要显式指定
 zapmyco run '部署应用到服务器'
+```
+
+---
+
+### `--mode <mode>` — 执行模式
+
+控制任务的执行流程。默认为 `base`（直接执行），适用于大多数一次性问答和快速任务。
+
+| 模式 | 行为 |
+|------|------|
+| `base`（默认） | 收到 prompt 直接执行，不经过规划审批 |
+| `plan` | 先分析规划 → 用户审批 → 按方案执行 → 实施总结 |
+
+对于涉及多文件改动、代码重构等复杂任务，建议使用 `--mode plan`，AI 会先产出技术方案，经你审批后再动手实施：
+
+```bash
+# 简单问答：默认 base，直接执行
+zapmyco run 'Rust 的 Vec 和数组有什么区别？'
+
+# 复杂任务：显式开启 plan，先规划审批再执行
+zapmyco run --mode plan '重构 src/utils.rs 并补充单元测试'
 ```
 
 ---

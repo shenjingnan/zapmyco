@@ -53,9 +53,9 @@ impl std::fmt::Display for PermissionMode {
 /// 执行模式 — 控制 agent 的执行流程
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum ExecutionMode {
-    /// 计划模式：先分析规划，用户审批后执行（默认）
+    /// 计划模式：先分析规划，用户审批后执行
     Plan,
-    /// 基础模式：收到 prompt 直接执行，不经过规划审批
+    /// 基础模式：收到 prompt 直接执行，不经过规划审批（默认）
     Base,
 }
 
@@ -289,8 +289,8 @@ pub enum Commands {
         /// 复用指定会话的上下文历史（Tab 可补全可用会话）
         #[arg(long, value_parser = SessionIdValueParser)]
         session: Option<String>,
-        /// 执行模式: plan（先规划审批再执行，默认）, base（直接执行）
-        #[arg(long = "mode", default_value = "plan", value_enum)]
+        /// 执行模式: base（直接执行，默认）, plan（先规划审批再执行）
+        #[arg(long = "mode", default_value = "base", value_enum)]
         mode: ExecutionMode,
         /// 标记此进程为子 Agent（隐藏，由 SubAgent 工具自动传入）
         #[arg(long, hide = true)]
@@ -1343,10 +1343,10 @@ mod tests {
     // ---- 5. --mode 参数测试 ----
 
     #[test]
-    fn test_run_args_mode_default_plan() {
+    fn test_run_args_mode_default_base() {
         let cli = Cli::try_parse_from(vec!["zapmyco", "run", "hello"]).unwrap();
         if let Commands::Run { mode, .. } = cli.command.unwrap() {
-            assert_eq!(mode, ExecutionMode::Plan, "默认 --mode 应为 plan");
+            assert_eq!(mode, ExecutionMode::Base, "默认 --mode 应为 base");
         } else {
             panic!("Expected Run command");
         }
