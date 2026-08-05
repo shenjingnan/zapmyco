@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
 use zapmyco_anthropic_ai_sdk::types::message::{
     self as sdk, ContentBlock, ContentBlockDelta, CreateMessageParams, MessageClient, MessageError,
-    RequiredMessageParams, StreamEvent, Tool,
+    RequiredMessageParams, StreamEvent, Thinking, ThinkingType, Tool,
 };
 
 use crate::{AgentConfig, AgentError, AgentEvent, ConversationMessage, MessageBlock, Role};
@@ -75,6 +75,12 @@ pub async fn agent_loop(
 
         if !tool_defs.is_empty() {
             params = params.with_tools(tool_defs);
+        }
+        if config.thinking_enabled {
+            params = params.with_thinking(Thinking {
+                budget_tokens: 1024,
+                type_: ThinkingType::Enabled,
+            });
         }
 
         // ── 发送请求并处理流式响应 ──

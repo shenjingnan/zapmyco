@@ -5,7 +5,9 @@
 
 pub mod auth;
 pub mod chat;
+pub mod events;
 pub mod session;
+pub mod tools;
 
 use axum::{
     Router,
