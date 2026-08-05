@@ -1,0 +1,70 @@
+---
+title: 安装方式
+description: Zapmyco 的多种安装方式详解
+---
+
+Zapmyco 提供多种安装方式，你可以根据使用场景选择最适合的方式。
+
+## 一键安装脚本（推荐，无需安装 Rust）
+
+<Tabs>
+
+<Tab title="macOS / Linux">
+```bash
+curl -fsSL https://zapmyco.com/install.sh | sh
+```
+</Tab>
+
+<Tab title="Windows (PowerShell)">
+```powershell
+irm https://zapmyco.com/install.ps1 | iex
+```
+</Tab>
+
+<Tab title="Windows (cmd.exe)">
+```powershell
+powershell -c "irm https://zapmyco.com/install.ps1 | iex"
+```
+</Tab>
+
+</Tabs>
+
+安装脚本会自动检测平台、下载对应二进制归档、验证完整性，并配置 PATH。
+
+## 通过 cargo 安装
+
+```bash
+cargo install zapmyco
+```
+
+需要安装 [Rust 工具链](https://rustup.rs)。
+
+## 手动下载
+
+每个版本都会发布预编译的二进制归档（`.tar.xz` / `.zip`）：
+
+| 平台    | 架构          | 下载链接 |
+| ------- | ------------- | -------- |
+| Linux   | x86_64        | [zapmyco-x86_64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-unknown-linux-gnu.tar.xz) |
+| Linux   | ARM64         | [zapmyco-aarch64-unknown-linux-gnu.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-unknown-linux-gnu.tar.xz) |
+| macOS   | Apple Silicon | [zapmyco-aarch64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-aarch64-apple-darwin.tar.xz) |
+| macOS   | Intel         | [zapmyco-x86_64-apple-darwin.tar.xz](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-apple-darwin.tar.xz) |
+| Windows | x86_64        | [zapmyco-x86_64-pc-windows-msvc.zip](https://github.com/shenjingnan/zapmyco/releases/latest/download/zapmyco-x86_64-pc-windows-msvc.zip) |
+
+## 从源码编译
+
+```bash
+git clone https://github.com/shenjingnan/zapmyco.git
+cd zapmyco
+cargo build --release
+# 产物位于 target/release/zapmyco
+
+# 验证编译结果
+./target/release/zapmyco -V
+
+# 安装到 PATH
+cargo install --path .
+
+# 验证安装
+zapmyco -V
+```

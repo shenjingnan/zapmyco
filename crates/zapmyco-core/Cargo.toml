@@ -6,6 +6,8 @@ rust-version = "1.95"
 description = "Environment-agnostic AI Agent runtime core — ReAct loop, tool abstraction, event system"
 license = "MIT"
 repository = "https://github.com/shenjingnan/zapmyco"
+readme = "README.md"
+documentation = "https://docs.rs/zapmyco-core"
 
 [dependencies]
 serde_json = "1"

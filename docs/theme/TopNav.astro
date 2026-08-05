@@ -1,0 +1,192 @@
+---
+// 覆盖 tangly 内置 TopNav：
+// 修复中文 tab 名（如「指南」「参考手册」）在 slugifyTab 下 slug 都为空字符串、
+// 导致两个 tab 同时高亮的问题。
+// 方案：不用 `currentTabSlug`（来自 page.tab?.slug），改用「当前路径是否命中某
+// tab 的 pages」来判断 active tab。
+import type { DocsJson } from "@tanglydocs/schema";
+import type { ResolvedNavigation } from "tangly";
+import Icon from "@tanglydocs/theme-ui/components/Icon.astro";
+import { withBase } from "@tanglydocs/theme-ui/with-base";
+
+export interface Props {
+  config: DocsJson;
+  navigation: ResolvedNavigation;
+  currentTabSlug?: string;
+}
+
+const { config, navigation } = Astro.props as Props;
+
+const logoLight =
+  typeof config.logo === "string"
+    ? config.logo
+    : (config.logo?.light ?? config.logo?.dark);
+const logoDark =
+  typeof config.logo === "string"
+    ? config.logo
+    : (config.logo?.dark ?? config.logo?.light);
+const logoHref =
+  typeof config.logo === "string" ? "/" : (config.logo?.href ?? "/");
+
+const tabs = navigation.tabs;
+const anchors = navigation.anchors;
+const navbarLinks = config.navbar?.links ?? [];
+const primary = config.navbar?.primary;
+
+// —— 计算当前页面所属的 tab（替代内置的 currentTabSlug）——
+// 内置逻辑 `t.slug === page.tab?.slug` 对中文 tab 失效（slugifyTab 把中文
+// 全替换成空），这里改为：当前路径是否命中某个 tab 的 pages（扁平 slug 列表）。
+const pathname = Astro.url.pathname;
+const current = pathname.replace(/\/$/, "").replace(/\/index$/, "").replace(/^\//, "");
+// 用「tab 对象引用」判断 active，避免依赖 slug（中文 tab 的 slugify 结果都为空，
+// 导致 slug 比较恒为 true、两个 tab 同时高亮）。
+const activeTab =
+  tabs.find((t) => {
+    if (t.pages.includes(current)) return true;
+    if (t.href) {
+      const h = t.href.replace(/^\//, "").replace(/\/$/, "");
+      if (h === current) return true;
+    }
+    return false;
+  }) ?? undefined;
+---
+
+<header class="tangly-topnav sticky top-0 z-30">
+  {/* Row 1: logo column (mirrors sidebar) · controls column (mirrors main) */}
+  <div class="w-full max-w-screen-2xl mx-auto flex items-stretch h-[var(--tangly-topnav-row1-height,3.75rem)]">
+    <div class="flex items-center gap-3 px-4 lg:w-[var(--tangly-sidebar-width)] shrink-0">
+      <button
+        type="button"
+        class="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-[var(--tangly-color-bg-elevated)]"
+        id="tangly-hamburger"
+        aria-label="Toggle navigation"
+      >
+        <Icon icon="Menu" size={20} />
+      </button>
+
+      <a
+        href={withBase(logoHref)}
+        class="flex items-center gap-2 font-semibold text-[var(--tangly-color-fg)] shrink-0"
+      >
+        {logoLight && (
+          <img src={logoLight} alt={config.name} class="h-7 w-auto block dark:hidden" />
+        )}
+        {logoDark && (
+          <img src={logoDark} alt={config.name} class="h-7 w-auto hidden dark:block" />
+        )}
+        {!logoLight && !logoDark && <span>{config.name}</span>}
+      </a>
+    </div>
+
+    <div class="flex-1 min-w-0 flex items-center gap-4 px-4 sm:px-6 lg:px-10">
+      <div class="flex-1"></div>
+
+      <button
+        type="button"
+        id="tangly-search"
+        class="hidden sm:inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--tangly-color-border)] bg-[var(--tangly-color-bg-elevated)] text-sm text-[var(--tangly-color-muted)] hover:text-[var(--tangly-color-fg)] min-w-[14rem]"
+        aria-label="Search docs"
+      >
+        <Icon icon="Search" size={14} />
+        <span>Search</span>
+        <span class="ml-auto inline-flex items-center gap-0.5 text-xs">
+          <kbd class="px-1.5 py-0.5 border border-[var(--tangly-color-border)] rounded">Cmd</kbd>
+          <kbd class="px-1.5 py-0.5 border border-[var(--tangly-color-border)] rounded">K</kbd>
+        </span>
+      </button>
+
+      {(anchors.length > 0 || navbarLinks.length > 0) && (
+        <div class="hidden lg:flex items-center gap-1 shrink-0">
+          {anchors.map((a) => (
+            <a
+              href={withBase(a.href)}
+              class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm text-[var(--tangly-color-muted)] hover:text-[var(--tangly-color-fg)] hover:bg-[var(--tangly-color-bg-elevated)]"
+            >
+              {a.icon && <Icon icon={a.icon} size={14} />}
+              <span>{a.title}</span>
+            </a>
+          ))}
+          {navbarLinks.map((l) => (
+            <a
+              href={withBase(l.href)}
+              class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm text-[var(--tangly-color-muted)] hover:text-[var(--tangly-color-fg)]"
+            >
+              {typeof l.icon === "string" && <Icon icon={l.icon} size={14} />}
+              <span>{l.label}</span>
+            </a>
+          ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        id="tangly-theme-toggle"
+        class="inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-[var(--tangly-color-bg-elevated)] text-[var(--tangly-color-muted)] hover:text-[var(--tangly-color-fg)] shrink-0"
+        aria-label="Toggle theme"
+      >
+        <span class="block dark:hidden"><Icon icon="Moon" size={16} /></span>
+        <span class="hidden dark:block"><Icon icon="Sun" size={16} /></span>
+      </button>
+
+      {primary && primary.type === "button" && (
+        <a
+          href={withBase(primary.href)}
+          class="inline-flex items-center h-9 px-3.5 rounded-md text-sm font-medium text-white shrink-0 hover:opacity-90"
+          style="background: var(--tangly-color-primary); color: #fff"
+        >
+          {primary.label}
+        </a>
+      )}
+      {primary && primary.type === "github" && (
+        <a
+          href={withBase(primary.href)}
+          class="inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-[var(--tangly-color-bg-elevated)] shrink-0"
+          aria-label="GitHub"
+        >
+          <Icon icon="Github" size={16} />
+        </a>
+      )}
+    </div>
+  </div>
+
+  {/* Row 2: tabs (only when there are 2+) — aligned to logo column */}
+  {tabs.length > 1 && (
+    <div class="border-t border-[var(--tangly-color-border)]">
+      <div class="w-full max-w-screen-2xl mx-auto flex items-stretch">
+        <nav
+          class="hidden md:flex items-center gap-1 px-4 h-[var(--tangly-topnav-row2-height,2.5rem)] overflow-x-auto tangly-scroll"
+          aria-label="Sections"
+        >
+          {tabs.map((t) => (
+            <a
+              href={t.href ?? (t.pages[0] ? `${import.meta.env.BASE_URL}${t.pages[0]}` : `${import.meta.env.BASE_URL}${t.slug}`)}
+              data-active={t === activeTab ? "true" : "false"}
+              class="relative inline-flex items-center gap-1.5 px-3 h-full text-sm text-[var(--tangly-color-muted)] hover:text-[var(--tangly-color-fg)] data-[active=true]:text-[var(--tangly-color-fg)] data-[active=true]:after:content-[''] data-[active=true]:after:absolute data-[active=true]:after:left-2 data-[active=true]:after:right-2 data-[active=true]:after:bottom-0 data-[active=true]:after:h-[2px] data-[active=true]:after:bg-[var(--tangly-color-primary)] whitespace-nowrap"
+            >
+              {t.icon && <Icon icon={t.icon} size={14} />}
+              <span>{t.title}</span>
+            </a>
+          ))}
+        </nav>
+      </div>
+    </div>
+  )}
+</header>
+
+<script is:inline>
+  document.getElementById("tangly-hamburger")?.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("tangly:toggle-sidebar"));
+  });
+  document.getElementById("tangly-theme-toggle")?.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("tangly:toggle-theme"));
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      document.dispatchEvent(new CustomEvent("tangly:open-search"));
+    }
+  });
+  document.getElementById("tangly-search")?.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("tangly:open-search"));
+  });
+</script>

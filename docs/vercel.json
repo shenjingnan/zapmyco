@@ -3,5 +3,9 @@
   "buildCommand": "pnpm install && pnpm build",
   "outputDirectory": "dist",
   "installCommand": "pnpm install",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "redirects": [
+    { "source": "/zh/:path*", "destination": "/:path*", "permanent": true },
+    { "source": "/en/:path*", "destination": "/:path*", "permanent": true }
+  ]
 }
