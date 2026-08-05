@@ -209,8 +209,8 @@ impl TypedValueParser for SessionIdValueParser {
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
-        use crate::agent::session_loader;
-        let list = session_loader::list_sessions().ok()?;
+        use crate::session::loader;
+        let list = loader::list_sessions().ok()?;
         let values: Vec<PossibleValue> = list
             .into_iter()
             .map(|c| {
@@ -274,9 +274,6 @@ pub enum Commands {
         /// 复用指定会话的任务列表（不传则创建新会话）
         #[arg(long = "task-id")]
         task_id: Option<String>,
-        /// 使用旧版 AiAgent 执行路径（默认使用 Core 层）
-        #[arg(long)]
-        legacy: bool,
         /// 指定 AI 模型名称（Tab 可补全内置模型名）
         #[arg(long, value_parser = ModelValueParser)]
         model: Option<String>,
@@ -303,32 +300,6 @@ pub enum Commands {
     Note {
         #[command(subcommand)]
         command: NoteCommands,
-    },
-    /// 使用 Core 层执行 AI 任务（实验性，Base 模式）
-    CoreRun {
-        /// 任务描述
-        content: Option<String>,
-        /// 引用外部 skill
-        #[arg(long, value_parser = SkillNameValueParser)]
-        skill: Option<String>,
-        /// 指定模型配置档
-        #[arg(long)]
-        profile: Option<String>,
-        /// 限制 agent 的操作权限
-        #[arg(long = "permission-mode", default_value = "full", value_enum)]
-        permission_mode: PermissionMode,
-        /// 执行模式: plan（先规划审批再执行）, base（直接执行，默认）
-        #[arg(long = "mode", default_value = "base", value_enum)]
-        mode: ExecutionMode,
-        /// 指定 AI 模型名称
-        #[arg(long, value_parser = ModelValueParser)]
-        model: Option<String>,
-        /// 指定 API Key
-        #[arg(long = "api-key")]
-        api_key: Option<String>,
-        /// 指定 API 基础地址
-        #[arg(long = "base-url", value_parser = BaseUrlValueParser)]
-        base_url: Option<String>,
     },
     /// 将 zapmyco 升级到最新版本
     Upgrade,
@@ -480,47 +451,6 @@ pub async fn run(cli: Cli) -> Result<(), String> {
             base_url,
             subagent,
             parent_session_id,
-            legacy,
-        }) => {
-            if legacy {
-                commands::run::cmd_run(
-                    content.as_deref(),
-                    skill.as_deref(),
-                    profile.as_deref(),
-                    permission_mode,
-                    task_id.as_deref(),
-                    session.as_deref(),
-                    mode,
-                    model.as_deref(),
-                    api_key.as_deref(),
-                    base_url.as_deref(),
-                    subagent,
-                    parent_session_id.as_deref(),
-                )
-                .await
-            } else {
-                commands::core_run::cmd_core_run(
-                    content.as_deref(),
-                    skill.as_deref(),
-                    profile.as_deref(),
-                    permission_mode,
-                    mode,
-                    model.as_deref(),
-                    api_key.as_deref(),
-                    base_url.as_deref(),
-                )
-                .await
-            }
-        }
-        Some(Commands::CoreRun {
-            content,
-            skill,
-            profile,
-            permission_mode,
-            mode,
-            model,
-            api_key,
-            base_url,
         }) => {
             commands::core_run::cmd_core_run(
                 content.as_deref(),
@@ -531,6 +461,10 @@ pub async fn run(cli: Cli) -> Result<(), String> {
                 model.as_deref(),
                 api_key.as_deref(),
                 base_url.as_deref(),
+                task_id.as_deref(),
+                session.as_deref(),
+                subagent,
+                parent_session_id.as_deref(),
             )
             .await
         }

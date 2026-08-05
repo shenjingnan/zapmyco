@@ -4,7 +4,6 @@ pub mod core_run;
 pub mod demo;
 pub mod init;
 pub mod note;
-pub mod run;
 pub mod uninstall;
 pub mod upgrade;
 pub mod web;

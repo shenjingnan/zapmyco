@@ -2,16 +2,18 @@
 #![allow(dead_code)]
 
 pub mod adapters;
-pub mod agent;
+pub mod agents_md;
 pub mod cli;
+pub mod commands;
 pub mod config;
 pub mod datetime;
-pub use agent::env_info;
-pub mod commands;
+pub mod env_info;
 pub mod logging;
 pub mod notes;
 pub mod output;
+pub mod progress;
 pub mod prompts;
+pub mod session;
 pub mod skills;
 #[doc(hidden)]
 pub mod tools;

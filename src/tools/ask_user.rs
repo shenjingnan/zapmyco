@@ -8,7 +8,7 @@ use std::io::IsTerminal;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 use zapmyco_core::AgentTool;
 
-use crate::agent::session_logger;
+use crate::session::logger as session_logger;
 use crate::tools::confirm::AskBackend;
 use crate::tools::prompt;
 

@@ -1594,3 +1594,206 @@ mod tests {
         });
     }
 }
+
+// ============================================================================
+// 消息快照（新格式 conversation.jsonl）— 供 Core 路径记录会话
+// ============================================================================
+
+use zapmyco_core::{ConversationMessage, MessageBlock, Role};
+
+/// 会话消息快照 — 每次 `agent_loop` 后写入一行，记录完整对话历史
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionSnapshot {
+    pub session_id: String,
+    pub ts: String,
+    pub messages: Vec<MessageJson>,
+}
+
+/// 序列化用的消息（zapmyco_core::ConversationMessage 无 serde 派生，手工映射）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MessageJson {
+    pub role: String, // "user" | "assistant" | "tool"
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocks: Option<Vec<BlockJson>>,
+}
+
+/// 序列化用的内容块
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum BlockJson {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        id: String,
+        content: String,
+        is_error: bool,
+    },
+}
+
+/// 将 Core 消息列表转换为可序列化的 JSON 表示
+pub fn core_messages_to_json(messages: &[ConversationMessage]) -> Vec<MessageJson> {
+    messages
+        .iter()
+        .map(|m| MessageJson {
+            role: match m.role {
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::Tool => "tool",
+            }
+            .to_string(),
+            content: m.content.clone(),
+            blocks: m.blocks.as_ref().map(|blocks| {
+                blocks
+                    .iter()
+                    .map(|b| match b {
+                        MessageBlock::Text(text) => BlockJson::Text { text: text.clone() },
+                        MessageBlock::ToolUse { id, name, input } => BlockJson::ToolUse {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: input.clone(),
+                        },
+                        MessageBlock::ToolResult {
+                            id,
+                            content,
+                            is_error,
+                        } => BlockJson::ToolResult {
+                            id: id.clone(),
+                            content: content.clone(),
+                            is_error: *is_error,
+                        },
+                    })
+                    .collect()
+            }),
+        })
+        .collect()
+}
+
+/// 将 JSON 表示还原为 Core 消息列表
+pub fn json_to_core_messages(json: &[MessageJson]) -> Result<Vec<ConversationMessage>, String> {
+    json.iter()
+        .map(|m| {
+            let role = match m.role.as_str() {
+                "user" => Role::User,
+                "assistant" => Role::Assistant,
+                "tool" => Role::Tool,
+                other => return Err(format!("未知消息角色: {}", other)),
+            };
+            let blocks = m.blocks.as_ref().map(|blocks| {
+                blocks
+                    .iter()
+                    .map(|b| match b {
+                        BlockJson::Text { text } => MessageBlock::Text(text.clone()),
+                        BlockJson::ToolUse { id, name, input } => MessageBlock::ToolUse {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: input.clone(),
+                        },
+                        BlockJson::ToolResult {
+                            id,
+                            content,
+                            is_error,
+                        } => MessageBlock::ToolResult {
+                            id: id.clone(),
+                            content: content.clone(),
+                            is_error: *is_error,
+                        },
+                    })
+                    .collect()
+            });
+            Ok(ConversationMessage {
+                role,
+                content: m.content.clone(),
+                blocks,
+            })
+        })
+        .collect()
+}
+
+/// 向会话的 conversation.jsonl 追加一行完整消息快照（Core 路径专用）
+pub fn append_messages_snapshot(
+    session_id: &str,
+    messages: &[ConversationMessage],
+) -> Result<(), String> {
+    let path = get_sessions_dir()?
+        .join(session_id)
+        .join("conversation.jsonl");
+    let snapshot = SessionSnapshot {
+        session_id: session_id.to_string(),
+        ts: crate::datetime::iso_timestamp_now(),
+        messages: core_messages_to_json(messages),
+    };
+    let line =
+        serde_json::to_string(&snapshot).map_err(|e| format!("序列化会话快照失败: {}", e))?;
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("打开会话文件失败: {}", e))?;
+    writeln!(f, "{}", line).map_err(|e| format!("写入会话快照失败: {}", e))
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    use crate::test_util::run_with_temp_home;
+    use zapmyco_core::Role;
+
+    #[test]
+    fn test_core_messages_round_trip() {
+        let msgs = vec![
+            ConversationMessage::user("hello"),
+            ConversationMessage::assistant("hi"),
+        ];
+        let json = core_messages_to_json(&msgs);
+        let back = json_to_core_messages(&json).unwrap();
+        assert_eq!(back.len(), 2);
+        assert_eq!(back[0].role, Role::User);
+        assert_eq!(back[0].content, "hello");
+        assert_eq!(back[1].role, Role::Assistant);
+    }
+
+    #[test]
+    fn test_snapshot_with_tool_blocks() {
+        let msgs = vec![ConversationMessage::with_blocks(
+            Role::Assistant,
+            "",
+            vec![MessageBlock::ToolUse {
+                id: "call_1".to_string(),
+                name: "file_read".to_string(),
+                input: serde_json::json!({"file_path": "/tmp/x"}),
+            }],
+        )];
+        let json = core_messages_to_json(&msgs);
+        let back = json_to_core_messages(&json).unwrap();
+        assert!(back[0].blocks.is_some());
+        assert!(back[0].has_tool_calls());
+    }
+
+    #[test]
+    fn test_append_messages_snapshot_appends() {
+        run_with_temp_home(|_home| {
+            let logger = SessionLogger::new().unwrap();
+            let sid = logger.session_id().to_string();
+            append_messages_snapshot(&sid, &[ConversationMessage::user("hi")]).unwrap();
+
+            let dir = get_sessions_dir().unwrap();
+            let path = dir.join(&sid).join("conversation.jsonl");
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(content.contains("hi"));
+
+            // 再次追加：验证是 append 而非覆盖
+            append_messages_snapshot(&sid, &[ConversationMessage::assistant("yo")]).unwrap();
+            let content2 = std::fs::read_to_string(&path).unwrap();
+            assert_eq!(content2.lines().count(), 2);
+        });
+    }
+}
