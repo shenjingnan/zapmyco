@@ -6,6 +6,9 @@
 // - 调用 zapmyco-grep 搜索引擎
 // - 格式化输出并应用分页
 
+use async_trait::async_trait;
+use zapmyco_core::AgentTool;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -41,7 +44,96 @@ pub struct FileSearch {
     options: FileSearchOptions,
 }
 
+#[async_trait]
+impl AgentTool for FileSearch {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl FileSearch {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "file_search"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "在本地文件系统中搜索文件内容，支持正则表达式。\
+         适用于查找代码定义、搜索关键词、分析项目结构等场景。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "搜索模式（正则表达式）"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "搜索路径（目录或文件），默认当前目录"
+                },
+                "glob": {
+                    "type": "string",
+                    "description": "文件通配符过滤，例如 \"*.rs\" 只搜索 Rust 文件"
+                },
+                "output_mode": {
+                    "type": "string",
+                    "enum": ["content", "files_with_matches", "count"],
+                    "description": "输出模式：content（显示匹配行及行号，默认）、files_with_matches（仅显示文件名）、count（显示每个文件的匹配数）"
+                },
+                "-A": {
+                    "type": "integer",
+                    "description": "匹配行后显示的上下文行数"
+                },
+                "-B": {
+                    "type": "integer",
+                    "description": "匹配行前显示的上下文行数"
+                },
+                "-C": {
+                    "type": "integer",
+                    "description": "匹配行前后显示的上下文行数"
+                },
+                "-i": {
+                    "type": "boolean",
+                    "description": "忽略大小写"
+                },
+                "head_limit": {
+                    "type": "integer",
+                    "description": "最大结果行数，默认 250"
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "跳过前 N 条结果"
+                },
+                "multiline": {
+                    "type": "boolean",
+                    "description": "启用多行模式（让 . 匹配换行符）"
+                },
+                "type": {
+                    "type": "string",
+                    "description": "文件类型过滤，例如 \"rust\"、\"py\"、\"js\"、\"md\""
+                }
+            },
+            "required": ["pattern"]
+        })
+    }
+
     /// 创建新的 FileSearch 实例
     pub fn new(options: FileSearchOptions) -> Self {
         Self { options }
@@ -51,67 +143,9 @@ impl FileSearch {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "file_search".to_string(),
-            description: Some(
-                "在本地文件系统中搜索文件内容，支持正则表达式。\
-                 适用于查找代码定义、搜索关键词、分析项目结构等场景。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "搜索模式（正则表达式）"
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": "搜索路径（目录或文件），默认当前目录"
-                    },
-                    "glob": {
-                        "type": "string",
-                        "description": "文件通配符过滤，例如 \"*.rs\" 只搜索 Rust 文件"
-                    },
-                    "output_mode": {
-                        "type": "string",
-                        "enum": ["content", "files_with_matches", "count"],
-                        "description": "输出模式：content（显示匹配行及行号，默认）、files_with_matches（仅显示文件名）、count（显示每个文件的匹配数）"
-                    },
-                    "-A": {
-                        "type": "integer",
-                        "description": "匹配行后显示的上下文行数"
-                    },
-                    "-B": {
-                        "type": "integer",
-                        "description": "匹配行前显示的上下文行数"
-                    },
-                    "-C": {
-                        "type": "integer",
-                        "description": "匹配行前后显示的上下文行数"
-                    },
-                    "-i": {
-                        "type": "boolean",
-                        "description": "忽略大小写"
-                    },
-                    "head_limit": {
-                        "type": "integer",
-                        "description": "最大结果行数，默认 250"
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "跳过前 N 条结果"
-                    },
-                    "multiline": {
-                        "type": "boolean",
-                        "description": "启用多行模式（让 . 匹配换行符）"
-                    },
-                    "type": {
-                        "type": "string",
-                        "description": "文件类型过滤，例如 \"rust\"、\"py\"、\"js\"、\"md\""
-                    }
-                },
-                "required": ["pattern"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

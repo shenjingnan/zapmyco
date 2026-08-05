@@ -1,5 +1,7 @@
 /// Web Fetch 工具 - 获取网页内容并转换为 Markdown 供 LLM 使用
+use async_trait::async_trait;
 use thiserror::Error;
+use zapmyco_core::AgentTool;
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -79,6 +81,29 @@ pub struct WebFetch {
     options: WebFetchOptions,
 }
 
+#[async_trait]
+impl AgentTool for WebFetch {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        let url = input
+            .get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Missing required 'url' parameter".to_string())?;
+        self.fetch(url).await.map_err(|e| e.to_string())
+    }
+}
+
 impl WebFetch {
     /// 创建新的 WebFetch 实例
     pub fn new(options: WebFetchOptions) -> Result<Self, WebFetchError> {
@@ -146,22 +171,37 @@ impl WebFetch {
         Ok(md)
     }
 
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "web_fetch"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "获取指定 URL 的网页内容并转换为干净的 Markdown 文本。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "要获取的完整 URL（包含协议，如 https://）"
+                }
+            },
+            "required": ["url"]
+        })
+    }
+
     /// 返回 Anthropic Tool 定义
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "web_fetch".to_string(),
-            description: Some("获取指定 URL 的网页内容并转换为干净的 Markdown 文本。".to_string()),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "要获取的完整 URL（包含协议，如 https://）"
-                    }
-                },
-                "required": ["url"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }
@@ -272,6 +312,28 @@ mod tests {
             ..Default::default()
         };
         WebFetch::new(opts).unwrap()
+    }
+
+    // ---- AgentTool trait 实现 ----
+
+    #[test]
+    fn test_agent_tool_metadata() {
+        let fetcher = test_fetcher();
+        let tool: &dyn AgentTool = &fetcher;
+        assert_eq!(tool.name(), "web_fetch");
+        assert!(!tool.description().is_empty());
+        let schema = tool.input_schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["url"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_agent_tool_execute_missing_url() {
+        let fetcher = test_fetcher();
+        let tool: &dyn AgentTool = &fetcher;
+        let result = tool.execute(serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("url"));
     }
 
     // ---- URL validation ----

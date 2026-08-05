@@ -11,6 +11,7 @@ pub mod commands;
 pub mod logging;
 pub mod notes;
 pub mod output;
+pub mod prompts;
 pub mod skills;
 #[doc(hidden)]
 pub mod tools;

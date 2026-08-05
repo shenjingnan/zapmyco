@@ -7,6 +7,9 @@
 // - 引号归一化（处理 Claude 模型的 smart quotes 问题）
 // - 精确字符串替换
 
+use async_trait::async_trait;
+use zapmyco_core::AgentTool;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -25,7 +28,98 @@ pub struct FileEdit {
     options: FileEditOptions,
 }
 
+#[async_trait]
+impl AgentTool for FileEdit {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl FileEdit {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "file_edit"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "修改本地文件系统中的文件内容。支持多种编辑模式：\n\
+         1. line_range（推荐）: 按行号替换，需指定 start_line/end_line/expected/new_content，\
+         系统会自动验证 expected 是否与文件实际内容一致，比 old_string 更稳定可靠。\n\
+         2. append: 在文件末尾追加内容，需指定 content。\n\
+         3. old_string/new_string（旧模式）: 精确字符串替换，保留以兼容旧版。\n\n\
+         注意：line_range 模式的 expected 参数至少包含 3 行非空代码行（trim 后），\
+         否则会被拒绝执行。编辑前必须先使用 file_read 读取文件内容。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "要修改的文件的绝对路径"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["line_range", "append"],
+                    "description": "编辑模式，默认根据其他参数自动判断"
+                },
+                "start_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "要替换的起始行号（从1开始，仅 line_range 模式）"
+                },
+                "end_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "要替换的结束行号（包含，仅 line_range 模式）"
+                },
+                "expected": {
+                    "type": "string",
+                    "description": "预期的当前内容（仅 line_range 模式）。\
+                     用于验证行号是否准确，至少包含3行非空代码行（trim后）。\
+                     如果内容不匹配将被拒绝执行"
+                },
+                "new_content": {
+                    "type": "string",
+                    "description": "替换后的新内容（仅 line_range 模式）"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "要追加的内容（仅 append 模式）"
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "（旧模式）要被替换的文本，必须在文件中精确匹配"
+                },
+                "new_string": {
+                    "type": "string",
+                    "description": "（旧模式）替换后的文本（必须与 old_string 不同）"
+                },
+                "replace_all": {
+                    "type": "boolean",
+                    "description": "（旧模式）是否替换所有匹配项（默认 false）",
+                    "default": false
+                }
+            },
+            "required": ["file_path"]
+        })
+    }
+
     /// 创建新的 FileEdit 实例
     pub fn new(options: FileEditOptions) -> Self {
         Self { options }
@@ -35,69 +129,9 @@ impl FileEdit {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "file_edit".to_string(),
-            description: Some(
-                "修改本地文件系统中的文件内容。支持多种编辑模式：\n\
-                 1. line_range（推荐）: 按行号替换，需指定 start_line/end_line/expected/new_content，\
-                 系统会自动验证 expected 是否与文件实际内容一致，比 old_string 更稳定可靠。\n\
-                 2. append: 在文件末尾追加内容，需指定 content。\n\
-                 3. old_string/new_string（旧模式）: 精确字符串替换，保留以兼容旧版。\n\n\
-                 注意：line_range 模式的 expected 参数至少包含 3 行非空代码行（trim 后），\
-                 否则会被拒绝执行。编辑前必须先使用 file_read 读取文件内容。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "要修改的文件的绝对路径"
-                    },
-                    "mode": {
-                        "type": "string",
-                        "enum": ["line_range", "append"],
-                        "description": "编辑模式，默认根据其他参数自动判断"
-                    },
-                    "start_line": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "description": "要替换的起始行号（从1开始，仅 line_range 模式）"
-                    },
-                    "end_line": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "description": "要替换的结束行号（包含，仅 line_range 模式）"
-                    },
-                    "expected": {
-                        "type": "string",
-                        "description": "预期的当前内容（仅 line_range 模式）。\
-                         用于验证行号是否准确，至少包含3行非空代码行（trim后）。\
-                         如果内容不匹配将被拒绝执行"
-                    },
-                    "new_content": {
-                        "type": "string",
-                        "description": "替换后的新内容（仅 line_range 模式）"
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "要追加的内容（仅 append 模式）"
-                    },
-                    "old_string": {
-                        "type": "string",
-                        "description": "（旧模式）要被替换的文本，必须在文件中精确匹配"
-                    },
-                    "new_string": {
-                        "type": "string",
-                        "description": "（旧模式）替换后的文本（必须与 old_string 不同）"
-                    },
-                    "replace_all": {
-                        "type": "boolean",
-                        "description": "（旧模式）是否替换所有匹配项（默认 false）",
-                        "default": false
-                    }
-                },
-                "required": ["file_path"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

@@ -6,6 +6,9 @@
 // - 安全校验（路径、大小、二进制检测）
 // - 格式化行号输出
 
+use async_trait::async_trait;
+use zapmyco_core::AgentTool;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -42,6 +45,44 @@ pub struct FileRead {
 }
 
 impl FileRead {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "file_read"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "读取本地文件系统中的文件内容，支持指定行号范围读取。\
+         适用于查看源代码、读取配置、分析日志文件等场景。\
+         此工具可直接读取任何本地文件，输出附带行号，比使用 cat/head/tail 更高效。\
+         对于大型文件请使用 offset 和 limit 参数分段读取。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "要读取的文件的绝对路径"
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "起始行号（从 1 开始），仅大文件需要分段读取时使用",
+                    "minimum": 1
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "要读取的行数，仅大文件需要分段读取时使用",
+                    "minimum": 1,
+                    "maximum": 2000
+                }
+            },
+            "required": ["file_path"]
+        })
+    }
+
     /// 创建新的 FileRead 实例
     pub fn new(options: FileReadOptions) -> Self {
         Self { options }
@@ -51,35 +92,9 @@ impl FileRead {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "file_read".to_string(),
-            description: Some(
-                "读取本地文件系统中的文件内容，支持指定行号范围读取。\
-                 适用于查看源代码、读取配置、分析日志文件等场景。\
-                 此工具可直接读取任何本地文件，输出附带行号，比使用 cat/head/tail 更高效。\
-                 对于大型文件请使用 offset 和 limit 参数分段读取。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "要读取的文件的绝对路径"
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "起始行号（从 1 开始），仅大文件需要分段读取时使用",
-                        "minimum": 1
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "要读取的行数，仅大文件需要分段读取时使用",
-                        "minimum": 1,
-                        "maximum": 2000
-                    }
-                },
-                "required": ["file_path"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }
@@ -206,6 +221,25 @@ impl FileRead {
         }
 
         Ok(result)
+    }
+}
+
+#[async_trait]
+impl AgentTool for FileRead {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
     }
 }
 

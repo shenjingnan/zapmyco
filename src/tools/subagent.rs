@@ -10,7 +10,9 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{ChildStderr, ChildStdout, Command};
 
 use crate::cli::PermissionMode;
+use async_trait::async_trait;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
+use zapmyco_core::AgentTool;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,6 +43,25 @@ pub struct SubAgentTool {
     /// 测试用：覆盖 spawn 的子进程二进制路径
     #[cfg(test)]
     pub test_binary: Option<String>,
+}
+
+#[async_trait]
+impl AgentTool for SubAgentTool {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
 }
 
 impl SubAgentTool {
@@ -81,56 +102,68 @@ impl SubAgentTool {
         self.parent_session_id = id;
     }
 
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "subagent"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "管理子代理(sub-agent)。子代理作为独立子进程运行指定的 CLI Agent。\
+        支持四种 action:\n\
+        - spawn: 创建子代理，立即返回子代理 ID\n\
+        - poll: 查询子代理执行结果，支持批量查询和内部等待重试\n\
+        - list: 列出所有活跃的子代理\n\
+        - kill: 终止正在运行的子代理"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["spawn", "poll", "list", "kill"],
+                    "description": "操作类型"
+                },
+                "cli": {
+                    "type": "string",
+                    "enum": ["zapmyco"],
+                    "description": "使用的 CLI agent。目前仅支持 zapmyco。"
+                },
+                "task": {
+                    "type": "string",
+                    "description": "子代理需要执行的具体任务描述（action=spawn 时必填）"
+                },
+                "subagent_ids": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "要查询或终止的子代理 ID 列表（poll 和 kill 时必填）"
+                },
+                "skill": {
+                    "type": "string",
+                    "description": "子进程加载的 skill 名称（对应 SKILL.md 中的 name）。\
+                    子进程将以该 skill 定义的角色执行任务。\
+                    可选值由 SkillTool(list) 动态获取，内置包括: explore, plan-mode。"
+                },
+                "wait_secs": {
+                    "type": "number",
+                    "description": "poll 时可选。工具已内置首次 5 秒内部等待（无论此参数如何），\
+                    如需额外等待可设置此参数，工具会在首次 5 秒基础上继续等待 N 秒。\
+                    范围 1-30。默认 0（仅内置 5 秒）。"
+                }
+            },
+            "required": ["action"]
+        })
+    }
+
     /// 返回 Anthropic Tool 定义
     pub fn tool_definition() -> Tool {
         Tool {
-            name: "subagent".to_string(),
-            description: Some(
-                "管理子代理(sub-agent)。子代理作为独立子进程运行指定的 CLI Agent。\
-                支持四种 action:\n\
-                - spawn: 创建子代理，立即返回子代理 ID\n\
-                - poll: 查询子代理执行结果，支持批量查询和内部等待重试\n\
-                - list: 列出所有活跃的子代理\n\
-                - kill: 终止正在运行的子代理"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["spawn", "poll", "list", "kill"],
-                        "description": "操作类型"
-                    },
-                    "cli": {
-                        "type": "string",
-                        "enum": ["zapmyco"],
-                        "description": "使用的 CLI agent。目前仅支持 zapmyco。"
-                    },
-                    "task": {
-                        "type": "string",
-                        "description": "子代理需要执行的具体任务描述（action=spawn 时必填）"
-                    },
-                    "subagent_ids": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "要查询或终止的子代理 ID 列表（poll 和 kill 时必填）"
-                    },
-                    "skill": {
-                        "type": "string",
-                        "description": "子进程加载的 skill 名称（对应 SKILL.md 中的 name）。\
-                        子进程将以该 skill 定义的角色执行任务。\
-                        可选值由 SkillTool(list) 动态获取，内置包括: explore, plan-mode。"
-                    },
-                    "wait_secs": {
-                        "type": "number",
-                        "description": "poll 时可选。工具已内置首次 5 秒内部等待（无论此参数如何），\
-                        如需额外等待可设置此参数，工具会在首次 5 秒基础上继续等待 N 秒。\
-                        范围 1-30。默认 0（仅内置 5 秒）。"
-                    }
-                },
-                "required": ["action"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

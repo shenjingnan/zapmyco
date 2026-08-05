@@ -9,6 +9,9 @@
 //
 // 注意：预读检查（先读后写）在 agent/chat.rs 的工具派发层完成，不在本工具内部实现。
 
+use async_trait::async_trait;
+use zapmyco_core::AgentTool;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -27,7 +30,57 @@ pub struct FileWrite {
     options: FileWriteOptions,
 }
 
+#[async_trait]
+impl AgentTool for FileWrite {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl FileWrite {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "file_write"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "创建新文件或完整覆盖已有文件。\
+         参数包括 file_path（必填，文件绝对路径）、content（必填，要写入的完整文件内容）。\
+         注意：如果要覆盖已有的文件，必须先使用 file_read 读取文件内容后才可以写入。\
+         对于已有文件的小范围修改，建议使用 file_edit 工具。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "要写入的文件的绝对路径（必须使用绝对路径）"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "要写入的完整文件内容"
+                }
+            },
+            "required": ["file_path", "content"]
+        })
+    }
+
     /// 创建新的 FileWrite 实例
     pub fn new(options: FileWriteOptions) -> Self {
         Self { options }
@@ -37,28 +90,9 @@ impl FileWrite {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "file_write".to_string(),
-            description: Some(
-                "创建新文件或完整覆盖已有文件。\
-                 参数包括 file_path（必填，文件绝对路径）、content（必填，要写入的完整文件内容）。\
-                 注意：如果要覆盖已有的文件，必须先使用 file_read 读取文件内容后才可以写入。\
-                 对于已有文件的小范围修改，建议使用 file_edit 工具。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "要写入的文件的绝对路径（必须使用绝对路径）"
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "要写入的完整文件内容"
-                    }
-                },
-                "required": ["file_path", "content"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

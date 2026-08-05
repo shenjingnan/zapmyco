@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::adapters::{core_event_handler, from_tool_handlers};
-use crate::agent::chat::ToolHandler;
+use crate::adapters::core_event_handler;
 use crate::cli::{ExecutionMode, PermissionMode};
 use crate::output::{self, Message};
 use crate::skills::discovery::{list_available_skills, resolve_skill};
@@ -16,7 +15,7 @@ use crate::skills::loader::{build_skill_list_text, compute_denied_tools};
 use crate::skills::types::SkillFile;
 use crate::tools::{
     ask_user, file_edit, file_find, file_read, file_search, file_write, shell_exec, skill,
-    subagent, task_manager, web_fetch, web_search,
+    subagent, task_create, task_get, task_list, task_manager, task_update, web_fetch, web_search,
 };
 use zapmyco_core::{AgentConfig, agent_loop};
 
@@ -89,8 +88,8 @@ pub(crate) async fn cmd_core_run(
     // ── Step 4: 构建 system prompt ──
     let base_prompt = format!(
         "{}{}",
-        crate::agent::system_prompt::DEFAULT_SYSTEM_PROMPT,
-        crate::agent::system_prompt::BEHAVIORAL_GUIDANCE,
+        crate::prompts::DEFAULT_SYSTEM_PROMPT,
+        crate::prompts::BEHAVIORAL_GUIDANCE,
     );
     let skill_list = build_skill_list_text(&all_skills);
     let system_prompt = if skill_list.is_empty() {
@@ -100,19 +99,14 @@ pub(crate) async fn cmd_core_run(
     };
 
     // ── Step 5: 构建工具集 ──
-    let all_handlers = build_tool_handlers(&resolved, permission_mode, active_skill.as_ref())?;
-
-    // 完整工具（Phase 3 执行用）
-    let full_tools = from_tool_handlers(all_handlers);
+    let full_tools = build_tools(&resolved, permission_mode, active_skill.as_ref())?;
 
     // 只读工具（Phase 1 分析用）：过滤掉写操作工具
     let readonly_names = ["file_write", "file_edit", "shell_exec"];
-    let readonly_tools = from_tool_handlers(
-        build_tool_handlers(&resolved, permission_mode, active_skill.as_ref())?
-            .into_iter()
-            .filter(|h| !readonly_names.contains(&h.tool_definition().name.as_str()))
-            .collect(),
-    );
+    let readonly_tools = build_tools(&resolved, permission_mode, active_skill.as_ref())?
+        .into_iter()
+        .filter(|t| !readonly_names.contains(&t.name()))
+        .collect();
 
     // ── Step 6: 构建 Core 配置 ──
     let make_config = |tools: Vec<Box<dyn zapmyco_core::AgentTool>>| -> Arc<AgentConfig> {
@@ -358,21 +352,21 @@ async fn run_task_loop_core(
 // 工具构建
 // ============================================================================
 
-/// 构建所有的工具处理器
-fn build_tool_handlers(
+/// 构建所有的工具
+fn build_tools(
     resolved: &ResolvedLlmConfig,
     permission_mode: PermissionMode,
     active_skill: Option<&SkillFile>,
-) -> Result<Vec<ToolHandler>, String> {
-    let mut handlers: Vec<ToolHandler> = Vec::new();
+) -> Result<Vec<Box<dyn zapmyco_core::AgentTool>>, String> {
+    let mut tools: Vec<Box<dyn zapmyco_core::AgentTool>> = Vec::new();
 
     // Ask User
-    handlers.push(ToolHandler::AskUser(ask_user::AskUser::new()));
+    tools.push(Box::new(ask_user::AskUser::new()));
 
     // Web Fetch
     let wf = web_fetch::WebFetch::new(Default::default())
         .map_err(|e| format!("初始化 Web Fetch 失败: {}", e))?;
-    handlers.push(ToolHandler::WebFetch(wf));
+    tools.push(Box::new(wf));
 
     // Shell Exec
     let (allowed_commands, denied_commands) = crate::config::settings::load_settings()
@@ -396,7 +390,7 @@ fn build_tool_handlers(
             ..Default::default()
         })
     };
-    handlers.push(ToolHandler::ShellExec(shell));
+    tools.push(Box::new(shell));
 
     // Web Search
     let search_model = crate::commands::config_resolver::get_search_model(&resolved.provider_name);
@@ -407,56 +401,51 @@ fn build_tool_handlers(
         search_model.to_string(),
         search_max_tokens,
     ) {
-        handlers.push(ToolHandler::WebSearch(ws));
+        tools.push(Box::new(ws));
     }
 
     // 文件操作工具
-    handlers.push(ToolHandler::FileSearch(file_search::FileSearch::new(
-        Default::default(),
-    )));
-    handlers.push(ToolHandler::FileFind(file_find::FileFind::new(
-        Default::default(),
-    )));
-    handlers.push(ToolHandler::FileRead(file_read::FileRead::new(
-        Default::default(),
-    )));
-    handlers.push(ToolHandler::FileEdit(file_edit::FileEdit::new(
-        Default::default(),
-    )));
-    handlers.push(ToolHandler::FileWrite(file_write::FileWrite::new(
-        Default::default(),
-    )));
+    tools.push(Box::new(file_search::FileSearch::new(Default::default())));
+    tools.push(Box::new(file_find::FileFind::new(Default::default())));
+    tools.push(Box::new(file_read::FileRead::new(Default::default())));
+    tools.push(Box::new(file_edit::FileEdit::new(Default::default())));
+    tools.push(Box::new(file_write::FileWrite::new(Default::default())));
 
     // Task 管理
     let tm = std::sync::Arc::new(task_manager::TaskManager::new());
-    handlers.push(ToolHandler::TaskCreate(tm.clone()));
-    handlers.push(ToolHandler::TaskGet(tm.clone()));
-    handlers.push(ToolHandler::TaskList(tm.clone()));
-    handlers.push(ToolHandler::TaskUpdate(tm.clone()));
+    tools.push(Box::new(task_create::TaskCreate {
+        manager: tm.clone(),
+    }));
+    tools.push(Box::new(task_get::TaskGet {
+        manager: tm.clone(),
+    }));
+    tools.push(Box::new(task_list::TaskList {
+        manager: tm.clone(),
+    }));
+    tools.push(Box::new(task_update::TaskUpdateTool {
+        manager: tm.clone(),
+    }));
 
     // SubAgent + Skill
     if let Ok(sa) = subagent::SubAgentTool::with_permission_mode(permission_mode) {
-        handlers.push(ToolHandler::SubAgent(sa));
+        tools.push(Box::new(sa));
     }
     if let Ok(st) = skill::SkillTool::new() {
-        handlers.push(ToolHandler::Skill(st));
+        tools.push(Box::new(st));
     }
 
     // Skill 工具过滤
     if let Some(skill) = active_skill
         && !skill.allowed_tools.is_empty()
     {
-        let tool_names: Vec<String> = handlers.iter().map(|h| h.tool_definition().name).collect();
+        let tool_names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
         let to_remove = compute_denied_tools(&tool_names, &skill.allowed_tools);
         if !to_remove.is_empty() {
             output::send(&Message::info(format!(
                 "[Skill] 工具过滤: 仅允许 {:?}",
                 skill.allowed_tools
             )));
-            handlers.retain(|h| {
-                let name = h.tool_definition().name;
-                !to_remove.contains(&name)
-            });
+            tools.retain(|t| !to_remove.iter().any(|r| r == t.name()));
         }
     }
 
@@ -471,13 +460,10 @@ fn build_tool_handlers(
             "[权限模式] {:?} — 已禁止: {:?}",
             permission_mode, deny_tools,
         )));
-        handlers.retain(|h| {
-            let name = h.tool_definition().name;
-            !deny_tools.contains(&name.as_str())
-        });
+        tools.retain(|t| !deny_tools.contains(&t.name()));
     }
 
-    Ok(handlers)
+    Ok(tools)
 }
 
 /// 为 user message 构建 skill body 前缀
@@ -518,9 +504,8 @@ mod tests {
     fn test_build_tools_full_mode() {
         run_with_temp_home(|home| {
             setup_settings(home);
-            let handlers =
-                build_tool_handlers(&make_resolved(), PermissionMode::Full, None).unwrap();
-            let names: Vec<String> = handlers.iter().map(|h| h.tool_definition().name).collect();
+            let tools = build_tools(&make_resolved(), PermissionMode::Full, None).unwrap();
+            let names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
             assert!(names.contains(&"file_read".to_string()));
             assert!(names.contains(&"shell_exec".to_string()));
             assert!(names.contains(&"file_write".to_string()));
@@ -531,9 +516,8 @@ mod tests {
     fn test_build_tools_readonly_mode() {
         run_with_temp_home(|home| {
             setup_settings(home);
-            let handlers =
-                build_tool_handlers(&make_resolved(), PermissionMode::ReadOnly, None).unwrap();
-            let names: Vec<String> = handlers.iter().map(|h| h.tool_definition().name).collect();
+            let tools = build_tools(&make_resolved(), PermissionMode::ReadOnly, None).unwrap();
+            let names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
             assert!(names.contains(&"file_read".to_string()));
             assert!(!names.contains(&"file_write".to_string()));
         });
@@ -543,10 +527,8 @@ mod tests {
     fn test_core_tools_implement_agent_tool() {
         run_with_temp_home(|home| {
             setup_settings(home);
-            let handlers =
-                build_tool_handlers(&make_resolved(), PermissionMode::Full, None).unwrap();
-            let core_tools = from_tool_handlers(handlers);
-            for tool in &core_tools {
+            let tools = build_tools(&make_resolved(), PermissionMode::Full, None).unwrap();
+            for tool in &tools {
                 assert!(!tool.name().is_empty());
                 assert!(!tool.description().is_empty());
             }

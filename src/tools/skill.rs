@@ -1,5 +1,7 @@
+use async_trait::async_trait;
 use std::path::PathBuf;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
+use zapmyco_core::AgentTool;
 
 /// Skill 工具 — LLM 可在对话中调用以列出或加载 skill
 ///
@@ -10,7 +12,58 @@ pub struct SkillTool {
     cwd: PathBuf,
 }
 
+#[async_trait]
+impl AgentTool for SkillTool {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl SkillTool {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "skill"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "管理 skill。Skill 是预定义的工作流模板，包含详细的执行规则和步骤。\
+         支持两种 action:\n\
+         - list: 列出所有可用 skill 的名称和描述，让用户选择\n\
+         - load: 加载指定 skill 的完整指令。调用后请仔细阅读并遵循 skill 中的规则"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "load"],
+                    "description": "list: 列出可用 skill；load: 加载指定 skill"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "要加载的 skill 名称（action 为 load 时必需）"
+                }
+            },
+            "required": ["action"]
+        })
+    }
+
     pub fn new() -> Result<Self, String> {
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
         Ok(Self { cwd })
@@ -33,29 +86,9 @@ impl SkillTool {
 
     pub fn tool_definition() -> Tool {
         Tool {
-            name: "skill".to_string(),
-            description: Some(
-                "管理 skill。Skill 是预定义的工作流模板，包含详细的执行规则和步骤。\
-                 支持两种 action:\n\
-                 - list: 列出所有可用 skill 的名称和描述，让用户选择\n\
-                 - load: 加载指定 skill 的完整指令。调用后请仔细阅读并遵循 skill 中的规则"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["list", "load"],
-                        "description": "list: 列出可用 skill；load: 加载指定 skill"
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "要加载的 skill 名称（action 为 load 时必需）"
-                    }
-                },
-                "required": ["action"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

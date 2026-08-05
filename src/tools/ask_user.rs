@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use serde_json::Value;
 /// ask_user 工具 - 向用户提出一个问题并获取回答
 ///
@@ -5,6 +6,7 @@ use serde_json::Value;
 /// 使用共享的 SelectPrompt 组件（支持 j/k vim 快捷键）。
 use std::io::IsTerminal;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
+use zapmyco_core::AgentTool;
 
 use crate::agent::session_logger;
 use crate::tools::confirm::AskBackend;
@@ -24,7 +26,76 @@ pub struct AskUser {
     pub backend: AskBackend,
 }
 
+#[async_trait]
+impl AgentTool for AskUser {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl AskUser {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "ask_user"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "向用户提出一个带有选项的问题并获取回答。\
+         当需要用户做出决策、澄清需求、确认操作或选择偏好时使用。\
+         注意：一次只能问一个问题，不要在 question 中包含多个问题。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "要向用户提出的问题，应清晰明确并以问号结尾"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {
+                                "type": "string",
+                                "description": "选项的简短标签（1-5个字），将显示在选择列表中"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "选项的详细说明，帮助用户理解每个选项的含义"
+                            }
+                        },
+                        "required": ["label", "description"]
+                    },
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "description": "提供给用户的可选选项列表"
+                },
+                "multi_select": {
+                    "type": "boolean",
+                    "description": "是否允许多选，默认为 false。设为 true 时用户可以选择多个选项。"
+                }
+            },
+            "required": ["question", "options"]
+        })
+    }
+
     /// 使用默认后端（Terminal）创建 AskUser
     pub fn new() -> Self {
         Self::default()
@@ -38,47 +109,9 @@ impl AskUser {
     /// 返回 Anthropic Tool 定义
     pub fn tool_definition() -> Tool {
         Tool {
-            name: "ask_user".to_string(),
-            description: Some(
-                "向用户提出一个带有选项的问题并获取回答。\
-                 当需要用户做出决策、澄清需求、确认操作或选择偏好时使用。\
-                 注意：一次只能问一个问题，不要在 question 中包含多个问题。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "question": {
-                        "type": "string",
-                        "description": "要向用户提出的问题，应清晰明确并以问号结尾"
-                    },
-                    "options": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "label": {
-                                    "type": "string",
-                                    "description": "选项的简短标签（1-5个字），将显示在选择列表中"
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "选项的详细说明，帮助用户理解每个选项的含义"
-                                }
-                            },
-                            "required": ["label", "description"]
-                        },
-                        "minItems": 1,
-                        "maxItems": 6,
-                        "description": "提供给用户的可选选项列表"
-                    },
-                    "multi_select": {
-                        "type": "boolean",
-                        "description": "是否允许多选，默认为 false。设为 true 时用户可以选择多个选项。"
-                    }
-                },
-                "required": ["question", "options"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

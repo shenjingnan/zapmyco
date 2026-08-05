@@ -8,6 +8,9 @@
 //
 // 底层使用与 ripgrep 相同的 ignore 和 globset crate，行为一致。
 
+use async_trait::async_trait;
+use zapmyco_core::AgentTool;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -43,7 +46,65 @@ pub struct FileFind {
     options: FileFindOptions,
 }
 
+#[async_trait]
+impl AgentTool for FileFind {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl FileFind {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "file_find"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "在本地文件系统中按文件名模式匹配快速查找文件。\
+         支持 glob 通配符模式（如 **/*.rs、src/**/*.ts）。\
+         适用于查找特定类型的文件、按名称搜索文件等场景。\
+         与 grep 不同，glob 只匹配文件名而非文件内容。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "glob 通配符模式，例如 \"**/*.rs\" 查找所有 Rust 文件"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "搜索路径（目录），默认为当前工作目录"
+                },
+                "head_limit": {
+                    "type": "integer",
+                    "description": "最大结果数量，默认 100"
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "跳过前 N 条结果，用于分页"
+                }
+            },
+            "required": ["pattern"]
+        })
+    }
+
     /// 创建新的 FileFind 实例
     pub fn new(options: FileFindOptions) -> Self {
         Self { options }
@@ -53,36 +114,9 @@ impl FileFind {
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "file_find".to_string(),
-            description: Some(
-                "在本地文件系统中按文件名模式匹配快速查找文件。\
-                 支持 glob 通配符模式（如 **/*.rs、src/**/*.ts）。\
-                 适用于查找特定类型的文件、按名称搜索文件等场景。\
-                 与 grep 不同，glob 只匹配文件名而非文件内容。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "glob 通配符模式，例如 \"**/*.rs\" 查找所有 Rust 文件"
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": "搜索路径（目录），默认为当前工作目录"
-                    },
-                    "head_limit": {
-                        "type": "integer",
-                        "description": "最大结果数量，默认 100"
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "跳过前 N 条结果，用于分页"
-                    }
-                },
-                "required": ["pattern"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }
