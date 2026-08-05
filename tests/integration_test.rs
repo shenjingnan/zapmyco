@@ -466,7 +466,7 @@ async fn test_agent_finish_session_completed() {
     .expect("Failed to create AiAgent");
 
     // 执行 finish_session
-    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Completed);
+    agent.finish_session(zapmyco::session::logger::ExitReason::Completed);
 
     // 验证 session.json 已更新
     let session_dir = agent.session_dir().expect("session_dir should exist");
@@ -500,7 +500,7 @@ async fn test_agent_finish_session_interrupted() {
     })
     .expect("Failed to create AiAgent");
 
-    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Interrupted);
+    agent.finish_session(zapmyco::session::logger::ExitReason::Interrupted);
 
     let meta_path = agent
         .session_dir()
@@ -534,7 +534,7 @@ async fn test_agent_finish_session_error() {
     })
     .expect("Failed to create AiAgent");
 
-    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Error);
+    agent.finish_session(zapmyco::session::logger::ExitReason::Error);
 
     let meta_path = agent
         .session_dir()
@@ -571,7 +571,7 @@ async fn test_agent_stats_after_chat() {
     let _ = agent.chat("round 1").await.expect("Chat failed");
     let _ = agent.chat("round 2").await.expect("Chat failed");
     let _ = agent.chat("round 3").await.expect("Chat failed");
-    agent.finish_session(zapmyco::agent::session_logger::ExitReason::Completed);
+    agent.finish_session(zapmyco::session::logger::ExitReason::Completed);
 
     // 验证 stats
     assert_eq!(

@@ -10,11 +10,8 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
-use zapmyco_anthropic_ai_sdk::types::message::ContentBlock;
-
-use crate::agent::chat::ConversationMessage;
-use crate::agent::executor::extract_text_from_blocks;
-use crate::agent::session_logger;
+use crate::session::logger as session_logger;
+use zapmyco_core::{ConversationMessage, MessageBlock, Role};
 
 /// 会话摘要（用于列表展示）
 pub struct SessionSummary {
@@ -100,16 +97,24 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
             continue;
         }
 
-        // 读取第一行获取时间戳和预览
+        // 读取第一行获取时间戳和预览（兼容新旧格式）
         let (first_time, preview) = match serde_json::from_str::<Value>(lines[0]) {
             Ok(record) => {
                 let ts = record["ts"].as_str().unwrap_or("").to_string();
-                let preview = record["request"]["messages"]
+                // 新格式：messages 快照
+                let preview = record["messages"]
                     .as_array()
                     .and_then(|msgs| msgs.first())
-                    .and_then(|m| match &m["content"] {
-                        Value::String(s) => Some(s.chars().take(80).collect()),
-                        _ => None,
+                    .and_then(|m| m["content"].as_str())
+                    .map(|s| s.chars().take(80).collect())
+                    // 旧格式：request.messages
+                    .or_else(|| {
+                        record["request"]["messages"].as_array().and_then(|msgs| {
+                            msgs.first().and_then(|m| match &m["content"] {
+                                Value::String(s) => Some(s.chars().take(80).collect()),
+                                _ => None,
+                            })
+                        })
                     })
                     .unwrap_or_default();
                 (ts, preview)
@@ -117,11 +122,16 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
             Err(_) => continue,
         };
 
-        // 读取最后一行获取消息数
+        // 读取最后一行获取消息数（兼容新旧格式）
         let message_count = lines
             .last()
             .and_then(|line| serde_json::from_str::<Value>(line).ok())
-            .and_then(|record| record["request"]["messages"].as_array().map(|a| a.len()))
+            .and_then(|record| {
+                record["messages"]
+                    .as_array()
+                    .map(|a| a.len())
+                    .or_else(|| record["request"]["messages"].as_array().map(|a| a.len()))
+            })
             .unwrap_or(0);
 
         sessions.push(SessionSummary {
@@ -145,7 +155,9 @@ pub fn list_sessions() -> Result<Vec<SessionSummary>, String> {
 /// 加载指定会话的消息历史
 ///
 /// 从 `~/.zapmyco/sessions/<session_id>/conversation.jsonl` 读取并重建消息列表。
-/// 从最后一条记录的 `request.messages` 重建完整消息列表。
+/// 从最后一行向前找第一个可解析行，兼容两种格式：
+/// - 新格式（Core 路径）：`messages` 完整快照
+/// - 旧格式（AiAgent 路径）：`request.messages`
 pub fn load_session(session_id: &str) -> Result<Vec<ConversationMessage>, String> {
     let dir = get_sessions_dir()?;
     let path = dir.join(session_id).join("conversation.jsonl");
@@ -157,20 +169,34 @@ pub fn load_session(session_id: &str) -> Result<Vec<ConversationMessage>, String
         )
     })?;
 
-    let lines: Vec<&str> = content.lines().collect();
+    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.is_empty() {
         return Err("会话文件为空".to_string());
     }
 
-    // 取最后一条记录（order 最大），包含完整的消息历史
-    let last_record: Value = serde_json::from_str(lines.last().unwrap())
-        .map_err(|e| format!("解析会话文件失败: {}", e))?;
+    // 从最后一行向前找第一个可解析行，兼容新旧格式
+    for line in lines.iter().rev() {
+        let v: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
 
-    let messages = last_record["request"]["messages"]
-        .as_array()
-        .ok_or_else(|| "会话文件中未找到消息记录".to_string())?;
+        // 新格式：完整消息快照
+        if let Some(arr) = v["messages"].as_array() {
+            let json_msgs: Vec<session_logger::MessageJson> =
+                serde_json::from_value(Value::Array(arr.clone()))
+                    .map_err(|e| format!("解析会话快照失败: {}", e))?;
+            return session_logger::json_to_core_messages(&json_msgs);
+        }
 
-    messages.iter().map(json_to_conversation_message).collect()
+        // 旧格式：request.messages（AiAgent 逐轮 request/response 记录）
+        if let Some(arr) = v.pointer("/request/messages").and_then(|m| m.as_array()) {
+            let msgs: Result<Vec<_>, _> = arr.iter().map(json_to_core_message).collect();
+            return msgs;
+        }
+    }
+
+    Err("会话文件为空或格式无法识别".to_string())
 }
 
 // ---- 内部辅助函数 ----
@@ -180,12 +206,14 @@ fn get_sessions_dir() -> Result<PathBuf, String> {
     session_logger::get_sessions_dir()
 }
 
-/// 将 JSON 格式的消息转换为内部 ConversationMessage
-fn json_to_conversation_message(msg: &Value) -> Result<ConversationMessage, String> {
-    let role = msg["role"]
-        .as_str()
-        .ok_or_else(|| "消息缺少 role 字段".to_string())?
-        .to_string();
+/// 将 JSON 格式的消息（旧格式）转换为 Core 消息
+fn json_to_core_message(msg: &Value) -> Result<ConversationMessage, String> {
+    let role = match msg["role"].as_str() {
+        Some("user") => Role::User,
+        Some("assistant") => Role::Assistant,
+        Some("tool") => Role::Tool,
+        _ => return Err("消息缺少有效的 role 字段".to_string()),
+    };
 
     match &msg["content"] {
         Value::String(text) => Ok(ConversationMessage {
@@ -194,15 +222,17 @@ fn json_to_conversation_message(msg: &Value) -> Result<ConversationMessage, Stri
             blocks: None,
         }),
         Value::Array(blocks_json) => {
-            let blocks: Vec<ContentBlock> = blocks_json
+            let blocks: Result<Vec<MessageBlock>, _> =
+                blocks_json.iter().map(json_to_core_block).collect();
+            let blocks = blocks?;
+            let text = blocks
                 .iter()
-                .map(|b| {
-                    serde_json::from_value(b.clone())
-                        .map_err(|e| format!("解析 ContentBlock 失败: {}", e))
+                .filter_map(|b| match b {
+                    MessageBlock::Text(t) => Some(t.clone()),
+                    _ => None,
                 })
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let text = extract_text_from_blocks(&blocks);
+                .collect::<Vec<_>>()
+                .join("\n");
             Ok(ConversationMessage {
                 role,
                 content: text,
@@ -212,6 +242,42 @@ fn json_to_conversation_message(msg: &Value) -> Result<ConversationMessage, Stri
         other => Err(format!(
             "意外的 content 格式 (期望 string 或 array, 得到 {})",
             type_name_of(other)
+        )),
+    }
+}
+
+/// 将 JSON 格式的 SDK ContentBlock（旧格式）转换为 Core MessageBlock
+fn json_to_core_block(b: &Value) -> Result<MessageBlock, String> {
+    match b["type"].as_str() {
+        Some("text") => Ok(MessageBlock::Text(
+            b["text"].as_str().unwrap_or("").to_string(),
+        )),
+        Some("tool_use") => Ok(MessageBlock::ToolUse {
+            id: b["id"].as_str().unwrap_or("").to_string(),
+            name: b["name"].as_str().unwrap_or("").to_string(),
+            input: b["input"].clone(),
+        }),
+        Some("tool_result") => {
+            let id = b["tool_use_id"]
+                .as_str()
+                .or_else(|| b["id"].as_str())
+                .unwrap_or("")
+                .to_string();
+            let content = b["content"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| b["content"].to_string());
+            let is_error = b["is_error"].as_bool().unwrap_or(false);
+            Ok(MessageBlock::ToolResult {
+                id,
+                content,
+                is_error,
+            })
+        }
+        other => Err(format!(
+            "未知 ContentBlock 类型: {} (值: {})",
+            other.unwrap_or(""),
+            b
         )),
     }
 }
@@ -312,8 +378,8 @@ mod tests {
             "content": "plain text message"
         });
 
-        let msg = json_to_conversation_message(&json).unwrap();
-        assert_eq!(msg.role, "user");
+        let msg = json_to_core_message(&json).unwrap();
+        assert_eq!(msg.role, Role::User);
         assert_eq!(msg.content, "plain text message");
         assert!(msg.blocks.is_none());
     }
@@ -328,8 +394,8 @@ mod tests {
             ]
         });
 
-        let msg = json_to_conversation_message(&json).unwrap();
-        assert_eq!(msg.role, "assistant");
+        let msg = json_to_core_message(&json).unwrap();
+        assert_eq!(msg.role, Role::Assistant);
         assert_eq!(msg.content, "Hello");
         assert!(msg.blocks.is_some());
         let blocks = msg.blocks.unwrap();
@@ -345,8 +411,8 @@ mod tests {
             ]
         });
 
-        let msg = json_to_conversation_message(&json).unwrap();
-        assert_eq!(msg.role, "user");
+        let msg = json_to_core_message(&json).unwrap();
+        assert_eq!(msg.role, Role::User);
         assert!(msg.blocks.is_some());
     }
 
@@ -355,7 +421,7 @@ mod tests {
         let json = serde_json::json!({
             "content": "no role here"
         });
-        let result = json_to_conversation_message(&json);
+        let result = json_to_core_message(&json);
         assert!(result.is_err());
     }
 
@@ -365,7 +431,7 @@ mod tests {
             "role": "user",
             "content": {"nested": "object"}
         });
-        let result = json_to_conversation_message(&json);
+        let result = json_to_core_message(&json);
         assert!(result.is_err());
     }
 
@@ -441,7 +507,7 @@ mod tests {
     #[test]
     fn test_json_to_conversation_preserves_context_reminder() {
         // 构造一个包含 context_reminder 的模拟消息
-        let reminder = crate::agent::system_prompt::build_context_reminder(None);
+        let reminder = crate::prompts::build_context_reminder(None);
         let full_text = format!("{}{}", reminder, "actual task");
 
         let json = serde_json::json!({
@@ -449,8 +515,8 @@ mod tests {
             "content": full_text
         });
 
-        let msg = json_to_conversation_message(&json).unwrap();
-        assert_eq!(msg.role, "user");
+        let msg = json_to_core_message(&json).unwrap();
+        assert_eq!(msg.role, Role::User);
         assert!(
             msg.content.contains("<system-reminder>"),
             "应包含 system-reminder 标签"
@@ -507,9 +573,9 @@ mod tests {
 
             let messages = load_session("v2-session").unwrap();
             assert_eq!(messages.len(), 2);
-            assert_eq!(messages[0].role, "user");
+            assert_eq!(messages[0].role, Role::User);
             assert_eq!(messages[0].content, "hello");
-            assert_eq!(messages[1].role, "assistant");
+            assert_eq!(messages[1].role, Role::Assistant);
             assert_eq!(messages[1].content, "hi there");
         });
     }

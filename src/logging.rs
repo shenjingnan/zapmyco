@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     fn test_session_id_no_invalid_path_chars() {
         run_with_temp_home(|_home| {
-            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
+            let logger = crate::session::logger::SessionLogger::new().unwrap();
             let session_id = logger.session_id();
 
             // Windows 不允许的字符: \ / : * ? " < > |

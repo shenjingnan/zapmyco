@@ -1,9 +1,11 @@
-//! `core-run` 命令 — 使用 Core 层的 `agent_loop()` 执行 AI 任务。
+//! `run` / `core-run` 命令 — 使用 Core 层的 `agent_loop()` 执行 AI 任务。
 //!
 //! 这是从 `cmd_run()`（基于 AiAgent）到 Core 层的迁移路径。
 //! 支持 Base 模式（单次执行 + 工具调用）和 Plan 模式（分析→审批→执行→总结）。
+//! M2 起，`zapmyco run` 完全走本命令，不再依赖旧 AiAgent。
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::mpsc;
 
@@ -21,7 +23,10 @@ use zapmyco_core::{AgentConfig, agent_loop};
 
 use super::config_resolver::{ResolvedLlmConfig, resolve_llm_config};
 
-/// core-run 命令入口 — 使用 Core 层执行 AI 任务
+/// 是否收到 Ctrl+C 中断信号
+static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
+
+/// run 命令入口 — 使用 Core 层执行 AI 任务
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn cmd_core_run(
     content: Option<&str>,
@@ -32,27 +37,47 @@ pub(crate) async fn cmd_core_run(
     model: Option<&str>,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    task_id: Option<&str>,
+    session: Option<&str>,
+    subagent: bool,
+    parent_session_id: Option<&str>,
 ) -> Result<(), String> {
-    // ── Step 1: 解析 content ──
-    let content = match content {
-        Some(c) => c.to_string(),
-        None => {
-            return Err("任务描述不能为空。\n使用: zapmyco core-run \"任务描述\"".to_string());
+    // ── Step 1: 解析 content / skill_name ──
+    let content = match (content, skill_name) {
+        (Some(c), _) => c.to_string(),
+        (None, Some(skill_name)) => format!(
+            "请根据已加载的 Skill '{}' 指令开始工作。无需等待用户进一步指示，直接开始执行。",
+            skill_name
+        ),
+        (None, None) => {
+            return Err(
+                "任务描述不能为空。\n使用: zapmyco run \"任务描述\"\n或: zapmyco run --skill <skill名称>"
+                    .to_string(),
+            )
         }
     };
 
     tracing::info!(
         input_len = content.len(),
         profile = profile.unwrap_or("default"),
-        mode = ?mode,
-        "core-run 开始执行"
+        skill = skill_name.unwrap_or(""),
+        "run 开始执行"
     );
 
-    // ── Step 2: 扫描和加载 skill ──
+    // ── Step 2: 检查配置文件 ──
+    let file_path = crate::config::settings::get_settings_path();
+    if !file_path.exists() {
+        return Err(format!(
+            "未找到配置文件 {}\n请先运行 `zapmyco init` 初始化 LLM 配置。",
+            file_path.display()
+        ));
+    }
+
+    // ── Step 3: 扫描和加载 skill ──
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let all_skills = list_available_skills(&cwd);
 
-    let active_skill: Option<SkillFile> = if let Some(skill_name) = skill_name {
+    let mut active_skill: Option<SkillFile> = if let Some(skill_name) = skill_name {
         match resolve_skill(skill_name, &cwd) {
             Some(skill) => {
                 if skill.name != skill_name {
@@ -82,10 +107,22 @@ pub(crate) async fn cmd_core_run(
         None
     };
 
-    // ── Step 3: 解析 LLM 配置 ──
+    // Plan 模式自动加载内置 plan skill（未通过 --skill 指定其他 skill 时）
+    if mode == ExecutionMode::Plan
+        && active_skill.is_none()
+        && let Some(skill) = resolve_skill("plan", &cwd)
+    {
+        output::send(&Message::info(format!(
+            "[Plan] 已加载内置 skill: {} — {}",
+            skill.name, skill.description,
+        )));
+        active_skill = Some(skill);
+    }
+
+    // ── Step 4: 解析 LLM 配置 ──
     let resolved = resolve_llm_config(profile, model, api_key, base_url)?;
 
-    // ── Step 4: 构建 system prompt ──
+    // ── Step 5: 构建 system prompt ──
     let base_prompt = format!(
         "{}{}",
         crate::prompts::DEFAULT_SYSTEM_PROMPT,
@@ -98,17 +135,89 @@ pub(crate) async fn cmd_core_run(
         format!("{}\n\n{}", base_prompt, skill_list)
     };
 
-    // ── Step 5: 构建工具集 ──
-    let full_tools = build_tools(&resolved, permission_mode, active_skill.as_ref())?;
+    // ── Step 6: 构建共享 TaskManager（--task-id 复用任务列表） ──
+    let list_id = task_id
+        .map(|s| s.to_string())
+        .unwrap_or_else(generate_session_id);
+    let tm = Arc::new(task_manager::TaskManager::with_list_id(&list_id));
+    output::send(&Message::info(format!("[会话] 任务列表 ID: {}", list_id)));
+    if task_id.is_none() {
+        output::send(&Message::info(format!(
+            "[提示] 使用 --task-id {} 可恢复此会话的任务列表",
+            list_id
+        )));
+    }
 
-    // 只读工具（Phase 1 分析用）：过滤掉写操作工具
+    // ── Step 7: 构建工具集 ──
+    let full_tools = build_tools(
+        &resolved,
+        permission_mode,
+        active_skill.as_ref(),
+        tm.clone(),
+        subagent,
+        parent_session_id,
+    )?;
+    // 只读工具（Plan Phase 1 分析用）：过滤掉写操作工具
     let readonly_names = ["file_write", "file_edit", "shell_exec"];
-    let readonly_tools = build_tools(&resolved, permission_mode, active_skill.as_ref())?
-        .into_iter()
-        .filter(|t| !readonly_names.contains(&t.name()))
-        .collect();
+    let readonly_tools = build_tools(
+        &resolved,
+        permission_mode,
+        active_skill.as_ref(),
+        tm.clone(),
+        subagent,
+        parent_session_id,
+    )?
+    .into_iter()
+    .filter(|t| !readonly_names.contains(&t.name()))
+    .collect();
 
-    // ── Step 6: 构建 Core 配置 ──
+    // ── Step 8: Session 生命周期 ──
+    let run_session = RunSession::start(
+        &resolved,
+        permission_mode,
+        subagent,
+        parent_session_id,
+        profile,
+    )?;
+    let _terminal_guard = run_session
+        .as_ref()
+        .and_then(|s| register_terminal_log(&s.session_id));
+    let _app_guard = run_session
+        .as_ref()
+        .and_then(|s| register_app_log(&s.session_id));
+    spawn_ctrl_c_handler();
+
+    // ── Step 9: --session 历史加载 ──
+    let mut messages: Vec<zapmyco_core::ConversationMessage> = if let Some(session_id) = session {
+        let history = crate::session::loader::load_session(session_id)?;
+        output::send(&Message::info(format!(
+            "[会话] 已加载历史会话 {} ({} 条消息)",
+            session_id,
+            history.len()
+        )));
+        history
+    } else {
+        Vec::new()
+    };
+
+    // ── Step 10: context_reminder 注入（仅首次输入） ──
+    let agents_md = crate::agents_md::load_agents_md(&cwd);
+    let mut context_injected = !messages.is_empty();
+    let wrap_input = |raw: String, ctx: &mut bool| -> String {
+        if *ctx {
+            return raw;
+        }
+        *ctx = true;
+        let mut reminder = crate::prompts::build_context_reminder(agents_md.as_deref());
+        if !skill_list.is_empty()
+            && let Some(pos) = reminder.rfind("</system-reminder>")
+        {
+            reminder.insert_str(pos, &skill_list);
+        }
+        format!("{}{}", reminder, raw)
+    };
+
+    // ── Step 11: 构建 Core 配置 ──
     let make_config = |tools: Vec<Box<dyn zapmyco_core::AgentTool>>| -> Arc<AgentConfig> {
         Arc::new(
             AgentConfig::new(&resolved.model, &resolved.api_key, &resolved.base_url)
@@ -123,19 +232,103 @@ pub(crate) async fn cmd_core_run(
 
     let preamble = build_skill_preamble(active_skill.as_ref());
 
-    // ── Step 7: 运行 ──
+    // ── Step 12: 运行 ──
     match mode {
-        ExecutionMode::Base => run_base(readonly_config, &preamble, &content).await,
-        ExecutionMode::Plan => run_plan(readonly_config, full_config, &preamble, &content).await,
+        ExecutionMode::Base => {
+            run_base(
+                readonly_config,
+                &preamble,
+                &content,
+                &mut messages,
+                &wrap_input,
+                &mut context_injected,
+                run_session.as_ref(),
+            )
+            .await?
+        }
+        ExecutionMode::Plan => {
+            run_plan(
+                readonly_config,
+                full_config.clone(),
+                &preamble,
+                &content,
+                &mut messages,
+                &wrap_input,
+                &mut context_injected,
+                run_session.as_ref(),
+                &tm,
+            )
+            .await?
+        }
     }
+
+    // ── Step 13: 交互式继续循环（仅主 Agent） ──
+    if !subagent {
+        loop {
+            output::send(&Message::result(String::new()));
+            let user_input = inquire::Text::new("继续输入指令（留空或输入 /exit 退出）：\n")
+                .prompt()
+                .map_err(|e| e.to_string())?;
+
+            let trimmed = user_input.trim();
+            if trimmed.is_empty() || trimmed == "/exit" || trimmed == "/quit" {
+                break;
+            }
+
+            let (event_tx, mut event_rx) = mpsc::channel(256);
+            let display = tokio::spawn(async move {
+                while let Some(event) = event_rx.recv().await {
+                    core_event_handler(&event);
+                }
+            });
+            let r = agent_loop(
+                full_config.clone(),
+                &mut messages,
+                wrap_input(trimmed.to_string(), &mut context_injected),
+                event_tx,
+            )
+            .await;
+            display.await.ok();
+            r.map_err(|e| format!("Agent 执行失败: {}", e))?;
+            if let Some(s) = &run_session {
+                s.snapshot(&messages);
+            }
+        }
+    }
+
+    // ── Step 14: 退出前子 Agent 检查（仅主 Agent） ──
+    if !subagent {
+        check_running_subagents();
+    }
+
+    // ── Step 15: 结束会话 ──
+    output::send(&Message::result(String::new()));
+    let exit_reason = if SHOULD_EXIT.load(Ordering::Relaxed) {
+        crate::session::logger::ExitReason::Interrupted
+    } else {
+        crate::session::logger::ExitReason::Completed
+    };
+    if let Some(s) = &run_session {
+        s.finish(exit_reason);
+    }
+
+    Ok(())
 }
 
 // ============================================================================
 // Base 模式
 // ============================================================================
 
-async fn run_base(config: Arc<AgentConfig>, preamble: &str, content: &str) -> Result<(), String> {
-    let full_prompt = format!("{}{}", preamble, content);
+async fn run_base(
+    config: Arc<AgentConfig>,
+    preamble: &str,
+    content: &str,
+    messages: &mut Vec<zapmyco_core::ConversationMessage>,
+    wrap_input: &impl Fn(String, &mut bool) -> String,
+    context_injected: &mut bool,
+    run_session: Option<&RunSession>,
+) -> Result<(), String> {
+    let full_prompt = wrap_input(format!("{}{}", preamble, content), context_injected);
     let (event_tx, mut event_rx) = mpsc::channel(256);
 
     let display = tokio::spawn(async move {
@@ -144,10 +337,11 @@ async fn run_base(config: Arc<AgentConfig>, preamble: &str, content: &str) -> Re
         }
     });
 
-    let mut messages = vec![];
-    let result = agent_loop(config, &mut messages, &full_prompt, event_tx).await;
-
+    let result = agent_loop(config, messages, full_prompt, event_tx).await;
     display.await.ok();
+    if let Some(s) = run_session {
+        s.snapshot(messages);
+    }
 
     match result {
         Ok(()) => Ok(()),
@@ -162,11 +356,17 @@ async fn run_base(config: Arc<AgentConfig>, preamble: &str, content: &str) -> Re
 // Plan 模式
 // ============================================================================
 
+#[allow(clippy::too_many_arguments)]
 async fn run_plan(
     readonly_config: Arc<AgentConfig>,
     full_config: Arc<AgentConfig>,
     preamble: &str,
     content: &str,
+    messages: &mut Vec<zapmyco_core::ConversationMessage>,
+    wrap_input: &impl Fn(String, &mut bool) -> String,
+    context_injected: &mut bool,
+    run_session: Option<&RunSession>,
+    tm: &Arc<task_manager::TaskManager>,
 ) -> Result<(), String> {
     // ════════════════════════════════════════════════════════════
     // Phase 1: 分析规划（只读工具）
@@ -175,11 +375,13 @@ async fn run_plan(
         "[Plan] Phase 1 — 分析规划阶段（仅只读工具）",
     ));
 
-    let plan_prompt = format!("{}请开始分析规划。\n\n## 用户需求\n{}", preamble, content,);
+    let plan_prompt = wrap_input(
+        format!("{}请开始分析规划。\n\n## 用户需求\n{}", preamble, content),
+        context_injected,
+    );
 
-    let mut messages = vec![];
     let plan_text =
-        run_agent_with_output(readonly_config.clone(), &mut messages, &plan_prompt).await?;
+        run_agent_with_output(readonly_config.clone(), messages, &plan_prompt, run_session).await?;
 
     // 保存方案到文件
     if let Ok(cwd) = std::env::current_dir() {
@@ -227,8 +429,13 @@ async fn run_plan(
             preamble, content,
         );
 
-        current_plan =
-            run_agent_with_output(readonly_config.clone(), &mut messages, &feedback_prompt).await?;
+        current_plan = run_agent_with_output(
+            readonly_config.clone(),
+            messages,
+            &feedback_prompt,
+            run_session,
+        )
+        .await?;
 
         if let Ok(cwd) = std::env::current_dir() {
             let plan_path = cwd.join(".zapmyco").join("plan.md");
@@ -246,11 +453,10 @@ async fn run_plan(
         content, current_plan,
     );
 
-    let tm = std::sync::Arc::new(task_manager::TaskManager::new());
-    run_agent_with_output(full_config.clone(), &mut messages, &exec_prompt).await?;
+    run_agent_with_output(full_config.clone(), messages, &exec_prompt, run_session).await?;
 
     // 任务执行循环
-    run_task_loop_core(full_config.clone(), &mut messages, tm.clone()).await?;
+    run_task_loop_core(full_config.clone(), messages, tm, run_session).await?;
 
     // ════════════════════════════════════════════════════════════
     // Phase 4: 总结
@@ -259,8 +465,9 @@ async fn run_plan(
 
     let _summary = run_agent_with_output(
         full_config.clone(),
-        &mut messages,
+        messages,
         "所有任务已完成，请总结本次工作。",
+        run_session,
     )
     .await?;
 
@@ -272,6 +479,7 @@ async fn run_agent_with_output(
     config: Arc<AgentConfig>,
     messages: &mut Vec<zapmyco_core::ConversationMessage>,
     input: &str,
+    run_session: Option<&RunSession>,
 ) -> Result<String, String> {
     let (event_tx, mut event_rx) = mpsc::channel(256);
 
@@ -283,6 +491,9 @@ async fn run_agent_with_output(
 
     let result = agent_loop(config, messages, input, event_tx).await;
     display.await.ok();
+    if let Some(s) = run_session {
+        s.snapshot(messages);
+    }
 
     match result {
         Ok(()) => Ok(messages
@@ -301,7 +512,8 @@ async fn run_agent_with_output(
 async fn run_task_loop_core(
     config: Arc<AgentConfig>,
     messages: &mut Vec<zapmyco_core::ConversationMessage>,
-    task_manager: std::sync::Arc<task_manager::TaskManager>,
+    task_manager: &Arc<task_manager::TaskManager>,
+    run_session: Option<&RunSession>,
 ) -> Result<(), String> {
     let mut task_completed = false;
 
@@ -334,14 +546,32 @@ async fn run_task_loop_core(
             }
         });
 
-        let result = agent_loop(config.clone(), messages, &continuation, event_tx).await;
+        let result = tokio::select! {
+            r = agent_loop(config.clone(), messages, &continuation, event_tx) => Some(r),
+            _ = tokio::signal::ctrl_c() => None,
+        };
         display.await.ok();
+        if let Some(s) = run_session {
+            s.snapshot(messages);
+        }
 
         match result {
-            Ok(()) => {
+            Some(Ok(())) => {
                 task_completed = true;
             }
-            Err(e) => return Err(format!("任务执行失败: {}", e)),
+            Some(Err(e)) => return Err(format!("任务执行失败: {}", e)),
+            None => {
+                // Ctrl+C 中断 LLM：让用户提供纠正输入
+                let user_input =
+                    inquire::Text::new("🛑 已中断 LLM 执行。请输入补充说明以纠正执行方向：")
+                        .prompt()
+                        .map_err(|e| e.to_string())?;
+                messages.push(zapmyco_core::ConversationMessage::user(format!(
+                    "[用户干预] {}\n\n请根据上述指引调整执行方向。",
+                    user_input
+                )));
+                task_completed = true;
+            }
         }
     }
 
@@ -357,6 +587,9 @@ fn build_tools(
     resolved: &ResolvedLlmConfig,
     permission_mode: PermissionMode,
     active_skill: Option<&SkillFile>,
+    tm: Arc<task_manager::TaskManager>,
+    is_subagent: bool,
+    parent_session_id: Option<&str>,
 ) -> Result<Vec<Box<dyn zapmyco_core::AgentTool>>, String> {
     let mut tools: Vec<Box<dyn zapmyco_core::AgentTool>> = Vec::new();
 
@@ -411,8 +644,7 @@ fn build_tools(
     tools.push(Box::new(file_edit::FileEdit::new(Default::default())));
     tools.push(Box::new(file_write::FileWrite::new(Default::default())));
 
-    // Task 管理
-    let tm = std::sync::Arc::new(task_manager::TaskManager::new());
+    // Task 管理（共享同一 TaskManager）
     tools.push(Box::new(task_create::TaskCreate {
         manager: tm.clone(),
     }));
@@ -426,10 +658,15 @@ fn build_tools(
         manager: tm.clone(),
     }));
 
-    // SubAgent + Skill
-    if let Ok(sa) = subagent::SubAgentTool::with_permission_mode(permission_mode) {
+    // SubAgent（子 Agent 进程不注册 SubAgent 工具，避免递归）
+    if !is_subagent
+        && let Ok(mut sa) = subagent::SubAgentTool::with_permission_mode(permission_mode)
+    {
+        sa.set_parent_session_id(parent_session_id.map(|s| s.to_string()));
         tools.push(Box::new(sa));
     }
+
+    // Skill
     if let Ok(st) = skill::SkillTool::new() {
         tools.push(Box::new(st));
     }
@@ -475,6 +712,176 @@ fn build_skill_preamble(skill: Option<&SkillFile>) -> String {
 }
 
 // ============================================================================
+// Session 生命周期与日志
+// ============================================================================
+
+/// run 会话 — 管理 session 目录、会话元数据与消息快照
+struct RunSession {
+    session_id: String,
+    meta: Option<crate::session::logger::SessionMeta>,
+}
+
+impl RunSession {
+    /// 启动会话：创建目录 + session.json 元数据。会话日志禁用时返回 None。
+    fn start(
+        resolved: &ResolvedLlmConfig,
+        permission_mode: PermissionMode,
+        is_subagent: bool,
+        parent_session_id: Option<&str>,
+        profile: Option<&str>,
+    ) -> Result<Option<Self>, String> {
+        let settings = crate::config::settings::load_settings().ok().flatten();
+        let session_log_enabled = settings
+            .as_ref()
+            .map(crate::config::settings::is_session_log_enabled)
+            .unwrap_or(true);
+        if !session_log_enabled {
+            return Ok(None);
+        }
+        let logger = crate::session::logger::SessionLogger::new()?;
+        let session_id = logger.session_id().to_string();
+        let session_dir = logger.session_dir();
+        let meta = crate::session::logger::SessionMeta::create(
+            &session_dir,
+            &session_id,
+            env!("CARGO_PKG_VERSION"),
+            profile.unwrap_or("default"),
+            &resolved.provider_name,
+            &resolved.model,
+            &resolved.base_url,
+            &permission_mode.to_string(),
+            is_subagent,
+            parent_session_id,
+            &crate::env_info::os_info(),
+            &crate::env_info::shell_name(),
+            &crate::env_info::locale_info(),
+        )
+        .ok();
+        Ok(Some(Self { session_id, meta }))
+    }
+
+    /// 追加一行消息快照到 conversation.jsonl
+    fn snapshot(&self, messages: &[zapmyco_core::ConversationMessage]) {
+        if let Err(e) = crate::session::logger::append_messages_snapshot(&self.session_id, messages)
+        {
+            tracing::warn!(error = %e, "写入会话快照失败");
+        }
+    }
+
+    /// 写入退出原因到 session.json
+    fn finish(&self, reason: crate::session::logger::ExitReason) {
+        if let Some(meta) = &self.meta {
+            let _ = meta.finish(reason);
+        }
+    }
+}
+
+/// 在会话子目录中创建 terminal.log 并注册到全局 ROUTER
+fn register_terminal_log(session_id: &str) -> Option<TerminalLogGuard> {
+    let log_dir = crate::session::logger::get_sessions_dir().ok()?;
+    let log_path = log_dir.join(session_id).join("terminal.log");
+    let target = crate::output::LogTarget::new(&log_path).ok()?;
+    crate::output::ROUTER.add_target(Box::new(target));
+    Some(TerminalLogGuard)
+}
+
+/// Drop 时自动从全局 ROUTER 移除 LogTarget
+struct TerminalLogGuard;
+
+impl Drop for TerminalLogGuard {
+    fn drop(&mut self) {
+        crate::output::ROUTER.remove_target("log");
+    }
+}
+
+/// 在会话子目录中注册 app 日志（应用执行日志）
+fn register_app_log(session_id: &str) -> Option<AppLogGuard> {
+    let sessions_dir = crate::session::logger::get_sessions_dir().ok()?;
+    let session_dir = sessions_dir.join(session_id);
+    crate::logging::set_session_log_dir(session_dir);
+    Some(AppLogGuard)
+}
+
+/// Drop 时自动清除 SESSION_LOG_DIR
+struct AppLogGuard;
+
+impl Drop for AppLogGuard {
+    fn drop(&mut self) {
+        crate::logging::clear_session_log_dir();
+    }
+}
+
+/// 生成唯一的任务列表 ID（用于 --task-id 恢复）
+fn generate_session_id() -> String {
+    format!("run_{}", chrono::Local::now().format("%Y%m%d_%H%M%S%9f"))
+}
+
+/// 注册 Ctrl+C 处理器：第一次优雅关闭，第二次强制退出
+fn spawn_ctrl_c_handler() {
+    tokio::spawn(async {
+        tokio::signal::ctrl_c().await.ok();
+        SHOULD_EXIT.store(true, Ordering::Relaxed);
+        output::send(&Message::info(
+            "收到中断信号，正在优雅关闭...（再按一次强制退出）",
+        ));
+
+        tokio::signal::ctrl_c().await.ok();
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        std::process::exit(130);
+    });
+}
+
+/// 退出前检查仍在运行的后台子代理并报告（仅主 Agent）
+fn check_running_subagents() {
+    if let Ok(subagent_dir) = subagent::get_subagent_data_dir() {
+        match subagent::SubAgentTool::new() {
+            Ok(tool) => {
+                let session = tool.agent_session().to_string();
+                let running = subagent::count_running_subagents(&subagent_dir, &session);
+                if running > 0 {
+                    output::send(&Message::info(format!(
+                        "\n[SubAgent] 仍有 {} 个子代理在后台运行:",
+                        running
+                    )));
+                    if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
+                        for entry in entries.flatten() {
+                            let dir = entry.path();
+                            if !dir.join("done").exists()
+                                && dir.join("pid").exists()
+                                && std::fs::read_to_string(dir.join("agent_session"))
+                                    .map(|s| s.trim() == session)
+                                    .unwrap_or(false)
+                            {
+                                let id = dir
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy())
+                                    .unwrap_or_default();
+                                let task =
+                                    std::fs::read_to_string(dir.join("task")).unwrap_or_default();
+                                output::send(&Message::info(format!(
+                                    "  ├ {} — {}",
+                                    id,
+                                    task.lines().next().unwrap_or("")
+                                )));
+                            }
+                        }
+                    }
+                    output::send(&Message::info(format!(
+                        "  └ 结果保留在: {}",
+                        subagent_dir.display()
+                    )));
+                }
+            }
+            Err(e) => {
+                output::send(&Message::info(format!("[SubAgent] 检查子代理失败: {}", e)));
+            }
+        }
+    }
+}
+
+// ============================================================================
 // 测试
 // ============================================================================
 
@@ -500,11 +907,23 @@ mod tests {
         }
     }
 
+    fn make_tm() -> Arc<task_manager::TaskManager> {
+        Arc::new(task_manager::TaskManager::new())
+    }
+
     #[test]
     fn test_build_tools_full_mode() {
         run_with_temp_home(|home| {
             setup_settings(home);
-            let tools = build_tools(&make_resolved(), PermissionMode::Full, None).unwrap();
+            let tools = build_tools(
+                &make_resolved(),
+                PermissionMode::Full,
+                None,
+                make_tm(),
+                false,
+                None,
+            )
+            .unwrap();
             let names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
             assert!(names.contains(&"file_read".to_string()));
             assert!(names.contains(&"shell_exec".to_string()));
@@ -516,7 +935,15 @@ mod tests {
     fn test_build_tools_readonly_mode() {
         run_with_temp_home(|home| {
             setup_settings(home);
-            let tools = build_tools(&make_resolved(), PermissionMode::ReadOnly, None).unwrap();
+            let tools = build_tools(
+                &make_resolved(),
+                PermissionMode::ReadOnly,
+                None,
+                make_tm(),
+                false,
+                None,
+            )
+            .unwrap();
             let names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
             assert!(names.contains(&"file_read".to_string()));
             assert!(!names.contains(&"file_write".to_string()));
@@ -524,10 +951,36 @@ mod tests {
     }
 
     #[test]
+    fn test_build_tools_subagent_skips_subagent_tool() {
+        run_with_temp_home(|home| {
+            setup_settings(home);
+            let tools = build_tools(
+                &make_resolved(),
+                PermissionMode::Full,
+                None,
+                make_tm(),
+                true,
+                None,
+            )
+            .unwrap();
+            let names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
+            assert!(!names.contains(&"subagent".to_string()));
+        });
+    }
+
+    #[test]
     fn test_core_tools_implement_agent_tool() {
         run_with_temp_home(|home| {
             setup_settings(home);
-            let tools = build_tools(&make_resolved(), PermissionMode::Full, None).unwrap();
+            let tools = build_tools(
+                &make_resolved(),
+                PermissionMode::Full,
+                None,
+                make_tm(),
+                false,
+                None,
+            )
+            .unwrap();
             for tool in &tools {
                 assert!(!tool.name().is_empty());
                 assert!(!tool.description().is_empty());
@@ -551,5 +1004,12 @@ mod tests {
     #[test]
     fn test_build_skill_preamble_none() {
         assert_eq!(build_skill_preamble(None), "");
+    }
+
+    #[test]
+    fn test_generate_session_id_format() {
+        let id = generate_session_id();
+        assert!(id.starts_with("run_"));
+        assert!(id.len() > 10);
     }
 }

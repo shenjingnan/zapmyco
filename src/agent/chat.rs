@@ -12,17 +12,16 @@ use zapmyco_anthropic_ai_sdk::types::message::{
     RequiredMessageParams, Role, StreamEvent, Tool,
 };
 
-use crate::agent::env_info;
-use crate::agent::progress::{HandleLike, ProgressReporter};
-use crate::agent::session_logger::{SessionLogger, SessionMeta, ToolCallLogger};
-use crate::agent::system_prompt::SystemPromptBuilder;
 use crate::config::models::{
     get_built_in_model_names, get_model_info, guess_provider_from_model_name,
 };
-use crate::config::settings::{
-    is_session_log_enabled, load_settings, resolve_env_ref, update_settings_model,
-};
+use crate::config::resolve_api_key;
+use crate::config::settings::{is_session_log_enabled, load_settings, update_settings_model};
+use crate::env_info;
 use crate::output;
+use crate::progress::{HandleLike, ProgressReporter};
+use crate::prompts::SystemPromptBuilder;
+use crate::session::logger::{SessionLogger, SessionMeta, ToolCallLogger};
 
 /// AiAgent 配置选项
 #[derive(Debug, Default)]
@@ -66,6 +65,46 @@ pub struct ConversationMessage {
     pub content: String,
     /// 结构化内容块（用于 ToolUse/ToolResult）
     pub blocks: Option<Vec<ContentBlock>>,
+}
+
+/// 从 Core 消息转换（供 --session 加载历史后喂给 AiAgent；AiAgent 下线后移除）
+impl From<zapmyco_core::ConversationMessage> for ConversationMessage {
+    fn from(msg: zapmyco_core::ConversationMessage) -> Self {
+        use zapmyco_core::Role;
+        let role = match msg.role {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::Tool => "tool",
+        }
+        .to_string();
+        let blocks = msg.blocks.map(|blocks| {
+            blocks
+                .into_iter()
+                .map(|b| match b {
+                    zapmyco_core::MessageBlock::Text(text) => ContentBlock::Text {
+                        text,
+                        citations: None,
+                    },
+                    zapmyco_core::MessageBlock::ToolUse { id, name, input } => {
+                        ContentBlock::ToolUse { id, name, input }
+                    }
+                    zapmyco_core::MessageBlock::ToolResult {
+                        id,
+                        content,
+                        is_error: _,
+                    } => ContentBlock::ToolResult {
+                        tool_use_id: id,
+                        content,
+                    },
+                })
+                .collect()
+        });
+        ConversationMessage {
+            role,
+            content: msg.content,
+            blocks,
+        }
+    }
 }
 
 /// 工具处理器
@@ -273,7 +312,7 @@ pub struct AiAgent {
     max_tokens: u32,
     system_prompt: String,
     /// 系统提示词构建器（管理基础提示词与静态长度）
-    prompt_builder: crate::agent::system_prompt::SystemPromptBuilder,
+    prompt_builder: crate::prompts::SystemPromptBuilder,
     messages: Vec<ConversationMessage>,
     logger: Option<SessionLogger>,
     /// 工具调用日志记录器（记录每次工具调用的入参、出参、耗时）
@@ -485,7 +524,7 @@ impl AiAgent {
 
         // 12. 加载 AGENTS.md
         let agents_md_content =
-            crate::agent::agents_md::load_agents_md(&std::env::current_dir().unwrap_or_default());
+            crate::agents_md::load_agents_md(&std::env::current_dir().unwrap_or_default());
 
         Ok(Self {
             client,
@@ -517,9 +556,7 @@ impl AiAgent {
             self.context_injected = true;
             format!(
                 "{}{}",
-                crate::agent::system_prompt::build_context_reminder(
-                    self.agents_md_content.as_deref()
-                ),
+                crate::prompts::build_context_reminder(self.agents_md_content.as_deref()),
                 input
             )
         } else {
@@ -608,9 +645,7 @@ impl AiAgent {
             self.context_injected = true;
             format!(
                 "{}{}",
-                crate::agent::system_prompt::build_context_reminder(
-                    self.agents_md_content.as_deref()
-                ),
+                crate::prompts::build_context_reminder(self.agents_md_content.as_deref()),
                 input
             )
         } else {
@@ -850,9 +885,8 @@ impl AiAgent {
     ) -> Result<String, String> {
         let full_input = if !self.context_injected {
             self.context_injected = true;
-            let mut reminder = crate::agent::system_prompt::build_context_reminder(
-                self.agents_md_content.as_deref(),
-            );
+            let mut reminder =
+                crate::prompts::build_context_reminder(self.agents_md_content.as_deref());
             if let Some(ref list) = self.skill_list_text
                 && !list.is_empty()
                 && let Some(pos) = reminder.rfind("</system-reminder>")
@@ -1639,7 +1673,7 @@ impl AiAgent {
     }
 
     /// 完成 session 并写入结束状态，同时输出聚合摘要
-    pub fn finish_session(&self, exit_reason: crate::agent::session_logger::ExitReason) {
+    pub fn finish_session(&self, exit_reason: crate::session::logger::ExitReason) {
         // 输出聚合摘要
         let stats = &self.session_stats;
         tracing::info!(
@@ -1703,38 +1737,6 @@ impl AiAgent {
             tracing::warn!(error = %e, "记录工具调用日志失败");
         }
     }
-}
-
-/// 解析 API Key
-pub(crate) fn resolve_api_key(
-    explicit_key: Option<&str>,
-    llm: Option<&crate::config::settings::LlmSettings>,
-    provider_name: &str,
-) -> Result<String, String> {
-    if let Some(key) = explicit_key.filter(|k| !k.is_empty()) {
-        return Ok(key.to_string());
-    }
-
-    if let Some(llm) = llm
-        && let Some(providers) = &llm.providers
-        && let Some(cfg) = providers.get(provider_name)
-        && let Some(ref api_key) = cfg.api_key
-        && !api_key.is_empty()
-    {
-        return resolve_env_ref(api_key);
-    }
-
-    // 回退到环境变量
-    if let Ok(key) = std::env::var("DEEPSEEK_API_KEY")
-        && !key.is_empty()
-    {
-        return Ok(key);
-    }
-
-    Err(
-        "DEEPSEEK_API_KEY 未设置。请运行 `zapmyco init` 或设置环境变量 DEEPSEEK_API_KEY。"
-            .to_string(),
-    )
 }
 
 /// 获取某供应商的可用替代模型列表（纯函数，可测试）
@@ -2309,7 +2311,7 @@ mod tests {
     #[test]
     fn test_log_round_trip_writes_record() {
         run_with_temp_home(|home| {
-            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
+            let logger = crate::session::logger::SessionLogger::new().unwrap();
 
             let params = CreateMessageParams::new(RequiredMessageParams {
                 model: "test-model".to_string(),
@@ -2925,7 +2927,7 @@ mod tests {
     #[test]
     fn test_log_round_trip_stream_writes_record() {
         run_with_temp_home(|home| {
-            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
+            let logger = crate::session::logger::SessionLogger::new().unwrap();
 
             let params = CreateMessageParams::new(RequiredMessageParams {
                 model: "test-model".to_string(),
@@ -2968,7 +2970,7 @@ mod tests {
     #[test]
     fn test_log_round_trip_stream_with_tool_uses() {
         run_with_temp_home(|home| {
-            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
+            let logger = crate::session::logger::SessionLogger::new().unwrap();
 
             let params = CreateMessageParams::new(RequiredMessageParams {
                 model: "test-model".to_string(),
@@ -4619,8 +4621,7 @@ mod tests {
     /// 模拟首条用户消息（含 context reminder 注入）
     fn simulate_first_turn(agent: &mut AiAgent, user_input: &str) {
         agent.context_injected = true;
-        let reminder =
-            crate::agent::system_prompt::build_context_reminder(agent.agents_md_content.as_deref());
+        let reminder = crate::prompts::build_context_reminder(agent.agents_md_content.as_deref());
         agent.messages.push(ConversationMessage {
             role: "user".to_string(),
             content: format!("{}{}", reminder, user_input),
@@ -5234,7 +5235,7 @@ mod tests {
             let params = agent.build_params(true).unwrap();
 
             // 创建 logger 并写入日志
-            let logger = crate::agent::session_logger::SessionLogger::new().unwrap();
+            let logger = crate::session::logger::SessionLogger::new().unwrap();
             let result = crate::agent::stream::RoundResult {
                 full_text: "Here's the content of main.rs".to_string(),
                 tool_uses: vec![],
@@ -5255,8 +5256,13 @@ mod tests {
             };
             crate::agent::executor::log_round_trip_stream(&logger, &params, &result, 200);
 
-            // 从 JSONL 加载回消息
-            let loaded = crate::agent::session_loader::load_session(logger.session_id()).unwrap();
+            // 从 JSONL 加载回消息（loader 返回 core 类型，转换回 agent 类型比较）
+            let loaded: Vec<crate::agent::chat::ConversationMessage> =
+                crate::session::loader::load_session(logger.session_id())
+                    .unwrap()
+                    .into_iter()
+                    .map(Into::into)
+                    .collect();
 
             // 验证消息条数一致
             assert_eq!(
@@ -5556,10 +5562,10 @@ enabled = false
 
 #[test]
 fn test_env_info_functions_return_values() {
-    let os = crate::agent::env_info::os_info();
-    let shell = crate::agent::env_info::shell_name();
-    let locale = crate::agent::env_info::locale_info();
-    let tools = crate::agent::env_info::available_tools();
+    let os = crate::env_info::os_info();
+    let shell = crate::env_info::shell_name();
+    let locale = crate::env_info::locale_info();
+    let tools = crate::env_info::available_tools();
 
     assert!(!os.is_empty(), "os_info() should not be empty");
     assert!(!tools.is_empty(), "available_tools() should not be empty");

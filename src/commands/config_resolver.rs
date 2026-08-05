@@ -71,7 +71,7 @@ pub fn resolve_llm_config(
         .to_string();
 
     // ── 解析 API Key ──
-    let api_key = crate::agent::chat::resolve_api_key(api_key, llm, &provider_name)?;
+    let api_key = crate::config::resolve_api_key(api_key, llm, &provider_name)?;
 
     // ── 解析 Base URL ──
     let base_url = base_url

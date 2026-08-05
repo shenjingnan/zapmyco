@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use crate::agent::progress::HandleLike;
-use crate::agent::progress::ProgressReporter;
+use crate::progress::HandleLike;
+use crate::progress::ProgressReporter;
 
 use super::AppState;
 
