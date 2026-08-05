@@ -1,7 +1,9 @@
 /// shell_exec 工具 - 在本地系统执行 shell 命令并返回输出
+use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
+use zapmyco_core::AgentTool;
 
 use crate::output::{self, Message};
 
@@ -639,6 +641,33 @@ impl Clone for ShellExec {
     }
 }
 
+#[async_trait]
+impl AgentTool for ShellExec {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        let command = input
+            .get("command")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Missing required 'command' parameter".to_string())?;
+        let description = input.get("description").and_then(|v| v.as_str());
+        let working_directory = input.get("working_directory").and_then(|v| v.as_str());
+        self.execute(command, description, working_directory)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
 impl ShellExec {
     /// 创建新的 ShellExec 实例
     pub fn new(options: ShellExecOptions) -> Self {
@@ -662,37 +691,49 @@ impl ShellExec {
             )
     }
 
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "shell_exec"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "在本地系统执行 shell 命令并返回标准输出、标准错误和退出码。\
+         工作目录会自动跨命令保持并显示在结果中。\
+         不要在 command 中写 cd 来切换目录，请使用 working_directory 参数。\
+         重要: 不要使用此工具运行 cat、head、tail 命令来读取文件内容，\
+         应使用 read 工具来读取文件。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "要执行的 shell 命令"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "向用户解释为什么要执行此命令及预期效果，帮助用户理解并决定是否授权"
+                },
+                "working_directory": {
+                    "type": "string",
+                    "description": "命令执行的工作目录（绝对路径）。切换目录请使用此参数，不要在 command 前加 cd。不指定则自动使用上次执行后的工作目录"
+                }
+            },
+            "required": ["command", "description"]
+        })
+    }
+
     /// 返回 Anthropic Tool 定义
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "shell_exec".to_string(),
-            description: Some(
-                "在本地系统执行 shell 命令并返回标准输出、标准错误和退出码。\
-                 工作目录会自动跨命令保持并显示在结果中。\
-                 不要在 command 中写 cd 来切换目录，请使用 working_directory 参数。\
-                 重要: 不要使用此工具运行 cat、head、tail 命令来读取文件内容，\
-                 应使用 read 工具来读取文件。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "要执行的 shell 命令"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "向用户解释为什么要执行此命令及预期效果，帮助用户理解并决定是否授权"
-                    },
-                    "working_directory": {
-                        "type": "string",
-                        "description": "命令执行的工作目录（绝对路径）。切换目录请使用此参数，不要在 command 前加 cd。不指定则自动使用上次执行后的工作目录"
-                    }
-                },
-                "required": ["command", "description"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }
@@ -1185,6 +1226,33 @@ mod tests {
             readonly_mode: false,
             confirm_backend: Default::default(),
         })
+    }
+
+    // ---- AgentTool trait 实现 ----
+
+    #[test]
+    fn test_agent_tool_metadata() {
+        let executor = test_executor();
+        let tool: &dyn AgentTool = &executor;
+        assert_eq!(tool.name(), "shell_exec");
+        assert!(!tool.description().is_empty());
+        let schema = tool.input_schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["command"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_agent_tool_execute_echo() {
+        let executor = test_executor();
+        let tool: &dyn AgentTool = &executor;
+        let result = tool
+            .execute(serde_json::json!({
+                "command": "echo hello",
+                "description": "test",
+            }))
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("hello"));
     }
 
     // ---- Tool definition tests ----

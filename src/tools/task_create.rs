@@ -4,42 +4,75 @@
 // 新任务默认状态为 pending。
 
 use crate::tools::task_manager::TaskManager;
+use async_trait::async_trait;
 use std::sync::Arc;
+use zapmyco_core::AgentTool;
 
 pub struct TaskCreate {
     pub manager: Arc<TaskManager>,
 }
 
+#[async_trait]
+impl AgentTool for TaskCreate {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl TaskCreate {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "task_create"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "创建新任务以跟踪复杂工作的进度。\
+         当你需要完成 3 个以上步骤的复杂任务时，使用此工具主动创建任务列表。\
+         接收到用户新指令后，立即将需求拆解为可跟踪的任务。\
+         创建后使用 task_list 查看所有任务，使用 task_update 更新任务状态。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "subject": {
+                    "type": "string",
+                    "description": "简洁的任务标题（如：'实现用户登录功能'）"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "任务的具体描述和完成标准"
+                },
+                "active_form": {
+                    "type": "string",
+                    "description": "进行时态，用于进度显示（如：'正在实现登录'）"
+                }
+            },
+            "required": ["subject", "description"]
+        })
+    }
+
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "task_create".to_string(),
-            description: Some(
-                "创建新任务以跟踪复杂工作的进度。\
-                 当你需要完成 3 个以上步骤的复杂任务时，使用此工具主动创建任务列表。\
-                 接收到用户新指令后，立即将需求拆解为可跟踪的任务。\
-                 创建后使用 task_list 查看所有任务，使用 task_update 更新任务状态。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "subject": {
-                        "type": "string",
-                        "description": "简洁的任务标题（如：'实现用户登录功能'）"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "任务的具体描述和完成标准"
-                    },
-                    "active_form": {
-                        "type": "string",
-                        "description": "进行时态，用于进度显示（如：'正在实现登录'）"
-                    }
-                },
-                "required": ["subject", "description"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

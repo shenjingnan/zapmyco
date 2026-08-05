@@ -722,10 +722,10 @@ mod tests {
             .with_top_k(40)
             .with_top_p(0.9);
 
-        assert_eq!(
-            params.system.as_deref(),
-            Some("You are a helpful assistant.")
-        );
+        let system_blocks = params.system.as_deref().unwrap();
+        assert_eq!(system_blocks.len(), 1);
+        assert_eq!(system_blocks[0].block_type, "text");
+        assert_eq!(system_blocks[0].text, "You are a helpful assistant.");
         assert_eq!(params.stream, Some(true));
         assert_eq!(params.temperature, Some(0.7));
         assert_eq!(params.top_k, Some(40));

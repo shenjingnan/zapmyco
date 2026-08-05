@@ -1,69 +1,9 @@
-//! Core 层适配器 — 桥接现有系统与 Core 层。
-//!
-//! 提供两样东西：
-//! 1. `LegacyToolAdapter` — 将现有 `ToolHandler` enum 包装为 `AgentTool` trait
-//! 2. `core_event_handler()` — 将 `AgentEvent` 映射到现有的 `output::send()`
+//! Core 层适配器 — 将 `AgentEvent` 映射到现有的 `output::send()` 终端渲染。
 
-use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::agent::chat::ToolHandler;
 use crate::output::{self, Message};
-use zapmyco_core::{AgentEvent, AgentTool};
-
-// ============================================================================
-// LegacyToolAdapter — 将现有 ToolHandler 包装为 AgentTool
-// ============================================================================
-
-/// 将现有 `ToolHandler` 包装为 `AgentTool` trait 实现
-///
-/// 这样所有 16 种现有工具都可以通过 Core 层使用，无需重写。
-pub struct LegacyToolAdapter {
-    inner: ToolHandler,
-    cached_name: String,
-    cached_description: String,
-    cached_schema: Value,
-}
-
-impl LegacyToolAdapter {
-    /// 包装一个现有的 `ToolHandler`
-    pub fn new(handler: ToolHandler) -> Self {
-        let def = handler.tool_definition();
-        Self {
-            cached_name: def.name.clone(),
-            cached_description: def.description.unwrap_or_default(),
-            cached_schema: def.input_schema.unwrap_or_default(),
-            inner: handler,
-        }
-    }
-}
-
-#[async_trait]
-impl AgentTool for LegacyToolAdapter {
-    fn name(&self) -> &str {
-        &self.cached_name
-    }
-
-    fn description(&self) -> &str {
-        &self.cached_description
-    }
-
-    fn input_schema(&self) -> Value {
-        self.cached_schema.clone()
-    }
-
-    async fn execute(&self, input: Value) -> Result<String, String> {
-        self.inner.execute(&input).await
-    }
-}
-
-/// 批量转换 `Vec<ToolHandler>` 为 `Vec<Box<dyn AgentTool>>`
-pub fn from_tool_handlers(handlers: Vec<ToolHandler>) -> Vec<Box<dyn AgentTool>> {
-    handlers
-        .into_iter()
-        .map(|h| Box::new(LegacyToolAdapter::new(h)) as Box<dyn AgentTool>)
-        .collect()
-}
+use zapmyco_core::AgentEvent;
 
 // ============================================================================
 // core_event_handler — 将 AgentEvent 映射到现有的 output::send()
@@ -198,54 +138,6 @@ fn format_tool_params(name: &str, input: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_file_read() -> ToolHandler {
-        ToolHandler::FileRead(crate::tools::file_read::FileRead::new(
-            crate::tools::file_read::FileReadOptions::default(),
-        ))
-    }
-
-    fn make_file_write() -> ToolHandler {
-        ToolHandler::FileWrite(crate::tools::file_write::FileWrite::new(
-            crate::tools::file_write::FileWriteOptions {},
-        ))
-    }
-
-    #[test]
-    fn test_adapter_file_read() {
-        let adapter = LegacyToolAdapter::new(make_file_read());
-        assert_eq!(adapter.name(), "file_read");
-        assert!(!adapter.description().is_empty());
-        let schema = adapter.input_schema();
-        assert_eq!(schema["type"], "object");
-        assert!(schema.get("properties").is_some());
-    }
-
-    #[test]
-    fn test_adapter_shell_exec() {
-        let tool = crate::tools::shell_exec::ShellExec::new(
-            crate::tools::shell_exec::ShellExecOptions::default(),
-        );
-        let adapter = LegacyToolAdapter::new(ToolHandler::ShellExec(tool));
-        assert_eq!(adapter.name(), "shell_exec");
-        assert!(!adapter.description().is_empty());
-    }
-
-    #[test]
-    fn test_adapter_file_write() {
-        let adapter = LegacyToolAdapter::new(make_file_write());
-        assert_eq!(adapter.name(), "file_write");
-        assert!(!adapter.description().is_empty());
-    }
-
-    #[test]
-    fn test_from_tool_handlers() {
-        let handlers = vec![make_file_read(), make_file_write()];
-        let tools = from_tool_handlers(handlers);
-        assert_eq!(tools.len(), 2);
-        assert_eq!(tools[0].name(), "file_read");
-        assert_eq!(tools[1].name(), "file_write");
-    }
 
     #[test]
     fn test_format_params() {

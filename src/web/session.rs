@@ -1,37 +1,37 @@
-//! Session 管理器 — 管理 AiAgent 生命周期和工具审批 channel。
+//! Web 会话状态管理器 — 基于 `zapmyco_core::agent_loop` 管理对话历史与工具审批 channel。
 
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::Mutex;
+use tokio::sync::Mutex as AsyncMutex;
 
-use crate::agent::chat::AiAgent;
-use crate::tools::confirm::{
-    AskBackend, AskUserResponse, ConfirmBackend, PendingApprovals, PendingAsks,
-    ShellConfirmDecision,
-};
+use crate::tools::confirm::{AskUserResponse, PendingApprovals, PendingAsks, ShellConfirmDecision};
+use zapmyco_core::{AgentConfig, ConversationMessage};
 
 /// Web 模式下的会话状态
 pub struct Session {
-    /// AI Agent 实例（Option 以便临时取出执行，避免长占锁）
-    pub agent: Option<AiAgent>,
+    /// 对话历史（Some = 会话可用；None = 有请求在途，并发请求返回 SESSION_LOST）
+    pub messages: Option<Vec<ConversationMessage>>,
+    /// 8 个工具（Channel 后端）+ 模型配置，Arc 共享，跨轮复用
+    pub config: Arc<AgentConfig>,
+    /// 跨命令跟踪的工作目录（CwdShellExec 与事件适配器共享）
+    pub cwd: Arc<Mutex<PathBuf>>,
     /// 最近活动时间（用于超时清理）
     pub last_active: Instant,
     /// 工具审批 channel
     pub pending_approvals: PendingApprovals,
     /// ask_user 提问 channel
     pub pending_asks: PendingAsks,
-    /// 审批后端引用（注入到 ShellExec 工具）
-    pub confirm_backend: ConfirmBackend,
-    /// 提问后端引用（注入到 AskUser 工具）
-    pub ask_backend: AskBackend,
+    /// 首条消息注入的 context_reminder（会话创建时算好）
+    pub context_reminder: String,
+    /// 是否已注入 context_reminder
+    pub context_injected: bool,
 }
 
 /// Session 管理器
 pub struct SessionManager {
-    sessions: Arc<Mutex<HashMap<String, Session>>>,
-    next_id: AtomicU64,
+    sessions: Arc<AsyncMutex<HashMap<String, Session>>>,
 }
 
 impl Default for SessionManager {
@@ -44,47 +44,8 @@ impl SessionManager {
     /// 创建新的 Session 管理器。
     pub fn new() -> Self {
         Self {
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-            next_id: AtomicU64::new(1),
+            sessions: Arc::new(AsyncMutex::new(HashMap::new())),
         }
-    }
-
-    /// 获取或创建 session。返回 session_id 和 session 的可变引用。
-    pub async fn get_or_create(
-        &self,
-        session_id: Option<&str>,
-        agent_factory: impl FnOnce() -> AiAgent,
-    ) -> (String, SessionGuard<'_>) {
-        let mut sessions = self.sessions.lock().await;
-
-        if let Some(id) = session_id
-            && let Some(session) = sessions.get_mut(id)
-        {
-            session.last_active = Instant::now();
-            return (
-                id.to_string(),
-                SessionGuard {
-                    sessions,
-                    key: id.to_string(),
-                },
-            );
-        }
-
-        let id = format!("web_{}", self.next_id.fetch_add(1, Ordering::Relaxed));
-        let approvals = PendingApprovals::new();
-        let asks = PendingAsks::new();
-
-        let session = Session {
-            agent: Some(agent_factory()),
-            last_active: Instant::now(),
-            pending_approvals: approvals.clone(),
-            pending_asks: asks.clone(),
-            confirm_backend: ConfirmBackend::Channel(approvals),
-            ask_backend: AskBackend::Channel(asks),
-        };
-
-        sessions.insert(id.clone(), session);
-        (id.clone(), SessionGuard { sessions, key: id })
     }
 
     /// 提交工具审批结果。返回 true 表示找到对应的待审批项。
@@ -132,27 +93,8 @@ impl SessionManager {
         sessions.retain(|_, s| s.last_active.elapsed() < timeout);
     }
 
-    /// 返回共享的 Arc<Mutex<HashMap>> 引用（给 handler 使用）。
-    pub fn inner(&self) -> Arc<Mutex<HashMap<String, Session>>> {
+    /// 返回共享的 Arc<AsyncMutex<HashMap>> 引用（给 handler 使用）。
+    pub fn inner(&self) -> Arc<AsyncMutex<HashMap<String, Session>>> {
         self.sessions.clone()
-    }
-}
-
-/// Session 访问守卫 — drop 时自动释放锁。
-pub struct SessionGuard<'a> {
-    sessions: tokio::sync::MutexGuard<'a, HashMap<String, Session>>,
-    key: String,
-}
-
-impl<'a> std::ops::Deref for SessionGuard<'a> {
-    type Target = Session;
-    fn deref(&self) -> &Self::Target {
-        &self.sessions[&self.key]
-    }
-}
-
-impl<'a> std::ops::DerefMut for SessionGuard<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.sessions.get_mut(&self.key).unwrap()
     }
 }

@@ -1,4 +1,5 @@
 /// Web Search 工具 - 利用 API 服务端 web_search_20250305 实现联网搜索
+use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde_json::Value;
 use zapmyco_anthropic_ai_sdk::client::AnthropicClient;
@@ -6,6 +7,7 @@ use zapmyco_anthropic_ai_sdk::types::message::{
     ContentBlock, ContentBlockDelta, CreateMessageParams, Message, MessageClient, MessageError,
     RequiredMessageParams, Role, StreamEvent, StreamUsage, Tool, WebSearchToolResultContent,
 };
+use zapmyco_core::AgentTool;
 
 /// Web 搜索工具
 ///
@@ -17,7 +19,60 @@ pub struct WebSearch {
     max_tokens: u32,
 }
 
+#[async_trait]
+impl AgentTool for WebSearch {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl WebSearch {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "web_search"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "搜索网络获取实时信息，支持 query（搜索关键词）、allowed_domains（限定域名）、blocked_domains（排除域名）参数。搜索由服务器端自动执行。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜索查询关键词"
+                },
+                "allowed_domains": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "仅在这些域名内搜索"
+                },
+                "blocked_domains": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "排除这些域名的结果"
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
     /// 创建 WebSearch 实例
     ///
     /// 需要从 AiAgent 传入 api_key、base_url、model、max_tokens 以构建内部子请求客户端。
@@ -41,31 +96,9 @@ impl WebSearch {
     /// 返回 Anthropic Tool 定义（对主模型来说是普通 tool_use）
     pub fn tool_definition() -> Tool {
         Tool {
-            name: "web_search".to_string(),
-            description: Some(
-                "搜索网络获取实时信息，支持 query（搜索关键词）、allowed_domains（限定域名）、blocked_domains（排除域名）参数。搜索由服务器端自动执行。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "搜索查询关键词"
-                    },
-                    "allowed_domains": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "仅在这些域名内搜索"
-                    },
-                    "blocked_domains": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "排除这些域名的结果"
-                    }
-                },
-                "required": ["query"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }

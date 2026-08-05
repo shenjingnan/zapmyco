@@ -1,4 +1,4 @@
-//! Chat handler — 流式 AI 对话端点。
+//! Chat handler — 流式 AI 对话端点（基于 zapmyco_core::agent_loop）。
 
 use axum::{
     Json,
@@ -12,49 +12,45 @@ use axum::{
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
-use crate::agent::progress::HandleLike;
-use crate::agent::progress::ProgressReporter;
+use crate::commands::config_resolver::resolve_llm_config;
+use crate::prompts::{BEHAVIORAL_GUIDANCE, DEFAULT_SYSTEM_PROMPT};
+use zapmyco_core::{AgentConfig, agent_loop};
 
 use super::AppState;
+use super::events::agent_event_to_stream_event;
+use super::tools::build_web_tools;
 
 // ── Request/Response 类型 ──
 
 /// POST /api/chat 请求体
 #[derive(Deserialize)]
 pub struct ChatRequest {
-    /// 用户输入的 prompt
     pub prompt: String,
-    /// 可选的 session_id（继续已有会话）
     pub session_id: Option<String>,
 }
 
 /// POST /api/tool/approve 请求体
 #[derive(Deserialize)]
 pub struct ApproveRequest {
-    /// 会话 ID
     pub session_id: String,
-    /// 工具审批 ID
     pub tool_approval_id: String,
-    /// 是否允许
     pub approved: bool,
-    /// 用户编辑后的命令（可选）
     pub edited_command: Option<String>,
 }
 
 /// POST /api/ask/respond 请求体
 #[derive(Deserialize)]
 pub struct AskRespondRequest {
-    /// 会话 ID
     pub session_id: String,
-    /// 提问 ID
     pub ask_id: String,
-    /// 选项索引
     pub selected_idx: Option<usize>,
-    /// 自定义输入文本
     pub custom_text: Option<String>,
 }
+
+// ── SSE 事件类型 ──
 
 /// 流式事件（JSON Lines 格式）
 #[derive(Serialize)]
@@ -99,103 +95,9 @@ pub enum StreamEvent {
     CurrentDir { path: String },
 }
 
-/// Web 模式的进度上报器 — 将进度事件通过 channel 发送到 HTTP 流。
-pub struct WebProgress {
-    tx: tokio::sync::mpsc::UnboundedSender<StreamEvent>,
-}
+// ── Chat 端点 ──
 
-/// Web 模式的进度句柄。
-#[derive(Clone)]
-pub struct WebHandle {
-    tx: tokio::sync::mpsc::UnboundedSender<StreamEvent>,
-    label: String,
-}
-
-impl HandleLike for WebHandle {
-    fn set_running(&self, _status: Option<&str>) {
-        self.tx
-            .send(StreamEvent::ToolProgress {
-                id: self.label.clone(),
-                status: "running".to_string(),
-            })
-            .ok();
-    }
-
-    fn set_success(&self, summary: Option<&str>) {
-        self.tx
-            .send(StreamEvent::ToolResult {
-                id: self.label.clone(),
-                content: summary.unwrap_or("").to_string(),
-            })
-            .ok();
-    }
-
-    fn set_failed(&self, error: &str) {
-        self.tx
-            .send(StreamEvent::ToolResult {
-                id: self.label.clone(),
-                content: format!("failed: {}", error),
-            })
-            .ok();
-    }
-}
-
-impl WebProgress {
-    pub fn new(tx: tokio::sync::mpsc::UnboundedSender<StreamEvent>) -> Self {
-        Self { tx }
-    }
-}
-
-impl ProgressReporter for WebProgress {
-    type Handle = WebHandle;
-
-    fn set_status(&self, text: &str) {
-        self.tx
-            .send(StreamEvent::Status {
-                content: text.to_string(),
-            })
-            .ok();
-    }
-
-    fn start_item(&self, label: &str) -> WebHandle {
-        self.tx
-            .send(StreamEvent::ToolProgress {
-                id: label.to_string(),
-                status: "running".to_string(),
-            })
-            .ok();
-        WebHandle {
-            tx: self.tx.clone(),
-            label: label.to_string(),
-        }
-    }
-
-    fn finish_item(&self, handle: &WebHandle, _success: bool, summary: Option<&str>) {
-        handle.set_success(summary);
-    }
-
-    fn mark_item_completed(&self, handle: &WebHandle) {
-        handle.set_success(None);
-    }
-
-    fn tick(&self) {}
-
-    fn pause(&self) {}
-
-    fn resume(&self) {}
-
-    fn set_cwd(&self, path: &str) {
-        self.tx
-            .send(StreamEvent::CurrentDir {
-                path: path.to_string(),
-            })
-            .ok();
-    }
-}
-
-// ── Handler ──
-
-/// POST /api/chat — 流式 AI 对话
+/// POST /api/chat — 流式对话（基于 agent_loop + AgentEvent→SSE 适配器）
 pub async fn handle_chat(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ChatRequest>,
@@ -205,15 +107,13 @@ pub async fn handle_chat(
     }
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<StreamEvent>();
-    let progress = WebProgress::new(tx.clone());
-
     let sessions = state.sessions.inner();
     let session_id = body
         .session_id
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    // 获取或创建 session
+    // ── 获取或创建 session（锁内构建 config + tools） ──
     {
         let mut sessions_map = sessions.lock().await;
         if !sessions_map.contains_key(&session_id) {
@@ -253,63 +153,38 @@ pub async fn handle_chat(
                 ));
             }
 
-            // 创建 AiAgent（从 settings 读取配置）
-            let mut agent = crate::agent::AiAgent::new(crate::agent::AiAgentOptions {
-                ..Default::default()
-            })
-            .map_err(|e| AppError::internal(format!("创建 AiAgent 失败: {}", e)))?;
-
-            // 注册 Web 模式工具（使用 Channel 后端）
-            agent.register_tool(crate::agent::chat::ToolHandler::AskUser(
-                crate::tools::ask_user::AskUser::with_backend(
-                    crate::tools::confirm::AskBackend::Channel(asks.clone()),
-                ),
+            // 解析 LLM 配置并构建 AgentConfig
+            let resolved = resolve_llm_config(None, None, None, None)
+                .map_err(|e| AppError::internal(format!("解析 LLM 配置失败: {}", e)))?;
+            let system_prompt = format!("{}{}", DEFAULT_SYSTEM_PROMPT, BEHAVIORAL_GUIDANCE);
+            let cwd = Arc::new(Mutex::new(
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             ));
 
-            // 注册 shell_exec（使用 Channel 确认后端）
-            agent.register_tool(crate::agent::chat::ToolHandler::ShellExec(
-                crate::tools::shell_exec::ShellExec::new(
-                    crate::tools::shell_exec::ShellExecOptions {
-                        confirm_backend: crate::tools::confirm::ConfirmBackend::Channel(
-                            approvals.clone(),
-                        ),
-                        ..Default::default()
-                    },
-                ),
-            ));
+            let tools =
+                build_web_tools(&approvals, &asks, cwd.clone()).map_err(AppError::internal)?;
+            let config = Arc::new(
+                AgentConfig::new(&resolved.model, &resolved.api_key, &resolved.base_url)
+                    .with_max_tokens(resolved.max_tokens)
+                    .with_system_prompt(&system_prompt)
+                    .with_tools(tools),
+            );
 
-            // 注册其他工具（使用默认配置）
-            let _ = crate::tools::web_fetch::WebFetch::new(Default::default())
-                .map(|t| agent.register_tool(crate::agent::chat::ToolHandler::WebFetch(t)));
-            agent.register_tool(crate::agent::chat::ToolHandler::FileSearch(
-                crate::tools::file_search::FileSearch::new(Default::default()),
-            ));
-            agent.register_tool(crate::agent::chat::ToolHandler::FileFind(
-                crate::tools::file_find::FileFind::new(Default::default()),
-            ));
-            agent.register_tool(crate::agent::chat::ToolHandler::FileRead(
-                crate::tools::file_read::FileRead::new(Default::default()),
-            ));
-            agent.register_tool(crate::agent::chat::ToolHandler::FileEdit(
-                crate::tools::file_edit::FileEdit::new(Default::default()),
-            ));
-            agent.register_tool(crate::agent::chat::ToolHandler::FileWrite(
-                crate::tools::file_write::FileWrite::new(Default::default()),
-            ));
+            let cwd_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let agents_md = crate::agents_md::load_agents_md(&cwd_path);
+            let context_reminder = crate::prompts::build_context_reminder(agents_md.as_deref());
 
             sessions_map.insert(
                 session_id.clone(),
                 crate::web::session::Session {
-                    agent: Some(agent),
+                    messages: Some(Vec::new()),
+                    config,
+                    cwd,
                     last_active: std::time::Instant::now(),
                     pending_approvals: approvals,
                     pending_asks: asks,
-                    confirm_backend: crate::tools::confirm::ConfirmBackend::Channel(
-                        crate::tools::confirm::PendingApprovals::new(),
-                    ),
-                    ask_backend: crate::tools::confirm::AskBackend::Channel(
-                        crate::tools::confirm::PendingAsks::new(),
-                    ),
+                    context_reminder,
+                    context_injected: false,
                 },
             );
         }
@@ -321,71 +196,83 @@ pub async fn handle_chat(
     })
     .ok();
 
-    // 在后台执行 chat_with_tools
+    // ── 后台执行 agent_loop（不持有 sessions 锁，避免审批/提问死锁） ──
     let tx_clone = tx.clone();
     tokio::spawn(async move {
-        // 从 session 中取出 agent，释放锁后再执行（避免 ask_user 死锁）
-        let mut agent = {
+        // 取出会话数据，释放锁后再执行
+        let (mut messages, config, cwd, context_reminder, mut context_injected) = {
             let mut sessions_map = sessions.lock().await;
-            sessions_map.get_mut(&session_id).and_then(|s| {
-                s.last_active = std::time::Instant::now();
-                s.agent.take()
-            })
+            let Some(session) = sessions_map.get_mut(&session_id) else {
+                tx_clone
+                    .send(StreamEvent::Error {
+                        code: "SESSION_LOST".to_string(),
+                        message: "会话已丢失".to_string(),
+                    })
+                    .ok();
+                return;
+            };
+            session.last_active = std::time::Instant::now();
+            let Some(msgs) = session.messages.take() else {
+                tx_clone
+                    .send(StreamEvent::Error {
+                        code: "SESSION_LOST".to_string(),
+                        message: "会话正在处理中，请稍后重试".to_string(),
+                    })
+                    .ok();
+                return;
+            };
+            (
+                msgs,
+                session.config.clone(),
+                session.cwd.clone(),
+                session.context_reminder.clone(),
+                session.context_injected,
+            )
         };
         // 释放锁 — 此时 handle_ask_respond / handle_approve 可以正常获取锁
 
-        let result = if let Some(agent) = agent.as_mut() {
-            // 发送初始工作目录
-            tx_clone
-                .send(StreamEvent::CurrentDir {
-                    path: agent.current_dir().to_string_lossy().to_string(),
-                })
-                .ok();
+        // 发送初始工作目录
+        tx_clone
+            .send(StreamEvent::CurrentDir {
+                path: cwd.lock().unwrap().to_string_lossy().to_string(),
+            })
+            .ok();
 
-            // 调用 chat_with_tools
-            agent
-                .chat_with_tools(
-                    &body.prompt,
-                    &progress,
-                    |chunk| {
-                        // 流式文本块
-                        tx_clone
-                            .send(StreamEvent::TextDelta {
-                                content: chunk.to_string(),
-                            })
-                            .ok();
-                    },
-                    |thinking_chunk| {
-                        // 流式 thinking 块
-                        tx_clone
-                            .send(StreamEvent::ThinkingDelta {
-                                content: thinking_chunk.to_string(),
-                            })
-                            .ok();
-                    },
-                )
-                .await
+        // context_reminder 仅首条注入
+        let prompt = if !context_injected {
+            context_injected = true;
+            format!("{}{}", context_reminder, body.prompt)
         } else {
-            tx_clone
-                .send(StreamEvent::Error {
-                    code: "SESSION_LOST".to_string(),
-                    message: "会话已丢失".to_string(),
-                })
-                .ok();
-            return;
+            body.prompt.clone()
         };
 
-        // 把 agent 放回 session
+        // 事件桥：AgentEvent → SSE
+        let (agent_tx, mut agent_rx) = tokio::sync::mpsc::channel(256);
+        let fwd_tx = tx_clone.clone();
+        let fwd_cwd = cwd.clone();
+        let forwarder = tokio::spawn(async move {
+            while let Some(event) = agent_rx.recv().await {
+                for sse in agent_event_to_stream_event(&event, &fwd_cwd) {
+                    fwd_tx.send(sse).ok();
+                }
+            }
+        });
+
+        let result = agent_loop(config, &mut messages, prompt, agent_tx).await;
+        forwarder.await.ok(); // 排空剩余事件
+
+        // 放回会话
         {
             let mut sessions_map = sessions.lock().await;
             if let Some(session) = sessions_map.get_mut(&session_id) {
-                session.agent = agent;
+                session.messages = Some(messages);
+                session.context_injected = context_injected;
                 session.last_active = std::time::Instant::now();
             }
         }
 
         match result {
-            Ok(_final_text) => {
+            Ok(()) => {
                 tx_clone
                     .send(StreamEvent::Done {
                         reason: "end_turn".to_string(),
@@ -396,7 +283,7 @@ pub async fn handle_chat(
                 tx_clone
                     .send(StreamEvent::Error {
                         code: "AGENT_ERROR".to_string(),
-                        message: e,
+                        message: e.to_string(),
                     })
                     .ok();
                 tx_clone

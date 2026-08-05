@@ -7,66 +7,99 @@
 // - 删除操作：设置 status 为 "deleted"
 
 use crate::tools::task_manager::{TaskManager, TaskStatus, TaskUpdate};
+use async_trait::async_trait;
 use std::sync::Arc;
+use zapmyco_core::AgentTool;
 
 pub struct TaskUpdateTool {
     pub manager: Arc<TaskManager>,
 }
 
+#[async_trait]
+impl AgentTool for TaskUpdateTool {
+    fn name(&self) -> &str {
+        Self::tool_name()
+    }
+
+    fn description(&self) -> &str {
+        Self::tool_description()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        Self::input_schema()
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<String, String> {
+        self.execute(&input).await
+    }
+}
+
 impl TaskUpdateTool {
+    /// 工具名称
+    pub fn tool_name() -> &'static str {
+        "task_update"
+    }
+
+    /// 工具描述
+    pub fn tool_description() -> &'static str {
+        "更新任务的状态、字段或依赖关系。\
+         开始工作前将任务标记为 in_progress，完成后标记为 completed。\
+         通过 add_blocks/add_blocked_by 设置任务间的依赖关系。\
+         设置 status 为 'deleted' 可永久删除任务。\
+         只有 FULLY 完成的任务才标记为 completed。"
+    }
+
+    /// 工具输入 JSON Schema
+    pub fn input_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "要更新的任务 ID"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "deleted"],
+                    "description": "新状态：pending（待处理）、in_progress（进行中）、completed（已完成）、deleted（删除）"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "新标题"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "新描述"
+                },
+                "active_form": {
+                    "type": "string",
+                    "description": "进行时态"
+                },
+                "add_blocks": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "此任务阻塞的任务 ID 列表"
+                },
+                "add_blocked_by": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "阻塞此任务的任务 ID 列表"
+                },
+                "owner": {
+                    "type": "string",
+                    "description": "任务负责人（多 Agent 协作时使用）"
+                }
+            },
+            "required": ["task_id"]
+        })
+    }
+
     pub fn tool_definition() -> zapmyco_anthropic_ai_sdk::types::message::Tool {
         use zapmyco_anthropic_ai_sdk::types::message::Tool;
         Tool {
-            name: "task_update".to_string(),
-            description: Some(
-                "更新任务的状态、字段或依赖关系。\
-                 开始工作前将任务标记为 in_progress，完成后标记为 completed。\
-                 通过 add_blocks/add_blocked_by 设置任务间的依赖关系。\
-                 设置 status 为 'deleted' 可永久删除任务。\
-                 只有 FULLY 完成的任务才标记为 completed。"
-                    .to_string(),
-            ),
-            input_schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "task_id": {
-                        "type": "string",
-                        "description": "要更新的任务 ID"
-                    },
-                    "status": {
-                        "type": "string",
-                        "enum": ["pending", "in_progress", "completed", "deleted"],
-                        "description": "新状态：pending（待处理）、in_progress（进行中）、completed（已完成）、deleted（删除）"
-                    },
-                    "subject": {
-                        "type": "string",
-                        "description": "新标题"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "新描述"
-                    },
-                    "active_form": {
-                        "type": "string",
-                        "description": "进行时态"
-                    },
-                    "add_blocks": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "此任务阻塞的任务 ID 列表"
-                    },
-                    "add_blocked_by": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "阻塞此任务的任务 ID 列表"
-                    },
-                    "owner": {
-                        "type": "string",
-                        "description": "任务负责人（多 Agent 协作时使用）"
-                    }
-                },
-                "required": ["task_id"]
-            })),
+            name: Self::tool_name().to_string(),
+            description: Some(Self::tool_description().to_string()),
+            input_schema: Some(Self::input_schema()),
             ..Default::default()
         }
     }
