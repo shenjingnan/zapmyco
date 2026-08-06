@@ -1,6 +1,6 @@
 [package]
 name = "zapmyco-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.95"
 description = "Environment-agnostic AI Agent runtime core — ReAct loop, tool abstraction, event system"
