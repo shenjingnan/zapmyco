@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/public/logo.svg" alt="zapmyco logo" width="300" />
+  <img src="docs/logo.svg" alt="zapmyco logo" width="300" />
 </p>
 
 <p align="center">
