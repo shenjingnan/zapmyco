@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.45.1](https://github.com/shenjingnan/zapmyco/compare/v0.45.0...v0.45.1) - 2026-08-06
+
+### Fixed
+
+- 修复 README 中 logo 路径失效问题 ([#546](https://github.com/shenjingnan/zapmyco/pull/546))
+
 ## [0.45.0](https://github.com/shenjingnan/zapmyco/compare/v0.44.2...v0.45.0) - 2026-07-21
 
 ### Added
