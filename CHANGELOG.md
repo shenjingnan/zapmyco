@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.46.0](https://github.com/shenjingnan/zapmyco/compare/v0.45.1...v0.46.0) - 2026-08-07
+
+### Other
+
+- *(tools)* zapmyco-tools 发布准备与主 crate 依赖瘦身（P3） ([#549](https://github.com/shenjingnan/zapmyco/pull/549))
+- *(tools)* 迁移 C 类工具并实现环境解耦（P2） ([#548](https://github.com/shenjingnan/zapmyco/pull/548))
+- *(tools)* 提取 zapmyco-tools 工具集 crate（P1）并补充技术方案 ([#547](https://github.com/shenjingnan/zapmyco/pull/547))
+
 ## [0.45.1](https://github.com/shenjingnan/zapmyco/compare/v0.45.0...v0.45.1) - 2026-08-06
 
 ### Fixed
