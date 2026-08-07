@@ -5,6 +5,7 @@ members = [
     "vendor/zapmyco-grep",
     "crates/zapmyco-core",
     "crates/zapmyco-tools",
+    "crates/zapmyco-providers",
 ]
 
 [package]
@@ -29,6 +30,7 @@ include = [
 [dependencies]
 zapmyco-core = { version = "0.1.1", path = "crates/zapmyco-core" }
 zapmyco-tools = { version = "0.1", path = "crates/zapmyco-tools", features = ["clap"] }
+zapmyco-providers = { version = "0.1", path = "crates/zapmyco-providers" }
 clap = { version = "4", features = ["derive", "string"] }
 clap_complete = "4"
 zapmyco-anthropic-ai-sdk = { version = "0.3.3", path = "vendor/zapmyco-anthropic-ai-sdk" }
