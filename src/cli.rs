@@ -27,28 +27,9 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-/// 权限模式 — 限制 agent 的操作权限
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum PermissionMode {
-    /// 完全权限：可读、可写、可执行（默认）
-    Full,
-    /// 读写模式：可读、可写，禁止执行 shell 命令
-    #[clap(alias = "readwrite")]
-    ReadWrite,
-    /// 只读模式：只能读取和分析内容，禁止写入和执行
-    #[clap(alias = "readonly")]
-    ReadOnly,
-}
-
-impl std::fmt::Display for PermissionMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Full => write!(f, "full"),
-            Self::ReadWrite => write!(f, "readwrite"),
-            Self::ReadOnly => write!(f, "readonly"),
-        }
-    }
-}
+/// 权限模式 — 限制 agent 的操作权限。
+/// 定义已迁移至 `zapmyco-tools`（clap 派生经 `clap` feature 门控），此处重导出保持路径兼容。
+pub use zapmyco_tools::PermissionMode;
 
 /// 执行模式 — 控制 agent 的执行流程
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

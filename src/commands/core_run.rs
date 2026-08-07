@@ -593,8 +593,11 @@ fn build_tools(
 ) -> Result<Vec<Box<dyn zapmyco_core::AgentTool>>, String> {
     let mut tools: Vec<Box<dyn zapmyco_core::AgentTool>> = Vec::new();
 
+    // 工具上下文（注入输出/交互/白名单/skill 后端）
+    let ctx = crate::tool_backends::default_tools_context();
+
     // Ask User
-    tools.push(Box::new(ask_user::AskUser::new()));
+    tools.push(Box::new(ask_user::AskUser::new().with_context(ctx.clone())));
 
     // Web Fetch
     let wf = web_fetch::WebFetch::new(Default::default())
@@ -614,12 +617,14 @@ fn build_tools(
             allowed_commands: shell_exec::builtin_safe_commands(),
             denied_commands,
             skip_confirm: true,
+            context: ctx.clone(),
             ..Default::default()
         })
     } else {
         shell_exec::ShellExec::new(shell_exec::ShellExecOptions {
             allowed_commands,
             denied_commands,
+            context: ctx.clone(),
             ..Default::default()
         })
     };
@@ -634,7 +639,7 @@ fn build_tools(
         search_model.to_string(),
         search_max_tokens,
     ) {
-        tools.push(Box::new(ws));
+        tools.push(Box::new(ws.with_context(ctx.clone())));
     }
 
     // 文件操作工具
@@ -668,7 +673,7 @@ fn build_tools(
 
     // Skill
     if let Ok(st) = skill::SkillTool::new() {
-        tools.push(Box::new(st));
+        tools.push(Box::new(st.with_context(ctx.clone())));
     }
 
     // Skill 工具过滤

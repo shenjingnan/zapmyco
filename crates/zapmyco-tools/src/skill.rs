@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 use zapmyco_core::AgentTool;
 
+use crate::backend::ToolsContext;
+
 /// Skill 工具 — LLM 可在对话中调用以列出或加载 skill
 ///
 /// 与 SubAgent 工具相同的 action 派发模式：
@@ -10,6 +12,7 @@ use zapmyco_core::AgentTool;
 /// - `action: "load"` — 加载指定 skill 的完整指令
 pub struct SkillTool {
     cwd: PathBuf,
+    context: ToolsContext,
 }
 
 #[async_trait]
@@ -66,12 +69,24 @@ impl SkillTool {
 
     pub fn new() -> Result<Self, String> {
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        Ok(Self { cwd })
+        Ok(Self {
+            cwd,
+            context: ToolsContext::default(),
+        })
+    }
+
+    /// 注入工具上下文（skill 解析后端）
+    pub fn with_context(mut self, context: ToolsContext) -> Self {
+        self.context = context;
+        self
     }
 
     #[cfg(test)]
     pub fn with_cwd(cwd: PathBuf) -> Self {
-        Self { cwd }
+        Self {
+            cwd,
+            context: ToolsContext::default(),
+        }
     }
 
     fn validate_name(name: &str) -> Result<(), String> {
@@ -113,7 +128,7 @@ impl SkillTool {
     }
 
     async fn cmd_list(&self) -> Result<String, String> {
-        let skills = crate::skills::discovery::list_available_skills(&self.cwd);
+        let skills = self.context.skill_resolver.list_available_skills(&self.cwd);
         if skills.is_empty() {
             return Ok("当前没有任何可用 skill。可以在以下位置创建 SKILL.md：\n\
                  ~/.zapmyco/skills/<name>/SKILL.md\n\
@@ -122,7 +137,7 @@ impl SkillTool {
                 .to_string());
         }
 
-        let mut text = crate::skills::loader::build_skill_list_text(&skills);
+        let mut text = self.context.skill_resolver.build_skill_list_text(&skills);
         text.push_str("使用 action=load 加载某个 skill 来使用。\n");
         Ok(text)
     }
@@ -131,7 +146,7 @@ impl SkillTool {
         Self::validate_name(name)?;
 
         let cwd = &self.cwd;
-        match crate::skills::discovery::resolve_skill(name, cwd) {
+        match self.context.skill_resolver.resolve_skill(name, cwd) {
             Some(skill) => {
                 if skill.name != name {
                     return Err(format!(
@@ -142,7 +157,7 @@ impl SkillTool {
                 Ok(format!("## Skill: {}\n\n{}", skill.name, skill.body))
             }
             None => {
-                let skills = crate::skills::discovery::list_available_skills(cwd);
+                let skills = self.context.skill_resolver.list_available_skills(cwd);
                 let mut msg = format!("Skill '{}' 未找到。\n", name);
                 if !skills.is_empty() {
                     msg.push_str("可用的 skill:\n");
@@ -164,7 +179,94 @@ impl SkillTool {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use tempfile::TempDir;
+
+    use crate::backend::SkillResolver;
+    use crate::types::{SkillDescriptor, SkillFile, SkillSource};
+
+    /// 测试用 SkillResolver — 扫描 <cwd>/.zapmyco/skills/<name>/SKILL.md
+    struct TestSkillResolver;
+
+    impl TestSkillResolver {
+        fn parse(content: &str) -> Option<(String, String, String)> {
+            let rest = content.strip_prefix("---\n")?;
+            let (front, body) = rest.split_once("\n---")?;
+            let mut name = String::new();
+            let mut description = String::new();
+            for line in front.lines() {
+                if let Some(v) = line.strip_prefix("name: ") {
+                    name = v.trim().to_string();
+                }
+                if let Some(v) = line.strip_prefix("description: ") {
+                    description = v.trim().to_string();
+                }
+            }
+            Some((name, description, body.trim_start().to_string()))
+        }
+    }
+
+    impl SkillResolver for TestSkillResolver {
+        fn list_available_skills(&self, cwd: &Path) -> Vec<SkillDescriptor> {
+            let dir = cwd.join(".zapmyco").join("skills");
+            let mut skills = Vec::new();
+            if let Ok(rd) = std::fs::read_dir(&dir) {
+                for entry in rd.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    let skill_file = entry.path().join("SKILL.md");
+                    if let Ok(content) = std::fs::read_to_string(skill_file) {
+                        if let Some((_, description, _)) = Self::parse(&content) {
+                            skills.push(SkillDescriptor {
+                                name,
+                                description,
+                                source: SkillSource::Project,
+                            });
+                        }
+                    }
+                }
+            }
+            skills
+        }
+
+        fn resolve_skill(&self, name: &str, cwd: &Path) -> Option<SkillFile> {
+            let skill_file = cwd
+                .join(".zapmyco")
+                .join("skills")
+                .join(name)
+                .join("SKILL.md");
+            let content = std::fs::read_to_string(skill_file).ok()?;
+            let (name, description, body) = Self::parse(&content)?;
+            Some(SkillFile {
+                name,
+                description,
+                body,
+                allowed_tools: Vec::new(),
+            })
+        }
+
+        fn build_skill_list_text(&self, skills: &[SkillDescriptor]) -> String {
+            if skills.is_empty() {
+                return String::new();
+            }
+            let mut lines = vec!["\n## 可用 Skill".to_string()];
+            for skill in skills {
+                lines.push(format!(
+                    "- **{}**: {}（项目）",
+                    skill.name, skill.description
+                ));
+            }
+            lines.push(String::new());
+            lines.join("\n")
+        }
+    }
+
+    fn test_context() -> ToolsContext {
+        ToolsContext {
+            skill_resolver: Arc::new(TestSkillResolver),
+            ..Default::default()
+        }
+    }
 
     fn make_skill(home: &TempDir) -> (SkillTool, PathBuf) {
         let hp = home.path().to_path_buf();
@@ -175,7 +277,7 @@ mod tests {
             "---\nname: cr\ndescription: code review\n---\n# Review\nCheck all changes.",
         )
         .unwrap();
-        let tool = SkillTool::with_cwd(proj.clone());
+        let tool = SkillTool::with_cwd(proj.clone()).with_context(test_context());
         (tool, proj)
     }
 
@@ -319,7 +421,7 @@ mod tests {
             "---\nname: review\ndescription: code review\n---\nbody",
         )
         .unwrap();
-        let tool = SkillTool::with_cwd(proj);
+        let tool = SkillTool::with_cwd(proj).with_context(test_context());
         let input = serde_json::json!({"action": "load", "name": "cr"});
         let result = block_on(tool.execute(&input));
         assert!(result.is_err());

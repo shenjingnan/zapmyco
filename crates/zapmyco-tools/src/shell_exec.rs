@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 use zapmyco_core::AgentTool;
 
-use crate::output::{self, Message};
+use crate::backend::{OutputLevel, ToolsContext};
+use crate::types::{SelectOption, SingleSelectResult};
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -460,7 +461,7 @@ fn contains_shell_control(cmd: &str) -> bool {
 }
 
 /// 返回内置安全命令列表的副本，供 ReadOnly 模式等场景使用。
-pub(crate) fn builtin_safe_commands() -> Vec<String> {
+pub fn builtin_safe_commands() -> Vec<String> {
     BUILTIN_SAFE_COMMANDS
         .iter()
         .map(|s| s.to_string())
@@ -600,7 +601,9 @@ pub struct ShellExecOptions {
     /// - allowed_commands 在此模式下被忽略
     pub readonly_mode: bool,
     /// 确认后端（默认 Terminal）
-    pub confirm_backend: crate::tools::confirm::ConfirmBackend,
+    pub confirm_backend: crate::confirm::ConfirmBackend,
+    /// 工具上下文（输出/交互/白名单后端）
+    pub context: ToolsContext,
 }
 
 impl Default for ShellExecOptions {
@@ -612,7 +615,8 @@ impl Default for ShellExecOptions {
             allowed_commands: Vec::new(),
             denied_commands: Vec::new(),
             readonly_mode: false,
-            confirm_backend: crate::tools::confirm::ConfirmBackend::default(),
+            confirm_backend: crate::confirm::ConfirmBackend::default(),
+            context: ToolsContext::default(),
         }
     }
 }
@@ -795,7 +799,7 @@ impl ShellExec {
                             command
                         ),
                     };
-                    output::send(&Message::warning(msg.clone()));
+                    self.options.context.output.emit(OutputLevel::Warning, &msg);
                     return Ok(msg);
                 }
             }
@@ -813,7 +817,7 @@ impl ShellExec {
                     if is_denied(part.text, &self.options.denied_commands) {
                         let msg =
                             format!("[run_command] ❌ 命令被拒绝: `{}` 已在黑名单中", part.text);
-                        output::send(&Message::warning(msg.clone()));
+                        self.options.context.output.emit(OutputLevel::Warning, &msg);
                         deny_hit = true;
                         // 需要继续持有 allowed 直到返回，所以先 break
                         // 但不能在持有锁时 return，所以标记后跳出
@@ -862,15 +866,25 @@ impl ShellExec {
                         &all_pending.iter().collect::<Vec<_>>(),
                         description,
                         &self.options.confirm_backend,
+                        &self.options.context,
                     )
                     .await
                 } else {
-                    prompt_confirm(command, description, &self.options.confirm_backend).await
+                    prompt_confirm(
+                        command,
+                        description,
+                        &self.options.confirm_backend,
+                        &self.options.context,
+                    )
+                    .await
                 };
 
                 match decision {
                     ConfirmAction::Deny => {
-                        output::send(&Message::info("[run_command] ❌ 已取消".to_string()));
+                        self.options
+                            .context
+                            .output
+                            .emit(OutputLevel::Info, "[run_command] ❌ 已取消");
                         return Ok("Command not executed (cancelled by user)".to_string());
                     }
                     ConfirmAction::AlwaysAllow => {
@@ -878,7 +892,7 @@ impl ShellExec {
                         for part in &all_pending {
                             let first_word =
                                 part.text.split_whitespace().next().unwrap_or(part.text);
-                            add_to_allowlist_inner(first_word, &mut runtime);
+                            add_to_allowlist_inner(first_word, &mut runtime, &self.options.context);
                         }
                     }
                     ConfirmAction::Allow => {}
@@ -1031,11 +1045,12 @@ enum ConfirmAction {
 async fn prompt_confirm(
     command: &str,
     description: Option<&str>,
-    backend: &crate::tools::confirm::ConfirmBackend,
+    backend: &crate::confirm::ConfirmBackend,
+    ctx: &ToolsContext,
 ) -> ConfirmAction {
     match backend {
-        crate::tools::confirm::ConfirmBackend::AlwaysAllow => ConfirmAction::Allow,
-        crate::tools::confirm::ConfirmBackend::Channel(approvals) => {
+        crate::confirm::ConfirmBackend::AlwaysAllow => ConfirmAction::Allow,
+        crate::confirm::ConfirmBackend::Channel(approvals) => {
             let id = uuid::Uuid::new_v4().to_string();
             let rx = approvals.register(id, "shell_exec", command, description);
             match rx.await {
@@ -1049,49 +1064,50 @@ async fn prompt_confirm(
                 Err(_) => ConfirmAction::Deny,
             }
         }
-        crate::tools::confirm::ConfirmBackend::Terminal => {
+        crate::confirm::ConfirmBackend::Terminal => {
             use std::io::IsTerminal;
 
             if !std::io::stdin().is_terminal() {
                 return ConfirmAction::Deny;
             }
 
-            output::send(&Message::info(String::new()));
-            output::send(&Message::info("[工具] ⚠️  准备执行命令:".to_string()));
+            ctx.output.emit(OutputLevel::Info, "");
+            ctx.output
+                .emit(OutputLevel::Info, "[工具] ⚠️  准备执行命令:");
             if let Some(desc) = description {
                 let truncated = if desc.len() > 100 {
                     format!("{}...", &desc[..100])
                 } else {
                     desc.to_string()
                 };
-                output::send(&Message::info(format!("  └ 描述: {}", truncated)));
+                ctx.output
+                    .emit(OutputLevel::Info, &format!("  └ 描述: {}", truncated));
             }
-            output::send(&Message::info(format!("  └ 命令: {}", command)));
+            ctx.output
+                .emit(OutputLevel::Info, &format!("  └ 命令: {}", command));
 
             let question = "是否确认执行？";
             let options = [
-                crate::tools::prompt::SelectOption {
-                    label: "允许",
-                    description: "执行该命令",
+                SelectOption {
+                    label: "允许".to_string(),
+                    description: "执行该命令".to_string(),
                     custom_input: false,
                 },
-                crate::tools::prompt::SelectOption {
-                    label: "始终允许",
-                    description: "将该命令加入白名单并自动执行",
+                SelectOption {
+                    label: "始终允许".to_string(),
+                    description: "将该命令加入白名单并自动执行".to_string(),
                     custom_input: false,
                 },
-                crate::tools::prompt::SelectOption {
-                    label: "拒绝",
-                    description: "取消执行该命令",
+                SelectOption {
+                    label: "拒绝".to_string(),
+                    description: "取消执行该命令".to_string(),
                     custom_input: false,
                 },
             ];
 
-            match crate::tools::prompt::prompt_single_select(question, &options) {
-                Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
-                Some(crate::tools::prompt::SingleSelectResult::Index(1)) => {
-                    ConfirmAction::AlwaysAllow
-                }
+            match ctx.prompt.prompt_single_select(question, &options) {
+                Some(SingleSelectResult::Index(0)) => ConfirmAction::Allow,
+                Some(SingleSelectResult::Index(1)) => ConfirmAction::AlwaysAllow,
                 _ => ConfirmAction::Deny,
             }
         }
@@ -1101,22 +1117,25 @@ async fn prompt_confirm(
 /// add_to_allowlist_inner 将命令加入白名单（运行时内存列表 + settings 持久化）
 ///
 /// 提取自 execute() 中的 AlwaysAllow 逻辑，避免重复代码。
-fn add_to_allowlist_inner(first_word: &str, runtime_allowed: &mut Vec<String>) {
+fn add_to_allowlist_inner(first_word: &str, runtime_allowed: &mut Vec<String>, ctx: &ToolsContext) {
     if DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
-        output::send(&Message::warning(format!(
-            "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
-            first_word
-        )));
-    } else if let Err(e) = crate::config::settings::add_to_command_allowlist(first_word) {
-        output::send(&Message::warning(format!(
-            "⚠️  无法保存到白名单: {}，但命令将继续执行",
-            e
-        )));
+        ctx.output.emit(
+            OutputLevel::Warning,
+            &format!(
+                "⚠️ `{}` 是危险命令，不允许加入白名单（命令仍会执行）",
+                first_word
+            ),
+        );
+    } else if let Err(e) = ctx.allowlist_persister.add_to_command_allowlist(first_word) {
+        ctx.output.emit(
+            OutputLevel::Warning,
+            &format!("⚠️  无法保存到白名单: {}，但命令将继续执行", e),
+        );
     } else {
-        output::send(&Message::info(format!(
-            "✅ 已加入白名单: `{}` 命令将自动执行",
-            first_word
-        )));
+        ctx.output.emit(
+            OutputLevel::Info,
+            &format!("✅ 已加入白名单: `{}` 命令将自动执行", first_word),
+        );
     }
     if !DANGEROUS_ALWAYS_ALLOW_COMMANDS.contains(&first_word) {
         runtime_allowed.push(first_word.to_string());
@@ -1128,11 +1147,12 @@ async fn prompt_confirm_parts(
     command: &str,
     pending: &[&CommandPart<'_>],
     description: Option<&str>,
-    backend: &crate::tools::confirm::ConfirmBackend,
+    backend: &crate::confirm::ConfirmBackend,
+    ctx: &ToolsContext,
 ) -> ConfirmAction {
     match backend {
-        crate::tools::confirm::ConfirmBackend::AlwaysAllow => ConfirmAction::Allow,
-        crate::tools::confirm::ConfirmBackend::Channel(approvals) => {
+        crate::confirm::ConfirmBackend::AlwaysAllow => ConfirmAction::Allow,
+        crate::confirm::ConfirmBackend::Channel(approvals) => {
             let id = uuid::Uuid::new_v4().to_string();
             let rx = approvals.register(id, "shell_exec", command, description);
             match rx.await {
@@ -1146,26 +1166,29 @@ async fn prompt_confirm_parts(
                 Err(_) => ConfirmAction::Deny,
             }
         }
-        crate::tools::confirm::ConfirmBackend::Terminal => {
+        crate::confirm::ConfirmBackend::Terminal => {
             use std::io::IsTerminal;
             if !std::io::stdin().is_terminal() {
                 return ConfirmAction::Deny;
             }
 
-            output::send(&Message::info(String::new()));
-            output::send(&Message::info("[工具] ⚠️  准备执行命令:".to_string()));
+            ctx.output.emit(OutputLevel::Info, "");
+            ctx.output
+                .emit(OutputLevel::Info, "[工具] ⚠️  准备执行命令:");
             if let Some(desc) = description {
                 let truncated = if desc.len() > 100 {
                     format!("{}...", &desc[..100])
                 } else {
                     desc.to_string()
                 };
-                output::send(&Message::info(format!("  └ 描述: {}", truncated)));
+                ctx.output
+                    .emit(OutputLevel::Info, &format!("  └ 描述: {}", truncated));
             }
-            output::send(&Message::info(format!("  └ 完整命令: {}", command)));
-            output::send(&Message::info(String::new()));
+            ctx.output
+                .emit(OutputLevel::Info, &format!("  └ 完整命令: {}", command));
+            ctx.output.emit(OutputLevel::Info, "");
 
-            output::send(&Message::info("以下命令需要授权:".to_string()));
+            ctx.output.emit(OutputLevel::Info, "以下命令需要授权:");
             for part in pending {
                 let extra = if part.flags.has_substitution {
                     " (包含命令替换)"
@@ -1174,33 +1197,32 @@ async fn prompt_confirm_parts(
                 } else {
                     ""
                 };
-                output::send(&Message::info(format!("  ▢ {}{}", part.text, extra)));
+                ctx.output
+                    .emit(OutputLevel::Info, &format!("  ▢ {}{}", part.text, extra));
             }
 
             let question = "是否确认执行？";
             let options = [
-                crate::tools::prompt::SelectOption {
-                    label: "允许",
-                    description: "执行该命令",
+                SelectOption {
+                    label: "允许".to_string(),
+                    description: "执行该命令".to_string(),
                     custom_input: false,
                 },
-                crate::tools::prompt::SelectOption {
-                    label: "始终允许",
-                    description: "将未授权的命令加入白名单并自动执行",
+                SelectOption {
+                    label: "始终允许".to_string(),
+                    description: "将未授权的命令加入白名单并自动执行".to_string(),
                     custom_input: false,
                 },
-                crate::tools::prompt::SelectOption {
-                    label: "拒绝",
-                    description: "取消执行该命令",
+                SelectOption {
+                    label: "拒绝".to_string(),
+                    description: "取消执行该命令".to_string(),
                     custom_input: false,
                 },
             ];
 
-            match crate::tools::prompt::prompt_single_select(question, &options) {
-                Some(crate::tools::prompt::SingleSelectResult::Index(0)) => ConfirmAction::Allow,
-                Some(crate::tools::prompt::SingleSelectResult::Index(1)) => {
-                    ConfirmAction::AlwaysAllow
-                }
+            match ctx.prompt.prompt_single_select(question, &options) {
+                Some(SingleSelectResult::Index(0)) => ConfirmAction::Allow,
+                Some(SingleSelectResult::Index(1)) => ConfirmAction::AlwaysAllow,
                 _ => ConfirmAction::Deny,
             }
         }
@@ -1225,6 +1247,7 @@ mod tests {
             allowed_commands: Vec::new(),
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         })
     }
 
@@ -1394,6 +1417,7 @@ mod tests {
             allowed_commands: Vec::new(),
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         });
 
         let result = executor.execute("sleep 10", None, None).await;
@@ -1416,6 +1440,7 @@ mod tests {
             allowed_commands: Vec::new(),
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         });
 
         // 生成超过 100 字符的输出
@@ -1456,6 +1481,7 @@ mod tests {
             allowed_commands: Vec::new(),
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         });
         assert_eq!(executor.options.timeout_secs, 60);
         assert_eq!(executor.options.output_max_chars, 50_000);
@@ -2106,126 +2132,6 @@ mod safe_command_tests {
             assert!(is_safe_command("pathchk /tmp", &[], &[]));
         }
     }
-
-    // ── CLI 集成测试 ──
-
-    #[test]
-    fn test_cli_settings_to_shell_exec_options() {
-        use crate::config::settings::{CommandPermissions, Permissions, Settings};
-        let settings = Settings {
-            llm: None,
-            session_log: None,
-            permissions: Some(Permissions {
-                commands: CommandPermissions {
-                    allow: vec!["git status".to_string(), "cargo check".to_string()],
-                    deny: vec![],
-                },
-            }),
-        };
-        let allowed_commands = settings
-            .permissions
-            .as_ref()
-            .map(|p| p.commands.allow.clone())
-            .unwrap_or_default();
-        assert_eq!(allowed_commands.len(), 2);
-        assert_eq!(allowed_commands[0], "git status");
-        let executor = ShellExec::new(ShellExecOptions {
-            allowed_commands,
-            denied_commands: vec![],
-            ..Default::default()
-        });
-        assert_eq!(executor.options.allowed_commands.len(), 2);
-    }
-
-    #[test]
-    fn test_cli_settings_missing_permissions() {
-        use crate::config::settings::Settings;
-        let settings = Settings {
-            llm: None,
-            session_log: None,
-            permissions: None,
-        };
-        let allowed_commands = settings
-            .permissions
-            .as_ref()
-            .map(|p| p.commands.allow.clone())
-            .unwrap_or_default();
-        assert!(
-            allowed_commands.is_empty(),
-            "无 permissions 配置时应返回空列表"
-        );
-        let executor = ShellExec::new(ShellExecOptions {
-            allowed_commands,
-            denied_commands: vec![],
-            ..Default::default()
-        });
-        assert!(is_safe_command(
-            "pwd",
-            &executor.options.allowed_commands,
-            &executor.options.denied_commands
-        ));
-    }
-
-    #[test]
-    fn test_cli_settings_empty_allow() {
-        use crate::config::settings::{CommandPermissions, Permissions, Settings};
-        let settings = Settings {
-            llm: None,
-            session_log: None,
-            permissions: Some(Permissions {
-                commands: CommandPermissions {
-                    allow: vec![],
-                    deny: vec![],
-                },
-            }),
-        };
-        let allowed_commands = settings
-            .permissions
-            .as_ref()
-            .map(|p| p.commands.allow.clone())
-            .unwrap_or_default();
-        assert!(allowed_commands.is_empty());
-    }
-
-    #[test]
-    fn test_full_chain_from_toml_to_executor() {
-        use crate::config::settings::load_settings;
-        use crate::test_util::run_with_temp_home;
-        run_with_temp_home(|home| {
-            let settings_dir = home.join(".zapmyco");
-            std::fs::create_dir_all(&settings_dir).unwrap();
-            std::fs::write(
-                settings_dir.join("settings.toml"),
-                r#"
-[permissions.commands]
-allow = ["git status", "cargo check"]
-"#,
-            )
-            .unwrap();
-            let loaded = load_settings().unwrap().unwrap();
-            let allowed_commands = loaded
-                .permissions
-                .as_ref()
-                .map(|p| p.commands.allow.clone())
-                .unwrap_or_default();
-            assert_eq!(allowed_commands, vec!["git status", "cargo check"]);
-            let executor = ShellExec::new(ShellExecOptions {
-                allowed_commands,
-                denied_commands: vec![],
-                ..Default::default()
-            });
-            assert!(is_safe_command(
-                "git status",
-                &executor.options.allowed_commands,
-                &executor.options.denied_commands,
-            ));
-            assert!(!is_safe_command(
-                "git commit",
-                &executor.options.allowed_commands,
-                &executor.options.denied_commands,
-            ));
-        });
-    }
 }
 
 #[cfg(test)]
@@ -2385,15 +2291,21 @@ mod always_allow_tests {
 
     #[tokio::test]
     async fn test_prompt_confirm_non_tty_returns_deny() {
-        let backend = crate::tools::confirm::ConfirmBackend::Terminal;
-        let result = prompt_confirm("echo hello", None, &backend).await;
+        let backend = crate::confirm::ConfirmBackend::Terminal;
+        let result = prompt_confirm("echo hello", None, &backend, &ToolsContext::default()).await;
         assert!(matches!(result, ConfirmAction::Deny));
     }
 
     #[tokio::test]
     async fn test_prompt_confirm_non_tty_with_description() {
-        let backend = crate::tools::confirm::ConfirmBackend::Terminal;
-        let result = prompt_confirm("echo hello", Some("测试命令"), &backend).await;
+        let backend = crate::confirm::ConfirmBackend::Terminal;
+        let result = prompt_confirm(
+            "echo hello",
+            Some("测试命令"),
+            &backend,
+            &ToolsContext::default(),
+        )
+        .await;
         assert!(matches!(result, ConfirmAction::Deny));
     }
 
@@ -2451,6 +2363,7 @@ mod always_allow_tests {
             output_max_chars: 10_000,
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         });
 
         executor
@@ -2477,6 +2390,7 @@ mod always_allow_tests {
             output_max_chars: 10_000,
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         });
 
         executor
@@ -2536,6 +2450,7 @@ mod always_allow_tests {
             output_max_chars: 10_000,
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         });
 
         // deny 优先 → is_safe_command 返回 false → 非 TTY 下 prompt_confirm 返回 Deny
@@ -2555,6 +2470,7 @@ mod always_allow_tests {
             output_max_chars: 10_000,
             readonly_mode: false,
             confirm_backend: Default::default(),
+            context: ToolsContext::default(),
         });
 
         executor
@@ -3616,7 +3532,8 @@ mod execute_integration_tests {
             denied_commands: vec![],
             allowed_commands: Vec::new(),
             readonly_mode: false,
-            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+            confirm_backend: crate::confirm::ConfirmBackend::AlwaysAllow,
+            context: ToolsContext::default(),
         })
     }
 
@@ -3629,7 +3546,8 @@ mod execute_integration_tests {
             denied_commands: vec![],
             allowed_commands: allow.into_iter().map(String::from).collect(),
             readonly_mode: false,
-            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+            confirm_backend: crate::confirm::ConfirmBackend::AlwaysAllow,
+            context: ToolsContext::default(),
         })
     }
 
@@ -3753,7 +3671,7 @@ mod execute_integration_tests {
             skip_confirm: false,
             denied_commands: vec!["rm".to_string()],
             allowed_commands: vec![],
-            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+            confirm_backend: crate::confirm::ConfirmBackend::AlwaysAllow,
             ..Default::default()
         });
         let r = executor.execute("rm -rf /", None, None).await.unwrap();
@@ -3772,7 +3690,8 @@ mod execute_integration_tests {
             denied_commands: vec![],
             allowed_commands: vec!["git status".to_string()],
             readonly_mode: false,
-            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+            confirm_backend: crate::confirm::ConfirmBackend::AlwaysAllow,
+            context: ToolsContext::default(),
         });
 
         // 执行前：运行时白名单只有 git status
@@ -3806,7 +3725,8 @@ mod execute_integration_tests {
             denied_commands: vec![],
             allowed_commands: vec![],
             readonly_mode: false,
-            confirm_backend: crate::tools::confirm::ConfirmBackend::AlwaysAllow,
+            confirm_backend: crate::confirm::ConfirmBackend::AlwaysAllow,
+            context: ToolsContext::default(),
         });
 
         let prev = executor.allowed_commands_runtime.lock().unwrap().len();

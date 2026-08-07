@@ -16,6 +16,8 @@ pub mod prompts;
 pub mod session;
 pub mod skills;
 #[doc(hidden)]
+pub mod tool_backends;
+#[doc(hidden)]
 pub mod tools;
 pub mod tui;
 pub mod web;
