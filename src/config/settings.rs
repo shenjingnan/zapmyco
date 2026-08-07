@@ -2,6 +2,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+// LLM 配置类型与 ${env.VAR} 解析已迁移至独立 crate `zapmyco-providers`，
+// 此处重导出保持旧路径（zapmyco::config::settings::*）兼容。
+pub use zapmyco_providers::resolve::resolve_env_ref;
+pub use zapmyco_providers::{LlmSettings, ProviderConfig};
+
 const SETTINGS_RELATIVE_PATH: &str = ".zapmyco/settings.toml";
 
 /// 获取用户 home 目录（跨平台：macOS/Linux 用 $HOME，Windows 用 %USERPROFILE%）
@@ -10,30 +15,6 @@ pub fn get_home_dir() -> PathBuf {
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string())
         .into()
-}
-
-/// 供应商配置
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ProviderConfig {
-    /// API 密钥，支持 ${env.VAR} 语法
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_key: Option<String>,
-    /// API 基础地址（可选），覆盖内置模型注册表中的 base_url
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-}
-
-/// LLM 配置（新格式）
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct LlmSettings {
-    /// 供应商字典
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub providers: Option<std::collections::HashMap<String, ProviderConfig>>,
-    /// 模型配置档字典
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub models: Option<std::collections::HashMap<String, String>>,
 }
 
 /// 对话日志配置
@@ -110,28 +91,6 @@ pub fn get_settings_path() -> PathBuf {
 /// 获取设置目录路径
 pub fn get_settings_dir() -> PathBuf {
     get_home_dir().join(".zapmyco")
-}
-
-/// 解析 ${env.VAR} 引用
-///
-/// - "${env.DEEPSEEK_API_KEY}" → 从环境变量 DEEPSEEK_API_KEY 读取
-/// - "sk-xxx" → 原样返回
-pub fn resolve_env_ref(value: &str) -> Result<String, String> {
-    if let Some(captures) = value
-        .strip_prefix("${env.")
-        .and_then(|s| s.strip_suffix('}'))
-    {
-        let env_var = captures;
-        match std::env::var(env_var) {
-            Ok(resolved) => Ok(resolved),
-            Err(_) => Err(format!(
-                "环境变量 {} 未设置。请在 {} 中配置或设置环境变量 {}。",
-                env_var, SETTINGS_RELATIVE_PATH, env_var
-            )),
-        }
-    } else {
-        Ok(value.to_string())
-    }
 }
 
 /// 加载 ~/.zapmyco/settings.toml
