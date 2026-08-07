@@ -6,7 +6,7 @@
 // - 依赖管理：add_blocks、add_blocked_by（追加而非覆盖）
 // - 删除操作：设置 status 为 "deleted"
 
-use crate::tools::task_manager::{TaskManager, TaskStatus, TaskUpdate};
+use crate::task_manager::{TaskManager, TaskStatus, TaskUpdate};
 use async_trait::async_trait;
 use std::sync::Arc;
 use zapmyco_core::AgentTool;

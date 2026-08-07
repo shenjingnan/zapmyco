@@ -1,0 +1,42 @@
+[package]
+name = "zapmyco-tools"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Reusable AgentTool implementations — file/search/web/task tools for zapmyco-core agents"
+license = "MIT"
+repository = "https://github.com/shenjingnan/zapmyco"
+documentation = "https://docs.rs/zapmyco-tools"
+
+[dependencies]
+zapmyco-core = { version = "0.1", path = "../zapmyco-core" }
+zapmyco-anthropic-ai-sdk = { version = "0.3", path = "../../vendor/zapmyco-anthropic-ai-sdk" }
+zapmyco-grep = { version = "0.1", path = "../../vendor/zapmyco-grep" }
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "process", "time", "fs", "io-util", "rt", "macros"] }
+futures-util = "0.3"
+chrono = "0.4"
+reqwest = "0.13"
+mdka = "2"
+ignore = "0.4"
+globset = "0.4"
+fs4 = { version = "1.1", features = ["tokio"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+wiremock = "0.6.5"
+
+[features]
+default = ["full"]
+full = ["file", "task", "web", "shell", "subagent", "skill"]
+file = []
+task = []
+web = []
+shell = []
+subagent = []
+skill = []

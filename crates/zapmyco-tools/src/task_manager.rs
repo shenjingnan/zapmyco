@@ -11,6 +11,17 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// 默认任务根目录：`$HOME/.zapmyco/tasks`（跨平台：Windows 用 `%USERPROFILE%`）。
+///
+/// 与原 `zapmyco::config::settings::get_settings_dir().join("tasks")` 行为一致，
+/// 使主 crate 迁移后数据路径不变。
+fn default_tasks_root() -> PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+    PathBuf::from(home).join(".zapmyco").join("tasks")
+}
+
 // ---------------------------------------------------------------------------
 // Data Model
 // ---------------------------------------------------------------------------
@@ -196,7 +207,7 @@ impl TaskManager {
     pub fn new() -> Self {
         Self {
             list_id: DEFAULT_LIST_ID.to_string(),
-            base_dir: crate::config::settings::get_settings_dir().join("tasks"),
+            base_dir: default_tasks_root(),
         }
     }
 
@@ -204,7 +215,15 @@ impl TaskManager {
     pub fn with_list_id(list_id: &str) -> Self {
         Self {
             list_id: list_id.to_string(),
-            base_dir: crate::config::settings::get_settings_dir().join("tasks"),
+            base_dir: default_tasks_root(),
+        }
+    }
+
+    /// 指定 base_dir 与 list_id 创建（嵌入场景，由宿主注入数据目录）
+    pub fn with_base_dir(base_dir: PathBuf, list_id: impl Into<String>) -> Self {
+        Self {
+            list_id: list_id.into(),
+            base_dir,
         }
     }
 

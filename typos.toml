@@ -3,6 +3,8 @@
 alue = "alue"
 # 文档示例中故意使用的拼写错误，演示 Edit 工具修复拼写
 helo = "helo"
+# Rust crate 名（终端 UI 框架），技术文档中合法使用
+ratatui = "ratatui"
 
 [files]
 extend-exclude = ["web/dist/**", "CHANGELOG.md"]

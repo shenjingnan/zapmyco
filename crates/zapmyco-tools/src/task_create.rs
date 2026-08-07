@@ -3,7 +3,7 @@
 // 当 LLM 需要将复杂工作拆解为可跟踪的子任务时使用此工具。
 // 新任务默认状态为 pending。
 
-use crate::tools::task_manager::TaskManager;
+use crate::task_manager::TaskManager;
 use async_trait::async_trait;
 use std::sync::Arc;
 use zapmyco_core::AgentTool;

@@ -10,7 +10,7 @@
 // - 输出格式统一（终端和 IM 使用相同的纯文本格式）
 // - 不在工具层发射事件，通过状态对比自动推导 diff
 
-use crate::tools::task_manager::{Task, TaskStatus};
+use crate::task_manager::{Task, TaskStatus};
 
 // ---------------------------------------------------------------------------
 // Config

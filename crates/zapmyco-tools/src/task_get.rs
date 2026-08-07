@@ -2,7 +2,7 @@
 //
 // 适用于开始工作前查看任务的完整描述、状态和依赖关系。
 
-use crate::tools::task_manager::TaskManager;
+use crate::task_manager::TaskManager;
 use async_trait::async_trait;
 use std::sync::Arc;
 use zapmyco_core::AgentTool;
