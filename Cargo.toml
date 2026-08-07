@@ -9,7 +9,7 @@ members = [
 
 [package]
 name = "zapmyco"
-version = "0.45.1"
+version = "0.46.0"
 edition = "2024"
 rust-version = "1.95"
 description = "An AI-powered CLI tool for interactive chat with LLMs"
