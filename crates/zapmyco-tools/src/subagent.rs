@@ -9,7 +9,7 @@ use chrono::Local;
 use tokio::io::AsyncReadExt;
 use tokio::process::{ChildStderr, ChildStdout, Command};
 
-use crate::cli::PermissionMode;
+use crate::types::PermissionMode;
 use async_trait::async_trait;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 use zapmyco_core::AgentTool;
@@ -74,6 +74,21 @@ impl SubAgentTool {
         std::fs::create_dir_all(&data_dir)
             .map_err(|e| format!("创建 subagents 目录失败: {}", e))?;
 
+        Ok(Self {
+            data_dir,
+            timeout_secs: DEFAULT_TIMEOUT_SECS,
+            agent_session_id: generate_agent_session_id(),
+            permission_mode: PermissionMode::Full,
+            parent_session_id: None,
+            #[cfg(test)]
+            test_binary: None,
+        })
+    }
+
+    /// 指定数据目录创建（嵌入场景，由宿主注入）
+    pub fn with_data_dir(data_dir: PathBuf) -> Result<Self, String> {
+        std::fs::create_dir_all(&data_dir)
+            .map_err(|e| format!("创建 subagents 目录失败: {}", e))?;
         Ok(Self {
             data_dir,
             timeout_secs: DEFAULT_TIMEOUT_SECS,
@@ -2090,7 +2105,7 @@ mod tests {
 #[cfg(test)]
 mod permission_inheritance_tests {
     use super::*;
-    use crate::cli::PermissionMode;
+    use crate::types::PermissionMode;
 
     #[test]
     fn test_build_command_full_no_flag() {

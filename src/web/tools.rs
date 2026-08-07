@@ -97,15 +97,18 @@ pub(crate) fn build_web_tools(
     asks: &PendingAsks,
     cwd: Arc<Mutex<PathBuf>>,
 ) -> Result<Vec<Box<dyn AgentTool>>, String> {
+    let ctx = crate::tool_backends::default_tools_context();
     let mut tools: Vec<Box<dyn AgentTool>> = Vec::new();
 
-    tools.push(Box::new(ask_user::AskUser::with_backend(
-        AskBackend::Channel(asks.clone()),
-    )));
+    tools.push(Box::new(
+        ask_user::AskUser::with_backend(AskBackend::Channel(asks.clone()))
+            .with_context(ctx.clone()),
+    ));
 
     tools.push(Box::new(CwdShellExec {
         inner: ShellExec::new(ShellExecOptions {
             confirm_backend: ConfirmBackend::Channel(approvals.clone()),
+            context: ctx.clone(),
             ..Default::default()
         }),
         cwd,

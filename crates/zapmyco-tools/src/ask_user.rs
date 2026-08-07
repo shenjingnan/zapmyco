@@ -8,9 +8,9 @@ use std::io::IsTerminal;
 use zapmyco_anthropic_ai_sdk::types::message::Tool;
 use zapmyco_core::AgentTool;
 
-use crate::session::logger as session_logger;
-use crate::tools::confirm::AskBackend;
-use crate::tools::prompt;
+use crate::backend::ToolsContext;
+use crate::confirm::AskBackend;
+use crate::types::{SelectOption, SingleSelectResult};
 
 /// 内部选项项，用于 JSON 解析中转
 #[derive(Debug)]
@@ -24,6 +24,8 @@ struct OptionItem {
 pub struct AskUser {
     /// 提问后端（默认 Terminal）
     pub backend: AskBackend,
+    /// 工具上下文（会话日志/交互后端）
+    pub context: ToolsContext,
 }
 
 #[async_trait]
@@ -103,7 +105,16 @@ impl AskUser {
 
     /// 使用指定后端创建 AskUser
     pub fn with_backend(backend: AskBackend) -> Self {
-        Self { backend }
+        Self {
+            backend,
+            context: ToolsContext::default(),
+        }
+    }
+
+    /// 注入工具上下文（会话日志/交互后端）
+    pub fn with_context(mut self, context: ToolsContext) -> Self {
+        self.context = context;
+        self
     }
 
     /// 返回 Anthropic Tool 定义
@@ -179,22 +190,26 @@ impl AskUser {
                             && idx < items.len()
                         {
                             let result_str = format!("用户选择了: {}", items[idx].label);
-                            session_logger::log_user_event(&result_str);
+                            self.context.session_logger.log_user_event(&result_str);
                             return Ok(result_str);
                         }
                         if let Some(text) = &response.custom_text
                             && !text.is_empty()
                         {
-                            let sanitized = session_logger::sanitize_user_input(text);
+                            let sanitized = sanitize_user_input(text);
                             let result_str = format!("用户输入: {}", sanitized);
-                            session_logger::log_user_event(&result_str);
+                            self.context.session_logger.log_user_event(&result_str);
                             return Ok(result_str);
                         }
-                        session_logger::log_user_event("[用户取消了选择]");
+                        self.context
+                            .session_logger
+                            .log_user_event("[用户取消了选择]");
                         Ok("[用户取消了选择]".to_string())
                     }
                     Err(_) => {
-                        session_logger::log_user_event("[ask_user 通道已关闭]");
+                        self.context
+                            .session_logger
+                            .log_user_event("[ask_user 通道已关闭]");
                         Ok("[用户取消了选择]".to_string())
                     }
                 }
@@ -207,18 +222,22 @@ impl AskUser {
                     );
                 }
 
-                // 转换为 prompt::SelectOption，组件会自动追加"自定义输入"选项
-                let prompt_opts: Vec<prompt::SelectOption> = items
+                // 转换为 SelectOption，组件会自动追加"自定义输入"选项
+                let prompt_opts: Vec<SelectOption> = items
                     .iter()
-                    .map(|item| prompt::SelectOption {
-                        label: &item.label,
-                        description: &item.description,
+                    .map(|item| SelectOption {
+                        label: item.label.clone(),
+                        description: item.description.clone(),
                         custom_input: false,
                     })
                     .collect();
 
                 if multi_select {
-                    match prompt::prompt_multi_select(question, &prompt_opts) {
+                    match self
+                        .context
+                        .prompt
+                        .prompt_multi_select(question, &prompt_opts)
+                    {
                         Some(result) => {
                             let mut parts: Vec<String> = Vec::new();
                             if !result.indices.is_empty() {
@@ -243,36 +262,46 @@ impl AskUser {
                             } else {
                                 format!("用户选择了: {}", parts.join("，"))
                             };
-                            session_logger::log_user_event(&session_logger::sanitize_user_input(
-                                &result_str,
-                            ));
+                            self.context
+                                .session_logger
+                                .log_user_event(&sanitize_user_input(&result_str));
                             Ok(result_str)
                         }
                         None => {
-                            session_logger::log_user_event("[用户取消了选择]");
+                            self.context
+                                .session_logger
+                                .log_user_event("[用户取消了选择]");
                             Ok("[用户取消了选择]".to_string())
                         }
                     }
                 } else {
-                    match prompt::prompt_single_select(question, &prompt_opts) {
-                        Some(prompt::SingleSelectResult::Index(idx)) => {
+                    match self
+                        .context
+                        .prompt
+                        .prompt_single_select(question, &prompt_opts)
+                    {
+                        Some(SingleSelectResult::Index(idx)) => {
                             let result_str = format!("用户选择了: {}", items[idx].label);
-                            session_logger::log_user_event(&result_str);
+                            self.context.session_logger.log_user_event(&result_str);
                             Ok(result_str)
                         }
-                        Some(prompt::SingleSelectResult::Custom(text)) => {
+                        Some(SingleSelectResult::Custom(text)) => {
                             if text.is_empty() {
-                                session_logger::log_user_event("[用户取消了选择]");
+                                self.context
+                                    .session_logger
+                                    .log_user_event("[用户取消了选择]");
                                 Ok("[用户取消了选择]".to_string())
                             } else {
-                                let sanitized = session_logger::sanitize_user_input(&text);
+                                let sanitized = sanitize_user_input(&text);
                                 let result_str = format!("用户输入: {}", sanitized);
-                                session_logger::log_user_event(&result_str);
+                                self.context.session_logger.log_user_event(&result_str);
                                 Ok(result_str)
                             }
                         }
                         None => {
-                            session_logger::log_user_event("[用户取消了选择]");
+                            self.context
+                                .session_logger
+                                .log_user_event("[用户取消了选择]");
                             Ok("[用户取消了选择]".to_string())
                         }
                     }
@@ -280,6 +309,28 @@ impl AskUser {
             }
         }
     }
+}
+
+/// 清洗用户输入中的敏感信息（`sk-` API Key 脱敏）。
+/// 迁移自主 crate `session::logger::sanitize_user_input`。
+pub fn sanitize_user_input(input: &str) -> String {
+    let mut result = input.to_string();
+    // 替换 sk- 开头的 API Key（sk-后至少 20 位字母数字）
+    let mut i = 0;
+    while i < result.len() {
+        if result[i..].starts_with("sk-") {
+            let start = i;
+            let rest = &result[i + 3..];
+            let key_len = rest.chars().take_while(|c| c.is_alphanumeric()).count();
+            if key_len >= 20 {
+                result.replace_range(start..start + 3 + key_len, "sk-***");
+                i = start + 6; // "sk-***" 长度
+                continue;
+            }
+        }
+        i += 1;
+    }
+    result
 }
 
 #[cfg(test)]

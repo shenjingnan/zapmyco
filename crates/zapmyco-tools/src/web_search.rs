@@ -9,6 +9,8 @@ use zapmyco_anthropic_ai_sdk::types::message::{
 };
 use zapmyco_core::AgentTool;
 
+use crate::backend::{OutputLevel, ToolsContext};
+
 /// Web 搜索工具
 ///
 /// 客户端注册为普通 tool_use，execute() 内部发起 API 子请求并传入
@@ -17,6 +19,7 @@ pub struct WebSearch {
     client: AnthropicClient,
     model: String,
     max_tokens: u32,
+    context: ToolsContext,
 }
 
 #[async_trait]
@@ -90,7 +93,14 @@ impl WebSearch {
             client,
             model,
             max_tokens,
+            context: ToolsContext::default(),
         })
+    }
+
+    /// 注入工具上下文（输出/交互后端）
+    pub fn with_context(mut self, context: ToolsContext) -> Self {
+        self.context = context;
+        self
     }
 
     /// 返回 Anthropic Tool 定义（对主模型来说是普通 tool_use）
@@ -155,19 +165,18 @@ impl WebSearch {
                 StreamEvent::ContentBlockStart { content_block, .. } => match &content_block {
                     ContentBlock::ServerToolUse { input, .. } => {
                         let q = input.get("query").and_then(|v| v.as_str()).unwrap_or("...");
-                        crate::output::send(&crate::output::Message::info(format!(
-                            "[工具] 🔍 正在搜索: {}",
-                            q
-                        )));
+                        self.context
+                            .output
+                            .emit(OutputLevel::Info, &format!("[工具] 🔍 正在搜索: {}", q));
                     }
                     ContentBlock::WebSearchToolResult {
                         content: WebSearchToolResultContent::Results(results),
                         ..
                     } => {
-                        crate::output::send(&crate::output::Message::info(format!(
-                            "[工具] 📄 获得 {} 条搜索结果",
-                            results.len()
-                        )));
+                        self.context.output.emit(
+                            OutputLevel::Info,
+                            &format!("[工具] 📄 获得 {} 条搜索结果", results.len()),
+                        );
                         for r in results {
                             result.push_str(&format!("- [{}]({})\n", r.title, r.url));
                         }
@@ -188,10 +197,10 @@ impl WebSearch {
                         }),
                     ..
                 } => {
-                    crate::output::send(&crate::output::Message::info(format!(
-                        "[工具] ✅ 搜索完成 ({} 次搜索)",
-                        su.web_search_requests
-                    )));
+                    self.context.output.emit(
+                        OutputLevel::Info,
+                        &format!("[工具] ✅ 搜索完成 ({} 次搜索)", su.web_search_requests),
+                    );
                 }
                 _ => {}
             }
