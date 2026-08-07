@@ -8,6 +8,7 @@
 
 pub mod models;
 pub mod providers;
+pub mod resolve;
 
 // 便捷重导出
 pub use models::{
@@ -15,4 +16,10 @@ pub use models::{
     get_built_in_base_hosts, get_built_in_base_urls, get_built_in_model_names, get_model_info,
     guess_provider_from_model_name,
 };
-pub use providers::{PROVIDER_METADATA, ProviderMeta, all_provider_names, provider_meta};
+pub use providers::{
+    LlmSettings, PROVIDER_METADATA, ProviderConfig, ProviderMeta, all_provider_names, provider_meta,
+};
+pub use resolve::{
+    ResolvedLlmConfig, get_internal_max_tokens, get_search_model, resolve_api_key, resolve_env_ref,
+    resolve_llm_config,
+};

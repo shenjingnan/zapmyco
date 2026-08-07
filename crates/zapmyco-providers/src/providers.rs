@@ -1,11 +1,38 @@
-//! 供应商元数据表。
+//! 供应商配置类型与元数据表。
 //!
-//! 集中管理各供应商的展示名、默认搜索模型、环境变量约定与 API 版本等元信息，
-//! 与 `models.rs` 的模型注册表互补：注册表管"模型"，本表管"供应商"。
+//! 承载 settings.toml `[llm]` 的供应商配置类型（`ProviderConfig` / `LlmSettings`），
+//! 并集中管理各供应商的展示名、默认搜索模型、环境变量约定与 API 版本等元信息，
+//! 与 `models.rs` 的模型注册表互补：注册表管"模型"，本模块管"供应商配置与元信息"。
 //!
 //! 注意：`default_env_var` 与 `api_version` 目前**仅作信息用途，不接线**——
 //! 现状下 `resolve_api_key` 对所有供应商都回退硬编码的 `DEEPSEEK_API_KEY`，
 //! API 版本在各传输层硬编码为 `"2023-06-01"`。接线会改变现有行为，需另行决策。
+
+use serde::{Deserialize, Serialize};
+
+/// 供应商配置
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConfig {
+    /// API 密钥，支持 ${env.VAR} 语法
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// API 基础地址（可选），覆盖内置模型注册表中的 base_url
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+}
+
+/// LLM 配置（新格式）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmSettings {
+    /// 供应商字典
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub providers: Option<std::collections::HashMap<String, ProviderConfig>>,
+    /// 模型配置档字典
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub models: Option<std::collections::HashMap<String, String>>,
+}
 
 /// 供应商元信息
 #[derive(Debug, Clone, Copy)]
