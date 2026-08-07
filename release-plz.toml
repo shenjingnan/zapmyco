@@ -22,3 +22,9 @@ name = "zapmyco-tools"
 changelog_update = true
 changelog_path = "crates/zapmyco-tools/CHANGELOG.md"
 publish_allow_dirty = true
+
+[[package]]
+name = "zapmyco-providers"
+changelog_update = true
+changelog_path = "crates/zapmyco-providers/CHANGELOG.md"
+publish_allow_dirty = true
