@@ -4598,14 +4598,10 @@ dependencies = [
  "clap",
  "clap_complete",
  "crossterm 0.29.0",
- "fs4",
  "futures-util",
- "globset",
- "ignore",
  "indicatif",
  "inquire",
  "libc",
- "mdka",
  "rand 0.10.2",
  "ratatui 0.30.2",
  "reqwest",
@@ -4628,7 +4624,6 @@ dependencies = [
  "yaml_serde",
  "zapmyco-anthropic-ai-sdk",
  "zapmyco-core",
- "zapmyco-grep",
  "zapmyco-tools",
 ]
 

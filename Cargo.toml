@@ -32,7 +32,6 @@ zapmyco-tools = { version = "0.1", path = "crates/zapmyco-tools", features = ["c
 clap = { version = "4", features = ["derive", "string"] }
 clap_complete = "4"
 zapmyco-anthropic-ai-sdk = { version = "0.3.3", path = "vendor/zapmyco-anthropic-ai-sdk" }
-zapmyco-grep = { version = "0.1.0", path = "vendor/zapmyco-grep" }
 inquire = "0.9"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -46,12 +45,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 futures-util = "0.3.32"
 reqwest = "0.13"
-mdka = "2"
 crossterm = "0.29"
 indicatif = "0.18"
-ignore = "0.4"
-globset = "0.4"
-fs4 = { version = "1.1", features = ["tokio"] }
 yaml_serde = "0.10.4"
 ratatui = { version = "0.30", features = ["crossterm"] }
 tui-textarea = "0.7.0"
