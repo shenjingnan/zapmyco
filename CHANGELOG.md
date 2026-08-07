@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.47.0](https://github.com/shenjingnan/zapmyco/compare/v0.46.0...v0.47.0) - 2026-08-07
+
+### Other
+
+- *(providers)* 迁移配置解析逻辑至 zapmyco-providers（P2） ([#553](https://github.com/shenjingnan/zapmyco/pull/553))
+- *(providers)* 提取 zapmyco-providers 供应商 crate（P1） ([#552](https://github.com/shenjingnan/zapmyco/pull/552))
+
 ## [0.46.0](https://github.com/shenjingnan/zapmyco/compare/v0.45.1...v0.46.0) - 2026-08-07
 
 ### Other
