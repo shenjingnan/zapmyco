@@ -3,7 +3,7 @@
 // 适用于了解整体进度、查找可认领的任务、检查阻塞关系。
 // 开始复杂工作前应先调用此工具查看现状。
 
-use crate::tools::task_manager::TaskManager;
+use crate::task_manager::TaskManager;
 use async_trait::async_trait;
 use std::sync::Arc;
 use zapmyco_core::AgentTool;
