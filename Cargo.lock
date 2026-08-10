@@ -1903,9 +1903,9 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mdka"
-version = "2.1.6"
+version = "2.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff483fa588f1919720ec03593d315f208d57da7d06b39ca81118a37eb8324d60"
+checksum = "477f7f295896f078a3b778d4d6b6c71abe489b33829c8ff1901857677b2cf468"
 dependencies = [
  "ego-tree",
  "rayon",
